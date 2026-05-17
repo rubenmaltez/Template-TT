@@ -1,4 +1,4 @@
-import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -6,10 +6,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../data/providers/foto_comprobante_provider.dart';
 
 /// Renderiza una foto del comprobante manejando ambos casos del path:
-///   - `local://*` → carga el archivo desde disco
-///   - cualquier otro string → asume path en Storage y obtiene URL firmada
+///   - `local://*` → carga bytes desde storage local (mobile)
+///   - cualquier otro string → URL firmada del bucket Storage (cross-platform)
 ///
-/// Si no se puede mostrar, devuelve null (no ocupa espacio).
+/// En web, las fotos `local://*` no son visibles (sólo existen en el
+/// teléfono que las capturó); se muestra un placeholder.
 class FotoComprobanteView extends ConsumerStatefulWidget {
   const FotoComprobanteView({
     super.key,
@@ -28,7 +29,7 @@ class FotoComprobanteView extends ConsumerStatefulWidget {
 }
 
 class _FotoComprobanteViewState extends ConsumerState<FotoComprobanteView> {
-  File? _local;
+  Uint8List? _bytes;
   String? _urlFirmada;
   bool _cargando = true;
 
@@ -46,29 +47,35 @@ class _FotoComprobanteViewState extends ConsumerState<FotoComprobanteView> {
 
   Future<void> _resolver() async {
     if (widget.path == null) {
-      setState(() {
-        _local = null;
-        _urlFirmada = null;
-        _cargando = false;
-      });
+      if (mounted) {
+        setState(() {
+          _bytes = null;
+          _urlFirmada = null;
+          _cargando = false;
+        });
+      }
       return;
     }
     setState(() => _cargando = true);
     final service = ref.read(fotoComprobanteServiceProvider);
     if (widget.path!.startsWith('local://')) {
-      final f = await service.archivoLocal(widget.path!);
-      if (mounted) setState(() {
-        _local = f;
-        _urlFirmada = null;
-        _cargando = false;
-      });
+      final b = await service.bytesLocal(widget.path!);
+      if (mounted) {
+        setState(() {
+          _bytes = b;
+          _urlFirmada = null;
+          _cargando = false;
+        });
+      }
     } else {
       final url = await service.urlFirmada(widget.path!);
-      if (mounted) setState(() {
-        _local = null;
-        _urlFirmada = url;
-        _cargando = false;
-      });
+      if (mounted) {
+        setState(() {
+          _bytes = null;
+          _urlFirmada = url;
+          _cargando = false;
+        });
+      }
     }
   }
 
@@ -86,21 +93,28 @@ class _FotoComprobanteViewState extends ConsumerState<FotoComprobanteView> {
     final pendiente = widget.path!.startsWith('local://');
 
     Widget img;
-    if (_local != null) {
-      img = Image.file(_local!, height: widget.height, fit: BoxFit.cover);
+    if (_bytes != null) {
+      img = Image.memory(_bytes!, height: widget.height, fit: BoxFit.cover);
     } else if (_urlFirmada != null) {
-      img = Image.network(_urlFirmada!, height: widget.height, fit: BoxFit.cover);
-    } else {
-      // Path remoto que no resolvió URL (sin internet o permiso).
-      return Container(
+      img = Image.network(
+        _urlFirmada!,
         height: widget.height,
-        decoration: BoxDecoration(
-          borderRadius: radius,
-          color: Theme.of(context).colorScheme.surfaceContainerHighest,
-        ),
-        child: const Center(
-          child: Icon(Icons.cloud_off, size: 32),
-        ),
+        fit: BoxFit.cover,
+        // Si la URL expira o falla red, retry obteniendo nueva URL firmada.
+        errorBuilder: (_, __, ___) => _placeholderError(context, 'Sin acceso'),
+        loadingBuilder: (_, child, progress) {
+          if (progress == null) return child;
+          return SizedBox(
+            height: widget.height,
+            child: const Center(child: CircularProgressIndicator()),
+          );
+        },
+      );
+    } else {
+      // Path local pero estamos en web, o el archivo no existe en este dispositivo.
+      return _placeholderError(
+        context,
+        pendiente ? 'Foto sólo en el dispositivo del cobrador' : 'No se pudo cargar',
       );
     }
 
@@ -136,6 +150,29 @@ class _FotoComprobanteViewState extends ConsumerState<FotoComprobanteView> {
             ),
           ),
       ],
+    );
+  }
+
+  Widget _placeholderError(BuildContext context, String mensaje) {
+    return Container(
+      height: widget.height,
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(widget.borderRadius),
+        color: Theme.of(context).colorScheme.surfaceContainerHighest,
+      ),
+      child: Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.cloud_off,
+                size: 32, color: Theme.of(context).colorScheme.outline),
+            const SizedBox(height: 4),
+            Text(mensaje,
+                style: TextStyle(
+                    color: Theme.of(context).colorScheme.outline, fontSize: 12)),
+          ],
+        ),
+      ),
     );
   }
 }

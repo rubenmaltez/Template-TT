@@ -128,7 +128,6 @@ class _FotosPendientesCard extends ConsumerStatefulWidget {
 }
 
 class _FotosPendientesCardState extends ConsumerState<_FotosPendientesCard> {
-  int _subiendo = 0;
   bool _ejecutando = false;
 
   @override
@@ -174,9 +173,7 @@ class _FotosPendientesCardState extends ConsumerState<_FotosPendientesCard> {
                             height: 16,
                             child: CircularProgressIndicator(strokeWidth: 2))
                         : const Icon(Icons.refresh),
-                    label: Text(_ejecutando
-                        ? 'Subiendo $_subiendo...'
-                        : 'Intentar ahora'),
+                    label: Text(_ejecutando ? 'Subiendo...' : 'Intentar ahora'),
                     onPressed: _ejecutando ? null : _intentar,
                   ),
                 ),
@@ -189,10 +186,7 @@ class _FotosPendientesCardState extends ConsumerState<_FotosPendientesCard> {
   }
 
   Future<void> _intentar() async {
-    setState(() {
-      _ejecutando = true;
-      _subiendo = 0;
-    });
+    setState(() => _ejecutando = true);
     try {
       final n = await ref
           .read(fotoComprobanteServiceProvider)

@@ -3,7 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:image_picker/image_picker.dart';
 
@@ -14,7 +14,6 @@ import '../../data/providers/foto_comprobante_provider.dart';
 import '../../data/repositories/cuotas_repo.dart';
 import '../../data/repositories/pagos_repo.dart';
 import '../../data/repositories/settings_repo.dart';
-import '../../data/services/foto_comprobante_service.dart';
 import '../../data/services/gps_service.dart';
 import '../../data/utils/formatters.dart';
 import '../../powersync/db.dart' as ps;
@@ -53,6 +52,9 @@ class _CobroScreenState extends ConsumerState<CobroScreen> {
   @override
   void initState() {
     super.initState();
+    // Evita 'setState() called during build' — el bool inicial se asigna
+    // directo. El setState llega cuando termina la captura (post first frame).
+    _capturandoUbicacion = true;
     _cargar();
     _capturarUbicacion();
   }
@@ -60,7 +62,6 @@ class _CobroScreenState extends ConsumerState<CobroScreen> {
   /// Captura GPS en background al abrir la pantalla. Si tarda o falla,
   /// el cobro continúa sin coordenadas — no es bloqueante.
   Future<void> _capturarUbicacion() async {
-    setState(() => _capturandoUbicacion = true);
     final ubi = await const GpsService().obtenerUbicacion();
     if (mounted) {
       setState(() {
@@ -216,7 +217,14 @@ class _CobroScreenState extends ConsumerState<CobroScreen> {
           _MetodosWrap(
             actual: _metodo,
             settings: settings,
-            onSelected: (m) => setState(() => _metodo = m),
+            onSelected: (m) {
+              setState(() {
+                _metodo = m;
+                // Si el método ya no requiere comprobante, descartar
+                // la foto adjunta para no asociarla a un pago en efectivo.
+                if (!m.requiereComprobante) _fotoPath = null;
+              });
+            },
           ),
 
           const SizedBox(height: 24),
@@ -487,29 +495,32 @@ class _FotoComprobantePicker extends ConsumerStatefulWidget {
 
 class _FotoComprobantePickerState
     extends ConsumerState<_FotoComprobantePicker> {
-  File? _archivo;
+  Uint8List? _bytes;
 
   @override
   void didUpdateWidget(covariant _FotoComprobantePicker old) {
     super.didUpdateWidget(old);
-    if (widget.path != old.path) _resolverArchivo();
+    if (widget.path != old.path) _resolverBytes();
   }
 
   @override
   void initState() {
     super.initState();
-    _resolverArchivo();
+    // Caso sincrónico: path null → bytes null. No usar setState (pre-build).
+    if (widget.path == null) {
+      _bytes = null;
+    } else {
+      _resolverBytes();
+    }
   }
 
-  Future<void> _resolverArchivo() async {
-    if (widget.path == null) {
-      setState(() => _archivo = null);
-      return;
-    }
-    final f = await ref
-        .read(fotoComprobanteServiceProvider)
-        .archivoLocal(widget.path);
-    if (mounted) setState(() => _archivo = f);
+  Future<void> _resolverBytes() async {
+    final b = widget.path == null
+        ? null
+        : await ref
+            .read(fotoComprobanteServiceProvider)
+            .bytesLocal(widget.path);
+    if (mounted) setState(() => _bytes = b);
   }
 
   Future<void> _elegir(ImageSource source) async {
@@ -529,14 +540,14 @@ class _FotoComprobantePickerState
 
   @override
   Widget build(BuildContext context) {
-    if (_archivo != null) {
+    if (_bytes != null) {
       return Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           ClipRRect(
             borderRadius: BorderRadius.circular(12),
-            child: Image.file(
-              _archivo!,
+            child: Image.memory(
+              _bytes!,
               height: 180,
               fit: BoxFit.cover,
             ),
