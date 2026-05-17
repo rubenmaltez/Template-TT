@@ -34,12 +34,18 @@ bucket_definitions:
 
   # ── Datos operativos del cobrador ─────────────────────────────────────
   # Cada cobrador baja SÓLO sus clientes asignados + relacionados.
+  # También baja SU PROPIA fila de cobradores (necesita prefijo_recibo para
+  # imprimir y rol para validaciones locales).
   por_cobrador:
     parameters: |
       SELECT id AS cobrador_id, tenant_id
       FROM cobradores
       WHERE id = request.user_id() AND rol = 'cobrador'
     data:
+      - SELECT id, tenant_id, nombre, telefono, rol, prefijo_recibo, activo
+        FROM cobradores
+        WHERE tenant_id = bucket.tenant_id AND id = bucket.cobrador_id
+
       - SELECT * FROM clientes
         WHERE tenant_id = bucket.tenant_id AND cobrador_id = bucket.cobrador_id
 
@@ -75,7 +81,7 @@ bucket_definitions:
       - SELECT * FROM recibos              WHERE tenant_id = bucket.tenant_id
       - SELECT * FROM cargos_extra         WHERE tenant_id = bucket.tenant_id
       - SELECT * FROM notificaciones_mora  WHERE tenant_id = bucket.tenant_id
-      - SELECT id, tenant_id, nombre, rol, prefijo_recibo, activo
+      - SELECT id, tenant_id, nombre, telefono, rol, prefijo_recibo, activo
         FROM cobradores
         WHERE tenant_id = bucket.tenant_id
 
@@ -94,6 +100,6 @@ bucket_definitions:
       - SELECT * FROM recibos              WHERE tenant_id = bucket.tenant_id
       - SELECT * FROM cargos_extra         WHERE tenant_id = bucket.tenant_id
       - SELECT * FROM notificaciones_mora  WHERE tenant_id = bucket.tenant_id
-      - SELECT id, tenant_id, nombre, rol, prefijo_recibo, activo
+      - SELECT id, tenant_id, nombre, telefono, rol, prefijo_recibo, activo
         FROM cobradores
         WHERE tenant_id = bucket.tenant_id

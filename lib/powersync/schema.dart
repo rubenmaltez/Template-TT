@@ -90,7 +90,7 @@ const schema = Schema([
     Column.text('cliente_id'),
     Column.text('cobrador_id'),
     Column.text('plan_id'),
-    Column.integer('dia_corte'),
+    Column.integer('dia_pago'),
     Column.text('fecha_inicio'),
     Column.text('fecha_fin'),
     Column.integer('activo'),
@@ -111,10 +111,11 @@ const schema = Schema([
     Column.text('estado'),
     Column.text('created_at'),
   ], indexes: [
-    Index('by_cliente_estado', [
-      IndexedColumn('cliente_id'),
+    Index('by_cobrador_estado', [
+      IndexedColumn('cobrador_id'),
       IndexedColumn('estado'),
     ]),
+    Index('by_cliente', [IndexedColumn('cliente_id')]),
     Index('by_vencimiento', [IndexedColumn('fecha_vencimiento')]),
   ]),
 
@@ -133,10 +134,18 @@ const schema = Schema([
     Column.real('lng'),
     Column.text('notas'),
     Column.text('fecha_pago'),
+    Column.integer('anulado'),
+    Column.text('anulado_en'),
+    Column.text('anulado_por'),
+    Column.text('motivo_anulacion'),
     Column.text('client_local_id'),
   ], indexes: [
     Index('by_cuota', [IndexedColumn('cuota_id')]),
     Index('by_fecha', [IndexedColumn('fecha_pago')]),
+    Index('by_cobrador_fecha', [
+      IndexedColumn('cobrador_id'),
+      IndexedColumn('fecha_pago'),
+    ]),
   ]),
 
   Table('recibos', [
@@ -149,11 +158,15 @@ const schema = Schema([
     Column.text('impreso_en'),
     Column.integer('reimpresiones'),
     Column.integer('ultimo_formato_mm'),
+    Column.integer('anulado'),
+    Column.text('anulado_en'),
+    Column.text('anulado_por'),
     Column.text('created_at'),
     Column.text('client_local_id'),
   ], indexes: [
     Index('by_correlativo', [
       IndexedColumn('cobrador_id'),
+      IndexedColumn('prefijo'),
       IndexedColumn('correlativo'),
     ]),
   ]),
@@ -192,10 +205,12 @@ const schema = Schema([
     ]),
   ]),
 
-  // Vista limitada — sólo la baja el bucket admin/admin_cobranza.
+  // Vista limitada del cobrador (su propia fila) o del tenant entero
+  // (bucket admin/admin_cobranza).
   Table('cobradores', [
     Column.text('tenant_id'),
     Column.text('nombre'),
+    Column.text('telefono'),
     Column.text('rol'),
     Column.text('prefijo_recibo'),
     Column.integer('activo'),

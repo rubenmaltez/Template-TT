@@ -67,19 +67,11 @@ begin
   )
   returning id into v_cliente_id;
 
-  insert into public.contratos (tenant_id, cliente_id, plan_id, dia_corte, fecha_inicio)
-  values (v_tenant_id, v_cliente_id, v_plan_id, 5, current_date)
+  -- El trigger en contratos AFTER INSERT genera las cuotas iniciales
+  -- automáticamente (3 si indefinido, todas si tiene fecha_fin).
+  insert into public.contratos (tenant_id, cliente_id, plan_id, dia_pago, fecha_inicio)
+  values (v_tenant_id, v_cliente_id, v_plan_id, 17, current_date)
   returning id into v_contrato_id;
-
-  insert into public.cuotas (
-    tenant_id, contrato_id, cliente_id, cobrador_id,
-    periodo, fecha_vencimiento, monto
-  )
-  values (
-    v_tenant_id, v_contrato_id, v_cliente_id, v_user_id,
-    date_trunc('month', current_date)::date,
-    current_date + 5, 500.00
-  );
 
   raise notice '✅ Seed listo. tenant=% cobrador=%', v_tenant_id, v_user_id;
 end $$;
