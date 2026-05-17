@@ -118,6 +118,41 @@ class _CobroScreenState extends ConsumerState<CobroScreen> {
     super.dispose();
   }
 
+  Future<void> _cancelar(BuildContext context) async {
+    // Si hay datos significativos cargados, confirmar antes de descartar.
+    final hayDatos = _montoCtrl.text.trim().isNotEmpty &&
+        double.tryParse(_montoCtrl.text) != null &&
+        double.parse(_montoCtrl.text) > 0;
+    final tieneFoto = _fotoPath != null;
+    final tieneRef = _referenciaCtrl.text.trim().isNotEmpty;
+    if (hayDatos || tieneFoto || tieneRef) {
+      final descartar = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('¿Descartar cobro?'),
+          content: const Text('Vas a perder el monto/foto/referencia '
+              'cargados. Esta cuota queda sin cobrar.'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Seguir editando'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              style: FilledButton.styleFrom(
+                backgroundColor: Theme.of(ctx).colorScheme.error,
+                foregroundColor: Theme.of(ctx).colorScheme.onError,
+              ),
+              child: const Text('Descartar'),
+            ),
+          ],
+        ),
+      );
+      if (descartar != true) return;
+    }
+    if (context.mounted) context.pop();
+  }
+
   Future<void> _confirmar() async {
     if (!_formKey.currentState!.validate()) return;
     final cuota = _cuota;
@@ -366,15 +401,28 @@ class _CobroScreenState extends ConsumerState<CobroScreen> {
                 textAlign: TextAlign.center,
               ),
             ),
-          FilledButton.icon(
-            onPressed: puedeConfirmar ? _confirmar : null,
-            icon: _enviando
-                ? const SizedBox(
-                    width: 16, height: 16,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : const Icon(Icons.check),
-            label: Text(_enviando ? 'Procesando...' : 'Confirmar cobro'),
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton(
+                  onPressed: _enviando ? null : () => _cancelar(context),
+                  child: const Text('Cancelar'),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: FilledButton.icon(
+                  onPressed: puedeConfirmar ? _confirmar : null,
+                  icon: _enviando
+                      ? const SizedBox(
+                          width: 16, height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.check),
+                  label: Text(_enviando ? 'Procesando...' : 'Confirmar cobro'),
+                ),
+              ),
+            ],
           ),
         ],
         ),

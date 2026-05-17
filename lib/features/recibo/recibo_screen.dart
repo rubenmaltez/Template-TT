@@ -209,31 +209,19 @@ class _AccionesImpresion extends StatelessWidget {
       children: [
         FilledButton.icon(
           icon: const Icon(Icons.print),
-          label: Text('Imprimir (${settings.formatoReciboMm}mm)'),
-          onPressed: () => _intentarImprimir(context, settings.formatoReciboMm),
-        ),
-        const SizedBox(height: 8),
-        OutlinedButton.icon(
-          icon: const Icon(Icons.bluetooth),
-          label: const Text('Configurar impresora'),
-          onPressed: () => _intentarImprimir(context, null),
+          label: Text('Imprimir ${settings.formatoReciboMm}mm (próximamente)'),
+          // Disabled hasta que se implemente la conexión Bluetooth ESC/POS.
+          onPressed: null,
         ),
         const SizedBox(height: 16),
         Text(
-          'La conexión Bluetooth ESC/POS se activa en próxima versión. '
-          'Por ahora el recibo queda guardado y sincronizado.',
+          'La impresión Bluetooth ESC/POS está pendiente. El recibo queda '
+          'guardado y sincronizado — se puede imprimir cuando habilitemos '
+          'el módulo de impresora térmica.',
           textAlign: TextAlign.center,
           style: Theme.of(context).textTheme.bodySmall,
         ),
       ],
-    );
-  }
-
-  void _intentarImprimir(BuildContext context, int? formato) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Impresión Bluetooth — pendiente de implementar'),
-      ),
     );
   }
 }

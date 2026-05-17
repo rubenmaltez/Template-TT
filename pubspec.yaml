@@ -46,6 +46,9 @@ dependencies:
   # Sustituye esc_pos_bluetooth (conflicto rxdart con supabase_flutter).
   print_bluetooth_thermal: ^1.1.0
 
+  # Acciones del sistema (tel:, geo:, https:)
+  url_launcher: ^6.3.0
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

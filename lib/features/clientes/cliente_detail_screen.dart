@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../data/models/cuota.dart';
 import '../../data/repositories/clientes_repo.dart';
 import '../../data/repositories/settings_repo.dart';
+import '../../data/services/external_actions.dart';
 import '../../data/utils/formatters.dart';
 import '../../powersync/db.dart' as ps;
 import '../shared/widgets/empty_state.dart';
@@ -85,27 +85,31 @@ class _ClienteHeader extends StatelessWidget {
         children: [
           Text(nombre, style: Theme.of(context).textTheme.headlineSmall),
           const SizedBox(height: 16),
-          Row(
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
             children: [
-              if (telefono != null && telefono!.isNotEmpty)
+              if (telefono != null && telefono!.isNotEmpty) ...[
                 _IconButton(
                   icon: Icons.phone,
                   label: 'Llamar',
-                  onTap: () async {
-                    await Clipboard.setData(ClipboardData(text: telefono!));
-                    if (context.mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(content: Text('Teléfono $telefono copiado')),
-                      );
-                    }
-                  },
+                  onTap: () => ExternalActions.llamar(context, telefono!),
                 ),
-              const SizedBox(width: 8),
+                _IconButton(
+                  icon: Icons.chat,
+                  label: 'WhatsApp',
+                  onTap: () => ExternalActions.whatsapp(context, telefono!),
+                ),
+              ],
               if (tieneUbicacion)
                 _IconButton(
-                  icon: Icons.map,
-                  label: 'Ver en mapa',
-                  onTap: () => context.go('/mapa'),
+                  icon: Icons.directions,
+                  label: 'Navegar',
+                  onTap: () => ExternalActions.navegarA(
+                    context,
+                    lat: latitud!,
+                    lng: longitud!,
+                  ),
                 ),
             ],
           ),
