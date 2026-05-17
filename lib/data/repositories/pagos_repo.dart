@@ -131,6 +131,59 @@ class PagosRepo {
 
     return CobroResultado(pagoId: pagoId, reciboId: reciboId);
   }
+
+  /// Anula un pago aplicando soft delete. También marca como anulados los
+  /// recibos asociados. El trigger server recalcula cuota.monto_pagado/estado.
+  Future<void> anularPago({
+    required String pagoId,
+    required String anuladoPorId,
+    required String motivo,
+  }) async {
+    final now = DateTime.now().toIso8601String();
+    await ps.db.writeTransaction((tx) async {
+      // Snapshot del monto antes de marcar anulado, para ajustar cuota local.
+      final pagoRows = await tx.getAll(
+        'SELECT cuota_id, monto_cordobas FROM pagos WHERE id = ? AND anulado = 0',
+        [pagoId],
+      );
+      if (pagoRows.isEmpty) return;
+      final cuotaId = pagoRows.first['cuota_id'] as String;
+      final monto = (pagoRows.first['monto_cordobas'] as num).toDouble();
+
+      await tx.execute(
+        '''
+        UPDATE pagos
+           SET anulado = 1, anulado_en = ?, anulado_por = ?, motivo_anulacion = ?
+         WHERE id = ?
+        ''',
+        [now, anuladoPorId, motivo, pagoId],
+      );
+
+      await tx.execute(
+        '''
+        UPDATE recibos
+           SET anulado = 1, anulado_en = ?, anulado_por = ?
+         WHERE pago_id = ? AND anulado = 0
+        ''',
+        [now, anuladoPorId, pagoId],
+      );
+
+      // Reflejar localmente el recálculo del trigger server.
+      await tx.execute(
+        '''
+        UPDATE cuotas
+           SET monto_pagado = MAX(monto_pagado - ?, 0),
+               estado = CASE
+                          WHEN monto_pagado - ? <= 0      THEN 'pendiente'
+                          WHEN monto_pagado - ? < monto   THEN 'parcial'
+                          ELSE estado
+                        END
+         WHERE id = ?
+        ''',
+        [monto, monto, monto, cuotaId],
+      );
+    });
+  }
 }
 
 final pagosRepoProvider = Provider((_) => PagosRepo());
