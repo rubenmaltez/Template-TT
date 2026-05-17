@@ -1,20 +1,29 @@
 # PowerSync Sync Rules
-# Define qué filas se sincronizan a cada dispositivo.
 # Doc: https://docs.powersync.com/usage/sync-rules
 #
-# Modelo: cada cobrador baja SÓLO sus clientes asignados (+ contratos/cuotas/pagos
-# relacionados). Los admins (rol='admin') bajan todos los del tenant.
+# Limitaciones del DSL (importantes a recordar):
+#   - NO subqueries (no `WHERE x IN (SELECT ...)`)
+#   - NO JOINs en `data:`
+#   - Cada query de `data:` debe usar TODOS los parámetros del bucket
+#   - `IN` sólo con listas literales: `WHERE estado IN ('pendiente','pagada')`
+#
+# Por eso `contratos` y `cuotas` tienen `cobrador_id` denormalizado
+# (ver migración 0002).
 
 bucket_definitions:
 
-  # Catálogo global del tenant (planes) — todo empleado lo necesita
+  # ── Catálogo global del tenant (planes) ───────────────────────────────
+  # Todos los empleados del ISP lo necesitan offline.
   catalogo_tenant:
     parameters: |
-      SELECT tenant_id FROM cobradores WHERE id = request.user_id()
+      SELECT tenant_id
+      FROM cobradores
+      WHERE id = request.user_id()
     data:
       - SELECT * FROM planes WHERE tenant_id = bucket.tenant_id
 
-  # Datos operativos del cobrador (sólo sus clientes)
+  # ── Datos operativos del cobrador ─────────────────────────────────────
+  # Cada cobrador baja SÓLO sus clientes asignados + sus contratos/cuotas/pagos.
   por_cobrador:
     parameters: |
       SELECT id AS cobrador_id, tenant_id
@@ -22,33 +31,30 @@ bucket_definitions:
       WHERE id = request.user_id() AND rol = 'cobrador'
     data:
       - SELECT * FROM clientes
-        WHERE cobrador_id = bucket.cobrador_id
+        WHERE tenant_id = bucket.tenant_id AND cobrador_id = bucket.cobrador_id
 
       - SELECT * FROM contratos
-        WHERE cliente_id IN (
-          SELECT id FROM clientes WHERE cobrador_id = bucket.cobrador_id
-        )
+        WHERE tenant_id = bucket.tenant_id AND cobrador_id = bucket.cobrador_id
 
       - SELECT * FROM cuotas
-        WHERE cliente_id IN (
-          SELECT id FROM clientes WHERE cobrador_id = bucket.cobrador_id
-        )
-        AND estado IN ('pendiente','vencida')
+        WHERE tenant_id = bucket.tenant_id AND cobrador_id = bucket.cobrador_id
 
       - SELECT * FROM pagos
-        WHERE cobrador_id = bucket.cobrador_id
+        WHERE tenant_id = bucket.tenant_id AND cobrador_id = bucket.cobrador_id
 
-  # Vista global para admins (Windows / oficina)
+  # ── Vista global para admins (PC Windows en oficina) ──────────────────
+  # Los admins bajan todo el tenant. Es seguro porque el rol es asignado por
+  # el dueño del ISP y filtrado por RLS en Postgres.
   todo_tenant_admin:
     parameters: |
       SELECT tenant_id
       FROM cobradores
       WHERE id = request.user_id() AND rol = 'admin'
     data:
-      - SELECT * FROM clientes  WHERE tenant_id = bucket.tenant_id
-      - SELECT * FROM contratos WHERE tenant_id = bucket.tenant_id
-      - SELECT * FROM cuotas    WHERE tenant_id = bucket.tenant_id
-      - SELECT * FROM pagos     WHERE tenant_id = bucket.tenant_id
+      - SELECT * FROM clientes   WHERE tenant_id = bucket.tenant_id
+      - SELECT * FROM contratos  WHERE tenant_id = bucket.tenant_id
+      - SELECT * FROM cuotas     WHERE tenant_id = bucket.tenant_id
+      - SELECT * FROM pagos      WHERE tenant_id = bucket.tenant_id
       - SELECT id, tenant_id, nombre, rol, activo
         FROM cobradores
         WHERE tenant_id = bucket.tenant_id
