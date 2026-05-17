@@ -15,8 +15,9 @@ dependencies:
   supabase_flutter: ^2.5.0
   powersync: ^1.10.0
 
-  # State management
+  # State management + routing
   flutter_riverpod: ^2.5.1
+  go_router: ^14.2.7
 
   # Storage / config
   shared_preferences: ^2.3.0
@@ -28,14 +29,20 @@ dependencies:
   # Utils
   intl: ^0.19.0
   uuid: ^4.4.0
+  collection: ^1.18.0
 
-  # NOTA: Impresoras térmicas Bluetooth — pendiente para Fase 5.
-  # esc_pos_bluetooth ^0.4.1 depende de rxdart ^0.26.0, incompatible con
-  # supabase_flutter ^2.5+ (que requiere rxdart >=0.27.5). Cuando lleguemos
-  # a la fase de impresión usaremos un paquete mantenido (ej. flutter_thermal_printer
-  # o blue_thermal_printer) que sea compatible.
-  # esc_pos_utils: ^1.1.0
-  # esc_pos_bluetooth: ^0.4.1
+  # Geolocalización + mapas (flutter_map + OSM, gratis sin API key)
+  geolocator: ^13.0.1
+  flutter_map: ^7.0.2
+  latlong2: ^0.9.1
+
+  # Captura de fotos (cliente, comprobante)
+  image_picker: ^1.1.2
+  permission_handler: ^11.3.1
+
+  # Impresión Bluetooth térmica (57mm / 80mm) — soporta ESC/POS.
+  # Sustituye esc_pos_bluetooth (conflicto rxdart con supabase_flutter).
+  print_bluetooth_thermal: ^1.1.0
 
 dev_dependencies:
   flutter_test:

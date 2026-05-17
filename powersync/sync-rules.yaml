@@ -55,11 +55,16 @@ bucket_definitions:
       - SELECT * FROM cuotas
         WHERE tenant_id = bucket.tenant_id AND cobrador_id = bucket.cobrador_id
 
+      # Cobrador no necesita pagos/recibos anulados — el saldo de la cuota
+      # ya se recalcula via trigger server-side. Filtramos para reducir
+      # ruido visual. Admins SÍ los ven (auditoría).
       - SELECT * FROM pagos
         WHERE tenant_id = bucket.tenant_id AND cobrador_id = bucket.cobrador_id
+          AND anulado = false
 
       - SELECT * FROM recibos
         WHERE tenant_id = bucket.tenant_id AND cobrador_id = bucket.cobrador_id
+          AND anulado = false
 
       - SELECT * FROM cargos_extra
         WHERE tenant_id = bucket.tenant_id AND cobrador_id = bucket.cobrador_id
