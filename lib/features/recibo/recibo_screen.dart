@@ -37,6 +37,7 @@ class ReciboScreen extends ConsumerWidget {
                  p.tasa_conversion, p.metodo, p.referencia, p.fecha_pago,
                  p.foto_comprobante_path,
                  cu.periodo, cu.monto AS cuota_monto,
+                 ct.dia_pago,
                  c.nombre AS cliente_nombre, c.cedula AS cliente_cedula,
                  pl.nombre AS plan_nombre,
                  co.nombre AS cobrador_nombre
@@ -93,7 +94,10 @@ class _ReciboTicket extends StatelessWidget {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final emision = DateTime.parse(row['fecha_pago'] as String);
-    final periodoLabel = Fmt.periodoRecibo(emision);
+    final periodoCuota = DateTime.parse(row['periodo'] as String);
+    final diaPago = (row['dia_pago'] as num).toInt();
+    // Regla del 15 sobre día de pago del cliente, no fecha de emisión.
+    final periodoLabel = Fmt.periodoRecibo(diaPago, periodoCuota);
 
     return Container(
       decoration: BoxDecoration(

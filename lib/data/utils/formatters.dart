@@ -44,12 +44,16 @@ class Fmt {
     return fechaCorta(d);
   }
 
-  /// Período cobrado en el recibo: regla del 15.
-  /// Si fechaEmision.día ≤ 14 → mes actual; si ≥ 15 → mes siguiente.
-  static String periodoRecibo(DateTime fechaEmision) {
-    final mesObjetivo = fechaEmision.day <= 14
-        ? DateTime(fechaEmision.year, fechaEmision.month, 1)
-        : DateTime(fechaEmision.year, fechaEmision.month + 1, 1);
+  /// Período que se muestra en el recibo. Regla del 15 sobre el DÍA DE
+  /// PAGO DEL CLIENTE (no la fecha de emisión variable):
+  ///   - dia_pago ≤ 14: el recibo cubre el mismo mes que `periodo`.
+  ///   - dia_pago ≥ 15: el recibo cubre el MES SIGUIENTE a `periodo`.
+  ///
+  /// `periodo` viene de `cuotas.periodo` — el mes calendario de la cuota.
+  static String periodoRecibo(int diaPago, DateTime periodo) {
+    final mesObjetivo = diaPago >= 15
+        ? DateTime(periodo.year, periodo.month + 1, 1)
+        : DateTime(periodo.year, periodo.month, 1);
     return mes(mesObjetivo);
   }
 }

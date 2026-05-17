@@ -46,13 +46,15 @@ class PagosRepo {
 
     await ps.db.writeTransaction((tx) async {
       // Calcular correlativo DENTRO de la transacción para evitar carrera
-      // entre dos cobros simultáneos. Filtra anulado=0 para no agujerear
-      // la secuencia con recibos descartados.
+      // entre dos cobros simultáneos. NO filtramos anulado=0: si filtramos,
+      // anular el recibo #1 hace que el próximo cobro reutilice el #1 y
+      // colisiona con el unique constraint server (numero_completo).
+      // La secuencia incluye anulados — quedan "huecos" referenciales OK.
       final rows = await tx.getAll(
         '''
         SELECT COALESCE(MAX(correlativo), 0) + 1 AS prox
           FROM recibos
-         WHERE cobrador_id = ? AND prefijo = ? AND anulado = 0
+         WHERE cobrador_id = ? AND prefijo = ?
         ''',
         [cobradorId, prefijoRecibo],
       );
@@ -112,23 +114,28 @@ class PagosRepo {
       );
 
       // Reflejar localmente el efecto del trigger server. Calculamos el
-      // nuevo estado en Dart para no depender del orden de evaluación de
-      // SET en SQLite (donde el CASE podría leer `monto_pagado` viejo o
-      // nuevo según la versión).
+      // nuevo estado en Dart espejando exactamente la lógica SQL de
+      // `recalcular_cuota_desde_pagos` (migración 0018): el total real es
+      // monto_cuota - descuentos + cargos. Sin esto, una cuota con
+      // descuento podía mostrarse 'parcial' localmente y luego saltar a
+      // 'pagada' cuando llegue el sync.
       final cuotaRows = await tx.getAll(
         'SELECT monto, monto_pagado, estado FROM cuotas WHERE id = ?',
         [cuotaId],
       );
       if (cuotaRows.isNotEmpty) {
-        final monto = (cuotaRows.first['monto'] as num).toDouble();
+        final montoCuota = (cuotaRows.first['monto'] as num).toDouble();
         final pagadoViejo =
             (cuotaRows.first['monto_pagado'] as num? ?? 0).toDouble();
         final estadoActual = cuotaRows.first['estado'] as String;
         final pagadoNuevo = pagadoViejo + montoCordobas;
+        final delta = await _deltaCargosExtra(tx, cuotaId);
         final nuevoEstado = _calcularEstado(
-            estadoActual: estadoActual,
-            montoCuota: monto,
-            pagadoNuevo: pagadoNuevo);
+          estadoActual: estadoActual,
+          montoCuota: montoCuota,
+          pagadoNuevo: pagadoNuevo,
+          deltaCargosExtra: delta,
+        );
         await tx.execute(
           'UPDATE cuotas SET monto_pagado = ?, estado = ? WHERE id = ?',
           [pagadoNuevo, nuevoEstado, cuotaId],
@@ -175,9 +182,8 @@ class PagosRepo {
         [now, anuladoPorId, pagoId],
       );
 
-      // Reflejar localmente el recálculo del trigger server.
-      // Calculamos el nuevo estado en Dart (más predecible que CASE WHEN
-      // con valores in-flight de SET).
+      // Reflejar localmente el recálculo del trigger server, considerando
+      // cargos_extra (descuentos restan, reconexión/otro suman).
       final cuotaRows = await tx.getAll(
         'SELECT monto, monto_pagado, estado FROM cuotas WHERE id = ?',
         [cuotaId],
@@ -187,11 +193,14 @@ class PagosRepo {
         final pagadoViejo =
             (cuotaRows.first['monto_pagado'] as num? ?? 0).toDouble();
         final estadoActual = cuotaRows.first['estado'] as String;
-        final pagadoNuevo = (pagadoViejo - monto).clamp(0, double.infinity);
+        final pagadoNuevo = (pagadoViejo - monto).clamp(0.0, double.infinity);
+        final delta = await _deltaCargosExtra(tx, cuotaId);
         final nuevoEstado = _calcularEstado(
-            estadoActual: estadoActual,
-            montoCuota: montoCuota,
-            pagadoNuevo: pagadoNuevo.toDouble());
+          estadoActual: estadoActual,
+          montoCuota: montoCuota,
+          pagadoNuevo: pagadoNuevo.toDouble(),
+          deltaCargosExtra: delta,
+        );
         await tx.execute(
           'UPDATE cuotas SET monto_pagado = ?, estado = ? WHERE id = ?',
           [pagadoNuevo, nuevoEstado, cuotaId],
@@ -200,15 +209,39 @@ class PagosRepo {
     });
   }
 
-  /// Calcula el estado de una cuota en base al saldo, respetando 'anulada'.
+  /// Suma neta de cargos_extra de la cuota: cargos sumados (reconexion/otro)
+  /// menos descuentos. Mirror del SQL `cuota_total_a_cobrar` (0018).
+  Future<double> _deltaCargosExtra(dynamic tx, String cuotaId) async {
+    final rows = await tx.getAll(
+      '''
+      SELECT
+        COALESCE(SUM(CASE WHEN tipo IN ('reconexion','otro')
+                          THEN monto ELSE 0 END), 0) AS sumar,
+        COALESCE(SUM(CASE WHEN tipo IN ('descuento_monto','descuento_porcentaje')
+                          THEN monto ELSE 0 END), 0) AS restar
+        FROM cargos_extra WHERE cuota_id = ?
+      ''',
+      [cuotaId],
+    );
+    final sumar = (rows.first['sumar'] as num).toDouble();
+    final restar = (rows.first['restar'] as num).toDouble();
+    return sumar - restar;
+  }
+
+  /// Calcula el estado de una cuota en base al total real:
+  ///   total_real = monto_cuota + deltaCargosExtra
+  /// Espeja exactamente `recalcular_cuota_desde_pagos` del server.
   String _calcularEstado({
     required String estadoActual,
     required double montoCuota,
     required double pagadoNuevo,
+    required double deltaCargosExtra,
   }) {
     if (estadoActual == 'anulada') return 'anulada';
+    final totalReal =
+        (montoCuota + deltaCargosExtra).clamp(0.0, double.infinity).toDouble();
     if (pagadoNuevo <= 0) return 'pendiente';
-    if (pagadoNuevo >= montoCuota) return 'pagada';
+    if (pagadoNuevo >= totalReal) return 'pagada';
     return 'parcial';
   }
 }
