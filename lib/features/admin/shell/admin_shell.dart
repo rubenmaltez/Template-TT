@@ -113,6 +113,7 @@ const _adminMenu = [
   _MenuItem(Icons.dashboard, 'Resumen', '/admin'),
   _MenuItem(Icons.people, 'Clientes', '/admin/clientes'),
   _MenuItem(Icons.assignment, 'Contratos', '/admin/contratos'),
+  _MenuItem(Icons.wifi, 'Planes', '/admin/planes', adminOnly: true),
   _MenuItem(Icons.engineering, 'Cobradores', '/admin/cobradores', adminOnly: true),
   _MenuItem(Icons.receipt_long, 'Cuotas', '/admin/cuotas'),
   _MenuItem(Icons.payments, 'Pagos', '/admin/pagos'),

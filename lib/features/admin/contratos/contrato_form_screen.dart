@@ -21,20 +21,56 @@ class ContratoFormScreen extends ConsumerStatefulWidget {
 
 class _ContratoFormScreenState extends ConsumerState<ContratoFormScreen> {
   final _formKey = GlobalKey<FormState>();
-  final _diaPagoCtrl = TextEditingController(text: '');
+  final _diaPagoCtrl = TextEditingController();
   String? _clienteId;
   String? _planId;
   DateTime _fechaInicio = DateTime.now();
   _Duracion _duracion = _Duracion.unAno;
+  bool _activo = true;
+  bool _cargando = true;
   bool _guardando = false;
   String? _error;
+
+  bool get _esEdicion => widget.contratoId != null;
 
   @override
   void initState() {
     super.initState();
     _clienteId = widget.clienteId;
-    // Default día_pago = día actual.
     _diaPagoCtrl.text = DateTime.now().day.toString();
+    _cargar();
+  }
+
+  Future<void> _cargar() async {
+    if (!_esEdicion) {
+      setState(() => _cargando = false);
+      return;
+    }
+    final rows = await ps.db
+        .getAll('SELECT * FROM contratos WHERE id = ?', [widget.contratoId]);
+    if (rows.isEmpty) {
+      setState(() => _cargando = false);
+      return;
+    }
+    final r = rows.first;
+    _clienteId = r['cliente_id'] as String;
+    _planId = r['plan_id'] as String;
+    _diaPagoCtrl.text = (r['dia_pago'] as int).toString();
+    _fechaInicio = DateTime.parse(r['fecha_inicio'] as String);
+    _activo = (r['activo'] as int? ?? 1) == 1;
+    if (r['fecha_fin'] != null) {
+      final fin = DateTime.parse(r['fecha_fin'] as String);
+      final meses = (fin.year - _fechaInicio.year) * 12 +
+          (fin.month - _fechaInicio.month);
+      _duracion = meses == 12
+          ? _Duracion.unAno
+          : meses == 24
+              ? _Duracion.dosAnos
+              : _Duracion.indefinido;
+    } else {
+      _duracion = _Duracion.indefinido;
+    }
+    setState(() => _cargando = false);
   }
 
   @override
@@ -76,27 +112,51 @@ class _ContratoFormScreenState extends ConsumerState<ContratoFormScreen> {
     });
 
     try {
-      final id = const Uuid().v4();
       final fechaFin = _fechaFin();
-      await ps.db.execute(
-        '''
-        INSERT INTO contratos (
-          id, tenant_id, cliente_id, plan_id, dia_pago,
-          fecha_inicio, fecha_fin, activo, created_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?)
-        ''',
-        [
-          id, tenantId, _clienteId, _planId,
-          int.parse(_diaPagoCtrl.text),
-          _fechaInicio.toIso8601String().substring(0, 10),
-          fechaFin?.toIso8601String().substring(0, 10),
-          DateTime.now().toIso8601String(),
-        ],
-      );
+      if (_esEdicion) {
+        await ps.db.execute(
+          '''
+          UPDATE contratos
+             SET plan_id = ?, dia_pago = ?,
+                 fecha_inicio = ?, fecha_fin = ?, activo = ?
+           WHERE id = ?
+          ''',
+          [
+            _planId,
+            int.parse(_diaPagoCtrl.text),
+            _fechaInicio.toIso8601String().substring(0, 10),
+            fechaFin?.toIso8601String().substring(0, 10),
+            _activo ? 1 : 0,
+            widget.contratoId,
+          ],
+        );
+      } else {
+        await ps.db.execute(
+          '''
+          INSERT INTO contratos (
+            id, tenant_id, cliente_id, plan_id, dia_pago,
+            fecha_inicio, fecha_fin, activo, created_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?)
+          ''',
+          [
+            const Uuid().v4(),
+            tenantId,
+            _clienteId,
+            _planId,
+            int.parse(_diaPagoCtrl.text),
+            _fechaInicio.toIso8601String().substring(0, 10),
+            fechaFin?.toIso8601String().substring(0, 10),
+            DateTime.now().toIso8601String(),
+          ],
+        );
+      }
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text(
-              'Contrato creado. Las cuotas se generan automáticamente.')),
+          SnackBar(
+            content: Text(_esEdicion
+                ? 'Cambios guardados. Cuotas futuras se ajustaron automáticamente.'
+                : 'Contrato creado. Cuotas generadas automáticamente.'),
+          ),
         );
         context.go('/admin/contratos');
       }
@@ -109,6 +169,9 @@ class _ContratoFormScreenState extends ConsumerState<ContratoFormScreen> {
 
   @override
   Widget build(BuildContext context) {
+    if (_cargando) {
+      return const Center(child: CircularProgressIndicator());
+    }
     return Form(
       key: _formKey,
       child: ListView(
@@ -125,6 +188,7 @@ class _ContratoFormScreenState extends ConsumerState<ContratoFormScreen> {
                   const SizedBox(height: 12),
                   _ClienteSelector(
                     clienteId: _clienteId,
+                    enabled: !_esEdicion,
                     onChanged: (id) => setState(() => _clienteId = id),
                   ),
                   const SizedBox(height: 12),
@@ -190,14 +254,29 @@ class _ContratoFormScreenState extends ConsumerState<ContratoFormScreen> {
                     padding: const EdgeInsets.all(8),
                     child: Text(
                       _Duracion.indefinido == _duracion
-                          ? 'Se generan 3 cuotas iniciales. El sistema mantiene un colchón de 3 meses adelante automáticamente.'
-                          : 'Se generan todas las cuotas hasta ${Fmt.fechaCorta(_fechaFin()!)} al crear el contrato.',
+                          ? 'Se generan 3 cuotas iniciales. El cron mantiene un colchón de 3 meses adelante automáticamente.'
+                          : 'Se generan todas las cuotas hasta ${Fmt.fechaCorta(_fechaFin()!)} al guardar.',
                       style: TextStyle(
                         color: Theme.of(context).colorScheme.outline,
                         fontSize: 12,
                       ),
                     ),
                   ),
+                  if (_esEdicion) ...[
+                    const Divider(),
+                    SwitchListTile(
+                      value: _activo,
+                      onChanged: (v) => setState(() => _activo = v),
+                      title: Text(_activo ? 'Contrato activo' : 'Cancelado'),
+                      subtitle: !_activo
+                          ? const Text(
+                              'No se generarán nuevas cuotas. Las pendientes siguen vivas.',
+                              style: TextStyle(fontSize: 12),
+                            )
+                          : null,
+                      contentPadding: EdgeInsets.zero,
+                    ),
+                  ],
                 ],
               ),
             ),
@@ -231,7 +310,9 @@ class _ContratoFormScreenState extends ConsumerState<ContratoFormScreen> {
                           child: CircularProgressIndicator(strokeWidth: 2),
                         )
                       : const Icon(Icons.check),
-                  label: Text(_guardando ? 'Creando...' : 'Crear contrato'),
+                  label: Text(_guardando
+                      ? 'Guardando...'
+                      : (_esEdicion ? 'Guardar cambios' : 'Crear contrato')),
                   onPressed: _guardando ? null : _guardar,
                 ),
               ),
@@ -244,9 +325,14 @@ class _ContratoFormScreenState extends ConsumerState<ContratoFormScreen> {
 }
 
 class _ClienteSelector extends StatelessWidget {
-  const _ClienteSelector({required this.clienteId, required this.onChanged});
+  const _ClienteSelector({
+    required this.clienteId,
+    required this.onChanged,
+    this.enabled = true,
+  });
   final String? clienteId;
   final ValueChanged<String?> onChanged;
+  final bool enabled;
 
   @override
   Widget build(BuildContext context) {
@@ -258,7 +344,11 @@ class _ClienteSelector extends StatelessWidget {
         final rows = snap.data ?? const [];
         return DropdownButtonFormField<String?>(
           value: clienteId,
-          decoration: const InputDecoration(labelText: 'Cliente *'),
+          decoration: InputDecoration(
+            labelText: 'Cliente *',
+            enabled: enabled,
+            helperText: !enabled ? 'No se puede cambiar al editar contrato' : null,
+          ),
           items: [
             const DropdownMenuItem<String?>(value: null, child: Text('—')),
             ...rows.map((r) => DropdownMenuItem(
@@ -266,7 +356,7 @@ class _ClienteSelector extends StatelessWidget {
                   child: Text(r['nombre'] as String),
                 )),
           ],
-          onChanged: onChanged,
+          onChanged: enabled ? onChanged : null,
           validator: (v) => v == null ? 'Requerido' : null,
         );
       },
@@ -287,6 +377,30 @@ class _PlanSelector extends StatelessWidget {
       ),
       builder: (context, snap) {
         final rows = snap.data ?? const [];
+        if (rows.isEmpty) {
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              DropdownButtonFormField<String?>(
+                value: null,
+                decoration: const InputDecoration(labelText: 'Plan *'),
+                items: const [
+                  DropdownMenuItem<String?>(value: null, child: Text('—')),
+                ],
+                onChanged: null,
+                validator: (_) => 'Requerido',
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'No hay planes creados. Ir a Planes → Nuevo plan.',
+                style: TextStyle(
+                  color: Theme.of(context).colorScheme.error,
+                  fontSize: 12,
+                ),
+              ),
+            ],
+          );
+        }
         return DropdownButtonFormField<String?>(
           value: planId,
           decoration: const InputDecoration(labelText: 'Plan *'),
@@ -326,7 +440,6 @@ class _SelectorFecha extends StatelessWidget {
           initialDate: fecha,
           firstDate: DateTime(2020),
           lastDate: DateTime(2035),
-          locale: const Locale('es', 'NI'),
         );
         if (picked != null) onChanged(picked);
       },

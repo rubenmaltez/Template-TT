@@ -14,6 +14,7 @@ import '../features/admin/cuotas/cuotas_admin_screen.dart';
 import '../features/admin/dashboard/dashboard_admin_screen.dart';
 import '../features/admin/geografia/geografia_admin_screen.dart';
 import '../features/admin/pagos/pagos_admin_screen.dart';
+import '../features/admin/planes/planes_admin_screen.dart';
 import '../features/admin/reportes/reportes_admin_screen.dart';
 import '../features/admin/settings/settings_admin_screen.dart';
 import '../features/admin/shell/admin_shell.dart';
@@ -81,6 +82,7 @@ final routerProvider = Provider<GoRouter>((ref) {
         '/admin/audit',
         '/admin/geografia',
         '/admin/settings',
+        '/admin/planes',
       ];
       if (rol == 'admin_cobranza' &&
           soloAdmin.any((p) => loc == p || loc.startsWith('$p/'))) {
@@ -122,6 +124,11 @@ final routerProvider = Provider<GoRouter>((ref) {
           GoRoute(path: '/admin/contratos/nuevo',
               builder: (_, s) => _titled('Nuevo contrato',
                   ContratoFormScreen(clienteId: s.uri.queryParameters['cliente_id']))),
+          GoRoute(path: '/admin/contratos/:id/editar',
+              builder: (_, s) => _titled('Editar contrato',
+                  ContratoFormScreen(contratoId: s.pathParameters['id']))),
+          GoRoute(path: '/admin/planes',
+              builder: (_, s) => _titled('Planes', const PlanesAdminScreen())),
           GoRoute(path: '/admin/cobradores',
               builder: (_, s) => _titled('Cobradores', const CobradoresAdminScreen())),
           GoRoute(path: '/admin/cuotas',
