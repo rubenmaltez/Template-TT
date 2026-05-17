@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../data/utils/formatters.dart';
 import '../../../powersync/db.dart' as ps;
@@ -16,6 +17,13 @@ import '../../shared/widgets/empty_state.dart';
 /// vía una Edge Function pendiente), aparece acá para configurar.
 class CobradoresAdminScreen extends ConsumerWidget {
   const CobradoresAdminScreen({super.key});
+
+  Future<void> _abrirInvitar(BuildContext context) async {
+    await showDialog<void>(
+      context: context,
+      builder: (_) => const _InvitarDialog(),
+    );
+  }
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -44,18 +52,29 @@ class CobradoresAdminScreen extends ConsumerWidget {
         }
         final rows = snap.data!;
         if (rows.isEmpty) {
-          return const EmptyState(
+          return EmptyState(
             icon: Icons.engineering,
             titulo: 'Sin cobradores',
             descripcion:
-                'Invitá nuevos usuarios desde Supabase Dashboard. Aparecen acá '
-                'la primera vez que se loguean.',
+                'Invitá al primero — recibirá un email para crear su contraseña.',
+            accion: FilledButton.icon(
+              icon: const Icon(Icons.person_add),
+              label: const Text('Invitar cobrador'),
+              onPressed: () => _abrirInvitar(context),
+            ),
           );
         }
         return ListView(
           padding: const EdgeInsets.all(16),
           children: [
-            const _InfoCard(),
+            Align(
+              alignment: Alignment.centerRight,
+              child: FilledButton.icon(
+                icon: const Icon(Icons.person_add),
+                label: const Text('Invitar nuevo'),
+                onPressed: () => _abrirInvitar(context),
+              ),
+            ),
             const SizedBox(height: 16),
             ...rows.map((r) => _CobradorCard(row: r)),
           ],
@@ -65,30 +84,158 @@ class CobradoresAdminScreen extends ConsumerWidget {
   }
 }
 
-class _InfoCard extends StatelessWidget {
-  const _InfoCard();
+class _InvitarDialog extends StatefulWidget {
+  const _InvitarDialog();
+  @override
+  State<_InvitarDialog> createState() => _InvitarDialogState();
+}
+
+class _InvitarDialogState extends State<_InvitarDialog> {
+  final _email = TextEditingController();
+  final _nombre = TextEditingController();
+  final _telefono = TextEditingController();
+  final _prefijo = TextEditingController();
+  String _rol = 'cobrador';
+  bool _enviando = false;
+  String? _error;
+
+  @override
+  void dispose() {
+    _email.dispose();
+    _nombre.dispose();
+    _telefono.dispose();
+    _prefijo.dispose();
+    super.dispose();
+  }
+
+  Future<void> _invitar() async {
+    final email = _email.text.trim();
+    final nombre = _nombre.text.trim();
+    if (email.isEmpty || nombre.isEmpty) {
+      setState(() => _error = 'Email y nombre requeridos');
+      return;
+    }
+    if (!RegExp(r'^[^@]+@[^@]+\.[^@]+$').hasMatch(email)) {
+      setState(() => _error = 'Email inválido');
+      return;
+    }
+    final prefijo = _prefijo.text.trim().toUpperCase();
+    if (prefijo.isNotEmpty && !RegExp(r'^[A-Z0-9-]{2,16}$').hasMatch(prefijo)) {
+      setState(() => _error = 'Prefijo: [A-Z0-9-]{2,16}');
+      return;
+    }
+
+    setState(() {
+      _enviando = true;
+      _error = null;
+    });
+
+    try {
+      final res = await Supabase.instance.client.functions.invoke(
+        'invitar-cobrador',
+        body: {
+          'email': email,
+          'nombre': nombre,
+          'rol': _rol,
+          if (_telefono.text.trim().isNotEmpty)
+            'telefono': _telefono.text.trim(),
+          if (_rol == 'cobrador' && prefijo.isNotEmpty)
+            'prefijo_recibo': prefijo,
+        },
+      );
+      final data = res.data as Map<String, dynamic>?;
+      if (data == null || data['ok'] != true) {
+        throw Exception(data?['error'] ?? 'Respuesta inválida');
+      }
+      if (mounted) {
+        Navigator.pop(context);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Invitación enviada a $email')),
+        );
+      }
+    } catch (e) {
+      if (mounted) setState(() => _error = e.toString());
+    } finally {
+      if (mounted) setState(() => _enviando = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    return Card(
-      color: scheme.secondaryContainer.withValues(alpha: 0.3),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
+    return AlertDialog(
+      title: const Text('Invitar cobrador'),
+      content: SizedBox(
+        width: 400,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.info_outline, color: scheme.secondary),
-            const SizedBox(width: 12),
-            const Expanded(
-              child: Text(
-                'Para crear un nuevo cobrador, invitalo desde Supabase Dashboard → '
-                'Authentication. Aparecerá acá al loguearse por primera vez.',
-              ),
+            const Text(
+              'Recibirá un email con link para definir su contraseña. '
+              'Una vez logueado, podrá usar la app.',
+              style: TextStyle(fontSize: 12),
             ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: _email,
+              decoration: const InputDecoration(labelText: 'Email *'),
+              keyboardType: TextInputType.emailAddress,
+              autofillHints: const [AutofillHints.email],
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _nombre,
+              decoration: const InputDecoration(labelText: 'Nombre completo *'),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _telefono,
+              decoration: const InputDecoration(labelText: 'Teléfono'),
+              keyboardType: TextInputType.phone,
+            ),
+            const SizedBox(height: 12),
+            DropdownButtonFormField<String>(
+              value: _rol,
+              decoration: const InputDecoration(labelText: 'Rol'),
+              items: const [
+                DropdownMenuItem(value: 'cobrador', child: Text('Cobrador')),
+                DropdownMenuItem(value: 'admin_cobranza', child: Text('Admin de cobranza')),
+                DropdownMenuItem(value: 'admin', child: Text('Administrador')),
+              ],
+              onChanged: (v) => setState(() => _rol = v ?? _rol),
+            ),
+            if (_rol == 'cobrador') ...[
+              const SizedBox(height: 12),
+              TextField(
+                controller: _prefijo,
+                decoration: const InputDecoration(
+                  labelText: 'Prefijo de recibo',
+                  hintText: 'COB-01',
+                  helperText: 'Si lo dejás vacío, lo asignás después',
+                ),
+                inputFormatters: [
+                  FilteringTextInputFormatter.allow(RegExp(r'[A-Za-z0-9-]')),
+                  LengthLimitingTextInputFormatter(16),
+                ],
+              ),
+            ],
+            if (_error != null) ...[
+              const SizedBox(height: 8),
+              Text(_error!,
+                  style: TextStyle(color: Theme.of(context).colorScheme.error)),
+            ],
           ],
         ),
       ),
+      actions: [
+        TextButton(
+          onPressed: _enviando ? null : () => Navigator.pop(context),
+          child: const Text('Cancelar'),
+        ),
+        FilledButton(
+          onPressed: _enviando ? null : _invitar,
+          child: Text(_enviando ? 'Enviando...' : 'Enviar invitación'),
+        ),
+      ],
     );
   }
 }
