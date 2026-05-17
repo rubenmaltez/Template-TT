@@ -1,5 +1,4 @@
-import 'dart:io';
-
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:path_provider/path_provider.dart';
 import 'package:powersync/powersync.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -12,8 +11,15 @@ late final PowerSyncDatabase db;
 
 /// Abre el SQLite local. Llamar UNA vez al arrancar la app.
 Future<void> openDatabase() async {
-  final dir = await getApplicationSupportDirectory();
-  final path = '${dir.path}${Platform.pathSeparator}isp_billing.db';
+  // En web, PowerSync usa OPFS/IndexedDB y solo necesita un nombre.
+  // En nativo, necesita una ruta absoluta dentro de un directorio de la app.
+  final String path;
+  if (kIsWeb) {
+    path = 'isp_billing.db';
+  } else {
+    final dir = await getApplicationSupportDirectory();
+    path = '${dir.path}/isp_billing.db';
+  }
   db = PowerSyncDatabase(schema: schema, path: path);
   await db.initialize();
 }
