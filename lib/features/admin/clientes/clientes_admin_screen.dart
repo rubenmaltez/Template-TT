@@ -579,11 +579,3 @@ class _SeleccionarCobradorDialog extends StatelessWidget {
   }
 }
 
-/// Pantalla de alta/edición. Stub mínimo por ahora; se completa en C6.
-class ClienteFormScreen extends StatelessWidget {
-  const ClienteFormScreen({super.key, this.clienteId});
-  final String? clienteId;
-  @override
-  Widget build(BuildContext context) => PendingScreen(
-      titulo: clienteId == null ? 'Nuevo cliente' : 'Editar cliente');
-}

@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../features/admin/audit/audit_admin_screen.dart';
+import '../features/admin/clientes/cliente_form_screen.dart';
 import '../features/admin/clientes/clientes_admin_screen.dart';
 import '../features/admin/cobradores/cobradores_admin_screen.dart';
 import '../features/admin/contratos/contratos_admin_screen.dart';
