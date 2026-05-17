@@ -34,11 +34,25 @@ class _CobroScreenState extends ConsumerState<CobroScreen> {
   Cuota? _cuota;
   Map<String, dynamic>? _clienteRow;
   double _totalACobrar = 0;
+  // Tasa snapshot al iniciar el cobro: si el setting cambia entre el
+  // render y el submit, igual usamos la tasa que el cobrador VIO.
+  double? _tasaSnapshot;
 
   @override
   void initState() {
     super.initState();
     _cargar();
+  }
+
+  void _cambiarMoneda(Moneda nueva, AppSettings settings) {
+    if (nueva == _moneda) return;
+    setState(() {
+      _moneda = nueva;
+      _tasaSnapshot = settings.tasaUsd;
+      // Reset del campo: si el cobrador escribió "500" en NIO y cambia a USD,
+      // 500 USD ≠ 500 NIO (sería cobrar 36× más). Forzamos re-ingresar.
+      _montoCtrl.clear();
+    });
   }
 
   Future<void> _cargar() async {
@@ -88,7 +102,9 @@ class _CobroScreenState extends ConsumerState<CobroScreen> {
     final settings = ref.read(appSettingsProvider);
 
     final monto = double.parse(_montoCtrl.text);
-    final tasa = _moneda == Moneda.usd ? settings.tasaUsd : 1.0;
+    final tasa = _moneda == Moneda.usd
+        ? (_tasaSnapshot ?? settings.tasaUsd)
+        : 1.0;
     final montoCordobas = monto * tasa;
 
     setState(() {
@@ -127,6 +143,7 @@ class _CobroScreenState extends ConsumerState<CobroScreen> {
   @override
   Widget build(BuildContext context) {
     final settings = ref.watch(appSettingsProvider);
+    final cobrador = ref.watch(cobradorActualProvider).valueOrNull;
 
     if (_cuota == null) {
       return Scaffold(
@@ -134,6 +151,15 @@ class _CobroScreenState extends ConsumerState<CobroScreen> {
         body: const Center(child: CircularProgressIndicator()),
       );
     }
+
+    // El botón confirmar requiere cobrador con prefijo asignado.
+    final puedeConfirmar =
+        !_enviando && cobrador != null && (cobrador.prefijoRecibo ?? '').isNotEmpty;
+    final mensajeDeshabilitado = cobrador == null
+        ? 'Esperando datos del cobrador...'
+        : (cobrador.prefijoRecibo ?? '').isEmpty
+            ? 'Tu prefijo de recibo no está configurado. Pedile al admin que te lo asigne.'
+            : null;
 
     final cuota = _cuota!;
     final saldo = (_totalACobrar - cuota.montoPagado).clamp(0, double.infinity);
@@ -171,7 +197,7 @@ class _CobroScreenState extends ConsumerState<CobroScreen> {
               const Spacer(),
               if (settings.usdHabilitado) _MonedaToggle(
                 actual: _moneda,
-                onChanged: (m) => setState(() => _moneda = m),
+                onChanged: (m) => _cambiarMoneda(m, settings),
               ),
             ],
           ),
@@ -262,8 +288,20 @@ class _CobroScreenState extends ConsumerState<CobroScreen> {
           ],
 
           const SizedBox(height: 24),
+          if (mensajeDeshabilitado != null)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Text(
+                mensajeDeshabilitado,
+                style: TextStyle(
+                  color: Theme.of(context).colorScheme.error,
+                  fontSize: 12,
+                ),
+                textAlign: TextAlign.center,
+              ),
+            ),
           FilledButton.icon(
-            onPressed: _enviando ? null : _confirmar,
+            onPressed: puedeConfirmar ? _confirmar : null,
             icon: _enviando
                 ? const SizedBox(
                     width: 16, height: 16,

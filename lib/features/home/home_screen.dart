@@ -83,10 +83,10 @@ class _DashboardMetrics extends StatelessWidget {
           ) AS cuotas_vencidas,
 
           (SELECT COUNT(*) FROM pagos
-             WHERE date(fecha_pago) = ?) AS pagos_hoy,
+             WHERE date(fecha_pago) = ? AND anulado = 0) AS pagos_hoy,
 
           (SELECT COALESCE(SUM(monto_cordobas), 0) FROM pagos
-             WHERE date(fecha_pago) = ?) AS cobrado_hoy
+             WHERE date(fecha_pago) = ? AND anulado = 0) AS cobrado_hoy
         ''',
         parameters: [diasGracia, hoyIso, hoyIso],
       ),

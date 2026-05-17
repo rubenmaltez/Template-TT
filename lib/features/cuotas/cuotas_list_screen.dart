@@ -63,26 +63,29 @@ class _CuotasList extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final extra = switch (filtro) {
-      _Filtro.todas =>
-        "AND cu.estado IN ('pendiente','parcial')",
-      _Filtro.mora =>
-        "AND cu.estado IN ('pendiente','parcial') "
-            "AND date(cu.fecha_vencimiento, '+' || ? || ' days') < date('now')",
-      _Filtro.gracia =>
-        "AND cu.estado IN ('pendiente','parcial') "
-            "AND cu.fecha_vencimiento < date('now') "
-            "AND date(cu.fecha_vencimiento, '+' || ? || ' days') >= date('now')",
-      _Filtro.parciales => "AND cu.estado = 'parcial'",
-      _Filtro.hoy =>
-        "AND cu.estado IN ('pendiente','parcial') "
-            "AND cu.fecha_vencimiento = date('now')",
+    final (String extra, List<Object?> params) = switch (filtro) {
+      _Filtro.todas => (
+          "AND cu.estado IN ('pendiente','parcial')",
+          <Object?>[],
+        ),
+      _Filtro.mora => (
+          "AND cu.estado IN ('pendiente','parcial') "
+              "AND date(cu.fecha_vencimiento, '+' || ? || ' days') < date('now')",
+          <Object?>[diasGracia],
+        ),
+      _Filtro.gracia => (
+          "AND cu.estado IN ('pendiente','parcial') "
+              "AND cu.fecha_vencimiento < date('now') "
+              "AND date(cu.fecha_vencimiento, '+' || ? || ' days') >= date('now')",
+          <Object?>[diasGracia],
+        ),
+      _Filtro.parciales => ("AND cu.estado = 'parcial'", <Object?>[]),
+      _Filtro.hoy => (
+          "AND cu.estado IN ('pendiente','parcial') "
+              "AND cu.fecha_vencimiento = date('now')",
+          <Object?>[],
+        ),
     };
-
-    final params = <Object?>[];
-    if (filtro == _Filtro.mora || filtro == _Filtro.gracia) {
-      params..add(diasGracia)..add(diasGracia);
-    }
 
     final sql = '''
       SELECT cu.id, cu.monto, cu.monto_pagado, cu.fecha_vencimiento,
@@ -97,14 +100,8 @@ class _CuotasList extends StatelessWidget {
        ORDER BY cu.fecha_vencimiento ASC, c.nombre
     ''';
 
-    // Sólo en mora/gracia hay placeholder en `extra`, pero usamos sólo 1 en SQL
-    // (sin duplicar). Reducimos params al uno que necesita la query:
-    final finalParams = (filtro == _Filtro.mora || filtro == _Filtro.gracia)
-        ? <Object?>[diasGracia]
-        : <Object?>[];
-
     return StreamBuilder(
-      stream: ps.db.watch(sql, parameters: finalParams),
+      stream: ps.db.watch(sql, parameters: params),
       builder: (context, snap) {
         if (!snap.hasData) return const Center(child: CircularProgressIndicator());
         final rows = snap.data!;

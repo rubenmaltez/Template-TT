@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:powersync/powersync.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -31,23 +32,32 @@ class SupabaseConnector extends PowerSyncBackendConnector {
     final transaction = await database.getCrudBatch();
     if (transaction == null) return;
 
-    for (final op in transaction.crud) {
-      final table = _supabase.from(op.table);
-      switch (op.op) {
-        case UpdateType.put:
-          await table.upsert({'id': op.id, ...?op.opData});
-          break;
-        case UpdateType.patch:
-          if (op.opData != null) {
-            await table.update(op.opData!).eq('id', op.id);
-          }
-          break;
-        case UpdateType.delete:
-          await table.delete().eq('id', op.id);
-          break;
+    // Las 3 operaciones son idempotentes por id (upsert/update/delete con
+    // PK), así que un retry del mismo batch tras un fallo a mitad no causa
+    // duplicación. Si falla, no llamamos a complete() y PowerSync reintenta.
+    try {
+      for (final op in transaction.crud) {
+        final table = _supabase.from(op.table);
+        switch (op.op) {
+          case UpdateType.put:
+            await table.upsert({'id': op.id, ...?op.opData});
+            break;
+          case UpdateType.patch:
+            if (op.opData != null) {
+              await table.update(op.opData!).eq('id', op.id);
+            }
+            break;
+          case UpdateType.delete:
+            await table.delete().eq('id', op.id);
+            break;
+        }
       }
+      await transaction.complete();
+    } catch (e, st) {
+      if (kDebugMode) {
+        debugPrint('PowerSync uploadData falló: $e\n$st');
+      }
+      rethrow;
     }
-
-    await transaction.complete();
   }
 }

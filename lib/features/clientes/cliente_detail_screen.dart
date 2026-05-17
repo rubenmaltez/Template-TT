@@ -105,7 +105,7 @@ class _ClienteHeader extends StatelessWidget {
                 _IconButton(
                   icon: Icons.map,
                   label: 'Ver en mapa',
-                  onTap: () => Navigator.of(context).pop(),
+                  onTap: () => context.go('/mapa'),
                 ),
             ],
           ),

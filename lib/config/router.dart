@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -17,10 +19,12 @@ import '../features/shell/app_shell.dart';
 
 final routerProvider = Provider<GoRouter>((ref) {
   final auth = Supabase.instance.client.auth;
+  final refresh = _AuthRefresh(auth);
+  ref.onDispose(refresh.dispose);
 
   return GoRouter(
     initialLocation: '/',
-    refreshListenable: _AuthRefresh(auth),
+    refreshListenable: refresh,
     redirect: (context, state) {
       final loggedIn = auth.currentSession != null;
       final goingToLogin = state.matchedLocation == '/login';
@@ -83,7 +87,7 @@ class _AuthRefresh extends ChangeNotifier {
   _AuthRefresh(GoTrueClient auth) {
     _sub = auth.onAuthStateChange.listen((_) => notifyListeners());
   }
-  late final dynamic _sub;
+  late final StreamSubscription<AuthState> _sub;
 
   @override
   void dispose() {

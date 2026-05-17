@@ -42,12 +42,25 @@ class PagosRepo {
     final clientLocalIdPago = _uuid.v4();
     final clientLocalIdRecibo = _uuid.v4();
     final now = DateTime.now().toIso8601String();
-
-    final correlativo = await _proximoCorrelativo(cobradorId, prefijoRecibo);
-    final numeroCompleto =
-        '$prefijoRecibo-${correlativo.toString().padLeft(5, '0')}';
+    final correlativoCompleter = <int>[];
 
     await ps.db.writeTransaction((tx) async {
+      // Calcular correlativo DENTRO de la transacción para evitar carrera
+      // entre dos cobros simultáneos. Filtra anulado=0 para no agujerear
+      // la secuencia con recibos descartados.
+      final rows = await tx.getAll(
+        '''
+        SELECT COALESCE(MAX(correlativo), 0) + 1 AS prox
+          FROM recibos
+         WHERE cobrador_id = ? AND prefijo = ? AND anulado = 0
+        ''',
+        [cobradorId, prefijoRecibo],
+      );
+      final correlativo = (rows.first['prox'] as num).toInt();
+      correlativoCompleter.add(correlativo);
+      final numeroCompleto =
+          '$prefijoRecibo-${correlativo.toString().padLeft(5, '0')}';
+
       await tx.execute(
         '''
         INSERT INTO pagos (
@@ -117,18 +130,6 @@ class PagosRepo {
     });
 
     return CobroResultado(pagoId: pagoId, reciboId: reciboId);
-  }
-
-  Future<int> _proximoCorrelativo(String cobradorId, String prefijo) async {
-    final rows = await ps.db.getAll(
-      '''
-      SELECT COALESCE(MAX(correlativo), 0) + 1 AS prox
-        FROM recibos
-       WHERE cobrador_id = ? AND prefijo = ?
-      ''',
-      [cobradorId, prefijo],
-    );
-    return rows.first['prox'] as int;
   }
 }
 
