@@ -205,6 +205,25 @@ const schema = Schema([
     ]),
   ]),
 
+  // Audit log — sólo se baja a admin/admin_cobranza via sync rules.
+  Table('audit_log', [
+    Column.text('tenant_id'),
+    Column.text('tabla'),
+    Column.text('registro_id'),
+    Column.text('campo'),
+    Column.text('valor_anterior'),
+    Column.text('valor_nuevo'),
+    Column.text('user_id'),
+    Column.text('user_rol'),
+    Column.text('created_at'),
+  ], indexes: [
+    Index('by_tabla', [
+      IndexedColumn('tenant_id'),
+      IndexedColumn('tabla'),
+    ]),
+    Index('by_fecha', [IndexedColumn('created_at')]),
+  ]),
+
   // Vista limitada del cobrador (su propia fila) o del tenant entero
   // (bucket admin/admin_cobranza).
   Table('cobradores', [

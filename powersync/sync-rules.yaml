@@ -44,7 +44,9 @@ bucket_definitions:
     data:
       - SELECT id, tenant_id, nombre, telefono, rol, prefijo_recibo, activo
         FROM cobradores
-        WHERE tenant_id = bucket.tenant_id AND id = bucket.cobrador_id
+        WHERE tenant_id = bucket.tenant_id
+
+      - SELECT * FROM audit_log         WHERE tenant_id = bucket.tenant_id AND id = bucket.cobrador_id
 
       - SELECT * FROM clientes
         WHERE tenant_id = bucket.tenant_id AND cobrador_id = bucket.cobrador_id
@@ -90,6 +92,8 @@ bucket_definitions:
         FROM cobradores
         WHERE tenant_id = bucket.tenant_id
 
+      - SELECT * FROM audit_log         WHERE tenant_id = bucket.tenant_id
+
   # ── Vista global para admin_cobranza (mismo dataset que admin) ─────────
   # admin_cobranza ve todo pero sus permisos de escritura los limita RLS.
   todo_tenant_admin_cobranza:
@@ -108,3 +112,5 @@ bucket_definitions:
       - SELECT id, tenant_id, nombre, telefono, rol, prefijo_recibo, activo
         FROM cobradores
         WHERE tenant_id = bucket.tenant_id
+
+      - SELECT * FROM audit_log         WHERE tenant_id = bucket.tenant_id
