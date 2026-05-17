@@ -9,7 +9,7 @@ class SettingsRepo {
   const SettingsRepo();
 
   Stream<Map<String, Setting>> watchAll() {
-    return ps.db.watch('SELECT * FROM settings').map((rows) {
+    return ps.db.watch('SELECT * FROM settings ORDER BY categoria, clave').map((rows) {
       final map = <String, Setting>{};
       for (final r in rows) {
         final s = Setting.fromRow(r);
@@ -29,6 +29,17 @@ class SettingsRepo {
     } catch (_) {
       return raw ?? fallback;
     }
+  }
+
+  /// Actualiza el valor de un setting. El valor se serializa con JSON,
+  /// así un bool va como `true`, número como `42`, string como `"texto"`.
+  Future<void> update(String tenantId, String clave, dynamic valor) async {
+    final encoded = jsonEncode(valor);
+    final now = DateTime.now().toIso8601String();
+    await ps.db.execute(
+      'UPDATE settings SET valor = ?, updated_at = ? WHERE tenant_id = ? AND clave = ?',
+      [encoded, now, tenantId, clave],
+    );
   }
 }
 
