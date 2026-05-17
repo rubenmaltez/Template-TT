@@ -1,0 +1,107 @@
+enum CuotaEstado {
+  pendiente,
+  parcial,
+  pagada,
+  anulada;
+
+  static CuotaEstado fromString(String s) => switch (s) {
+        'pendiente' => CuotaEstado.pendiente,
+        'parcial' => CuotaEstado.parcial,
+        'pagada' => CuotaEstado.pagada,
+        'anulada' => CuotaEstado.anulada,
+        _ => CuotaEstado.pendiente,
+      };
+
+  String get label => switch (this) {
+        CuotaEstado.pendiente => 'Pendiente',
+        CuotaEstado.parcial => 'Parcial',
+        CuotaEstado.pagada => 'Pagada',
+        CuotaEstado.anulada => 'Anulada',
+      };
+}
+
+/// Estado VISUAL derivado: vencida/en_gracia se computa con la fecha actual
+/// y los días de gracia configurados en settings — no se almacena en BD.
+enum CuotaEstadoVisual {
+  pendiente,
+  parcial,
+  enGracia,
+  vencida,
+  pagada,
+  anulada;
+
+  String get label => switch (this) {
+        CuotaEstadoVisual.pendiente => 'Al día',
+        CuotaEstadoVisual.parcial => 'Pago parcial',
+        CuotaEstadoVisual.enGracia => 'En gracia',
+        CuotaEstadoVisual.vencida => 'Vencida',
+        CuotaEstadoVisual.pagada => 'Pagada',
+        CuotaEstadoVisual.anulada => 'Anulada',
+      };
+
+  bool get esCobrable =>
+      this == CuotaEstadoVisual.pendiente ||
+      this == CuotaEstadoVisual.parcial ||
+      this == CuotaEstadoVisual.enGracia ||
+      this == CuotaEstadoVisual.vencida;
+}
+
+class Cuota {
+  const Cuota({
+    required this.id,
+    required this.tenantId,
+    required this.contratoId,
+    required this.clienteId,
+    this.cobradorId,
+    required this.periodo,
+    required this.fechaVencimiento,
+    required this.monto,
+    required this.montoPagado,
+    required this.estado,
+  });
+
+  final String id;
+  final String tenantId;
+  final String contratoId;
+  final String clienteId;
+  final String? cobradorId;
+  final DateTime periodo;
+  final DateTime fechaVencimiento;
+  final double monto;
+  final double montoPagado;
+  final CuotaEstado estado;
+
+  double get saldo => (monto - montoPagado).clamp(0, double.infinity);
+
+  CuotaEstadoVisual estadoVisual(int diasGracia, [DateTime? hoy]) {
+    if (estado == CuotaEstado.pagada) return CuotaEstadoVisual.pagada;
+    if (estado == CuotaEstado.anulada) return CuotaEstadoVisual.anulada;
+
+    final ref = hoy ?? DateTime.now();
+    final vence = DateTime(
+        fechaVencimiento.year, fechaVencimiento.month, fechaVencimiento.day);
+    final hoyD = DateTime(ref.year, ref.month, ref.day);
+    final diff = hoyD.difference(vence).inDays;
+
+    if (diff <= 0) {
+      return estado == CuotaEstado.parcial
+          ? CuotaEstadoVisual.parcial
+          : CuotaEstadoVisual.pendiente;
+    }
+    if (diff <= diasGracia) return CuotaEstadoVisual.enGracia;
+    return CuotaEstadoVisual.vencida;
+  }
+
+  factory Cuota.fromRow(Map<String, dynamic> row) => Cuota(
+        id: row['id'] as String,
+        tenantId: row['tenant_id'] as String,
+        contratoId: row['contrato_id'] as String,
+        clienteId: row['cliente_id'] as String,
+        cobradorId: row['cobrador_id'] as String?,
+        periodo: DateTime.parse(row['periodo'] as String),
+        fechaVencimiento: DateTime.parse(row['fecha_vencimiento'] as String),
+        monto: (row['monto'] as num).toDouble(),
+        montoPagado: (row['monto_pagado'] as num? ?? 0).toDouble(),
+        estado: CuotaEstado.fromString(row['estado'] as String),
+      );
+}
