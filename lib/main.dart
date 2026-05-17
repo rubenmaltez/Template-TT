@@ -3,6 +3,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'config/env.dart';
 import 'powersync/db.dart' as ps;
+import 'screens/auth_gate.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -18,6 +19,26 @@ Future<void> main() async {
   );
   await ps.openDatabase();
 
+  // Si ya hay sesión al arrancar (token persistido), conectar PowerSync ya.
+  if (Supabase.instance.client.auth.currentSession != null) {
+    await ps.connectPowerSync();
+  }
+
+  // Conectar/desconectar PowerSync siguiendo el ciclo de vida de la sesión.
+  Supabase.instance.client.auth.onAuthStateChange.listen((data) async {
+    switch (data.event) {
+      case AuthChangeEvent.signedIn:
+      case AuthChangeEvent.tokenRefreshed:
+        await ps.connectPowerSync();
+        break;
+      case AuthChangeEvent.signedOut:
+        await ps.disconnectPowerSync();
+        break;
+      default:
+        break;
+    }
+  });
+
   runApp(const IspBillingApp());
 }
 
@@ -32,11 +53,7 @@ class IspBillingApp extends StatelessWidget {
         colorSchemeSeed: Colors.indigo,
         useMaterial3: true,
       ),
-      home: const Scaffold(
-        body: Center(
-          child: Text('ISP Billing — login pendiente'),
-        ),
-      ),
+      home: const AuthGate(),
     );
   }
 }

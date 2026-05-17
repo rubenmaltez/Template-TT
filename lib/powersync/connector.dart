@@ -3,12 +3,13 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../config/env.dart';
 
-/// Conector entre PowerSync y Supabase.
+/// Conector entre PowerSync y Supabase usando **Supabase Auth directo**.
 ///
-///  - `fetchCredentials` pide el JWT firmado a la Edge Function `powersync-auth`
-///    (autenticada con la sesión Supabase actual).
-///  - `uploadData` drena la crud queue local hacia Postgres vía supabase_flutter.
-///    Si una operación falla, la transacción no se completa y PowerSync reintenta.
+///  - `fetchCredentials`: devuelve el access token de la sesión Supabase actual.
+///    PowerSync acepta ese JWT porque en el dashboard activamos "Use Supabase Auth".
+///    Supabase auto-refresca el token; `currentSession.accessToken` siempre está vigente.
+///  - `uploadData`: drena la crud queue local hacia Postgres vía supabase_flutter.
+///    Si falla, la transacción no se completa y PowerSync reintenta.
 class SupabaseConnector extends PowerSyncBackendConnector {
   SupabaseConnector(this._supabase);
 
@@ -19,15 +20,9 @@ class SupabaseConnector extends PowerSyncBackendConnector {
     final session = _supabase.auth.currentSession;
     if (session == null) return null;
 
-    final response = await _supabase.functions.invoke('powersync-auth');
-    final data = response.data;
-    if (data is! Map || data['token'] is! String) {
-      throw StateError('powersync-auth devolvió payload inválido: $data');
-    }
-
     return PowerSyncCredentials(
       endpoint: Env.powersyncUrl,
-      token: data['token'] as String,
+      token: session.accessToken,
     );
   }
 
