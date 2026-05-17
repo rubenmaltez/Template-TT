@@ -29,9 +29,13 @@ dependencies:
   intl: ^0.19.0
   uuid: ^4.4.0
 
-  # Impresoras térmicas Bluetooth (cobradores en campo)
-  esc_pos_utils: ^1.1.0
-  esc_pos_bluetooth: ^0.4.1
+  # NOTA: Impresoras térmicas Bluetooth — pendiente para Fase 5.
+  # esc_pos_bluetooth ^0.4.1 depende de rxdart ^0.26.0, incompatible con
+  # supabase_flutter ^2.5+ (que requiere rxdart >=0.27.5). Cuando lleguemos
+  # a la fase de impresión usaremos un paquete mantenido (ej. flutter_thermal_printer
+  # o blue_thermal_printer) que sea compatible.
+  # esc_pos_utils: ^1.1.0
+  # esc_pos_bluetooth: ^0.4.1
 
 dev_dependencies:
   flutter_test:
