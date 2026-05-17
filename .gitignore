@@ -46,3 +46,8 @@ macos/flutter/ephemeral/
 # OS
 .DS_Store
 Thumbs.db
+
+# Archivos WASM regenerados por 'dart run powersync:setup_web'
+web/sqlite3.wasm
+web/powersync_db.worker.js
+web/powersync_sync.worker.js
