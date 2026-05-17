@@ -1,0 +1,47 @@
+# Flutter / Dart
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
+.pub/
+build/
+
+# IDE
+.idea/
+.vscode/
+*.iml
+*.swp
+
+# Env / secrets — NUNCA committear
+.env
+.env.local
+.env.*.local
+*.pem
+*.key
+
+# Supabase CLI
+supabase/.branches/
+supabase/.temp/
+
+# PowerSync SQLite local cache
+*.db
+*.db-journal
+*.db-shm
+*.db-wal
+
+# Platform-specific
+android/.gradle/
+android/local.properties
+android/captures/
+android/app/release/
+android/app/profile/
+android/app/debug/
+ios/Pods/
+ios/.symlinks/
+windows/flutter/ephemeral/
+linux/flutter/ephemeral/
+macos/flutter/ephemeral/
+
+# OS
+.DS_Store
+Thumbs.db

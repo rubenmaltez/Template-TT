@@ -1,0 +1,54 @@
+# PowerSync Sync Rules
+# Define qué filas se sincronizan a cada dispositivo.
+# Doc: https://docs.powersync.com/usage/sync-rules
+#
+# Modelo: cada cobrador baja SÓLO sus clientes asignados (+ contratos/cuotas/pagos
+# relacionados). Los admins (rol='admin') bajan todos los del tenant.
+
+bucket_definitions:
+
+  # Catálogo global del tenant (planes) — todo empleado lo necesita
+  catalogo_tenant:
+    parameters: |
+      SELECT tenant_id FROM cobradores WHERE id = request.user_id()
+    data:
+      - SELECT * FROM planes WHERE tenant_id = bucket.tenant_id
+
+  # Datos operativos del cobrador (sólo sus clientes)
+  por_cobrador:
+    parameters: |
+      SELECT id AS cobrador_id, tenant_id
+      FROM cobradores
+      WHERE id = request.user_id() AND rol = 'cobrador'
+    data:
+      - SELECT * FROM clientes
+        WHERE cobrador_id = bucket.cobrador_id
+
+      - SELECT * FROM contratos
+        WHERE cliente_id IN (
+          SELECT id FROM clientes WHERE cobrador_id = bucket.cobrador_id
+        )
+
+      - SELECT * FROM cuotas
+        WHERE cliente_id IN (
+          SELECT id FROM clientes WHERE cobrador_id = bucket.cobrador_id
+        )
+        AND estado IN ('pendiente','vencida')
+
+      - SELECT * FROM pagos
+        WHERE cobrador_id = bucket.cobrador_id
+
+  # Vista global para admins (Windows / oficina)
+  todo_tenant_admin:
+    parameters: |
+      SELECT tenant_id
+      FROM cobradores
+      WHERE id = request.user_id() AND rol = 'admin'
+    data:
+      - SELECT * FROM clientes  WHERE tenant_id = bucket.tenant_id
+      - SELECT * FROM contratos WHERE tenant_id = bucket.tenant_id
+      - SELECT * FROM cuotas    WHERE tenant_id = bucket.tenant_id
+      - SELECT * FROM pagos     WHERE tenant_id = bucket.tenant_id
+      - SELECT id, tenant_id, nombre, rol, activo
+        FROM cobradores
+        WHERE tenant_id = bucket.tenant_id
