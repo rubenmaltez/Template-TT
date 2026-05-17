@@ -14,6 +14,7 @@ import '../features/admin/cuotas/cuotas_admin_screen.dart';
 import '../features/admin/dashboard/dashboard_admin_screen.dart';
 import '../features/admin/geografia/geografia_admin_screen.dart';
 import '../features/admin/notificaciones/notificaciones_mora_screen.dart';
+import '../features/admin/onboarding/onboarding_screen.dart';
 import '../features/admin/pagos/pagos_admin_screen.dart';
 import '../features/admin/planes/planes_admin_screen.dart';
 import '../features/admin/reportes/reportes_admin_screen.dart';
@@ -46,6 +47,22 @@ final _rolUsuarioProvider = StreamProvider<String?>((ref) async* {
       .map((rows) => rows.isEmpty ? null : rows.first['rol'] as String?);
 });
 
+/// Stream de `empresa.nombre` para detectar si falta onboarding del tenant.
+/// Si está vacío, redirigimos al wizard.
+final _empresaNombreProvider = StreamProvider<String?>((ref) async* {
+  yield* ps.db
+      .watch("SELECT valor FROM settings WHERE clave = 'empresa.nombre'")
+      .map((rows) {
+    if (rows.isEmpty) return null;
+    final v = rows.first['valor'] as String?;
+    if (v == null) return null;
+    // Settings.valor es JSON serializado: "X" o null.
+    final s = v.trim();
+    if (s == 'null' || s == '""' || s.isEmpty) return null;
+    return s;
+  });
+});
+
 final routerProvider = Provider<GoRouter>((ref) {
   final auth = Supabase.instance.client.auth;
   final refresh = _AuthRefresh(auth);
@@ -55,6 +72,8 @@ final routerProvider = Provider<GoRouter>((ref) {
   // cambia (típicamente al primer sync). Sin esto, redirect llamaría
   // valueOrNull antes de que el stream tenga data y nadie se enteraría.
   ref.listen(_rolUsuarioProvider, (_, __) => refresh.poke());
+  // Idem para detectar setup completo del tenant.
+  ref.listen(_empresaNombreProvider, (_, __) => refresh.poke());
 
   return GoRouter(
     initialLocation: '/',
@@ -75,6 +94,20 @@ final routerProvider = Provider<GoRouter>((ref) {
         return '/admin';
       }
 
+      // Onboarding: si rol=admin y `empresa.nombre` está vacío, llevar al
+      // wizard. Sólo aplica si ya bajaron settings (provider tiene state).
+      if (rol == 'admin') {
+        final empresaState = ref.read(_empresaNombreProvider);
+        final needsOnboarding =
+            empresaState.hasValue && empresaState.value == null;
+        if (needsOnboarding && loc != '/admin/onboarding') {
+          return '/admin/onboarding';
+        }
+        if (!needsOnboarding && loc == '/admin/onboarding') {
+          return '/admin';
+        }
+      }
+
       // Guard por rol en rutas admin-only: admin_cobranza no accede a
       // Cobradores / Auditoría / Geografía / Settings (alineado con el
       // menú del shell).
@@ -93,6 +126,10 @@ final routerProvider = Provider<GoRouter>((ref) {
     },
     routes: [
       GoRoute(path: '/login', builder: (_, __) => const LoginScreen()),
+      GoRoute(
+        path: '/admin/onboarding',
+        builder: (_, __) => const OnboardingScreen(),
+      ),
 
       // ── Cobrador: ShellRoute con drawer ────────────────────────────────
       ShellRoute(
