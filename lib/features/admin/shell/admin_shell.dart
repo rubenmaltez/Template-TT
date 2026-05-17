@@ -6,6 +6,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../config/router.dart';
 import '../../../data/providers/cobrador_provider.dart';
 import '../../../data/providers/sync_status_provider.dart';
+import '../../shared/widgets/offline_banner.dart';
 
 /// Shell del admin/admin_cobranza. Layout adaptativo:
 ///   - ≥ 900px: NavigationRail permanente a la izquierda.
@@ -32,7 +33,7 @@ class AdminShell extends ConsumerWidget {
               child: Column(
                 children: [
                   _TopBar(titulo: titulo, showMenu: false),
-                  Expanded(child: child),
+                  Expanded(child: OfflineBanner(child: child)),
                 ],
               ),
             ),
@@ -47,7 +48,7 @@ class AdminShell extends ConsumerWidget {
         title: Text(titulo),
         actions: const [_SyncIndicator(), SizedBox(width: 8)],
       ),
-      body: child,
+      body: OfflineBanner(child: child),
     );
   }
 }

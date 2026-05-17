@@ -187,8 +187,12 @@ class _ClienteFormScreenState extends ConsumerState<ClienteFormScreen> {
               TextFormField(
                 controller: _nombre,
                 decoration: const InputDecoration(labelText: 'Nombre completo *'),
-                validator: (v) =>
-                    (v == null || v.trim().isEmpty) ? 'Requerido' : null,
+                validator: (v) {
+                  final t = v?.trim() ?? '';
+                  if (t.isEmpty) return 'Requerido';
+                  if (t.length < 3) return 'Mínimo 3 caracteres';
+                  return null;
+                },
                 textInputAction: TextInputAction.next,
               ),
               const SizedBox(height: 12),
@@ -199,14 +203,31 @@ class _ClienteFormScreenState extends ConsumerState<ClienteFormScreen> {
                       controller: _cedula,
                       decoration: const InputDecoration(
                           labelText: 'Cédula', hintText: '000-000000-0000A'),
+                      validator: (v) {
+                        final t = (v ?? '').trim();
+                        if (t.isEmpty) return null; // Opcional
+                        if (!RegExp(r'^\d{3}-\d{6}-\d{4}[A-Za-z]$')
+                            .hasMatch(t)) {
+                          return 'Formato: 000-000000-0000A';
+                        }
+                        return null;
+                      },
                     ),
                   ),
                   const SizedBox(width: 12),
                   Expanded(
                     child: TextFormField(
                       controller: _telefono,
-                      decoration: const InputDecoration(labelText: 'Teléfono'),
+                      decoration: const InputDecoration(
+                          labelText: 'Teléfono',
+                          hintText: '+505 8888-8888'),
                       keyboardType: TextInputType.phone,
+                      validator: (v) {
+                        final t = (v ?? '').replaceAll(RegExp(r'[^0-9]'), '');
+                        if (t.isEmpty) return null; // Opcional
+                        if (t.length < 8) return 'Mínimo 8 dígitos';
+                        return null;
+                      },
                     ),
                   ),
                 ],
@@ -250,6 +271,14 @@ class _ClienteFormScreenState extends ConsumerState<ClienteFormScreen> {
                       inputFormatters: [
                         FilteringTextInputFormatter.allow(RegExp(r'[0-9.\-]')),
                       ],
+                      validator: (v) {
+                        if ((v ?? '').trim().isEmpty) return null;
+                        final n = double.tryParse(v!);
+                        if (n == null) return 'Número inválido';
+                        if (n < -90 || n > 90) return 'Fuera de rango (-90 a 90)';
+                        if (n < 10 || n > 15) return 'Nicaragua: entre 10 y 15';
+                        return null;
+                      },
                     ),
                   ),
                   const SizedBox(width: 12),
@@ -262,6 +291,14 @@ class _ClienteFormScreenState extends ConsumerState<ClienteFormScreen> {
                       inputFormatters: [
                         FilteringTextInputFormatter.allow(RegExp(r'[0-9.\-]')),
                       ],
+                      validator: (v) {
+                        if ((v ?? '').trim().isEmpty) return null;
+                        final n = double.tryParse(v!);
+                        if (n == null) return 'Número inválido';
+                        if (n < -180 || n > 180) return 'Fuera de rango (-180 a 180)';
+                        if (n < -88 || n > -82) return 'Nicaragua: entre -88 y -82';
+                        return null;
+                      },
                     ),
                   ),
                 ],

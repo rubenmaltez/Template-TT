@@ -288,6 +288,41 @@ class _EditarCobradorDialogState extends ConsumerState<_EditarCobradorDialog> {
           'Prefijo: solo letras mayúsculas, números y guiones (2 a 16 chars)');
       return;
     }
+
+    // Confirmar cambios sensibles: rol y desactivación.
+    final rolViejo = widget.row['rol'] as String;
+    final activoViejo = (widget.row['activo'] as int? ?? 1) == 1;
+    final cambiaRol = _rol != rolViejo;
+    final desactiva = activoViejo && !_activo;
+
+    if (cambiaRol || desactiva) {
+      final msgs = <String>[];
+      if (cambiaRol) {
+        msgs.add('• Rol: $rolViejo → $_rol');
+      }
+      if (desactiva) {
+        msgs.add('• Desactivás el cobrador (sus cobros pendientes quedan asignados pero no podrá loguearse).');
+      }
+      final ok = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('Confirmar cambios'),
+          content: Text('${msgs.join('\n')}\n\n¿Continuar?'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancelar'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Confirmar'),
+            ),
+          ],
+        ),
+      );
+      if (ok != true) return;
+    }
+
     setState(() {
       _guardando = true;
       _error = null;

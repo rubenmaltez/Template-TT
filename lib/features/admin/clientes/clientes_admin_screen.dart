@@ -113,22 +113,43 @@ class _ClientesAdminScreenState extends ConsumerState<ClientesAdminScreen> {
   }
 
   Future<void> _bulkAssign(BuildContext context) async {
-    final cobrador = await showDialog<String?>(
+    final seleccion = await showDialog<({String? id, String label})>(
       context: context,
       builder: (_) => const _SeleccionarCobradorDialog(),
     );
-    if (cobrador == null || !context.mounted) return;
-    // 'null'.toString() significa: desasignar.
-    final cobradorId = cobrador == '__none__' ? null : cobrador;
+    if (seleccion == null || !context.mounted) return;
 
     final ids = _seleccionados.toList();
+    // Confirmar antes de aplicar — bulk-assign no tiene undo.
+    final confirmar = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Confirmar asignación masiva'),
+        content: Text(
+          'Vas a ${seleccion.id == null ? 'desasignar' : 'asignar a "${seleccion.label}"'} '
+          '${ids.length} cliente(s).\n\n'
+          'Esta acción se registra en auditoría y no se puede deshacer en lote.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Asignar'),
+          ),
+        ],
+      ),
+    );
+    if (confirmar != true || !context.mounted) return;
+
     final now = DateTime.now().toIso8601String();
-    // Una transacción evita estado inconsistente si falla a mitad.
     await ps.db.writeTransaction((tx) async {
       for (final id in ids) {
         await tx.execute(
           'UPDATE clientes SET cobrador_id = ?, updated_at = ? WHERE id = ?',
-          [cobradorId, now, id],
+          [seleccion.id, now, id],
         );
       }
     });
@@ -560,14 +581,20 @@ class _SeleccionarCobradorDialog extends StatelessWidget {
                 ListTile(
                   leading: const Icon(Icons.person_off),
                   title: const Text('Desasignar (sin cobrador)'),
-                  onTap: () => Navigator.pop(context, '__none__'),
+                  onTap: () => Navigator.pop(
+                      context, (id: null, label: 'Sin cobrador')),
                 ),
                 const Divider(height: 1),
                 ...rows.map((r) => ListTile(
                       leading: const Icon(Icons.person),
                       title: Text(r['nombre'] as String),
                       subtitle: Text(r['prefijo_recibo'] as String? ?? '—'),
-                      onTap: () => Navigator.pop(context, r['id'] as String),
+                      onTap: () => Navigator.pop(
+                          context,
+                          (
+                            id: r['id'] as String,
+                            label: r['nombre'] as String
+                          )),
                     )),
               ],
             );

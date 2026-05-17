@@ -6,6 +6,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../config/router.dart';
 import '../../data/providers/cobrador_provider.dart';
 import '../../data/providers/sync_status_provider.dart';
+import '../shared/widgets/offline_banner.dart';
 
 /// Scaffold con drawer compartido por todas las pantallas raíz (las
 /// pantallas detalle/cobro/recibo tienen su propio Scaffold).
@@ -22,7 +23,7 @@ class AppShell extends ConsumerWidget {
         title: Text(titulo),
         actions: const [_SyncIndicator(), SizedBox(width: 8)],
       ),
-      body: child,
+      body: OfflineBanner(child: child),
     );
   }
 }
