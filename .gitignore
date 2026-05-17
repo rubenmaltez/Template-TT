@@ -51,3 +51,8 @@ Thumbs.db
 web/sqlite3.wasm
 web/powersync_db.worker.js
 web/powersync_sync.worker.js
+
+# Archivos WASM regenerados por 'dart run powersync:setup_web'
+web/sqlite3.wasm
+web/powersync_db.worker.js
+web/powersync_sync.worker.js
