@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'config/router.dart';
@@ -16,6 +17,17 @@ class IspBillingApp extends ConsumerWidget {
       themeMode: ThemeMode.system,
       routerConfig: ref.watch(routerProvider),
       debugShowCheckedModeBanner: false,
+      locale: const Locale('es', 'NI'),
+      supportedLocales: const [
+        Locale('es', 'NI'),
+        Locale('es'),
+        Locale('en'),
+      ],
+      localizationsDelegates: const [
+        GlobalMaterialLocalizations.delegate,
+        GlobalWidgetsLocalizations.delegate,
+        GlobalCupertinoLocalizations.delegate,
+      ],
     );
   }
 }
