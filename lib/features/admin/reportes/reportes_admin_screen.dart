@@ -141,7 +141,7 @@ class _CobradoresMesCard extends StatelessWidget {
              LEFT JOIN pagos p ON p.cobrador_id = co.id
                               AND p.anulado = 0
                               AND date(p.fecha_pago) >= date('now', 'start of month')
-                 WHERE co.rol = 'cobrador'
+                 WHERE co.rol = 'cobrador' AND co.activo = 1
                  GROUP BY co.id, co.nombre, co.prefijo_recibo
                  ORDER BY total DESC
                 ''',
@@ -156,7 +156,9 @@ class _CobradoresMesCard extends StatelessWidget {
                           backgroundColor:
                               Theme.of(context).colorScheme.primaryContainer,
                           child: Text(
-                              (r['prefijo_recibo'] as String?)?.substring(0, 2) ?? '?'),
+                              ((r['prefijo_recibo'] as String?) ?? '??')
+                                  .padRight(2, '?')
+                                  .substring(0, 2)),
                         ),
                         title: Text(r['nombre'] as String),
                         subtitle: Text('${r['qty']} cobros · ${r['cuotas']} cuotas'),

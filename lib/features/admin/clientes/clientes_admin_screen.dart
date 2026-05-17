@@ -122,12 +122,16 @@ class _ClientesAdminScreenState extends ConsumerState<ClientesAdminScreen> {
     final cobradorId = cobrador == '__none__' ? null : cobrador;
 
     final ids = _seleccionados.toList();
-    for (final id in ids) {
-      await ps.db.execute(
-        'UPDATE clientes SET cobrador_id = ?, updated_at = ? WHERE id = ?',
-        [cobradorId, DateTime.now().toIso8601String(), id],
-      );
-    }
+    final now = DateTime.now().toIso8601String();
+    // Una transacción evita estado inconsistente si falla a mitad.
+    await ps.db.writeTransaction((tx) async {
+      for (final id in ids) {
+        await tx.execute(
+          'UPDATE clientes SET cobrador_id = ?, updated_at = ? WHERE id = ?',
+          [cobradorId, now, id],
+        );
+      }
+    });
     if (context.mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('${ids.length} cliente(s) actualizados')),
@@ -361,7 +365,8 @@ class _Lista extends StatelessWidget {
     final params = <Object?>[diasGracia];
 
     if (query.isNotEmpty) {
-      where.add('(lower(c.nombre) LIKE ? OR c.cedula LIKE ? OR c.telefono LIKE ?)');
+      where.add(
+          '(lower(c.nombre) LIKE ? OR lower(coalesce(c.cedula,\'\')) LIKE ? OR coalesce(c.telefono,\'\') LIKE ?)');
       final like = '%$query%';
       params..add(like)..add(like)..add(like);
     }

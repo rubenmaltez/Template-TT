@@ -21,17 +21,20 @@ class CobradoresAdminScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     return StreamBuilder(
       stream: ps.db.watch(
+        // Subqueries en SELECT evitan el producto cartesiano que tendrían
+        // dos LEFT JOINs (clientes × pagos) sobre el mismo cobrador.
         '''
         SELECT co.id, co.nombre, co.telefono, co.rol,
                co.prefijo_recibo, co.activo,
-               COUNT(DISTINCT cl.id) AS clientes_asignados,
-               COALESCE(SUM(CASE WHEN p.anulado = 0
-                                  AND date(p.fecha_pago, 'start of month') = date('now', 'start of month')
-                                THEN p.monto_cordobas ELSE 0 END), 0) AS cobrado_mes
+               (SELECT COUNT(*) FROM clientes
+                 WHERE cobrador_id = co.id AND activo = 1
+               ) AS clientes_asignados,
+               (SELECT COALESCE(SUM(monto_cordobas), 0) FROM pagos
+                 WHERE cobrador_id = co.id
+                   AND anulado = 0
+                   AND date(fecha_pago) >= date('now', 'start of month')
+               ) AS cobrado_mes
           FROM cobradores co
-     LEFT JOIN clientes cl ON cl.cobrador_id = co.id AND cl.activo = 1
-     LEFT JOIN pagos p     ON p.cobrador_id = co.id
-         GROUP BY co.id, co.nombre, co.telefono, co.rol, co.prefijo_recibo, co.activo
          ORDER BY co.activo DESC, co.rol, co.nombre
         ''',
       ),
@@ -293,7 +296,8 @@ class _EditarCobradorDialogState extends ConsumerState<_EditarCobradorDialog> {
       await ps.db.execute(
         '''
         UPDATE cobradores
-           SET nombre = ?, telefono = ?, rol = ?, prefijo_recibo = ?, activo = ?
+           SET nombre = ?, telefono = ?, rol = ?,
+               prefijo_recibo = ?, activo = ?
          WHERE id = ?
         ''',
         [

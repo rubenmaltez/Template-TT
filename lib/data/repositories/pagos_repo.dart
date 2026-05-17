@@ -111,22 +111,29 @@ class PagosRepo {
         ],
       );
 
-      // Reflejar localmente el efecto del trigger server: sumar al saldo
-      // de la cuota y actualizar estado. Cuando llegue el sync, el server
-      // recalcula desde la verdad (todos los pagos no anulados).
-      await tx.execute(
-        '''
-        UPDATE cuotas
-           SET monto_pagado = monto_pagado + ?,
-               estado = CASE
-                          WHEN monto_pagado + ? >= monto THEN 'pagada'
-                          WHEN monto_pagado + ? > 0     THEN 'parcial'
-                          ELSE estado
-                        END
-         WHERE id = ?
-        ''',
-        [montoCordobas, montoCordobas, montoCordobas, cuotaId],
+      // Reflejar localmente el efecto del trigger server. Calculamos el
+      // nuevo estado en Dart para no depender del orden de evaluación de
+      // SET en SQLite (donde el CASE podría leer `monto_pagado` viejo o
+      // nuevo según la versión).
+      final cuotaRows = await tx.getAll(
+        'SELECT monto, monto_pagado, estado FROM cuotas WHERE id = ?',
+        [cuotaId],
       );
+      if (cuotaRows.isNotEmpty) {
+        final monto = (cuotaRows.first['monto'] as num).toDouble();
+        final pagadoViejo =
+            (cuotaRows.first['monto_pagado'] as num? ?? 0).toDouble();
+        final estadoActual = cuotaRows.first['estado'] as String;
+        final pagadoNuevo = pagadoViejo + montoCordobas;
+        final nuevoEstado = _calcularEstado(
+            estadoActual: estadoActual,
+            montoCuota: monto,
+            pagadoNuevo: pagadoNuevo);
+        await tx.execute(
+          'UPDATE cuotas SET monto_pagado = ?, estado = ? WHERE id = ?',
+          [pagadoNuevo, nuevoEstado, cuotaId],
+        );
+      }
     });
 
     return CobroResultado(pagoId: pagoId, reciboId: reciboId);
@@ -169,20 +176,40 @@ class PagosRepo {
       );
 
       // Reflejar localmente el recálculo del trigger server.
-      await tx.execute(
-        '''
-        UPDATE cuotas
-           SET monto_pagado = MAX(monto_pagado - ?, 0),
-               estado = CASE
-                          WHEN monto_pagado - ? <= 0      THEN 'pendiente'
-                          WHEN monto_pagado - ? < monto   THEN 'parcial'
-                          ELSE estado
-                        END
-         WHERE id = ?
-        ''',
-        [monto, monto, monto, cuotaId],
+      // Calculamos el nuevo estado en Dart (más predecible que CASE WHEN
+      // con valores in-flight de SET).
+      final cuotaRows = await tx.getAll(
+        'SELECT monto, monto_pagado, estado FROM cuotas WHERE id = ?',
+        [cuotaId],
       );
+      if (cuotaRows.isNotEmpty) {
+        final montoCuota = (cuotaRows.first['monto'] as num).toDouble();
+        final pagadoViejo =
+            (cuotaRows.first['monto_pagado'] as num? ?? 0).toDouble();
+        final estadoActual = cuotaRows.first['estado'] as String;
+        final pagadoNuevo = (pagadoViejo - monto).clamp(0, double.infinity);
+        final nuevoEstado = _calcularEstado(
+            estadoActual: estadoActual,
+            montoCuota: montoCuota,
+            pagadoNuevo: pagadoNuevo.toDouble());
+        await tx.execute(
+          'UPDATE cuotas SET monto_pagado = ?, estado = ? WHERE id = ?',
+          [pagadoNuevo, nuevoEstado, cuotaId],
+        );
+      }
     });
+  }
+
+  /// Calcula el estado de una cuota en base al saldo, respetando 'anulada'.
+  String _calcularEstado({
+    required String estadoActual,
+    required double montoCuota,
+    required double pagadoNuevo,
+  }) {
+    if (estadoActual == 'anulada') return 'anulada';
+    if (pagadoNuevo <= 0) return 'pendiente';
+    if (pagadoNuevo >= montoCuota) return 'pagada';
+    return 'parcial';
   }
 }
 

@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../data/providers/cobrador_provider.dart';
 import '../../../data/repositories/settings_repo.dart';
 import '../../../data/utils/formatters.dart';
 import '../../../powersync/db.dart' as ps;
@@ -46,7 +47,8 @@ class _CuotasAdminScreenState extends ConsumerState<CuotasAdminScreen> {
       params.add('%$_query%');
     }
     if (_estado != 'todas') {
-      where.add("cu.estado = '$_estado'");
+      where.add('cu.estado = ?');
+      params.add(_estado);
     }
     final whereSql = where.isEmpty ? '' : 'WHERE ${where.join(' AND ')}';
 
@@ -231,14 +233,20 @@ class _CuotaCard extends ConsumerWidget {
     );
     if (motivo == null || motivo.trim().isEmpty || !context.mounted) return;
 
+    final me = ref.read(cobradorActualProvider).valueOrNull;
+    if (me == null) return;
+
     try {
       await ps.db.execute(
         '''
         UPDATE cuotas
-           SET estado = 'anulada'
+           SET estado = 'anulada',
+               anulada_en = ?,
+               anulada_por = ?,
+               motivo_anulacion = ?
          WHERE id = ?
         ''',
-        [row['id']],
+        [DateTime.now().toIso8601String(), me.id, motivo.trim(), row['id']],
       );
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(

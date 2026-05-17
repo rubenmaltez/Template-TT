@@ -8,7 +8,6 @@ import 'package:uuid/uuid.dart';
 
 import '../../../data/providers/cobrador_provider.dart';
 import '../../../powersync/db.dart' as ps;
-import '../../shared/widgets/empty_state.dart';
 import 'widgets/geo_picker.dart';
 
 class ClienteFormScreen extends ConsumerStatefulWidget {
@@ -484,10 +483,3 @@ class _MapaPickerScreenState extends State<_MapaPickerScreen> {
   }
 }
 
-// Re-export del stub anterior (legacy). El export está acá para que
-// router.dart siga importando del archivo de lista.
-class _DummyExport extends StatelessWidget {
-  const _DummyExport();
-  @override
-  Widget build(BuildContext context) => const PendingScreen(titulo: 'X');
-}

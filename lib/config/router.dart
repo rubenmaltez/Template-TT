@@ -63,12 +63,28 @@ final routerProvider = Provider<GoRouter>((ref) {
       if (!loggedIn) return goingToLogin ? null : '/login';
       if (goingToLogin) return '/';
 
+      final rol = ref.read(_rolUsuarioProvider).valueOrNull;
+      final loc = state.matchedLocation;
+
       // Si el rol es admin o admin_cobranza, redirigir desde la raíz
       // del cobrador hacia el panel admin. Sólo en la raíz exacta — el
       // usuario admin podría querer ver pantallas del cobrador navegando.
-      if (state.matchedLocation == '/') {
-        final rol = ref.read(_rolUsuarioProvider).valueOrNull;
-        if (rol == 'admin' || rol == 'admin_cobranza') return '/admin';
+      if (loc == '/' && (rol == 'admin' || rol == 'admin_cobranza')) {
+        return '/admin';
+      }
+
+      // Guard por rol en rutas admin-only: admin_cobranza no accede a
+      // Cobradores / Auditoría / Geografía / Settings (alineado con el
+      // menú del shell).
+      const soloAdmin = [
+        '/admin/cobradores',
+        '/admin/audit',
+        '/admin/geografia',
+        '/admin/settings',
+      ];
+      if (rol == 'admin_cobranza' &&
+          soloAdmin.any((p) => loc == p || loc.startsWith('$p/'))) {
+        return '/admin';
       }
       return null;
     },

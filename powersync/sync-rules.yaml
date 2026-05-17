@@ -44,9 +44,7 @@ bucket_definitions:
     data:
       - SELECT id, tenant_id, nombre, telefono, rol, prefijo_recibo, activo
         FROM cobradores
-        WHERE tenant_id = bucket.tenant_id
-
-      - SELECT * FROM audit_log         WHERE tenant_id = bucket.tenant_id AND id = bucket.cobrador_id
+        WHERE tenant_id = bucket.tenant_id AND id = bucket.cobrador_id
 
       - SELECT * FROM clientes
         WHERE tenant_id = bucket.tenant_id AND cobrador_id = bucket.cobrador_id
