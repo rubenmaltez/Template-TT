@@ -1,9 +1,291 @@
 import 'package:flutter/material.dart';
-import '../../shared/widgets/empty_state.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-class ReportesAdminScreen extends StatelessWidget {
+import '../../../data/repositories/settings_repo.dart';
+import '../../../data/utils/formatters.dart';
+import '../../../powersync/db.dart' as ps;
+
+class ReportesAdminScreen extends ConsumerWidget {
   const ReportesAdminScreen({super.key});
+
   @override
-  Widget build(BuildContext context) =>
-      const PendingScreen(titulo: 'Reportes');
+  Widget build(BuildContext context, WidgetRef ref) {
+    final diasGracia = ref.watch(appSettingsProvider).diasGracia;
+    return ListView(
+      padding: const EdgeInsets.all(24),
+      children: [
+        const _RecaudacionMensualCard(),
+        const SizedBox(height: 16),
+        const _CobradoresMesCard(),
+        const SizedBox(height: 16),
+        _MoraPorComunidadCard(diasGracia: diasGracia),
+        const SizedBox(height: 16),
+        const _PlanesPopularesCard(),
+      ],
+    );
+  }
+}
+
+class _RecaudacionMensualCard extends StatelessWidget {
+  const _RecaudacionMensualCard();
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text('Recaudación últimos 6 meses',
+                style: Theme.of(context).textTheme.titleMedium),
+            const SizedBox(height: 16),
+            StreamBuilder(
+              stream: ps.db.watch(
+                '''
+                SELECT strftime('%Y-%m', fecha_pago) AS mes,
+                       COALESCE(SUM(monto_cordobas), 0) AS total,
+                       COUNT(*) AS qty
+                  FROM pagos
+                 WHERE anulado = 0
+                   AND date(fecha_pago) >= date('now', '-5 months', 'start of month')
+                 GROUP BY mes
+                 ORDER BY mes
+                ''',
+              ),
+              builder: (context, snap) {
+                if (!snap.hasData) return const SizedBox.shrink();
+                final rows = snap.data!;
+                if (rows.isEmpty) {
+                  return Text('Sin pagos en los últimos 6 meses',
+                      style: TextStyle(color: Theme.of(context).colorScheme.outline));
+                }
+                final maxTotal = rows.map((r) => (r['total'] as num).toDouble()).reduce((a, b) => a > b ? a : b);
+                return Column(
+                  children: rows.map((r) {
+                    final total = (r['total'] as num).toDouble();
+                    final pct = maxTotal > 0 ? total / maxTotal : 0.0;
+                    final mes = _mesLabel(r['mes'] as String);
+                    return Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 6),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Expanded(child: Text(mes)),
+                              Text('${r['qty']} cobros',
+                                  style: TextStyle(
+                                      color: Theme.of(context).colorScheme.outline,
+                                      fontSize: 12)),
+                              const SizedBox(width: 12),
+                              Text(Fmt.cordobas(total),
+                                  style: const TextStyle(fontWeight: FontWeight.w600)),
+                            ],
+                          ),
+                          const SizedBox(height: 4),
+                          ClipRRect(
+                            borderRadius: BorderRadius.circular(4),
+                            child: LinearProgressIndicator(
+                              value: pct,
+                              minHeight: 6,
+                              backgroundColor: Theme.of(context).colorScheme.surfaceContainerHighest,
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+                  }).toList(),
+                );
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  String _mesLabel(String yyyyMm) {
+    final parts = yyyyMm.split('-');
+    final mes = int.parse(parts[1]);
+    const nombres = [
+      'Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun',
+      'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'
+    ];
+    return '${nombres[mes - 1]} ${parts[0]}';
+  }
+}
+
+class _CobradoresMesCard extends StatelessWidget {
+  const _CobradoresMesCard();
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text('Cobradores este mes',
+                style: Theme.of(context).textTheme.titleMedium),
+            const SizedBox(height: 16),
+            StreamBuilder(
+              stream: ps.db.watch(
+                '''
+                SELECT co.id, co.nombre, co.prefijo_recibo,
+                       COALESCE(SUM(p.monto_cordobas), 0) AS total,
+                       COUNT(p.id) AS qty,
+                       COUNT(DISTINCT p.cuota_id) AS cuotas
+                  FROM cobradores co
+             LEFT JOIN pagos p ON p.cobrador_id = co.id
+                              AND p.anulado = 0
+                              AND date(p.fecha_pago) >= date('now', 'start of month')
+                 WHERE co.rol = 'cobrador'
+                 GROUP BY co.id, co.nombre, co.prefijo_recibo
+                 ORDER BY total DESC
+                ''',
+              ),
+              builder: (context, snap) {
+                if (!snap.hasData) return const SizedBox.shrink();
+                return Column(
+                  children: snap.data!.map((r) => ListTile(
+                        dense: true,
+                        contentPadding: EdgeInsets.zero,
+                        leading: CircleAvatar(
+                          backgroundColor:
+                              Theme.of(context).colorScheme.primaryContainer,
+                          child: Text(
+                              (r['prefijo_recibo'] as String?)?.substring(0, 2) ?? '?'),
+                        ),
+                        title: Text(r['nombre'] as String),
+                        subtitle: Text('${r['qty']} cobros · ${r['cuotas']} cuotas'),
+                        trailing: Text(
+                          Fmt.cordobas(r['total'] as num),
+                          style: const TextStyle(fontWeight: FontWeight.bold),
+                        ),
+                      )).toList(),
+                );
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _MoraPorComunidadCard extends StatelessWidget {
+  const _MoraPorComunidadCard({required this.diasGracia});
+  final int diasGracia;
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text('Mora por comunidad',
+                style: Theme.of(context).textTheme.titleMedium),
+            const SizedBox(height: 16),
+            StreamBuilder(
+              stream: ps.db.watch(
+                '''
+                SELECT co.nombre AS comunidad, m.nombre AS municipio,
+                       COUNT(cu.id) AS vencidas,
+                       COALESCE(SUM(cu.monto - cu.monto_pagado), 0) AS adeudo
+                  FROM cuotas cu
+                  JOIN clientes c ON c.id = cu.cliente_id
+                  JOIN comunidades co ON co.id = c.comunidad_id
+                  JOIN municipios m ON m.id = co.municipio_id
+                 WHERE cu.estado IN ('pendiente','parcial')
+                   AND date(cu.fecha_vencimiento, '+' || ? || ' days') < date('now')
+                 GROUP BY co.id, co.nombre, m.nombre
+                 ORDER BY adeudo DESC
+                 LIMIT 10
+                ''',
+                parameters: [diasGracia],
+              ),
+              builder: (context, snap) {
+                if (!snap.hasData) return const SizedBox.shrink();
+                final rows = snap.data!;
+                if (rows.isEmpty) {
+                  return Text('Sin mora — todos al día',
+                      style: TextStyle(color: Theme.of(context).colorScheme.outline));
+                }
+                return Column(
+                  children: rows.map((r) => ListTile(
+                        dense: true,
+                        contentPadding: EdgeInsets.zero,
+                        leading: Icon(Icons.warning,
+                            color: Theme.of(context).colorScheme.error),
+                        title: Text(r['comunidad'] as String),
+                        subtitle: Text(
+                            '${r['municipio']} · ${r['vencidas']} cuotas vencidas'),
+                        trailing: Text(
+                          Fmt.cordobas(r['adeudo'] as num),
+                          style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              color: Theme.of(context).colorScheme.error),
+                        ),
+                      )).toList(),
+                );
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _PlanesPopularesCard extends StatelessWidget {
+  const _PlanesPopularesCard();
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text('Planes contratados',
+                style: Theme.of(context).textTheme.titleMedium),
+            const SizedBox(height: 16),
+            StreamBuilder(
+              stream: ps.db.watch(
+                '''
+                SELECT p.nombre, p.precio_mensual,
+                       COUNT(ct.id) AS contratos
+                  FROM planes p
+             LEFT JOIN contratos ct ON ct.plan_id = p.id AND ct.activo = 1
+                 GROUP BY p.id, p.nombre, p.precio_mensual
+                 ORDER BY contratos DESC
+                ''',
+              ),
+              builder: (context, snap) {
+                if (!snap.hasData) return const SizedBox.shrink();
+                return Column(
+                  children: snap.data!.map((r) => ListTile(
+                        dense: true,
+                        contentPadding: EdgeInsets.zero,
+                        leading: const Icon(Icons.wifi),
+                        title: Text(r['nombre'] as String),
+                        subtitle: Text(Fmt.cordobas(r['precio_mensual'] as num)),
+                        trailing: Text(
+                          '${r['contratos']} contratos',
+                          style: const TextStyle(fontWeight: FontWeight.w600),
+                        ),
+                      )).toList(),
+                );
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }
