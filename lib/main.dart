@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import 'app.dart';
 import 'config/env.dart';
 import 'powersync/db.dart' as ps;
-import 'screens/auth_gate.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -21,8 +22,6 @@ Future<void> main() async {
 
   // Conectar/desconectar PowerSync siguiendo el ciclo de vida de la sesión.
   // `initialSession` cubre el caso de arranque con token persistido.
-  // El refresh automático del token lo gestiona PowerSync llamando a
-  // `fetchCredentials` cuando lo necesita, así que no escuchamos `tokenRefreshed`.
   Supabase.instance.client.auth.onAuthStateChange.listen((data) async {
     switch (data.event) {
       case AuthChangeEvent.initialSession:
@@ -39,23 +38,7 @@ Future<void> main() async {
     }
   });
 
-  runApp(const IspBillingApp());
-}
-
-class IspBillingApp extends StatelessWidget {
-  const IspBillingApp({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'ISP Billing',
-      theme: ThemeData(
-        colorSchemeSeed: Colors.indigo,
-        useMaterial3: true,
-      ),
-      home: const AuthGate(),
-    );
-  }
+  runApp(const ProviderScope(child: IspBillingApp()));
 }
 
 class _ConfigMissingApp extends StatelessWidget {
