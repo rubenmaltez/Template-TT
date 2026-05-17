@@ -9,6 +9,7 @@ import '../../data/providers/cobrador_provider.dart';
 import '../../data/repositories/cuotas_repo.dart';
 import '../../data/repositories/pagos_repo.dart';
 import '../../data/repositories/settings_repo.dart';
+import '../../data/services/gps_service.dart';
 import '../../data/utils/formatters.dart';
 import '../../powersync/db.dart' as ps;
 import '../shared/widgets/empty_state.dart';
@@ -37,11 +38,28 @@ class _CobroScreenState extends ConsumerState<CobroScreen> {
   // Tasa snapshot al iniciar el cobro: si el setting cambia entre el
   // render y el submit, igual usamos la tasa que el cobrador VIO.
   double? _tasaSnapshot;
+  // Ubicación capturada en background al abrir la pantalla.
+  ({double lat, double lng})? _ubicacion;
+  bool _capturandoUbicacion = false;
 
   @override
   void initState() {
     super.initState();
     _cargar();
+    _capturarUbicacion();
+  }
+
+  /// Captura GPS en background al abrir la pantalla. Si tarda o falla,
+  /// el cobro continúa sin coordenadas — no es bloqueante.
+  Future<void> _capturarUbicacion() async {
+    setState(() => _capturandoUbicacion = true);
+    final ubi = await const GpsService().obtenerUbicacion();
+    if (mounted) {
+      setState(() {
+        _ubicacion = ubi;
+        _capturandoUbicacion = false;
+      });
+    }
   }
 
   void _cambiarMoneda(Moneda nueva, AppSettings settings) {
@@ -126,6 +144,8 @@ class _CobroScreenState extends ConsumerState<CobroScreen> {
             referencia: _referenciaCtrl.text.trim().isEmpty
                 ? null
                 : _referenciaCtrl.text.trim(),
+            lat: _ubicacion?.lat,
+            lng: _ubicacion?.lng,
             notas: _notasCtrl.text.trim().isEmpty
                 ? null
                 : _notasCtrl.text.trim(),
@@ -270,6 +290,11 @@ class _CobroScreenState extends ConsumerState<CobroScreen> {
           ),
 
           const SizedBox(height: 24),
+          _UbicacionIndicador(
+            capturando: _capturandoUbicacion,
+            ubicacion: _ubicacion,
+          ),
+          const SizedBox(height: 12),
           _ResumenCard(
             saldoActual: saldo,
             aCobrar: montoEnNio,
@@ -443,6 +468,39 @@ class _MonedaToggle extends StatelessWidget {
       style: const ButtonStyle(
         visualDensity: VisualDensity(horizontal: -2, vertical: -2),
       ),
+    );
+  }
+}
+
+class _UbicacionIndicador extends StatelessWidget {
+  const _UbicacionIndicador({
+    required this.capturando,
+    required this.ubicacion,
+  });
+  final bool capturando;
+  final ({double lat, double lng})? ubicacion;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final (icon, label, color) = capturando
+        ? (Icons.gps_not_fixed, 'Capturando ubicación...', scheme.outline)
+        : ubicacion != null
+            ? (Icons.gps_fixed, 'Ubicación capturada', scheme.tertiary)
+            : (Icons.gps_off, 'Sin ubicación (cobro continúa)', scheme.outline);
+
+    return Row(
+      children: [
+        if (capturando)
+          const SizedBox(
+              width: 16,
+              height: 16,
+              child: CircularProgressIndicator(strokeWidth: 2))
+        else
+          Icon(icon, size: 16, color: color),
+        const SizedBox(width: 8),
+        Text(label, style: TextStyle(color: color, fontSize: 12)),
+      ],
     );
   }
 }
