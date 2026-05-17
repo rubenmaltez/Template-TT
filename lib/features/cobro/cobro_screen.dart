@@ -17,6 +17,7 @@ import '../../data/repositories/settings_repo.dart';
 import '../../data/services/gps_service.dart';
 import '../../data/utils/formatters.dart';
 import '../../powersync/db.dart' as ps;
+import '../shared/widgets/aplicar_cargo_dialog.dart';
 import '../shared/widgets/empty_state.dart';
 
 class CobroScreen extends ConsumerStatefulWidget {
@@ -210,6 +211,35 @@ class _CobroScreenState extends ConsumerState<CobroScreen> {
         padding: const EdgeInsets.fromLTRB(16, 16, 16, 120),
         children: [
           _ClienteCuotaCard(cliente: _clienteRow, cuota: cuota, totalACobrar: _totalACobrar),
+          if (settings.descuentosHabilitados || settings.reconexionHabilitada) ...[
+            const SizedBox(height: 8),
+            OutlinedButton.icon(
+              icon: const Icon(Icons.discount),
+              label: const Text('Aplicar descuento / cargo'),
+              onPressed: () async {
+                final aplicado = await showDialog<bool>(
+                  context: context,
+                  builder: (_) => AplicarCargoDialog(
+                    cuotaId: cuota.id,
+                    montoCuota: cuota.monto,
+                  ),
+                );
+                if (aplicado == true) {
+                  final repo = ref.read(cuotasRepoProvider);
+                  final nuevo = await repo.totalACobrar(widget.cuotaId);
+                  if (mounted) {
+                    setState(() {
+                      _totalACobrar = nuevo;
+                      // Reajustar default del monto al nuevo saldo.
+                      final saldo = (nuevo - cuota.montoPagado)
+                          .clamp(0.0, double.infinity);
+                      _montoCtrl.text = saldo.toStringAsFixed(2);
+                    });
+                  }
+                }
+              },
+            ),
+          ],
 
           const SizedBox(height: 24),
           Text('Método de pago', style: Theme.of(context).textTheme.titleMedium),

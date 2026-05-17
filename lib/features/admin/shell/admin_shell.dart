@@ -117,6 +117,7 @@ const _adminMenu = [
   _MenuItem(Icons.engineering, 'Cobradores', '/admin/cobradores', adminOnly: true),
   _MenuItem(Icons.receipt_long, 'Cuotas', '/admin/cuotas'),
   _MenuItem(Icons.payments, 'Pagos', '/admin/pagos'),
+  _MenuItem(Icons.notification_important, 'Mora', '/admin/notificaciones'),
   _MenuItem(Icons.map, 'Mapa', '/admin/mapa'),
   _MenuItem(Icons.bar_chart, 'Reportes', '/admin/reportes'),
   _MenuItem(Icons.history_edu, 'Auditoría', '/admin/audit', adminOnly: true),

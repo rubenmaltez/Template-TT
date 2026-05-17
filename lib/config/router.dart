@@ -13,6 +13,7 @@ import '../features/admin/contratos/contratos_admin_screen.dart';
 import '../features/admin/cuotas/cuotas_admin_screen.dart';
 import '../features/admin/dashboard/dashboard_admin_screen.dart';
 import '../features/admin/geografia/geografia_admin_screen.dart';
+import '../features/admin/notificaciones/notificaciones_mora_screen.dart';
 import '../features/admin/pagos/pagos_admin_screen.dart';
 import '../features/admin/planes/planes_admin_screen.dart';
 import '../features/admin/reportes/reportes_admin_screen.dart';
@@ -129,6 +130,9 @@ final routerProvider = Provider<GoRouter>((ref) {
                   ContratoFormScreen(contratoId: s.pathParameters['id']))),
           GoRoute(path: '/admin/planes',
               builder: (_, s) => _titled('Planes', const PlanesAdminScreen())),
+          GoRoute(path: '/admin/notificaciones',
+              builder: (_, s) => _titled('Notificaciones de mora',
+                  const NotificacionesMoraScreen())),
           GoRoute(path: '/admin/cobradores',
               builder: (_, s) => _titled('Cobradores', const CobradoresAdminScreen())),
           GoRoute(path: '/admin/cuotas',
