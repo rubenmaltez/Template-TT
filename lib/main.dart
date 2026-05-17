@@ -19,17 +19,17 @@ Future<void> main() async {
   );
   await ps.openDatabase();
 
-  // Si ya hay sesión al arrancar (token persistido), conectar PowerSync ya.
-  if (Supabase.instance.client.auth.currentSession != null) {
-    await ps.connectPowerSync();
-  }
-
   // Conectar/desconectar PowerSync siguiendo el ciclo de vida de la sesión.
+  // `initialSession` cubre el caso de arranque con token persistido.
+  // El refresh automático del token lo gestiona PowerSync llamando a
+  // `fetchCredentials` cuando lo necesita, así que no escuchamos `tokenRefreshed`.
   Supabase.instance.client.auth.onAuthStateChange.listen((data) async {
     switch (data.event) {
+      case AuthChangeEvent.initialSession:
       case AuthChangeEvent.signedIn:
-      case AuthChangeEvent.tokenRefreshed:
-        await ps.connectPowerSync();
+        if (data.session != null) {
+          await ps.connectPowerSync();
+        }
         break;
       case AuthChangeEvent.signedOut:
         await ps.disconnectPowerSync();
