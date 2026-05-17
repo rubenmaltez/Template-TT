@@ -3,8 +3,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../data/providers/cobrador_provider.dart';
+import '../../data/providers/foto_comprobante_provider.dart';
 import '../../data/providers/sync_status_provider.dart';
 import '../../data/utils/formatters.dart';
+import '../../powersync/db.dart' as ps;
 import '../shared/widgets/empty_state.dart';
 
 class PerfilScreen extends ConsumerWidget {
@@ -58,6 +60,8 @@ class PerfilScreen extends ConsumerWidget {
         ]),
         const SizedBox(height: 12),
         const _SyncCard(),
+        const SizedBox(height: 12),
+        const _FotosPendientesCard(),
         const SizedBox(height: 24),
         OutlinedButton.icon(
           icon: const Icon(Icons.logout),
@@ -113,6 +117,102 @@ class _InfoCard extends StatelessWidget {
         ),
       ),
     );
+  }
+}
+
+class _FotosPendientesCard extends ConsumerStatefulWidget {
+  const _FotosPendientesCard();
+  @override
+  ConsumerState<_FotosPendientesCard> createState() =>
+      _FotosPendientesCardState();
+}
+
+class _FotosPendientesCardState extends ConsumerState<_FotosPendientesCard> {
+  int _subiendo = 0;
+  bool _ejecutando = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder(
+      stream: ps.db.watch(
+        "SELECT COUNT(*) AS n FROM pagos "
+        "WHERE foto_comprobante_path LIKE 'local://%' AND anulado = 0",
+      ),
+      builder: (context, snap) {
+        final pendientes = snap.data == null || snap.data!.isEmpty
+            ? 0
+            : (snap.data!.first['n'] as num).toInt();
+        if (pendientes == 0 && !_ejecutando) {
+          return const SizedBox.shrink();
+        }
+        final scheme = Theme.of(context).colorScheme;
+        return Card(
+          color: scheme.tertiaryContainer.withValues(alpha: 0.4),
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Icon(Icons.cloud_upload, color: scheme.tertiary),
+                    const SizedBox(width: 8),
+                    Text('Fotos pendientes de subir',
+                        style: Theme.of(context).textTheme.titleMedium),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                Text('$pendientes foto(s) están guardadas en este teléfono y '
+                    'se subirán automáticamente cuando haya conexión.'),
+                const SizedBox(height: 12),
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: OutlinedButton.icon(
+                    icon: _ejecutando
+                        ? const SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(strokeWidth: 2))
+                        : const Icon(Icons.refresh),
+                    label: Text(_ejecutando
+                        ? 'Subiendo $_subiendo...'
+                        : 'Intentar ahora'),
+                    onPressed: _ejecutando ? null : _intentar,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Future<void> _intentar() async {
+    setState(() {
+      _ejecutando = true;
+      _subiendo = 0;
+    });
+    try {
+      final n = await ref
+          .read(fotoComprobanteServiceProvider)
+          .sincronizarPendientes();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(n == 0
+              ? 'Sin conexión o sin pendientes elegibles'
+              : '$n foto(s) subidas')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error: $e')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _ejecutando = false);
+    }
   }
 }
 

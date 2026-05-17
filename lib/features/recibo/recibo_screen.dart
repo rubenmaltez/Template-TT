@@ -7,6 +7,7 @@ import '../../data/repositories/settings_repo.dart';
 import '../../data/utils/formatters.dart';
 import '../../powersync/db.dart' as ps;
 import '../shared/widgets/empty_state.dart';
+import '../shared/widgets/foto_comprobante_view.dart';
 
 /// Preview visual del recibo + acción para imprimir.
 /// La impresión Bluetooth real se conecta en una iteración siguiente.
@@ -34,6 +35,7 @@ class ReciboScreen extends ConsumerWidget {
                  r.created_at, r.impreso_en, r.reimpresiones,
                  p.monto_cordobas, p.moneda, p.monto_original,
                  p.tasa_conversion, p.metodo, p.referencia, p.fecha_pago,
+                 p.foto_comprobante_path,
                  cu.periodo, cu.monto AS cuota_monto,
                  c.nombre AS cliente_nombre, c.cedula AS cliente_cedula,
                  pl.nombre AS plan_nombre,
@@ -64,6 +66,14 @@ class ReciboScreen extends ConsumerWidget {
             padding: const EdgeInsets.all(16),
             children: [
               _ReciboTicket(row: r, settings: settings),
+              if (r['foto_comprobante_path'] != null) ...[
+                const SizedBox(height: 16),
+                Text('Comprobante adjunto',
+                    style: Theme.of(context).textTheme.titleSmall),
+                const SizedBox(height: 8),
+                FotoComprobanteView(
+                    path: r['foto_comprobante_path'] as String?),
+              ],
               const SizedBox(height: 24),
               _AccionesImpresion(reciboId: reciboId, settings: settings),
             ],
