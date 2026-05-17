@@ -19,34 +19,43 @@ class ClienteDetailScreen extends ConsumerWidget {
     final clienteAsync = ref.watch(clienteByIdProvider(clienteId));
     final diasGracia = ref.watch(appSettingsProvider).diasGracia;
 
-    return clienteAsync.when(
-      loading: () => const Center(child: CircularProgressIndicator()),
-      error: (e, _) => Center(child: Text('Error: $e')),
-      data: (cliente) {
-        if (cliente == null) {
-          return const EmptyState(
-            icon: Icons.person_off,
-            titulo: 'Cliente no encontrado',
+    return Scaffold(
+      appBar: AppBar(
+        title: clienteAsync.when(
+          data: (c) => Text(c?.nombre ?? 'Cliente'),
+          loading: () => const Text('Cliente'),
+          error: (_, __) => const Text('Cliente'),
+        ),
+      ),
+      body: clienteAsync.when(
+        loading: () => const Center(child: CircularProgressIndicator()),
+        error: (e, _) => Center(child: Text('Error: $e')),
+        data: (cliente) {
+          if (cliente == null) {
+            return const EmptyState(
+              icon: Icons.person_off,
+              titulo: 'Cliente no encontrado',
+            );
+          }
+          return ListView(
+            padding: const EdgeInsets.only(bottom: 80),
+            children: [
+              _ClienteHeader(
+                nombre: cliente.nombre,
+                telefono: cliente.telefono,
+                tieneUbicacion: cliente.tieneUbicacion,
+                latitud: cliente.latitud,
+                longitud: cliente.longitud,
+              ),
+              _ClienteInfo(cliente: cliente),
+              const SizedBox(height: 8),
+              _CuotasSection(clienteId: clienteId, diasGracia: diasGracia),
+              const SizedBox(height: 8),
+              _PagosSection(clienteId: clienteId),
+            ],
           );
-        }
-        return ListView(
-          padding: const EdgeInsets.only(bottom: 80),
-          children: [
-            _ClienteHeader(
-              nombre: cliente.nombre,
-              telefono: cliente.telefono,
-              tieneUbicacion: cliente.tieneUbicacion,
-              latitud: cliente.latitud,
-              longitud: cliente.longitud,
-            ),
-            _ClienteInfo(cliente: cliente),
-            const SizedBox(height: 8),
-            _CuotasSection(clienteId: clienteId, diasGracia: diasGracia),
-            const SizedBox(height: 8),
-            _PagosSection(clienteId: clienteId),
-          ],
-        );
-      },
+        },
+      ),
     );
   }
 }

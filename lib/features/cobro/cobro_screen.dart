@@ -129,7 +129,10 @@ class _CobroScreenState extends ConsumerState<CobroScreen> {
     final settings = ref.watch(appSettingsProvider);
 
     if (_cuota == null) {
-      return const Center(child: CircularProgressIndicator());
+      return Scaffold(
+        appBar: AppBar(title: const Text('Cobrar')),
+        body: const Center(child: CircularProgressIndicator()),
+      );
     }
 
     final cuota = _cuota!;
@@ -141,9 +144,13 @@ class _CobroScreenState extends ConsumerState<CobroScreen> {
 
     final esCompleto = montoEnNio >= saldo - 0.01;
 
-    return Form(
-      key: _formKey,
-      child: ListView(
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(_clienteRow?['nombre'] ?? 'Cobrar'),
+      ),
+      body: Form(
+        key: _formKey,
+        child: ListView(
         padding: const EdgeInsets.fromLTRB(16, 16, 16, 120),
         children: [
           _ClienteCuotaCard(cliente: _clienteRow, cuota: cuota, totalACobrar: _totalACobrar),
@@ -266,6 +273,7 @@ class _CobroScreenState extends ConsumerState<CobroScreen> {
             label: Text(_enviando ? 'Procesando...' : 'Confirmar cobro'),
           ),
         ],
+        ),
       ),
     );
   }

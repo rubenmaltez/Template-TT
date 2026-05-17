@@ -3,36 +3,26 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../config/router.dart';
 import '../../data/providers/cobrador_provider.dart';
 import '../../data/providers/sync_status_provider.dart';
 
-/// Scaffold con drawer compartido por todas las pantallas internas.
+/// Scaffold con drawer compartido por todas las pantallas raíz (las
+/// pantallas detalle/cobro/recibo tienen su propio Scaffold).
 class AppShell extends ConsumerWidget {
   const AppShell({super.key, required this.child});
   final Widget child;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final titulo = ShellTitleScope.of(context) ?? 'Cobranza ISP';
     return Scaffold(
       drawer: const _AppDrawer(),
       appBar: AppBar(
-        title: const _AppBarTitle(),
+        title: Text(titulo),
         actions: const [_SyncIndicator(), SizedBox(width: 8)],
       ),
       body: child,
-    );
-  }
-}
-
-class _AppBarTitle extends ConsumerWidget {
-  const _AppBarTitle();
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final cobrador = ref.watch(cobradorActualProvider);
-    return cobrador.when(
-      data: (c) => Text(c?.nombre ?? 'Cobranza'),
-      loading: () => const Text('Cobranza'),
-      error: (_, __) => const Text('Cobranza'),
     );
   }
 }
