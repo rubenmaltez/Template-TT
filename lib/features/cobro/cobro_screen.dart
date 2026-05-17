@@ -3,12 +3,18 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import 'dart:io';
+
+import 'package:image_picker/image_picker.dart';
+
 import '../../data/models/cuota.dart';
 import '../../data/models/pago.dart';
 import '../../data/providers/cobrador_provider.dart';
+import '../../data/providers/foto_comprobante_provider.dart';
 import '../../data/repositories/cuotas_repo.dart';
 import '../../data/repositories/pagos_repo.dart';
 import '../../data/repositories/settings_repo.dart';
+import '../../data/services/foto_comprobante_service.dart';
 import '../../data/services/gps_service.dart';
 import '../../data/utils/formatters.dart';
 import '../../powersync/db.dart' as ps;
@@ -41,6 +47,8 @@ class _CobroScreenState extends ConsumerState<CobroScreen> {
   // Ubicación capturada en background al abrir la pantalla.
   ({double lat, double lng})? _ubicacion;
   bool _capturandoUbicacion = false;
+  // Path local de la foto del comprobante (prefijo 'local://').
+  String? _fotoPath;
 
   @override
   void initState() {
@@ -144,6 +152,7 @@ class _CobroScreenState extends ConsumerState<CobroScreen> {
             referencia: _referenciaCtrl.text.trim().isEmpty
                 ? null
                 : _referenciaCtrl.text.trim(),
+            fotoComprobantePath: _fotoPath,
             lat: _ubicacion?.lat,
             lng: _ubicacion?.lng,
             notas: _notasCtrl.text.trim().isEmpty
@@ -259,24 +268,18 @@ class _CobroScreenState extends ConsumerState<CobroScreen> {
                 labelText: 'Número de referencia / confirmación',
               ),
               validator: (v) {
-                if (_metodo.requiereComprobante && (v == null || v.trim().isEmpty)) {
-                  return 'Requerido para ${_metodo.label}';
+                final hayFoto = _fotoPath != null;
+                final hayRef = (v ?? '').trim().isNotEmpty;
+                if (_metodo.requiereComprobante && !hayRef && !hayFoto) {
+                  return 'Ingresá referencia o adjuntá foto';
                 }
                 return null;
               },
             ),
             const SizedBox(height: 12),
-            OutlinedButton.icon(
-              icon: const Icon(Icons.camera_alt),
-              onPressed: null,
-              label: const Text('Adjuntar foto del comprobante'),
-            ),
-            Padding(
-              padding: const EdgeInsets.only(top: 4, left: 8),
-              child: Text(
-                'Pendiente: captura de foto se habilita en próxima versión',
-                style: Theme.of(context).textTheme.bodySmall,
-              ),
+            _FotoComprobantePicker(
+              path: _fotoPath,
+              onPicked: (p) => setState(() => _fotoPath = p),
             ),
           ],
 
@@ -467,6 +470,134 @@ class _MonedaToggle extends StatelessWidget {
       onSelectionChanged: (s) => onChanged(s.first),
       style: const ButtonStyle(
         visualDensity: VisualDensity(horizontal: -2, vertical: -2),
+      ),
+    );
+  }
+}
+
+class _FotoComprobantePicker extends ConsumerStatefulWidget {
+  const _FotoComprobantePicker({required this.path, required this.onPicked});
+  final String? path;
+  final ValueChanged<String?> onPicked;
+
+  @override
+  ConsumerState<_FotoComprobantePicker> createState() =>
+      _FotoComprobantePickerState();
+}
+
+class _FotoComprobantePickerState
+    extends ConsumerState<_FotoComprobantePicker> {
+  File? _archivo;
+
+  @override
+  void didUpdateWidget(covariant _FotoComprobantePicker old) {
+    super.didUpdateWidget(old);
+    if (widget.path != old.path) _resolverArchivo();
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _resolverArchivo();
+  }
+
+  Future<void> _resolverArchivo() async {
+    if (widget.path == null) {
+      setState(() => _archivo = null);
+      return;
+    }
+    final f = await ref
+        .read(fotoComprobanteServiceProvider)
+        .archivoLocal(widget.path);
+    if (mounted) setState(() => _archivo = f);
+  }
+
+  Future<void> _elegir(ImageSource source) async {
+    try {
+      final p = await ref
+          .read(fotoComprobanteServiceProvider)
+          .capturar(source: source);
+      if (p != null) widget.onPicked(p);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('No se pudo capturar: $e')),
+        );
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_archivo != null) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          ClipRRect(
+            borderRadius: BorderRadius.circular(12),
+            child: Image.file(
+              _archivo!,
+              height: 180,
+              fit: BoxFit.cover,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton.icon(
+                  icon: const Icon(Icons.refresh),
+                  label: const Text('Cambiar'),
+                  onPressed: () => _mostrarFuente(),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: OutlinedButton.icon(
+                  icon: const Icon(Icons.delete_outline),
+                  label: const Text('Quitar'),
+                  onPressed: () => widget.onPicked(null),
+                ),
+              ),
+            ],
+          ),
+        ],
+      );
+    }
+
+    return OutlinedButton.icon(
+      icon: const Icon(Icons.camera_alt),
+      label: const Text('Adjuntar foto del comprobante'),
+      onPressed: _mostrarFuente,
+    );
+  }
+
+  void _mostrarFuente() {
+    showModalBottomSheet(
+      context: context,
+      showDragHandle: true,
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.camera_alt),
+              title: const Text('Tomar foto'),
+              onTap: () {
+                Navigator.pop(ctx);
+                _elegir(ImageSource.camera);
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.photo_library),
+              title: const Text('Elegir de galería'),
+              onTap: () {
+                Navigator.pop(ctx);
+                _elegir(ImageSource.gallery);
+              },
+            ),
+          ],
+        ),
       ),
     );
   }

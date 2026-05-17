@@ -4,6 +4,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'app.dart';
 import 'config/env.dart';
+import 'data/services/foto_comprobante_service.dart';
 import 'powersync/db.dart' as ps;
 
 Future<void> main() async {
@@ -38,7 +39,28 @@ Future<void> main() async {
     }
   });
 
+  // Background worker: sube fotos del comprobante pendientes cuando hay
+  // conexión. Reacciona a cambios en sync status; un flag evita corridas
+  // simultáneas si el estado fluctúa.
+  _arrancarFotosWorker();
+
   runApp(const ProviderScope(child: IspBillingApp()));
+}
+
+bool _fotosCorriendo = false;
+void _arrancarFotosWorker() {
+  ps.db.statusStream.listen((status) async {
+    if (!status.connected || _fotosCorriendo) return;
+    _fotosCorriendo = true;
+    try {
+      await FotoComprobanteService(Supabase.instance.client)
+          .sincronizarPendientes();
+    } catch (_) {
+      // Silencioso: se reintenta en el próximo evento de sync.
+    } finally {
+      _fotosCorriendo = false;
+    }
+  });
 }
 
 class _ConfigMissingApp extends StatelessWidget {
