@@ -1,9 +1,389 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+import '../../../data/utils/formatters.dart';
+import '../../../powersync/db.dart' as ps;
 import '../../shared/widgets/empty_state.dart';
 
-class CobradoresAdminScreen extends StatelessWidget {
+/// Gestión de cobradores: ver lista, asignar prefijo de recibo, cambiar
+/// rol, activar/desactivar.
+///
+/// Nota: la creación del usuario en auth.users requiere Supabase Admin
+/// API (service role key), que NO va en el cliente. Se invita desde
+/// Supabase Dashboard; cuando el cobrador se logea por primera vez
+/// (después de que el trigger de Supabase cree su fila en cobradores
+/// vía una Edge Function pendiente), aparece acá para configurar.
+class CobradoresAdminScreen extends ConsumerWidget {
   const CobradoresAdminScreen({super.key});
+
   @override
-  Widget build(BuildContext context) =>
-      const PendingScreen(titulo: 'Cobradores');
+  Widget build(BuildContext context, WidgetRef ref) {
+    return StreamBuilder(
+      stream: ps.db.watch(
+        '''
+        SELECT co.id, co.nombre, co.telefono, co.rol,
+               co.prefijo_recibo, co.activo,
+               COUNT(DISTINCT cl.id) AS clientes_asignados,
+               COALESCE(SUM(CASE WHEN p.anulado = 0
+                                  AND date(p.fecha_pago, 'start of month') = date('now', 'start of month')
+                                THEN p.monto_cordobas ELSE 0 END), 0) AS cobrado_mes
+          FROM cobradores co
+     LEFT JOIN clientes cl ON cl.cobrador_id = co.id AND cl.activo = 1
+     LEFT JOIN pagos p     ON p.cobrador_id = co.id
+         GROUP BY co.id, co.nombre, co.telefono, co.rol, co.prefijo_recibo, co.activo
+         ORDER BY co.activo DESC, co.rol, co.nombre
+        ''',
+      ),
+      builder: (context, snap) {
+        if (!snap.hasData) {
+          return const Center(child: CircularProgressIndicator());
+        }
+        final rows = snap.data!;
+        if (rows.isEmpty) {
+          return const EmptyState(
+            icon: Icons.engineering,
+            titulo: 'Sin cobradores',
+            descripcion:
+                'Invitá nuevos usuarios desde Supabase Dashboard. Aparecen acá '
+                'la primera vez que se loguean.',
+          );
+        }
+        return ListView(
+          padding: const EdgeInsets.all(16),
+          children: [
+            const _InfoCard(),
+            const SizedBox(height: 16),
+            ...rows.map((r) => _CobradorCard(row: r)),
+          ],
+        );
+      },
+    );
+  }
+}
+
+class _InfoCard extends StatelessWidget {
+  const _InfoCard();
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Card(
+      color: scheme.secondaryContainer.withValues(alpha: 0.3),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(Icons.info_outline, color: scheme.secondary),
+            const SizedBox(width: 12),
+            const Expanded(
+              child: Text(
+                'Para crear un nuevo cobrador, invitalo desde Supabase Dashboard → '
+                'Authentication. Aparecerá acá al loguearse por primera vez.',
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _CobradorCard extends ConsumerWidget {
+  const _CobradorCard({required this.row});
+  final Map<String, dynamic> row;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final scheme = Theme.of(context).colorScheme;
+    final activo = (row['activo'] as int? ?? 1) == 1;
+    final rol = row['rol'] as String;
+    final prefijo = row['prefijo_recibo'] as String?;
+    final clientes = row['clientes_asignados'] as int? ?? 0;
+    final cobradoMes = (row['cobrado_mes'] as num? ?? 0).toDouble();
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Card(
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              CircleAvatar(
+                backgroundColor: activo
+                    ? _colorRol(rol, scheme).withValues(alpha: 0.15)
+                    : scheme.surfaceContainerHighest,
+                foregroundColor: activo ? _colorRol(rol, scheme) : scheme.outline,
+                child: Text(_initials(row['nombre'] as String)),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Text(row['nombre'] as String,
+                            style: const TextStyle(fontWeight: FontWeight.w600)),
+                        const SizedBox(width: 8),
+                        _RolChip(rol: rol),
+                        if (!activo) ...[
+                          const SizedBox(width: 8),
+                          Chip(
+                            label: const Text('Inactivo'),
+                            backgroundColor: scheme.surfaceContainerHighest,
+                            visualDensity: VisualDensity.compact,
+                          ),
+                        ],
+                      ],
+                    ),
+                    if (row['telefono'] != null)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 4),
+                        child: Text(row['telefono'] as String,
+                            style: TextStyle(color: scheme.outline, fontSize: 12)),
+                      ),
+                    if (rol == 'cobrador') ...[
+                      const SizedBox(height: 8),
+                      Wrap(
+                        spacing: 16,
+                        runSpacing: 4,
+                        children: [
+                          _Stat(
+                            label: 'Prefijo',
+                            value: prefijo ?? '— sin asignar —',
+                            color: prefijo == null ? scheme.error : null,
+                          ),
+                          _Stat(label: 'Clientes', value: '$clientes'),
+                          _Stat(
+                            label: 'Cobrado este mes',
+                            value: Fmt.cordobas(cobradoMes),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              IconButton(
+                icon: const Icon(Icons.edit),
+                tooltip: 'Editar',
+                onPressed: () => _editar(context, ref, row),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _editar(BuildContext context, WidgetRef ref, Map<String, dynamic> row) async {
+    await showDialog<void>(
+      context: context,
+      builder: (_) => _EditarCobradorDialog(row: row),
+    );
+  }
+
+  String _initials(String s) {
+    final parts = s.trim().split(RegExp(r'\s+'));
+    if (parts.length == 1) return parts.first.substring(0, 1).toUpperCase();
+    return (parts.first.substring(0, 1) + parts.last.substring(0, 1)).toUpperCase();
+  }
+
+  Color _colorRol(String rol, ColorScheme s) => switch (rol) {
+        'admin' => s.primary,
+        'admin_cobranza' => s.tertiary,
+        _ => s.secondary,
+      };
+}
+
+class _RolChip extends StatelessWidget {
+  const _RolChip({required this.rol});
+  final String rol;
+  @override
+  Widget build(BuildContext context) {
+    return Chip(
+      label: Text(switch (rol) {
+        'admin' => 'Admin',
+        'admin_cobranza' => 'Cobranza',
+        'cobrador' => 'Cobrador',
+        _ => rol,
+      }),
+      visualDensity: VisualDensity.compact,
+      padding: EdgeInsets.zero,
+    );
+  }
+}
+
+class _Stat extends StatelessWidget {
+  const _Stat({required this.label, required this.value, this.color});
+  final String label;
+  final String value;
+  final Color? color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(label,
+            style: TextStyle(
+                color: Theme.of(context).colorScheme.outline, fontSize: 11)),
+        Text(value,
+            style: TextStyle(
+                fontWeight: FontWeight.w600,
+                fontSize: 13,
+                color: color)),
+      ],
+    );
+  }
+}
+
+class _EditarCobradorDialog extends ConsumerStatefulWidget {
+  const _EditarCobradorDialog({required this.row});
+  final Map<String, dynamic> row;
+
+  @override
+  ConsumerState<_EditarCobradorDialog> createState() => _EditarCobradorDialogState();
+}
+
+class _EditarCobradorDialogState extends ConsumerState<_EditarCobradorDialog> {
+  late TextEditingController _nombreCtrl;
+  late TextEditingController _telCtrl;
+  late TextEditingController _prefijoCtrl;
+  late String _rol;
+  late bool _activo;
+  String? _error;
+  bool _guardando = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _nombreCtrl = TextEditingController(text: widget.row['nombre'] as String);
+    _telCtrl = TextEditingController(text: widget.row['telefono'] as String? ?? '');
+    _prefijoCtrl =
+        TextEditingController(text: widget.row['prefijo_recibo'] as String? ?? '');
+    _rol = widget.row['rol'] as String;
+    _activo = (widget.row['activo'] as int? ?? 1) == 1;
+  }
+
+  @override
+  void dispose() {
+    _nombreCtrl.dispose();
+    _telCtrl.dispose();
+    _prefijoCtrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _guardar() async {
+    final prefijo = _prefijoCtrl.text.trim().toUpperCase();
+    if (prefijo.isNotEmpty && !RegExp(r'^[A-Z0-9-]{2,16}$').hasMatch(prefijo)) {
+      setState(() => _error =
+          'Prefijo: solo letras mayúsculas, números y guiones (2 a 16 chars)');
+      return;
+    }
+    setState(() {
+      _guardando = true;
+      _error = null;
+    });
+    try {
+      await ps.db.execute(
+        '''
+        UPDATE cobradores
+           SET nombre = ?, telefono = ?, rol = ?, prefijo_recibo = ?, activo = ?
+         WHERE id = ?
+        ''',
+        [
+          _nombreCtrl.text.trim(),
+          _telCtrl.text.trim().isEmpty ? null : _telCtrl.text.trim(),
+          _rol,
+          prefijo.isEmpty ? null : prefijo,
+          _activo ? 1 : 0,
+          widget.row['id'],
+        ],
+      );
+      if (mounted) Navigator.pop(context);
+    } catch (e) {
+      setState(() => _error = e.toString());
+    } finally {
+      if (mounted) setState(() => _guardando = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Editar cobrador'),
+      content: SingleChildScrollView(
+        child: SizedBox(
+          width: 400,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: _nombreCtrl,
+                decoration: const InputDecoration(labelText: 'Nombre'),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: _telCtrl,
+                decoration: const InputDecoration(labelText: 'Teléfono'),
+                keyboardType: TextInputType.phone,
+              ),
+              const SizedBox(height: 12),
+              DropdownButtonFormField<String>(
+                value: _rol,
+                decoration: const InputDecoration(labelText: 'Rol'),
+                items: const [
+                  DropdownMenuItem(value: 'admin', child: Text('Administrador')),
+                  DropdownMenuItem(value: 'admin_cobranza', child: Text('Admin de cobranza')),
+                  DropdownMenuItem(value: 'cobrador', child: Text('Cobrador')),
+                ],
+                onChanged: (v) => setState(() => _rol = v ?? _rol),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: _prefijoCtrl,
+                decoration: const InputDecoration(
+                  labelText: 'Prefijo de recibo',
+                  hintText: 'COB-01, PEDRO, ...',
+                  helperText: 'Solo para rol "cobrador". Único por empresa.',
+                ),
+                inputFormatters: [
+                  FilteringTextInputFormatter.allow(RegExp(r'[A-Za-z0-9-]')),
+                  LengthLimitingTextInputFormatter(16),
+                ],
+              ),
+              const SizedBox(height: 12),
+              SwitchListTile(
+                value: _activo,
+                onChanged: (v) => setState(() => _activo = v),
+                title: Text(_activo ? 'Activo' : 'Inactivo'),
+                contentPadding: EdgeInsets.zero,
+              ),
+              if (_error != null)
+                Padding(
+                  padding: const EdgeInsets.only(top: 8),
+                  child: Text(_error!,
+                      style: TextStyle(color: Theme.of(context).colorScheme.error)),
+                ),
+            ],
+          ),
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: _guardando ? null : () => Navigator.pop(context),
+          child: const Text('Cancelar'),
+        ),
+        FilledButton(
+          onPressed: _guardando ? null : _guardar,
+          child: Text(_guardando ? 'Guardando...' : 'Guardar'),
+        ),
+      ],
+    );
+  }
 }
