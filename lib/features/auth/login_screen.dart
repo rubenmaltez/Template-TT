@@ -1,7 +1,17 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-enum _Modo { login, signup, recuperar }
+/// Pantalla de login.
+///
+/// Modelo SaaS B2B con onboarding manual: NO permite signup público.
+/// El proveedor crea cada tenant + su admin desde Supabase Dashboard.
+/// El admin del tenant invita cobradores via la Edge Function
+/// `invitar-cobrador` desde el panel admin.
+///
+/// Sólo dos flujos visibles:
+///   - Iniciar sesión
+///   - Recuperar contraseña (olvidé mi contraseña)
+enum _Modo { login, recuperar }
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -13,8 +23,6 @@ class LoginScreen extends StatefulWidget {
 class _LoginScreenState extends State<LoginScreen> {
   final _email = TextEditingController();
   final _pass = TextEditingController();
-  final _nombre = TextEditingController();
-  final _empresaNombre = TextEditingController();
   _Modo _modo = _Modo.login;
   bool _busy = false;
   String? _error;
@@ -24,8 +32,6 @@ class _LoginScreenState extends State<LoginScreen> {
   void dispose() {
     _email.dispose();
     _pass.dispose();
-    _nombre.dispose();
-    _empresaNombre.dispose();
     super.dispose();
   }
 
@@ -43,25 +49,6 @@ class _LoginScreenState extends State<LoginScreen> {
             email: email,
             password: _pass.text,
           );
-          break;
-        case _Modo.signup:
-          if (_nombre.text.trim().isEmpty ||
-              _empresaNombre.text.trim().isEmpty) {
-            throw 'Nombre y empresa son requeridos';
-          }
-          // El trigger handle_new_user creará el tenant + cobrador admin
-          // usando este metadata.
-          await Supabase.instance.client.auth.signUp(
-            email: email,
-            password: _pass.text,
-            data: {
-              'rol': 'admin',
-              'nombre': _nombre.text.trim(),
-              'empresa_nombre': _empresaNombre.text.trim(),
-            },
-          );
-          setState(() => _info =
-              'Revisá tu email para confirmar la cuenta (si el proyecto exige confirmación).');
           break;
         case _Modo.recuperar:
           await Supabase.instance.client.auth.resetPasswordForEmail(email);
@@ -101,34 +88,11 @@ class _LoginScreenState extends State<LoginScreen> {
                 Text(
                   switch (_modo) {
                     _Modo.login => 'Iniciar sesión',
-                    _Modo.signup => 'Crear cuenta (primer admin)',
                     _Modo.recuperar => 'Recuperar contraseña',
                   },
                   style: TextStyle(color: scheme.outline),
                 ),
                 const SizedBox(height: 32),
-
-                if (_modo == _Modo.signup) ...[
-                  TextField(
-                    controller: _nombre,
-                    autofillHints: const [AutofillHints.name],
-                    decoration: const InputDecoration(
-                      labelText: 'Tu nombre *',
-                      border: OutlineInputBorder(),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  TextField(
-                    controller: _empresaNombre,
-                    decoration: const InputDecoration(
-                      labelText: 'Nombre de tu empresa *',
-                      border: OutlineInputBorder(),
-                      helperText: 'Crearemos tu tenant con este nombre',
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                ],
-
                 TextField(
                   controller: _email,
                   keyboardType: TextInputType.emailAddress,
@@ -138,7 +102,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     border: OutlineInputBorder(),
                   ),
                 ),
-                if (_modo != _Modo.recuperar) ...[
+                if (_modo == _Modo.login) ...[
                   const SizedBox(height: 12),
                   TextField(
                     controller: _pass,
@@ -150,7 +114,6 @@ class _LoginScreenState extends State<LoginScreen> {
                     ),
                   ),
                 ],
-
                 if (_error != null) ...[
                   const SizedBox(height: 16),
                   Text(
@@ -170,7 +133,6 @@ class _LoginScreenState extends State<LoginScreen> {
                     child: Text(_info!, textAlign: TextAlign.center),
                   ),
                 ],
-
                 const SizedBox(height: 24),
                 FilledButton(
                   onPressed: _busy ? null : _ejecutar,
@@ -182,13 +144,11 @@ class _LoginScreenState extends State<LoginScreen> {
                         )
                       : Text(switch (_modo) {
                           _Modo.login => 'Iniciar sesión',
-                          _Modo.signup => 'Crear cuenta',
                           _Modo.recuperar => 'Enviar link',
                         }),
                 ),
-
                 const SizedBox(height: 12),
-                if (_modo == _Modo.login) ...[
+                if (_modo == _Modo.login)
                   TextButton(
                     onPressed: () => setState(() {
                       _modo = _Modo.recuperar;
@@ -196,17 +156,8 @@ class _LoginScreenState extends State<LoginScreen> {
                       _info = null;
                     }),
                     child: const Text('Olvidé mi contraseña'),
-                  ),
-                  const Divider(),
-                  TextButton(
-                    onPressed: () => setState(() {
-                      _modo = _Modo.signup;
-                      _error = null;
-                      _info = null;
-                    }),
-                    child: const Text('Crear cuenta nueva'),
-                  ),
-                ] else
+                  )
+                else
                   TextButton(
                     onPressed: () => setState(() {
                       _modo = _Modo.login;

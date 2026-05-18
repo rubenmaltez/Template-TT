@@ -13,9 +13,10 @@
 bucket_definitions:
 
   # ── Catálogos geo globales (compartidos entre tenants) ─────────────────
+  # Bucket sin `parameters:` = global. Cualquier usuario autenticado lo baja.
+  # Las tablas geo no tienen tenant_id (son catálogos compartidos —
+  # Nicaragua es Nicaragua para todos los tenants).
   geografia:
-    parameters: |
-      SELECT request.user_id() AS user_id
     data:
       - SELECT * FROM departamentos
       - SELECT * FROM municipios
