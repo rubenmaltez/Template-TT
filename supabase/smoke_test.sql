@@ -205,6 +205,34 @@ begin
   end if;
   raise notice 'OK';
 
+  raise notice '--- Test 11: trigger handle_new_user existe ---';
+  select count(*) into v_count from information_schema.triggers
+   where trigger_name = 'on_auth_user_created'
+     and event_object_schema = 'auth';
+  if v_count = 0 then
+    raise exception 'Falta trigger on_auth_user_created (migración 0024)';
+  end if;
+  raise notice 'OK';
+
+  raise notice '--- Test 12: trigger cargos_neto en cuotas ---';
+  -- Verificar que la columna cargos_neto existe (migración 0023).
+  select count(*) into v_count from information_schema.columns
+   where table_schema = 'public' and table_name = 'cuotas'
+     and column_name = 'cargos_neto';
+  if v_count = 0 then
+    raise exception 'Falta columna cuotas.cargos_neto (migración 0023)';
+  end if;
+  raise notice 'OK';
+
+  raise notice '--- Test 13: trigger contratos_check_cliente_con_cobrador ---';
+  -- Verifica que el trigger E1 está creado (migración 0025).
+  select count(*) into v_count from information_schema.triggers
+   where trigger_name = 'trg_contratos_check_cliente_con_cobrador';
+  if v_count = 0 then
+    raise exception 'Falta trigger E1 (migración 0025)';
+  end if;
+  raise notice 'OK';
+
   raise notice '';
   raise notice '✅ smoke test OK — backend coherente. Todo listo para usar.';
 end $$;

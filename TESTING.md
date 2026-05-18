@@ -20,10 +20,10 @@ En **SQL Editor**, corré en orden los archivos de `supabase/migrations/`:
 ```
 0001_init.sql                          → 0010_settings_defaults.sql
 0011_fixes_settings_pk_misc.sql        → 0020_audit_log.sql
-0021_anulacion_cuotas.sql              → 0022_rls_hardening.sql
+0021_anulacion_cuotas.sql              → 0025_fix_b2_reasignacion_offline.sql
 ```
 
-22 archivos en total. Cada uno debe terminar sin errores.
+25 archivos en total. Cada uno debe terminar sin errores.
 
 ### 1.3 Correr el smoke test
 
@@ -93,21 +93,27 @@ flutter run -d chrome --dart-define-from-file=.env.json
 
 ## 3. Smoke test manual del flujo
 
-### 3.1 Crear usuarios en Supabase Auth
+### 3.1 Crear usuarios
 
-En **Authentication → Users** del dashboard Supabase, creá 3 usuarios:
+Desde la **app web** (recomendado):
 
-| Email | Password | Rol que tendrá |
-|---|---|---|
-| `admin@test.com` | `12345678` | admin |
-| `cobranza@test.com` | `12345678` | admin_cobranza |
-| `cobrador@test.com` | `12345678` | cobrador |
+1. Abrí la app web (admin), tocá "Crear cuenta nueva".
+2. Email, contraseña, tu nombre, nombre de tu empresa.
+3. Confirmá email si Supabase lo exige.
+4. Logueate → llegás al wizard de onboarding.
 
-Anotá los 3 UUIDs (visibles en la lista).
+El trigger `handle_new_user` (migración 0024) crea el tenant + tu fila
+como admin automáticamente.
 
-### 3.2 Correr el seed demo
+Para sumar más usuarios (admin_cobranza / cobrador), una vez logueado:
+- `/admin/cobradores` → botón "Invitar nuevo".
+- Ingresá email, nombre, rol y prefijo (si cobrador).
+- La Edge Function `invitar-cobrador` los envía por email.
 
-Abrí `supabase/seed_demo.sql`, pegá los 3 UUIDs en las variables de la cabecera
+### 3.2 Correr el seed demo (opcional, sólo si querés data de prueba)
+
+Si querés probar con clientes pre-cargados, abrí `supabase/seed_demo.sql`,
+pegá los 3 UUIDs de auth.users en las variables de la cabecera
 y ejecutalo. Crea:
 
 - 1 tenant
