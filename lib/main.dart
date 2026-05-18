@@ -42,7 +42,11 @@ Future<void> main() async {
         }
         break;
       case AuthChangeEvent.signedOut:
-        await ps.disconnectPowerSync();
+        // disconnectAndClear (no sólo disconnect) — borra el SQLite local
+        // así el próximo user que se loguee en este device no ve la fila
+        // de cobradores ni los datos operativos del anterior hasta que
+        // PowerSync sincronice la nueva data desde el server.
+        await ps.disconnectAndClearPowerSync();
         break;
       default:
         break;

@@ -35,3 +35,14 @@ Future<void> connectPowerSync() async {
 Future<void> disconnectPowerSync() async {
   await db.disconnect();
 }
+
+/// Desconecta y limpia toda la data local. Llamar al cerrar sesión para
+/// que el próximo usuario no vea la fila de cobradores ni los datos
+/// operativos del anterior cacheados en SQLite hasta que sincronice.
+///
+/// PowerSync drop también descarta los uploads pendientes — para un app
+/// multi-usuario en mismo dispositivo es el comportamiento correcto
+/// (los pending writes pertenecen al user que se acaba de desloguear).
+Future<void> disconnectAndClearPowerSync() async {
+  await db.disconnectAndClear();
+}
