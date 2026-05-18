@@ -13,6 +13,8 @@ class SuperShell extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // ignore: avoid_print
+    print('[SUPER_SHELL] build titulo=$titulo');
     final scheme = Theme.of(context).colorScheme;
     return Scaffold(
       appBar: AppBar(

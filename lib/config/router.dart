@@ -82,6 +82,7 @@ final routerProvider = Provider<GoRouter>((ref) {
   return GoRouter(
     initialLocation: '/',
     refreshListenable: refresh,
+    debugLogDiagnostics: true,
     redirect: (context, state) {
       final loggedIn = auth.currentSession != null;
       final goingToLogin = state.matchedLocation == '/login';
@@ -90,6 +91,8 @@ final routerProvider = Provider<GoRouter>((ref) {
 
       final rol = ref.read(_rolUsuarioProvider).valueOrNull;
       final loc = state.matchedLocation;
+      // ignore: avoid_print
+      print('[ROUTER] redirect loc=$loc rol=$rol uri=${state.uri}');
 
       // Si el rol es admin / admin_cobranza / super_admin, redirigir desde
       // la raíz del cobrador hacia el panel admin. Sólo en la raíz exacta —
@@ -134,6 +137,8 @@ final routerProvider = Provider<GoRouter>((ref) {
       // Panel /super/* sólo para super_admin. Cualquier otro rol que
       // intente entrar (por URL directa) se va al panel admin del tenant.
       if (loc.startsWith('/super') && rol != 'super_admin') {
+        // ignore: avoid_print
+        print('[ROUTER] BLOCK /super: rol=$rol → /admin');
         return '/admin';
       }
       return null;
