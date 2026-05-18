@@ -39,6 +39,8 @@ class ReciboScreen extends ConsumerWidget {
                  p.tasa_conversion, p.metodo, p.referencia, p.fecha_pago,
                  p.foto_comprobante_path,
                  cu.periodo, cu.monto AS cuota_monto,
+                 cu.monto_pagado AS monto_pagado_cuota,
+                 cu.cargos_neto,
                  ct.dia_pago,
                  c.nombre AS cliente_nombre, c.cedula AS cliente_cedula,
                  pl.nombre AS plan_nombre,
@@ -222,7 +224,15 @@ class _AccionesImpresionState extends ConsumerState<_AccionesImpresion> {
   bool _imprimiendo = false;
 
   Future<void> _imprimir() async {
-    final fav = ref.read(impresoraFavoritaProvider).valueOrNull;
+    final favState = ref.read(impresoraFavoritaProvider);
+    // Si todavía no se leyó SharedPreferences, esperar y reintentar.
+    if (!favState.hasValue) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Cargando preferencias…')),
+      );
+      return;
+    }
+    final fav = favState.value;
     if (fav == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(

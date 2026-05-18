@@ -3,6 +3,8 @@ import 'package:flutter/foundation.dart';
 import 'package:intl/intl.dart';
 import 'package:print_bluetooth_thermal/print_bluetooth_thermal.dart';
 
+import '../../utils/formatters.dart';
+
 /// Información de una impresora Bluetooth pareada.
 class ImpresoraBT {
   const ImpresoraBT({required this.nombre, required this.mac});
@@ -13,9 +15,13 @@ class ImpresoraBT {
 /// Servicio para imprimir recibos en impresoras térmicas Bluetooth (ESC/POS).
 /// Mobile only — web tiene un stub paralelo.
 class ImpresoraService {
+  /// Code page Latin-1 — cubre Ñ, acentos, € y caracteres usados en
+  /// nombres en español. Soportado por casi todas las térmicas baratas.
+  /// (CP437 default no tiene Ñ.)
+  static const _codeTable = 'CP1252';
+
   bool get soportado => true;
 
-  /// ¿El bluetooth del dispositivo está encendido?
   Future<bool> isBluetoothEnabled() async {
     try {
       return await PrintBluetoothThermal.bluetoothEnabled;
@@ -24,11 +30,11 @@ class ImpresoraService {
     }
   }
 
-  /// Lista impresoras BT pareadas (las que el usuario ya pareó desde el
-  /// sistema operativo). NO escanea — esa parte queda en el sistema.
+  /// Lista impresoras BT pareadas en el sistema operativo. NO escanea.
   Future<List<ImpresoraBT>> listarPareadas() async {
     final raw = await PrintBluetoothThermal.pairedBluetooths;
     return raw
+        // ignore: deprecated_member_use — typo del paquete (macAdress).
         .map((b) => ImpresoraBT(nombre: b.name, mac: b.macAdress))
         .toList();
   }
@@ -63,20 +69,22 @@ class ImpresoraService {
     final gen = Generator(_size(anchoMm), profile);
     final bytes = <int>[
       ...gen.text('--- PRUEBA DE IMPRESIÓN ---',
-          styles: const PosStyles(align: PosAlign.center, bold: true)),
+          styles: const PosStyles(
+              align: PosAlign.center, bold: true, codeTable: _codeTable)),
       ...gen.text(DateFormat('dd/MM/yyyy HH:mm:ss').format(DateTime.now()),
-          styles: const PosStyles(align: PosAlign.center)),
+          styles: const PosStyles(
+              align: PosAlign.center, codeTable: _codeTable)),
       ...gen.feed(1),
       ...gen.text('Si lees esto, la impresora está OK.',
-          styles: const PosStyles(align: PosAlign.center)),
+          styles: const PosStyles(
+              align: PosAlign.center, codeTable: _codeTable)),
       ...gen.feed(3),
       ...gen.cut(),
     ];
     return _enviarBytes(macImpresora, bytes);
   }
 
-  /// Conecta + envía + desconecta. Cubre la mayoría de los casos de
-  /// impresión esporádica (un cobro a la vez).
+  /// Conecta → escribe → desconecta. Maneja errores silenciosos.
   Future<bool> _enviarBytes(String mac, List<int> bytes) async {
     try {
       final ok = await PrintBluetoothThermal.connect(macPrinterAddress: mac);
@@ -93,9 +101,7 @@ class ImpresoraService {
     }
   }
 
-  /// 80mm → PaperSize.mm80 (48 chars); 57mm → PaperSize.mm58 (32 chars).
-  PaperSize _size(int mm) =>
-      mm >= 80 ? PaperSize.mm80 : PaperSize.mm58;
+  PaperSize _size(int mm) => mm >= 80 ? PaperSize.mm80 : PaperSize.mm58;
 
   // ──────────────────────────────────────────────────────────────────
   // Composición del recibo en bytes ESC/POS
@@ -112,79 +118,91 @@ class ImpresoraService {
     final gen = Generator(_size(anchoMm), profile);
     final bytes = <int>[];
 
+    // Reimpresión visible al INICIO (donde el cliente la ve primero).
+    if (esReimpresion) {
+      bytes.addAll(gen.text('*** REIMPRESIÓN ***',
+          styles: const PosStyles(
+              align: PosAlign.center, bold: true, codeTable: _codeTable)));
+      bytes.addAll(gen.feed(1));
+    }
+
     // Encabezado: empresa.
+    final hayEmpresa = (empresa['nombre'] ?? '').isNotEmpty ||
+        (empresa['direccion'] ?? '').isNotEmpty ||
+        (empresa['telefono'] ?? '').isNotEmpty ||
+        (empresa['ruc'] ?? '').isNotEmpty;
+
     if ((empresa['nombre'] ?? '').isNotEmpty) {
       bytes.addAll(gen.text(
         empresa['nombre']!.toUpperCase(),
         styles: const PosStyles(
-            align: PosAlign.center, bold: true, height: PosTextSize.size2),
+            align: PosAlign.center,
+            bold: true,
+            height: PosTextSize.size2,
+            codeTable: _codeTable),
       ));
     }
     if ((empresa['direccion'] ?? '').isNotEmpty) {
       bytes.addAll(gen.text(empresa['direccion']!,
-          styles: const PosStyles(align: PosAlign.center)));
+          styles: const PosStyles(
+              align: PosAlign.center, codeTable: _codeTable)));
     }
     if ((empresa['telefono'] ?? '').isNotEmpty) {
       bytes.addAll(gen.text('Tel: ${empresa['telefono']}',
-          styles: const PosStyles(align: PosAlign.center)));
+          styles: const PosStyles(
+              align: PosAlign.center, codeTable: _codeTable)));
     }
     if ((empresa['ruc'] ?? '').isNotEmpty) {
       bytes.addAll(gen.text('RUC: ${empresa['ruc']}',
-          styles: const PosStyles(align: PosAlign.center)));
+          styles: const PosStyles(
+              align: PosAlign.center, codeTable: _codeTable)));
     }
-    bytes.addAll(gen.hr());
+    if (hayEmpresa) bytes.addAll(gen.hr());
 
     // Info del recibo.
     final emision = DateTime.parse(recibo['fecha_pago'] as String);
-    bytes.addAll(_doblColumna(gen, 'Recibo Nº', recibo['numero_completo'] as String));
-    bytes.addAll(_doblColumna(gen, 'Fecha',
+    bytes.addAll(_doblColumna(gen, anchoMm, 'Recibo Nº',
+        recibo['numero_completo'] as String));
+    bytes.addAll(_doblColumna(gen, anchoMm, 'Fecha',
         DateFormat('dd/MM/yyyy').format(emision)));
-    bytes.addAll(_doblColumna(gen, 'Hora',
+    bytes.addAll(_doblColumna(gen, anchoMm, 'Hora',
         DateFormat('HH:mm').format(emision)));
     if (recibo['cobrador_nombre'] != null) {
-      bytes.addAll(_doblColumna(gen, 'Cobrador',
+      bytes.addAll(_doblColumna(gen, anchoMm, 'Cobrador',
           recibo['cobrador_nombre'] as String));
     }
     bytes.addAll(gen.hr());
 
     // Cliente.
-    bytes.addAll(_doblColumna(gen, 'Cliente',
+    bytes.addAll(_doblColumna(gen, anchoMm, 'Cliente',
         recibo['cliente_nombre'] as String));
     if (recibo['cliente_cedula'] != null) {
-      bytes.addAll(_doblColumna(gen, 'Cédula',
+      bytes.addAll(_doblColumna(gen, anchoMm, 'Cédula',
           recibo['cliente_cedula'] as String));
     }
     bytes.addAll(gen.hr());
 
-    // Servicio y período.
-    bytes.addAll(_doblColumna(gen, 'Servicio',
+    // Servicio y período (regla del 15 — fuente única en Fmt.periodoRecibo).
+    bytes.addAll(_doblColumna(gen, anchoMm, 'Servicio',
         recibo['plan_nombre'] as String));
-
     final periodoCuota = DateTime.parse(recibo['periodo'] as String);
     final diaPago = (recibo['dia_pago'] as num).toInt();
-    final mesObjetivo = diaPago >= 15
-        ? DateTime(periodoCuota.year, periodoCuota.month + 1, 1)
-        : periodoCuota;
-    final periodoLabel = DateFormat('MMMM y', 'es_NI').format(mesObjetivo);
-    bytes.addAll(_doblColumna(gen, 'Período',
+    final periodoLabel = Fmt.periodoRecibo(diaPago, periodoCuota);
+    bytes.addAll(_doblColumna(gen, anchoMm, 'Período',
         periodoLabel[0].toUpperCase() + periodoLabel.substring(1)));
 
-    bytes.addAll(_doblColumna(gen, 'Cuota base',
-        _cordobas(recibo['cuota_monto'] as num)));
+    final cuotaMonto = (recibo['cuota_monto'] as num).toDouble();
+    final pagado = (recibo['monto_cordobas'] as num).toDouble();
+    bytes.addAll(_doblColumna(gen, anchoMm, 'Cuota base',
+        Fmt.cordobas(cuotaMonto)));
     bytes.addAll(gen.hr());
 
     // Método de pago.
-    bytes.addAll(_doblColumna(gen, 'Método',
+    bytes.addAll(_doblColumna(gen, anchoMm, 'Método',
         (recibo['metodo'] as String).toUpperCase()));
     if (recibo['referencia'] != null) {
-      bytes.addAll(_doblColumna(gen, 'Ref.',
+      bytes.addAll(_doblColumna(gen, anchoMm, 'Ref.',
           recibo['referencia'] as String));
-    }
-    if ((recibo['moneda'] as String) == 'USD') {
-      final original = (recibo['monto_original'] as num).toStringAsFixed(2);
-      final tasa = (recibo['tasa_conversion'] as num).toStringAsFixed(2);
-      bytes.addAll(gen.text('Recibido: US\$$original  (tasa $tasa)',
-          styles: const PosStyles(align: PosAlign.left)));
     }
     bytes.addAll(gen.feed(1));
 
@@ -193,27 +211,60 @@ class ImpresoraService {
       PosColumn(
         text: 'PAGADO',
         width: 6,
-        styles: const PosStyles(bold: true, height: PosTextSize.size2),
+        styles: const PosStyles(
+            bold: true, height: PosTextSize.size2, codeTable: _codeTable),
       ),
       PosColumn(
-        text: _cordobas(recibo['monto_cordobas'] as num),
+        text: Fmt.cordobas(pagado),
         width: 6,
         styles: const PosStyles(
-            bold: true, align: PosAlign.right, height: PosTextSize.size2),
+            bold: true,
+            align: PosAlign.right,
+            height: PosTextSize.size2,
+            codeTable: _codeTable),
       ),
     ]));
+
+    // Si fue en USD, mostrar equivalencia DESPUÉS del PAGADO (córdobas es
+    // la moneda principal; lo otro es informativo).
+    if ((recibo['moneda'] as String) == 'USD') {
+      final original = (recibo['monto_original'] as num).toStringAsFixed(2);
+      final tasa = (recibo['tasa_conversion'] as num).toStringAsFixed(2);
+      bytes.addAll(gen.text(
+        'Equivalente a US\$$original  (tasa $tasa)',
+        styles: const PosStyles(align: PosAlign.center, codeTable: _codeTable),
+      ));
+    }
+
+    // Si fue parcial, marcar el saldo restante para evitar que el cliente
+    // crea que la cuota está al día.
+    final cargosNeto = (recibo['cargos_neto'] as num? ?? 0).toDouble();
+    final totalReal = (cuotaMonto + cargosNeto).clamp(0.0, double.infinity);
+    final montoPagadoAcum = (recibo['monto_pagado_cuota'] as num? ?? pagado).toDouble();
+    final saldo = totalReal - montoPagadoAcum;
+    if (saldo > 0.01) {
+      bytes.addAll(gen.feed(1));
+      bytes.addAll(gen.row([
+        PosColumn(
+          text: 'Saldo cuota',
+          width: 6,
+          styles: const PosStyles(bold: true, codeTable: _codeTable),
+        ),
+        PosColumn(
+          text: Fmt.cordobas(saldo),
+          width: 6,
+          styles: const PosStyles(
+              bold: true, align: PosAlign.right, codeTable: _codeTable),
+        ),
+      ]));
+    }
 
     // Pie libre.
     if (pieRecibo != null && pieRecibo.isNotEmpty) {
       bytes.addAll(gen.hr());
       bytes.addAll(gen.text(pieRecibo,
-          styles: const PosStyles(align: PosAlign.center)));
-    }
-
-    if (esReimpresion) {
-      bytes.addAll(gen.feed(1));
-      bytes.addAll(gen.text('*** REIMPRESIÓN ***',
-          styles: const PosStyles(align: PosAlign.center, bold: true)));
+          styles: const PosStyles(
+              align: PosAlign.center, codeTable: _codeTable)));
     }
 
     bytes.addAll(gen.feed(2));
@@ -221,23 +272,22 @@ class ImpresoraService {
     return bytes;
   }
 
-  /// Renglón de dos columnas: label izquierdo + valor a la derecha.
-  List<int> _doblColumna(Generator gen, String label, String valor) {
+  /// Renglón de dos columnas con proporción adaptada al ancho:
+  ///   - 80mm (48 chars): 4/8 (label corto, valor largo a la derecha).
+  ///   - 57mm (32 chars): 5/7 (más espacio al valor que suele ser nombre).
+  List<int> _doblColumna(Generator gen, int anchoMm, String label, String valor) {
+    final proporcion = anchoMm >= 80 ? (4, 8) : (5, 7);
     return gen.row([
       PosColumn(
         text: label,
-        width: 4,
-        styles: const PosStyles(align: PosAlign.left),
+        width: proporcion.$1,
+        styles: const PosStyles(align: PosAlign.left, codeTable: _codeTable),
       ),
       PosColumn(
         text: valor,
-        width: 8,
-        styles: const PosStyles(align: PosAlign.right),
+        width: proporcion.$2,
+        styles: const PosStyles(align: PosAlign.right, codeTable: _codeTable),
       ),
     ]);
   }
-
-  String _cordobas(num n) =>
-      NumberFormat.currency(locale: 'es_NI', symbol: 'C\$', decimalDigits: 2)
-          .format(n);
 }

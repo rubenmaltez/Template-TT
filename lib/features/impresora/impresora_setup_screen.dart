@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:permission_handler/permission_handler.dart';
 
 import '../../data/providers/impresora_provider.dart';
 import '../../data/repositories/settings_repo.dart';
@@ -22,8 +23,11 @@ class ImpresoraSetupScreen extends ConsumerStatefulWidget {
 class _ImpresoraSetupScreenState extends ConsumerState<ImpresoraSetupScreen> {
   bool _cargando = true;
   bool _btEnabled = false;
+  bool _permisosOk = false;
   List<ImpresoraBT> _pareadas = const [];
   String? _error;
+  // Lock para prevenir doble-tap en imprimir prueba.
+  final Set<String> _probandoMacs = {};
 
   @override
   void initState() {
@@ -31,19 +35,36 @@ class _ImpresoraSetupScreenState extends ConsumerState<ImpresoraSetupScreen> {
     _refrescar();
   }
 
+  /// Pide permisos de Bluetooth en Android 12+. En iOS los pide el SO al
+  /// primer uso. En web no aplica.
+  Future<bool> _pedirPermisos() async {
+    if (kIsWeb) return true;
+    try {
+      final connect = await Permission.bluetoothConnect.request();
+      final scan = await Permission.bluetoothScan.request();
+      // En Android 11- estos permisos no existen y devuelven granted.
+      return connect.isGranted && scan.isGranted;
+    } catch (_) {
+      return false;
+    }
+  }
+
   Future<void> _refrescar() async {
     setState(() {
       _cargando = true;
       _error = null;
+      _pareadas = const [];
     });
     try {
+      _permisosOk = await _pedirPermisos();
+      if (!_permisosOk) {
+        setState(() => _cargando = false);
+        return;
+      }
       final service = ref.read(impresoraServiceProvider);
       _btEnabled = await service.isBluetoothEnabled();
       if (!_btEnabled) {
-        setState(() {
-          _cargando = false;
-          _pareadas = const [];
-        });
+        setState(() => _cargando = false);
         return;
       }
       _pareadas = await service.listarPareadas();
@@ -66,9 +87,14 @@ class _ImpresoraSetupScreenState extends ConsumerState<ImpresoraSetupScreen> {
   }
 
   Future<void> _imprimirPrueba(ImpresoraBT bt) async {
+    // Guard contra doble-tap (otra impresión en curso a la misma MAC).
+    if (_probandoMacs.contains(bt.mac)) return;
+    setState(() {
+      _probandoMacs.add(bt.mac);
+      _error = null;
+    });
     final ancho = ref.read(appSettingsProvider).formatoReciboMm;
     final service = ref.read(impresoraServiceProvider);
-    setState(() => _error = null);
     try {
       final ok = await service.imprimirPrueba(
         macImpresora: bt.mac,
@@ -81,6 +107,8 @@ class _ImpresoraSetupScreenState extends ConsumerState<ImpresoraSetupScreen> {
       }
     } catch (e) {
       if (mounted) setState(() => _error = e.toString());
+    } finally {
+      if (mounted) setState(() => _probandoMacs.remove(bt.mac));
     }
   }
 
@@ -126,7 +154,37 @@ class _ImpresoraSetupScreenState extends ConsumerState<ImpresoraSetupScreen> {
                   error: (e, _) => Text('Error: $e'),
                 ),
                 const SizedBox(height: 16),
-                if (!_btEnabled)
+                if (!_permisosOk)
+                  Card(
+                    color: Theme.of(context).colorScheme.errorContainer,
+                    child: Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Row(
+                            children: [
+                              Icon(Icons.no_encryption),
+                              SizedBox(width: 12),
+                              Expanded(child: Text(
+                                  'Permisos de Bluetooth denegados')),
+                            ],
+                          ),
+                          const SizedBox(height: 8),
+                          const Text(
+                              'La app necesita BLUETOOTH_CONNECT y _SCAN para '
+                              'listar impresoras pareadas.'),
+                          const SizedBox(height: 12),
+                          OutlinedButton.icon(
+                            icon: const Icon(Icons.settings),
+                            label: const Text('Abrir ajustes'),
+                            onPressed: () => openAppSettings(),
+                          ),
+                        ],
+                      ),
+                    ),
+                  )
+                else if (!_btEnabled)
                   Card(
                     color: Theme.of(context).colorScheme.errorContainer,
                     child: const Padding(
