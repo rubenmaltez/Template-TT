@@ -313,22 +313,171 @@ class _MiembrosList extends ConsumerWidget {
           );
         }
         return Column(
-          children: miembros.map((c) => _MiembroCard(cobrador: c)).toList(),
+          children: miembros
+              .map((c) => _MiembroCard(cobrador: c, tenantId: tenantId))
+              .toList(),
         );
       },
     );
   }
 }
 
-class _MiembroCard extends StatelessWidget {
-  const _MiembroCard({required this.cobrador});
+/// Acciones disponibles en el menú "..." de cada miembro.
+/// Por ahora sólo activar/desactivar — el resto (reset password,
+/// cambiar rol, etc.) se agregan en pasos siguientes.
+enum _AccionMiembro { toggleActivo }
+
+class _MiembroCard extends ConsumerStatefulWidget {
+  const _MiembroCard({required this.cobrador, required this.tenantId});
 
   final CobradorAdmin cobrador;
+  final String tenantId;
+
+  @override
+  ConsumerState<_MiembroCard> createState() => _MiembroCardState();
+}
+
+class _MiembroCardState extends ConsumerState<_MiembroCard> {
+  bool _saving = false;
+
+  Future<void> _ejecutarAccion(_AccionMiembro accion) async {
+    switch (accion) {
+      case _AccionMiembro.toggleActivo:
+        await _toggleActivo();
+    }
+  }
+
+  Future<void> _toggleActivo() async {
+    final c = widget.cobrador;
+    final scheme = Theme.of(context).colorScheme;
+    // Estado al que estamos pasando, capturado antes del await para que el
+    // snackbar lea el valor correcto aún si el widget se reconstruye con
+    // datos frescos del provider.
+    final nuevoEstado = !c.activo;
+
+    if (c.activo) {
+      // Detectar si es el último admin activo del tenant para advertir
+      // — no bloqueamos (super_admin tiene el poder) pero avisamos.
+      final miembros =
+          ref.read(cobradoresTenantProvider(widget.tenantId)).valueOrNull ??
+              const [];
+      final adminsActivos = miembros
+          .where((m) => m.rol == 'admin' && m.activo && m.id != c.id)
+          .length;
+      final esUltimoAdmin = c.rol == 'admin' && adminsActivos == 0;
+
+      final confirmar = await showDialog<bool>(
+        context: context,
+        builder: (dialogCtx) {
+          final dialogScheme = Theme.of(dialogCtx).colorScheme;
+          return AlertDialog(
+            title: Text('¿Desactivar a ${c.nombre}?'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'El usuario no podrá iniciar sesión. Sus datos históricos '
+                  '(pagos, recibos, auditoría) se conservan y podés '
+                  'reactivarlo más tarde sin pérdida.',
+                ),
+                if (esUltimoAdmin) ...[
+                  const SizedBox(height: 16),
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: dialogScheme.errorContainer,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Icon(Icons.warning_amber,
+                            color: dialogScheme.onErrorContainer, size: 20),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            'Atención: es el único admin activo del tenant. '
+                            'Tras desactivarlo, nadie podrá administrar este '
+                            'ISP hasta que reactives a alguien o invites '
+                            'otro admin.',
+                            style: TextStyle(
+                                color: dialogScheme.onErrorContainer,
+                                fontSize: 13),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ],
+            ),
+            actions: [
+              TextButton(
+                autofocus: true,
+                onPressed: () => Navigator.of(dialogCtx).pop(false),
+                child: const Text('Cancelar'),
+              ),
+              FilledButton(
+                style: FilledButton.styleFrom(
+                  backgroundColor: dialogScheme.error,
+                  foregroundColor: dialogScheme.onError,
+                ),
+                onPressed: () => Navigator.of(dialogCtx).pop(true),
+                child: const Text('Desactivar'),
+              ),
+            ],
+          );
+        },
+      );
+      if (confirmar != true) return;
+    }
+
+    setState(() => _saving = true);
+    try {
+      await ref.read(superAdminRepoProvider).setCobradorActivo(
+            cobradorId: c.id,
+            activo: nuevoEstado,
+          );
+      ref.invalidate(cobradoresTenantProvider(widget.tenantId));
+      ref.invalidate(tenantsAdminProvider);
+      if (!mounted) return;
+      final accionPasada = nuevoEstado ? 'activado' : 'desactivado';
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text('${c.nombre} $accionPasada'),
+        duration: const Duration(seconds: 4),
+        action: SnackBarAction(
+          label: 'Deshacer',
+          onPressed: () async {
+            try {
+              await ref.read(superAdminRepoProvider).setCobradorActivo(
+                    cobradorId: c.id,
+                    activo: !nuevoEstado,
+                  );
+              ref.invalidate(cobradoresTenantProvider(widget.tenantId));
+              ref.invalidate(tenantsAdminProvider);
+            } catch (_) {
+              // Si falla el undo, el usuario lo verá en la lista al refrescar.
+            }
+          },
+        ),
+      ));
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text('Error: $e'),
+        backgroundColor: scheme.error,
+      ));
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
+    final c = widget.cobrador;
     final scheme = Theme.of(context).colorScheme;
-    final rolColor = _rolColor(scheme, cobrador.rol);
+    final rolColor = _rolColor(scheme, c.rol);
     return Card(
       margin: const EdgeInsets.only(bottom: 8),
       child: Padding(
@@ -337,12 +486,12 @@ class _MiembroCard extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             CircleAvatar(
-              backgroundColor: cobrador.activo
+              backgroundColor: c.activo
                   ? rolColor.withValues(alpha: 0.15)
                   : scheme.surfaceContainerHighest,
-              foregroundColor: cobrador.activo ? rolColor : scheme.outline,
+              foregroundColor: c.activo ? rolColor : scheme.outline,
               child: Text(
-                _initials(cobrador.nombre),
+                _initials(c.nombre),
                 style: const TextStyle(fontWeight: FontWeight.w700),
               ),
             ),
@@ -359,16 +508,16 @@ class _MiembroCard extends StatelessWidget {
                     crossAxisAlignment: WrapCrossAlignment.center,
                     children: [
                       Text(
-                        cobrador.nombre,
+                        c.nombre,
                         style: const TextStyle(
                             fontWeight: FontWeight.w600, fontSize: 15),
                       ),
-                      _RolChip(rol: cobrador.rol),
+                      _RolChip(rol: c.rol),
                     ],
                   ),
                   const SizedBox(height: 2),
                   Text(
-                    cobrador.email ?? '(sin email)',
+                    c.email ?? '(sin email)',
                     style: TextStyle(color: scheme.outline, fontSize: 13),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
@@ -379,9 +528,9 @@ class _MiembroCard extends StatelessWidget {
                     runSpacing: 4,
                     crossAxisAlignment: WrapCrossAlignment.center,
                     children: [
-                      _EstadoChip(cobrador: cobrador),
+                      _EstadoChip(cobrador: c),
                       Text(
-                        _ultimoLoginLabel(cobrador),
+                        _ultimoLoginLabel(c),
                         style: TextStyle(color: scheme.outline, fontSize: 12),
                       ),
                     ],
@@ -389,6 +538,38 @@ class _MiembroCard extends StatelessWidget {
                 ],
               ),
             ),
+            // Menú de acciones a la derecha. Mostramos spinner mientras una
+            // acción está corriendo para evitar dobles clicks.
+            if (_saving)
+              const Padding(
+                padding: EdgeInsets.symmetric(horizontal: 8),
+                child: SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+              )
+            else
+              PopupMenuButton<_AccionMiembro>(
+                tooltip: 'Acciones para ${c.nombre}',
+                onSelected: _ejecutarAccion,
+                itemBuilder: (_) => [
+                  PopupMenuItem(
+                    value: _AccionMiembro.toggleActivo,
+                    child: Row(
+                      children: [
+                        Icon(
+                          c.activo ? Icons.block : Icons.check_circle,
+                          color: c.activo ? scheme.error : scheme.primary,
+                          size: 20,
+                        ),
+                        const SizedBox(width: 12),
+                        Text(c.activo ? 'Desactivar' : 'Activar'),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
           ],
         ),
       ),

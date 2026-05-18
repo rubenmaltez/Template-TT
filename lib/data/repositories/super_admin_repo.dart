@@ -46,6 +46,16 @@ class SuperAdminRepo {
         .map((e) => CobradorAdmin.fromMap(Map<String, dynamic>.from(e as Map)))
         .toList();
   }
+
+  Future<void> setCobradorActivo({
+    required String cobradorId,
+    required bool activo,
+  }) async {
+    await _client.rpc('set_cobrador_activo', params: {
+      'p_cobrador_id': cobradorId,
+      'p_activo': activo,
+    });
+  }
 }
 
 final superAdminRepoProvider = Provider<SuperAdminRepo>(
