@@ -355,6 +355,15 @@ class _MiembroCardState extends ConsumerState<_MiembroCard> {
     // datos frescos del provider.
     final nuevoEstado = !c.activo;
 
+    // Capturamos container y messenger antes de cualquier await — el
+    // SnackBarAction sobrevive al rebuild del widget tras la invalidación
+    // de providers, y si usamos `ref` del state, el callback de Deshacer
+    // puede correr cuando el state ya no es válido y tira en silencio.
+    final container = ProviderScope.containerOf(context, listen: false);
+    final messenger = ScaffoldMessenger.of(context);
+    final tenantId = widget.tenantId;
+    final repo = container.read(superAdminRepoProvider);
+
     if (c.activo) {
       // Detectar si es el último admin activo del tenant para advertir
       // — no bloqueamos (super_admin tiene el poder) pero avisamos.
@@ -435,36 +444,48 @@ class _MiembroCardState extends ConsumerState<_MiembroCard> {
 
     setState(() => _saving = true);
     try {
-      await ref.read(superAdminRepoProvider).setCobradorActivo(
-            cobradorId: c.id,
-            activo: nuevoEstado,
-          );
-      ref.invalidate(cobradoresTenantProvider(widget.tenantId));
-      ref.invalidate(tenantsAdminProvider);
+      await repo.setCobradorActivo(
+        cobradorId: c.id,
+        activo: nuevoEstado,
+      );
+      container.invalidate(cobradoresTenantProvider(tenantId));
+      container.invalidate(tenantsAdminProvider);
       if (!mounted) return;
       final accionPasada = nuevoEstado ? 'activado' : 'desactivado';
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      messenger.showSnackBar(SnackBar(
         content: Text('${c.nombre} $accionPasada'),
         duration: const Duration(seconds: 4),
         action: SnackBarAction(
           label: 'Deshacer',
           onPressed: () async {
             try {
-              await ref.read(superAdminRepoProvider).setCobradorActivo(
-                    cobradorId: c.id,
-                    activo: !nuevoEstado,
-                  );
-              ref.invalidate(cobradoresTenantProvider(widget.tenantId));
-              ref.invalidate(tenantsAdminProvider);
-            } catch (_) {
-              // Si falla el undo, el usuario lo verá en la lista al refrescar.
+              await repo.setCobradorActivo(
+                cobradorId: c.id,
+                activo: !nuevoEstado,
+              );
+              container.invalidate(cobradoresTenantProvider(tenantId));
+              container.invalidate(tenantsAdminProvider);
+              messenger.showSnackBar(SnackBar(
+                content: Text(
+                  '${c.nombre} ${!nuevoEstado ? "activado" : "desactivado"} '
+                  '(deshacer)',
+                ),
+                duration: const Duration(seconds: 2),
+              ));
+            } catch (e) {
+              // Surfaceamos el error en otra snackbar para que el super_admin
+              // sepa que el deshacer falló (no lo silenciamos).
+              messenger.showSnackBar(SnackBar(
+                content: Text('No se pudo deshacer: $e'),
+                backgroundColor: scheme.error,
+              ));
             }
           },
         ),
       ));
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      messenger.showSnackBar(SnackBar(
         content: Text('Error: $e'),
         backgroundColor: scheme.error,
       ));
