@@ -2,9 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../data/models/cobrador_admin.dart';
 import '../../data/models/modulo.dart';
 import '../../data/models/tenant_admin.dart';
 import '../../data/repositories/super_admin_repo.dart';
+import '../../data/utils/formatters.dart';
+import '../shared/widgets/empty_state.dart';
 
 /// Detalle de un tenant: toggles de módulos. Cada switch llama
 /// set_tenant_modulo() vía RPC y refresca la lista global.
@@ -66,6 +69,16 @@ class TenantModulosScreen extends ConsumerWidget {
               tenant: tenant,
               modulo: m,
             )),
+        const SizedBox(height: 32),
+        Text('Miembros del tenant',
+            style: Theme.of(context).textTheme.titleLarge),
+        const SizedBox(height: 4),
+        Text(
+          'Usuarios con acceso a este tenant.',
+          style: TextStyle(color: Theme.of(context).colorScheme.outline),
+        ),
+        const SizedBox(height: 16),
+        _MiembrosList(tenantId: tenant.id),
       ],
     );
   }
@@ -126,7 +139,8 @@ class _Header extends StatelessWidget {
   }
 
   String _initials(String s) {
-    final parts = s.trim().split(RegExp(r'\s+'));
+    final parts = s.trim().split(RegExp(r'\s+')).where((p) => p.isNotEmpty);
+    if (parts.isEmpty) return '?';
     if (parts.length == 1) return parts.first.substring(0, 1).toUpperCase();
     return (parts.first.substring(0, 1) + parts.last.substring(0, 1))
         .toUpperCase();
@@ -248,17 +262,262 @@ class _ModuloTileState extends ConsumerState<_ModuloTile> {
   }
 }
 
+/// Lista de miembros (cobradores) de un tenant. Lee de la RPC
+/// `list_cobradores_tenant`.
+class _MiembrosList extends ConsumerWidget {
+  const _MiembrosList({required this.tenantId});
+
+  final String tenantId;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final async = ref.watch(cobradoresTenantProvider(tenantId));
+    return async.when(
+      loading: () => const Padding(
+        padding: EdgeInsets.symmetric(vertical: 24),
+        child: Center(child: CircularProgressIndicator()),
+      ),
+      error: (e, _) => Card(
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            children: [
+              Icon(Icons.error_outline,
+                  color: Theme.of(context).colorScheme.error),
+              const SizedBox(height: 8),
+              const Text('No se pudo cargar la lista de miembros',
+                  textAlign: TextAlign.center),
+              const SizedBox(height: 12),
+              FilledButton.tonalIcon(
+                icon: const Icon(Icons.refresh),
+                label: const Text('Reintentar'),
+                onPressed: () =>
+                    ref.invalidate(cobradoresTenantProvider(tenantId)),
+              ),
+            ],
+          ),
+        ),
+      ),
+      data: (miembros) {
+        if (miembros.isEmpty) {
+          return const Card(
+            child: Padding(
+              padding: EdgeInsets.symmetric(vertical: 16),
+              child: EmptyState(
+                icon: Icons.person_off,
+                titulo: 'Sin miembros',
+                descripcion:
+                    'Usá "Invitar admin a este tenant" para agregar el primero.',
+              ),
+            ),
+          );
+        }
+        return Column(
+          children: miembros.map((c) => _MiembroCard(cobrador: c)).toList(),
+        );
+      },
+    );
+  }
+}
+
+class _MiembroCard extends StatelessWidget {
+  const _MiembroCard({required this.cobrador});
+
+  final CobradorAdmin cobrador;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final rolColor = _rolColor(scheme, cobrador.rol);
+    return Card(
+      margin: const EdgeInsets.only(bottom: 8),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            CircleAvatar(
+              backgroundColor: cobrador.activo
+                  ? rolColor.withValues(alpha: 0.15)
+                  : scheme.surfaceContainerHighest,
+              foregroundColor: cobrador.activo ? rolColor : scheme.outline,
+              child: Text(
+                _initials(cobrador.nombre),
+                style: const TextStyle(fontWeight: FontWeight.w700),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Nombre + chip de rol en Wrap, no Row, para evitar
+                  // overflow en pantallas angostas.
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 4,
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    children: [
+                      Text(
+                        cobrador.nombre,
+                        style: const TextStyle(
+                            fontWeight: FontWeight.w600, fontSize: 15),
+                      ),
+                      _RolChip(rol: cobrador.rol),
+                    ],
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    cobrador.email ?? '(sin email)',
+                    style: TextStyle(color: scheme.outline, fontSize: 13),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 4,
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    children: [
+                      _EstadoChip(cobrador: cobrador),
+                      Text(
+                        _ultimoLoginLabel(cobrador),
+                        style: TextStyle(color: scheme.outline, fontSize: 12),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  static String _initials(String s) {
+    final parts = s.trim().split(RegExp(r'\s+')).where((p) => p.isNotEmpty);
+    if (parts.isEmpty) return '?';
+    if (parts.length == 1) return parts.first.substring(0, 1).toUpperCase();
+    return (parts.first.substring(0, 1) + parts.last.substring(0, 1))
+        .toUpperCase();
+  }
+
+  static Color _rolColor(ColorScheme s, String rol) => switch (rol) {
+        'super_admin' => s.tertiary,
+        'admin' => s.primary,
+        'admin_cobranza' => s.secondary,
+        _ => s.onSurfaceVariant,
+      };
+
+  static String _ultimoLoginLabel(CobradorAdmin c) {
+    if (c.lastSignInAt == null) return 'Nunca inició sesión';
+    // Guard contra clock skew (device atrás del server): nunca mostramos
+    // "hace -1 días". Si la diferencia es negativa o cero → "hoy".
+    final raw = DateTime.now().difference(c.lastSignInAt!).inDays;
+    final dias = raw < 0 ? 0 : raw;
+    if (dias == 0) return 'Última sesión: hoy';
+    if (dias == 1) return 'Última sesión: ayer';
+    if (dias < 30) return 'Última sesión: hace $dias días';
+    return 'Última sesión: ${Fmt.fechaLarga(c.lastSignInAt!)}';
+  }
+}
+
+class _RolChip extends StatelessWidget {
+  const _RolChip({required this.rol});
+  final String rol;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final (bg, fg) = switch (rol) {
+      'super_admin' => (scheme.tertiaryContainer, scheme.onTertiaryContainer),
+      'admin' => (scheme.primaryContainer, scheme.onPrimaryContainer),
+      'admin_cobranza' =>
+        (scheme.secondaryContainer, scheme.onSecondaryContainer),
+      _ => (scheme.surfaceContainerHighest, scheme.onSurfaceVariant),
+    };
+    final label = switch (rol) {
+      'super_admin' => 'Super Admin',
+      'admin' => 'Administrador',
+      'admin_cobranza' => 'Admin de cobranza',
+      'cobrador' => 'Cobrador',
+      _ => rol,
+    };
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+      decoration: BoxDecoration(
+        color: bg,
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Text(label,
+          style: TextStyle(
+              color: fg, fontSize: 11, fontWeight: FontWeight.w600)),
+    );
+  }
+}
+
+class _EstadoChip extends StatelessWidget {
+  const _EstadoChip({required this.cobrador});
+  final CobradorAdmin cobrador;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    // Cada estado tiene un ícono distinto (no se diferencia sólo por color,
+    // por accesibilidad WCAG 1.4.1).
+    final (label, icon, bg, fg) = !cobrador.activo
+        ? (
+            'Inactivo',
+            Icons.block,
+            scheme.surfaceContainerHighest,
+            scheme.onSurfaceVariant,
+          )
+        : cobrador.invitacionPendiente
+            ? (
+                'Invitación pendiente',
+                Icons.schedule_send,
+                scheme.surfaceContainerHighest,
+                scheme.onSurfaceVariant,
+              )
+            : (
+                'Activo',
+                Icons.check_circle,
+                scheme.primaryContainer,
+                scheme.onPrimaryContainer,
+              );
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+      decoration: BoxDecoration(
+        color: bg,
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 12, color: fg),
+          const SizedBox(width: 4),
+          Text(label,
+              style: TextStyle(
+                  color: fg, fontSize: 11, fontWeight: FontWeight.w600)),
+        ],
+      ),
+    );
+  }
+}
+
 /// Dialog para que el super_admin invite el primer/otro admin de un tenant.
 /// Llama a la Edge Function `invitar-cobrador` con tenant_id explícito.
-class _InvitarAdminDialog extends StatefulWidget {
+class _InvitarAdminDialog extends ConsumerStatefulWidget {
   const _InvitarAdminDialog({required this.tenant});
   final TenantAdmin tenant;
 
   @override
-  State<_InvitarAdminDialog> createState() => _InvitarAdminDialogState();
+  ConsumerState<_InvitarAdminDialog> createState() =>
+      _InvitarAdminDialogState();
 }
 
-class _InvitarAdminDialogState extends State<_InvitarAdminDialog> {
+class _InvitarAdminDialogState extends ConsumerState<_InvitarAdminDialog> {
   final _email = TextEditingController();
   final _nombre = TextEditingController();
   final _telefono = TextEditingController();
@@ -310,6 +569,10 @@ class _InvitarAdminDialogState extends State<_InvitarAdminDialog> {
         });
         return;
       }
+      // Refrescar lista de tenants (cobradores_count) y lista de miembros
+      // para que aparezca el nuevo invitado con estado "pendiente".
+      ref.invalidate(tenantsAdminProvider);
+      ref.invalidate(cobradoresTenantProvider(widget.tenant.id));
       if (!mounted) return;
       Navigator.of(context).pop();
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(

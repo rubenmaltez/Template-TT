@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../models/cobrador_admin.dart';
 import '../models/modulo.dart';
 import '../models/tenant_admin.dart';
 
@@ -36,6 +37,15 @@ class SuperAdminRepo {
       'p_habilitado': habilitado,
     });
   }
+
+  Future<List<CobradorAdmin>> listCobradoresTenant(String tenantId) async {
+    final res = await _client.rpc('list_cobradores_tenant', params: {
+      'p_tenant_id': tenantId,
+    }) as List<dynamic>;
+    return res
+        .map((e) => CobradorAdmin.fromMap(Map<String, dynamic>.from(e as Map)))
+        .toList();
+  }
 }
 
 final superAdminRepoProvider = Provider<SuperAdminRepo>(
@@ -51,3 +61,11 @@ final modulosProvider = FutureProvider<List<Modulo>>((ref) {
 final tenantsAdminProvider = FutureProvider<List<TenantAdmin>>((ref) {
   return ref.read(superAdminRepoProvider).listTenants();
 });
+
+/// Lista de miembros (cobradores) de un tenant específico. Family por
+/// tenant_id para que cada pantalla de detalle cachee independientemente.
+final cobradoresTenantProvider =
+    FutureProvider.family<List<CobradorAdmin>, String>(
+  (ref, tenantId) =>
+      ref.read(superAdminRepoProvider).listCobradoresTenant(tenantId),
+);
