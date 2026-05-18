@@ -190,15 +190,7 @@ class _AdminRail extends ConsumerWidget {
                     selected: selected,
                     selectedTileColor:
                         Theme.of(context).colorScheme.primaryContainer,
-                    onTap: () {
-                      // ignore: avoid_print
-                      print('[MENU] tap → ${item.path}');
-                      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                        content: Text('Navegando a ${item.path}'),
-                        duration: const Duration(seconds: 2),
-                      ));
-                      context.go(item.path);
-                    },
+                    onTap: () => context.go(item.path),
                   );
                 },
               ),

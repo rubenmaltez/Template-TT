@@ -13,14 +13,7 @@ class TenantsListScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    // ignore: avoid_print
-    print('[TENANTS_LIST] build');
     final tenantsAsync = ref.watch(tenantsAdminProvider);
-    // ignore: avoid_print
-    print('[TENANTS_LIST] async state: '
-        'loading=${tenantsAsync.isLoading} '
-        'error=${tenantsAsync.error} '
-        'count=${tenantsAsync.valueOrNull?.length}');
 
     return RefreshIndicator(
       onRefresh: () async => ref.invalidate(tenantsAdminProvider),

@@ -72,6 +72,18 @@ final routerProvider = Provider<GoRouter>((ref) {
   final refresh = _AuthRefresh(auth);
   ref.onDispose(refresh.dispose);
 
+  // El routerProvider se evalúa en el arranque, *antes* de que Supabase
+  // restaure la sesión persistida. En ese momento auth.currentUser es null,
+  // así que _rolUsuarioProvider hace `yield null; return;` y queda muerto
+  // en AsyncData(null) — el redirect siempre vería rol=null y bloquearía
+  // /super/*. Invalidamos los providers en cada cambio de auth para que
+  // Riverpod los recree con el user.id correcto.
+  final authSub = auth.onAuthStateChange.listen((_) {
+    ref.invalidate(_rolUsuarioProvider);
+    ref.invalidate(_empresaNombreProvider);
+  });
+  ref.onDispose(authSub.cancel);
+
   // Mantiene viva la suscripción al rol y dispara refresh del router cuando
   // cambia (típicamente al primer sync). Sin esto, redirect llamaría
   // valueOrNull antes de que el stream tenga data y nadie se enteraría.
