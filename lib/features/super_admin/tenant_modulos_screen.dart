@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -452,53 +454,78 @@ class _MiembroCardState extends ConsumerState<_MiembroCard> {
       container.invalidate(tenantsAdminProvider);
       if (!mounted) return;
       final accionPasada = nuevoEstado ? 'activado' : 'desactivado';
-      messenger.showSnackBar(SnackBar(
-        content: Text('${c.nombre} $accionPasada'),
-        duration: const Duration(seconds: 4),
-        // Floating: snackbar pequeña centrada en vez de barra full-width.
-        // En Flutter web la barra fija ocupa toda la fila inferior y el
-        // hover queda permanentemente activo, lo que pausa el auto-dismiss.
-        behavior: SnackBarBehavior.floating,
-        action: SnackBarAction(
-          label: 'Deshacer',
-          onPressed: () async {
-            try {
-              await repo.setCobradorActivo(
-                cobradorId: c.id,
-                activo: !nuevoEstado,
-              );
-              container.invalidate(cobradoresTenantProvider(tenantId));
-              container.invalidate(tenantsAdminProvider);
-              messenger.showSnackBar(SnackBar(
-                content: Text(
-                  '${c.nombre} ${!nuevoEstado ? "activado" : "desactivado"} '
-                  '(deshacer)',
-                ),
-                duration: const Duration(seconds: 2),
-                behavior: SnackBarBehavior.floating,
-              ));
-            } catch (e) {
-              // Surfaceamos el error en otra snackbar para que el super_admin
-              // sepa que el deshacer falló (no lo silenciamos).
-              messenger.showSnackBar(SnackBar(
-                content: Text('No se pudo deshacer: $e'),
-                backgroundColor: scheme.error,
-                behavior: SnackBarBehavior.floating,
-              ));
-            }
-          },
+      _mostrarSnackBar(
+        messenger,
+        SnackBar(
+          content: Text('${c.nombre} $accionPasada'),
+          duration: const Duration(seconds: 4),
+          behavior: SnackBarBehavior.floating,
+          action: SnackBarAction(
+            label: 'Deshacer',
+            onPressed: () async {
+              try {
+                await repo.setCobradorActivo(
+                  cobradorId: c.id,
+                  activo: !nuevoEstado,
+                );
+                container.invalidate(cobradoresTenantProvider(tenantId));
+                container.invalidate(tenantsAdminProvider);
+                _mostrarSnackBar(
+                  messenger,
+                  SnackBar(
+                    content: Text(
+                      '${c.nombre} '
+                      '${!nuevoEstado ? "activado" : "desactivado"} '
+                      '(deshacer)',
+                    ),
+                    duration: const Duration(seconds: 2),
+                    behavior: SnackBarBehavior.floating,
+                  ),
+                );
+              } catch (e) {
+                _mostrarSnackBar(
+                  messenger,
+                  SnackBar(
+                    content: Text('No se pudo deshacer: $e'),
+                    backgroundColor: scheme.error,
+                    behavior: SnackBarBehavior.floating,
+                  ),
+                );
+              }
+            },
+          ),
         ),
-      ));
+      );
     } catch (e) {
       if (!mounted) return;
-      messenger.showSnackBar(SnackBar(
-        content: Text('Error: $e'),
-        backgroundColor: scheme.error,
-        behavior: SnackBarBehavior.floating,
-      ));
+      _mostrarSnackBar(
+        messenger,
+        SnackBar(
+          content: Text('Error: $e'),
+          backgroundColor: scheme.error,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
     } finally {
       if (mounted) setState(() => _saving = false);
     }
+  }
+
+  /// Muestra una SnackBar y fuerza el cierre tras `duration` con un Timer
+  /// manual. Flutter web tiene un bug conocido donde el MouseRegion interno
+  /// del SnackBar mantiene el hover en true permanentemente cuando el
+  /// snackbar contiene un action, lo que pausa el auto-dismiss. Cerramos
+  /// nosotros por las dudas — si ya se cerró por otra vía, close() es no-op.
+  static void _mostrarSnackBar(
+    ScaffoldMessengerState messenger,
+    SnackBar bar,
+  ) {
+    final controller = messenger.showSnackBar(bar);
+    Timer(bar.duration, () {
+      try {
+        controller.close();
+      } catch (_) {/* controller ya cerrado */}
+    });
   }
 
   @override
