@@ -455,6 +455,10 @@ class _MiembroCardState extends ConsumerState<_MiembroCard> {
       messenger.showSnackBar(SnackBar(
         content: Text('${c.nombre} $accionPasada'),
         duration: const Duration(seconds: 4),
+        // Floating: snackbar pequeña centrada en vez de barra full-width.
+        // En Flutter web la barra fija ocupa toda la fila inferior y el
+        // hover queda permanentemente activo, lo que pausa el auto-dismiss.
+        behavior: SnackBarBehavior.floating,
         action: SnackBarAction(
           label: 'Deshacer',
           onPressed: () async {
@@ -471,6 +475,7 @@ class _MiembroCardState extends ConsumerState<_MiembroCard> {
                   '(deshacer)',
                 ),
                 duration: const Duration(seconds: 2),
+                behavior: SnackBarBehavior.floating,
               ));
             } catch (e) {
               // Surfaceamos el error en otra snackbar para que el super_admin
@@ -478,6 +483,7 @@ class _MiembroCardState extends ConsumerState<_MiembroCard> {
               messenger.showSnackBar(SnackBar(
                 content: Text('No se pudo deshacer: $e'),
                 backgroundColor: scheme.error,
+                behavior: SnackBarBehavior.floating,
               ));
             }
           },
@@ -488,6 +494,7 @@ class _MiembroCardState extends ConsumerState<_MiembroCard> {
       messenger.showSnackBar(SnackBar(
         content: Text('Error: $e'),
         backgroundColor: scheme.error,
+        behavior: SnackBarBehavior.floating,
       ));
     } finally {
       if (mounted) setState(() => _saving = false);
