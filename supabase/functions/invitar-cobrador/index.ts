@@ -94,35 +94,26 @@ serve(async (req) => {
       auth: { autoRefreshToken: false, persistSession: false },
     });
 
-    // 1. Invitar (manda email y crea auth.users row).
+    // Invitar (manda email y crea auth.users row). El trigger
+    // `handle_new_user` (migración 0024) crea automáticamente la fila en
+    // `cobradores` usando el metadata que pasamos acá.
     const { data: invite, error: invErr } = await admin.auth.admin
       .inviteUserByEmail(body.email, {
-        data: { nombre: body.nombre, rol: body.rol },
+        data: {
+          tenant_id: yo.tenant_id,
+          rol: body.rol,
+          nombre: body.nombre,
+          telefono: body.telefono ?? null,
+          prefijo_recibo: body.rol === "cobrador"
+            ? (body.prefijo_recibo ?? null)
+            : null,
+        },
       });
 
     if (invErr) {
-      // Si ya existe: opcional permitir actualizar, hoy rechazamos.
       return jsonError(`Auth: ${invErr.message}`, 400);
     }
     if (!invite.user) return jsonError("No se creó el usuario", 500);
-
-    // 2. Crear la fila en cobradores ligada al tenant del caller.
-    const { error: cobErr } = await admin.from("cobradores").insert({
-      id: invite.user.id,
-      tenant_id: yo.tenant_id,
-      nombre: body.nombre,
-      telefono: body.telefono ?? null,
-      rol: body.rol,
-      prefijo_recibo:
-        body.rol === "cobrador" ? (body.prefijo_recibo ?? null) : null,
-      activo: true,
-    });
-
-    if (cobErr) {
-      // Rollback: borrar el auth user para no dejar huérfano.
-      await admin.auth.admin.deleteUser(invite.user.id);
-      return jsonError(`No se pudo crear cobrador: ${cobErr.message}`, 500);
-    }
 
     return new Response(
       JSON.stringify({
