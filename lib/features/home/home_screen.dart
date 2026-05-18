@@ -14,6 +14,18 @@ class HomeScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final cobrador = ref.watch(cobradorActualProvider).valueOrNull;
     final settings = ref.watch(appSettingsProvider);
+
+    // Safety net contra el race del router en cold start: si la fila de
+    // cobradores aún no estaba sincronizada al evaluar redirect, el usuario
+    // admin/super_admin cae acá. Al llegar el rol vía sync rebuildeamos y
+    // lo mandamos al panel admin.
+    if (cobrador != null && cobrador.tieneAccesoAdmin ||
+        cobrador?.esAdminCobranza == true) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (context.mounted) context.go('/admin');
+      });
+    }
+
     final now = DateTime.now();
     final hoyStr = DateTime(now.year, now.month, now.day).toIso8601String().substring(0, 10);
 
