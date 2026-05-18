@@ -24,6 +24,8 @@ bucket_definitions:
 
   # ── Catálogo del tenant (planes + settings) ───────────────────────────
   # Todos los empleados del ISP los necesitan offline.
+  # Nota: `modulos` / `tenant_modulos` / `tenants` se consultan vía REST
+  # desde el panel Super Admin (Sprint A2), no se sincronizan localmente.
   catalogo_tenant:
     parameters: |
       SELECT tenant_id
@@ -113,3 +115,19 @@ bucket_definitions:
         WHERE tenant_id = bucket.tenant_id
 
       - SELECT * FROM audit_log         WHERE tenant_id = bucket.tenant_id
+
+  # ── Super admin: su propia fila para que la app reconozca el rol ──────
+  # El super_admin vive en el tenant 'System' (00000000-...). No tiene
+  # datos operativos propios — sólo necesita su fila de cobradores para
+  # que el cliente sepa que tiene rol 'super_admin' y muestre el menú
+  # admin. El acceso cross-tenant (gestión de tenants/módulos) se hará
+  # vía RPCs o vista server-side en Sprint A2, no por sync local.
+  super_admin_self:
+    parameters: |
+      SELECT id AS user_id
+      FROM cobradores
+      WHERE id = request.user_id() AND rol = 'super_admin'
+    data:
+      - SELECT id, tenant_id, nombre, telefono, rol, prefijo_recibo, activo
+        FROM cobradores
+        WHERE id = bucket.user_id
