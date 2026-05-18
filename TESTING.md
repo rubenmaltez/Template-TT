@@ -61,9 +61,23 @@ flutter pub get
 <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/>
 <uses-permission android:name="android.permission.CAMERA"/>
 <uses-permission android:name="android.permission.READ_MEDIA_IMAGES"/>
-<uses-permission android:name="android.permission.BLUETOOTH"/>
+
+<!-- Bluetooth para impresora térmica -->
+<uses-permission android:name="android.permission.BLUETOOTH"
+    android:maxSdkVersion="30"/>
+<uses-permission android:name="android.permission.BLUETOOTH_ADMIN"
+    android:maxSdkVersion="30"/>
 <uses-permission android:name="android.permission.BLUETOOTH_CONNECT"/>
-<uses-permission android:name="android.permission.BLUETOOTH_SCAN"/>
+<uses-permission android:name="android.permission.BLUETOOTH_SCAN"
+    android:usesPermissionFlags="neverForLocation"/>
+```
+
+**iOS** — agregar también en `Info.plist`:
+```xml
+<key>NSBluetoothAlwaysUsageDescription</key>
+<string>Conectar con impresora térmica para recibos.</string>
+<key>NSBluetoothPeripheralUsageDescription</key>
+<string>Conectar con impresora térmica para recibos.</string>
 ```
 
 **iOS** (`ios/Runner/Info.plist`):
@@ -169,6 +183,26 @@ Loguear como `cobrador@test.com` en la app móvil.
 - [ ] Sync indicator del AppBar muestra "uploading" → "synced"
 - [ ] Las fotos pendientes en `/perfil` se suben (badge desaparece)
 - [ ] En la web del admin, los cobros aparecen
+
+### 3.4.1 Test de impresión Bluetooth (mobile)
+
+**Pareo previo desde el sistema**:
+1. Encender la impresora térmica (típico botón POWER con LED).
+2. En Ajustes → Bluetooth del teléfono, parear la impresora (ej. POS-58, MTP-3, etc.).
+
+**En la app**:
+- [ ] `/perfil` muestra card "Impresora térmica" con "Sin configurar"
+- [ ] Tocar → `/perfil/impresora`
+- [ ] Si BT off: card rojo "Bluetooth desactivado, encendelo y refrescá"
+- [ ] BT on: lista de pareadas aparece
+- [ ] Menú "..." → "Imprimir prueba" → sale ticket "PRUEBA DE IMPRESIÓN" con fecha/hora
+- [ ] Menú "..." → "Usar como predeterminada" → snackbar de confirmación
+- [ ] Card superior cambia a "Impresora predeterminada: <nombre>"
+- [ ] `/perfil` card ahora muestra el nombre (no "Sin configurar")
+- [ ] En el flujo de cobro: tras confirmar, en `/recibo/:id` botón "Imprimir 80mm" funcional
+- [ ] Imprime con header (empresa), info recibo, cliente, servicio, total destacado, pie libre, corte
+- [ ] Reimpresión: tocar imprimir otra vez → ticket sale con "*** REIMPRESIÓN ***" al final
+- [ ] BD: `recibos.impreso_en` y `reimpresiones` se incrementan
 
 ### 3.5 Test de RLS (seguridad)
 
