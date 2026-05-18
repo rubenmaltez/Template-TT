@@ -1,7 +1,9 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_web_plugins/url_strategy.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'app.dart';
@@ -11,6 +13,12 @@ import 'powersync/db.dart' as ps;
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // Path URL strategy en web: URLs limpias (`/admin` en vez de `/#/admin`).
+  // Necesario para que Supabase pueda redirigir invitaciones/recuperaciones
+  // con `#access_token=...` sin que GoRouter intente parsear el fragmento
+  // como ruta y reviente.
+  if (kIsWeb) usePathUrlStrategy();
 
   if (!Env.isConfigured) {
     runApp(const _ConfigMissingApp());
