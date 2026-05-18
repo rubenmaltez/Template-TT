@@ -141,8 +141,8 @@ class _AdminRail extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final cobrador = ref.watch(cobradorActualProvider).valueOrNull;
-    final esAdmin = cobrador?.esAdmin ?? false;
-    final items = _adminMenu.where((m) => !m.adminOnly || esAdmin).toList();
+    final tieneAccesoAdmin = cobrador?.tieneAccesoAdmin ?? false;
+    final items = _adminMenu.where((m) => !m.adminOnly || tieneAccesoAdmin).toList();
     final selectedIndex = items
         .indexWhere((m) => currentPath == m.path || currentPath.startsWith('${m.path}/'));
 
@@ -192,8 +192,8 @@ class _AdminDrawer extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final cobrador = ref.watch(cobradorActualProvider).valueOrNull;
-    final esAdmin = cobrador?.esAdmin ?? false;
-    final items = _adminMenu.where((m) => !m.adminOnly || esAdmin).toList();
+    final tieneAccesoAdmin = cobrador?.tieneAccesoAdmin ?? false;
+    final items = _adminMenu.where((m) => !m.adminOnly || tieneAccesoAdmin).toList();
 
     return Drawer(
       child: SafeArea(

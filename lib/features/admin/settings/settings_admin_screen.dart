@@ -26,7 +26,8 @@ class SettingsAdminScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final settingsAsync = ref.watch(settingsMapProvider);
     final cobrador = ref.watch(cobradorActualProvider).valueOrNull;
-    final esAdmin = cobrador?.esAdmin ?? false;
+    // super_admin hereda permisos de admin.
+    final esAdmin = cobrador?.tieneAccesoAdmin ?? false;
 
     return settingsAsync.when(
       loading: () => const Center(child: CircularProgressIndicator()),

@@ -5,43 +5,43 @@
 --   2. Tenant 'System' (UUID 0000-...) para alojar a los super_admin.
 --   3. Tabla `modulos` (catálogo de módulos del sistema).
 --   4. Tabla `tenant_modulos` (qué módulos tiene habilitado cada tenant).
---   5. Trigger: al crear un tenant, auto-habilita los módulos base.
---   6. Funciones helper: is_super_admin(), tenant_tiene_modulo().
---   7. RLS: super_admin tiene acceso cross-tenant a TODAS las tablas.
---   8. handle_new_user actualizado: super_admin → tenant System.
+--   5. Funciones helper: is_super_admin(), tenant_tiene_modulo().
+--      Se definen DESPUÉS de las tablas que referencian (orden importante).
+--   6. Policies de modulos + tenant_modulos.
+--   7. Backfill módulos base en tenants existentes.
+--   8. Trigger: al crear un tenant, auto-habilita los módulos base.
+--   9. RLS 'super_admin_all' en todas las tablas operativas + storage.
+--   10. handle_new_user actualizado: super_admin → tenant System.
 
 -- =========================================================================
 -- 1. Rol super_admin
 -- =========================================================================
 
-alter table public.cobradores drop constraint cobradores_rol_check;
+alter table public.cobradores drop constraint if exists cobradores_rol_check;
 alter table public.cobradores add constraint cobradores_rol_check
   check (rol in ('super_admin', 'admin', 'admin_cobranza', 'cobrador'));
 
 -- =========================================================================
 -- 2. Tenant 'System' (UUID fijo, conocido)
 -- =========================================================================
--- Aloja a los super_admins (el proveedor del SaaS). Invisible para los
--- demás tenants. Sus settings nunca se usan en UI normal.
 
 insert into public.tenants (id, nombre)
   values ('00000000-0000-0000-0000-000000000000', 'System')
   on conflict (id) do nothing;
 
 -- =========================================================================
--- 3. Tabla `modulos` (catálogo del sistema)
+-- 3. Tabla `modulos`
 -- =========================================================================
 
-create table public.modulos (
-  codigo text primary key,            -- 'cobranza', 'inventario', etc.
+create table if not exists public.modulos (
+  codigo text primary key,
   nombre text not null,
   descripcion text,
-  es_base boolean not null default false,  -- true = se habilita automático en cada tenant nuevo
+  es_base boolean not null default false,
   orden int not null default 0,
   created_at timestamptz not null default now()
 );
 
--- Seed: módulos iniciales del sistema.
 insert into public.modulos (codigo, nombre, descripcion, es_base, orden) values
   ('cobranza',   'Cobranza',
    'Gestión de clientes, contratos, cuotas, cobros e impresión de recibos.',
@@ -53,20 +53,11 @@ on conflict (codigo) do nothing;
 
 alter table public.modulos enable row level security;
 
--- Lectura libre: la app necesita saber qué módulos existen para renderizar UI.
-create policy "modulos_read" on public.modulos
-  for select to authenticated using (true);
-
--- Sólo super_admin puede agregar/modificar módulos.
-create policy "modulos_super_admin_write" on public.modulos
-  for all using (public.is_super_admin())
-  with check (public.is_super_admin());
-
 -- =========================================================================
 -- 4. Tabla `tenant_modulos`
 -- =========================================================================
 
-create table public.tenant_modulos (
+create table if not exists public.tenant_modulos (
   tenant_id uuid not null references public.tenants(id) on delete cascade,
   modulo_codigo text not null references public.modulos(codigo) on delete restrict,
   habilitado boolean not null default true,
@@ -77,48 +68,8 @@ create table public.tenant_modulos (
 
 alter table public.tenant_modulos enable row level security;
 
--- El tenant lee sus propios módulos. Super_admin lee/escribe todos.
-create policy "tenant_modulos_read" on public.tenant_modulos
-  for select using (
-    tenant_id = public.current_tenant_id() or public.is_super_admin()
-  );
-
-create policy "tenant_modulos_super_admin_write" on public.tenant_modulos
-  for all using (public.is_super_admin())
-  with check (public.is_super_admin());
-
--- Backfill: cada tenant existente recibe los módulos base habilitados.
-insert into public.tenant_modulos (tenant_id, modulo_codigo)
-  select t.id, m.codigo
-  from public.tenants t
-  cross join public.modulos m
-  where m.es_base = true
-on conflict do nothing;
-
 -- =========================================================================
--- 5. Trigger: nuevo tenant → auto-habilita módulos base
--- =========================================================================
-
-create or replace function public.tenants_habilitar_modulos_base_trg()
-returns trigger
-language plpgsql
-security definer
-set search_path = public, pg_temp
-as $$
-begin
-  insert into public.tenant_modulos (tenant_id, modulo_codigo)
-    select new.id, codigo from public.modulos where es_base = true
-  on conflict do nothing;
-  return new;
-end;
-$$;
-
-create trigger trg_tenants_habilitar_modulos_base
-  after insert on public.tenants
-  for each row execute function public.tenants_habilitar_modulos_base_trg();
-
--- =========================================================================
--- 6. Funciones helper
+-- 5. Funciones helper (DESPUÉS de las tablas que usan)
 -- =========================================================================
 
 create or replace function public.is_super_admin() returns boolean
@@ -144,76 +95,96 @@ as $$
 $$;
 
 -- =========================================================================
--- 7. RLS: super_admin tiene acceso cross-tenant en TODAS las tablas
+-- 6. Policies (ahora is_super_admin existe)
 -- =========================================================================
--- Agregamos policies "super_admin_all" en cada tabla operativa.
--- USING = is_super_admin() permite leer/escribir CUALQUIER fila, cross-tenant.
 
-create policy "super_admin_all" on public.tenants
+drop policy if exists "modulos_read" on public.modulos;
+create policy "modulos_read" on public.modulos
+  for select to authenticated using (true);
+
+drop policy if exists "modulos_super_admin_write" on public.modulos;
+create policy "modulos_super_admin_write" on public.modulos
   for all using (public.is_super_admin())
   with check (public.is_super_admin());
 
-create policy "super_admin_all" on public.cobradores
+drop policy if exists "tenant_modulos_read" on public.tenant_modulos;
+create policy "tenant_modulos_read" on public.tenant_modulos
+  for select using (
+    tenant_id = public.current_tenant_id() or public.is_super_admin()
+  );
+
+drop policy if exists "tenant_modulos_super_admin_write" on public.tenant_modulos;
+create policy "tenant_modulos_super_admin_write" on public.tenant_modulos
   for all using (public.is_super_admin())
   with check (public.is_super_admin());
 
-create policy "super_admin_all" on public.planes
-  for all using (public.is_super_admin())
-  with check (public.is_super_admin());
+-- =========================================================================
+-- 7. Backfill módulos base en tenants existentes
+-- =========================================================================
 
-create policy "super_admin_all" on public.clientes
-  for all using (public.is_super_admin())
-  with check (public.is_super_admin());
+insert into public.tenant_modulos (tenant_id, modulo_codigo)
+  select t.id, m.codigo
+  from public.tenants t cross join public.modulos m
+  where m.es_base = true
+on conflict do nothing;
 
-create policy "super_admin_all" on public.contratos
-  for all using (public.is_super_admin())
-  with check (public.is_super_admin());
+-- =========================================================================
+-- 8. Trigger: nuevo tenant → auto-habilita módulos base
+-- =========================================================================
 
-create policy "super_admin_all" on public.cuotas
-  for all using (public.is_super_admin())
-  with check (public.is_super_admin());
+create or replace function public.tenants_habilitar_modulos_base_trg()
+returns trigger language plpgsql security definer
+set search_path = public, pg_temp
+as $$
+begin
+  insert into public.tenant_modulos (tenant_id, modulo_codigo)
+    select new.id, codigo from public.modulos where es_base = true
+  on conflict do nothing;
+  return new;
+end;
+$$;
 
-create policy "super_admin_all" on public.pagos
-  for all using (public.is_super_admin())
-  with check (public.is_super_admin());
+drop trigger if exists trg_tenants_habilitar_modulos_base on public.tenants;
+create trigger trg_tenants_habilitar_modulos_base
+  after insert on public.tenants
+  for each row execute function public.tenants_habilitar_modulos_base_trg();
 
-create policy "super_admin_all" on public.recibos
-  for all using (public.is_super_admin())
-  with check (public.is_super_admin());
+-- =========================================================================
+-- 9. RLS: super_admin tiene acceso cross-tenant
+-- =========================================================================
 
-create policy "super_admin_all" on public.cargos_extra
-  for all using (public.is_super_admin())
-  with check (public.is_super_admin());
+do $$
+declare
+  v_table text;
+  v_tables text[] := array[
+    'tenants','cobradores','planes','clientes','contratos','cuotas',
+    'pagos','recibos','cargos_extra','notificaciones_mora','settings','audit_log'
+  ];
+begin
+  foreach v_table in array v_tables loop
+    execute format('drop policy if exists "super_admin_all" on public.%I', v_table);
+    execute format(
+      'create policy "super_admin_all" on public.%I for all using (public.is_super_admin()) with check (public.is_super_admin())',
+      v_table
+    );
+  end loop;
+end $$;
 
-create policy "super_admin_all" on public.notificaciones_mora
-  for all using (public.is_super_admin())
-  with check (public.is_super_admin());
-
-create policy "super_admin_all" on public.settings
-  for all using (public.is_super_admin())
-  with check (public.is_super_admin());
-
-create policy "super_admin_all" on public.audit_log
-  for all using (public.is_super_admin())
-  with check (public.is_super_admin());
-
--- Storage: super_admin tiene acceso a cualquier bucket/path.
+drop policy if exists "storage_super_admin" on storage.objects;
 create policy "storage_super_admin" on storage.objects
   for all to authenticated
   using (public.is_super_admin())
   with check (public.is_super_admin());
 
 -- =========================================================================
--- 8. handle_new_user actualizado para soportar super_admin
+-- 10. handle_new_user actualizado para soportar super_admin
 -- =========================================================================
--- - Si rol = 'super_admin' → usa tenant System (no crea uno nuevo).
--- - Si sin tenant_id y rol != super_admin → crea tenant nuevo (admin del ISP cliente).
--- - Si con tenant_id → caso invitación (cobrador / admin_cobranza / admin).
+-- - rol='super_admin' → tenant System (00000000-...).
+-- - sin tenant_id y rol != super_admin → crea tenant nuevo (admin del ISP).
+-- - con tenant_id → invitación (cobrador / admin_cobranza / admin).
 
 create or replace function public.handle_new_user()
-returns trigger
-language plpgsql
-security definer
+returns trigger language plpgsql security definer
 set search_path = public, pg_temp
 as $$
 declare
@@ -239,17 +210,13 @@ begin
   end if;
 
   if v_rol = 'super_admin' then
-    -- Super admin del proveedor SaaS → tenant System.
     v_tenant_id := '00000000-0000-0000-0000-000000000000';
   elsif v_tenant_id is null then
-    -- Primer admin de un tenant nuevo (creado manualmente desde Supabase
-    -- Dashboard sin metadata.tenant_id). Crea el tenant.
     insert into public.tenants (nombre)
       values (coalesce(v_empresa_nombre, 'Mi ISP'))
       returning id into v_tenant_id;
     v_rol := 'admin';
   end if;
-  -- Caso restante: hay tenant_id en metadata → invitación. Se usa tal cual.
 
   insert into public.cobradores (
     id, tenant_id, nombre, telefono, rol, prefijo_recibo, activo

@@ -1,4 +1,4 @@
-/// Representa al usuario logueado (admin / admin_cobranza / cobrador).
+/// Representa al usuario logueado (super_admin / admin / admin_cobranza / cobrador).
 /// Se sincroniza desde la tabla `cobradores`.
 class Cobrador {
   const Cobrador({
@@ -19,9 +19,15 @@ class Cobrador {
   final String? prefijoRecibo;
   final bool activo;
 
+  bool get esSuperAdmin => rol == 'super_admin';
   bool get esAdmin => rol == 'admin';
   bool get esAdminCobranza => rol == 'admin_cobranza';
   bool get esCobrador => rol == 'cobrador';
+
+  /// True para roles con acceso a opciones restringidas del panel admin
+  /// (cobradores, settings, geografía, planes, auditoría).
+  /// super_admin hereda todos los permisos de admin.
+  bool get tieneAccesoAdmin => esAdmin || esSuperAdmin;
 
   factory Cobrador.fromRow(Map<String, dynamic> row) => Cobrador(
         id: row['id'] as String,
