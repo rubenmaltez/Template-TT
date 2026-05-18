@@ -45,6 +45,8 @@ dependencies:
   # Impresión Bluetooth térmica (57mm / 80mm) — soporta ESC/POS.
   # Sustituye esc_pos_bluetooth (conflicto rxdart con supabase_flutter).
   print_bluetooth_thermal: ^1.1.0
+  # Genera comandos ESC/POS (puro Dart, sin platform deps).
+  esc_pos_utils_plus: ^2.0.4
 
   # Acciones del sistema (tel:, geo:, https:)
   url_launcher: ^6.3.0

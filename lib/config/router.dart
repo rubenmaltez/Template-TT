@@ -27,6 +27,7 @@ import '../features/cobro/cobro_screen.dart';
 import '../features/cuotas/cuotas_list_screen.dart';
 import '../features/historial/historial_screen.dart';
 import '../features/home/home_screen.dart';
+import '../features/impresora/impresora_setup_screen.dart';
 import '../features/mapa/mapa_screen.dart';
 import '../features/recibo/recibo_screen.dart';
 import '../features/settings/perfil_screen.dart';
@@ -201,6 +202,10 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/recibo/:reciboId',
         builder: (_, s) => ReciboScreen(reciboId: s.pathParameters['reciboId']!),
+      ),
+      GoRoute(
+        path: '/perfil/impresora',
+        builder: (_, __) => const ImpresoraSetupScreen(),
       ),
     ],
   );

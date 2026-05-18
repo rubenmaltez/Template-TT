@@ -1,8 +1,10 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../data/models/pago.dart';
+import '../../data/providers/impresora_provider.dart';
 import '../../data/repositories/settings_repo.dart';
 import '../../data/utils/formatters.dart';
 import '../../powersync/db.dart' as ps;
@@ -76,7 +78,11 @@ class ReciboScreen extends ConsumerWidget {
                     path: r['foto_comprobante_path'] as String?),
               ],
               const SizedBox(height: 24),
-              _AccionesImpresion(reciboId: reciboId, settings: settings),
+              _AccionesImpresion(
+                reciboId: reciboId,
+                recibo: r,
+                settings: settings,
+              ),
             ],
           );
         },
@@ -198,26 +204,131 @@ class _ReciboTicket extends StatelessWidget {
   }
 }
 
-class _AccionesImpresion extends StatelessWidget {
-  const _AccionesImpresion({required this.reciboId, required this.settings});
+class _AccionesImpresion extends ConsumerStatefulWidget {
+  const _AccionesImpresion({
+    required this.reciboId,
+    required this.recibo,
+    required this.settings,
+  });
   final String reciboId;
+  final Map<String, dynamic> recibo;
   final AppSettings settings;
 
   @override
+  ConsumerState<_AccionesImpresion> createState() => _AccionesImpresionState();
+}
+
+class _AccionesImpresionState extends ConsumerState<_AccionesImpresion> {
+  bool _imprimiendo = false;
+
+  Future<void> _imprimir() async {
+    final fav = ref.read(impresoraFavoritaProvider).valueOrNull;
+    if (fav == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text('No tenés impresora configurada'),
+          action: SnackBarAction(
+            label: 'Configurar',
+            onPressed: () => context.push('/perfil/impresora'),
+          ),
+        ),
+      );
+      return;
+    }
+
+    setState(() => _imprimiendo = true);
+    try {
+      final service = ref.read(impresoraServiceProvider);
+      final esReimpresion = widget.recibo['impreso_en'] != null;
+      final ok = await service.imprimir(
+        macImpresora: fav.mac,
+        recibo: widget.recibo,
+        empresa: {
+          'nombre': widget.settings.empresaNombre,
+          'direccion': widget.settings.empresaDireccion,
+          'telefono': widget.settings.empresaTelefono,
+          'ruc': widget.settings.empresaRuc,
+        },
+        anchoMm: widget.settings.formatoReciboMm,
+        pieRecibo: widget.settings.pieRecibo,
+        esReimpresion: esReimpresion,
+      );
+
+      if (!mounted) return;
+      if (ok) {
+        // Actualizar BD local: impreso_en + reimpresiones + formato.
+        await ps.db.execute(
+          '''
+          UPDATE recibos
+             SET impreso_en = ?,
+                 reimpresiones = reimpresiones + ?,
+                 ultimo_formato_mm = ?
+           WHERE id = ?
+          ''',
+          [
+            DateTime.now().toIso8601String(),
+            esReimpresion ? 1 : 0,
+            widget.settings.formatoReciboMm,
+            widget.reciboId,
+          ],
+        );
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Recibo enviado a impresora')),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('No se pudo conectar a la impresora')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error: $e')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _imprimiendo = false);
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final fav = ref.watch(impresoraFavoritaProvider).valueOrNull;
+    final puedeImprimir = !kIsWeb;
     return Column(
       children: [
-        FilledButton.icon(
-          icon: const Icon(Icons.print),
-          label: Text('Imprimir ${settings.formatoReciboMm}mm (próximamente)'),
-          // Disabled hasta que se implemente la conexión Bluetooth ESC/POS.
-          onPressed: null,
-        ),
+        if (kIsWeb)
+          FilledButton.icon(
+            icon: const Icon(Icons.print_disabled),
+            label: const Text('Imprimir (sólo disponible en mobile)'),
+            onPressed: null,
+          )
+        else
+          FilledButton.icon(
+            icon: _imprimiendo
+                ? const SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2))
+                : const Icon(Icons.print),
+            label: Text(_imprimiendo
+                ? 'Enviando...'
+                : 'Imprimir ${widget.settings.formatoReciboMm}mm'),
+            onPressed: _imprimiendo || !puedeImprimir ? null : _imprimir,
+          ),
+        const SizedBox(height: 8),
+        if (!kIsWeb)
+          OutlinedButton.icon(
+            icon: const Icon(Icons.bluetooth_searching),
+            label: Text(fav == null
+                ? 'Configurar impresora'
+                : 'Cambiar impresora (${fav.nombre})'),
+            onPressed: () => context.push('/perfil/impresora'),
+          ),
         const SizedBox(height: 16),
         Text(
-          'La impresión Bluetooth ESC/POS está pendiente. El recibo queda '
-          'guardado y sincronizado — se puede imprimir cuando habilitemos '
-          'el módulo de impresora térmica.',
+          'El recibo queda guardado y sincronizado aunque la impresora '
+          'falle. Podés reintentar imprimir cuando quieras.',
           textAlign: TextAlign.center,
           style: Theme.of(context).textTheme.bodySmall,
         ),

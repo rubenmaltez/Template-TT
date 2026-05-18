@@ -1,9 +1,12 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../data/providers/cobrador_provider.dart';
 import '../../data/providers/foto_comprobante_provider.dart';
+import '../../data/providers/impresora_provider.dart';
 import '../../data/providers/sync_status_provider.dart';
 import '../../data/utils/formatters.dart';
 import '../../powersync/db.dart' as ps;
@@ -60,6 +63,10 @@ class PerfilScreen extends ConsumerWidget {
         ]),
         const SizedBox(height: 12),
         const _SyncCard(),
+        if (!kIsWeb) ...[
+          const SizedBox(height: 12),
+          const _ImpresoraCard(),
+        ],
         const SizedBox(height: 12),
         const _FotosPendientesCard(),
         const SizedBox(height: 24),
@@ -115,6 +122,29 @@ class _InfoCard extends StatelessWidget {
                   ))
               .toList(),
         ),
+      ),
+    );
+  }
+}
+
+class _ImpresoraCard extends ConsumerWidget {
+  const _ImpresoraCard();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final fav = ref.watch(impresoraFavoritaProvider).valueOrNull;
+    return Card(
+      child: ListTile(
+        leading: const Icon(Icons.print),
+        title: const Text('Impresora térmica'),
+        subtitle: Text(fav == null
+            ? 'Sin configurar'
+            : fav.nombre,
+            style: fav == null
+                ? TextStyle(color: Theme.of(context).colorScheme.error)
+                : null),
+        trailing: const Icon(Icons.chevron_right),
+        onTap: () => context.push('/perfil/impresora'),
       ),
     );
   }
