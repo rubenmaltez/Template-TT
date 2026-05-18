@@ -74,7 +74,7 @@ class _DashboardMetrics extends StatelessWidget {
           (SELECT COUNT(*) FROM cuotas
              WHERE estado IN ('pendiente','parcial')) AS cuotas_pendientes,
 
-          (SELECT COALESCE(SUM(monto - monto_pagado), 0) FROM cuotas
+          (SELECT COALESCE(SUM(monto + COALESCE(cargos_neto, 0) - monto_pagado), 0) FROM cuotas
              WHERE estado IN ('pendiente','parcial')) AS saldo_total,
 
           (SELECT COUNT(*) FROM cuotas

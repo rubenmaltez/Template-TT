@@ -57,6 +57,7 @@ class Cuota {
     required this.fechaVencimiento,
     required this.monto,
     required this.montoPagado,
+    required this.cargosNeto,
     required this.estado,
   });
 
@@ -69,9 +70,16 @@ class Cuota {
   final DateTime fechaVencimiento;
   final double monto;
   final double montoPagado;
+  /// Suma de cargos extra netos (reconexión + otro - descuentos).
+  /// Mantenido por trigger en server (migración 0023).
+  final double cargosNeto;
   final CuotaEstado estado;
 
-  double get saldo => (monto - montoPagado).clamp(0, double.infinity);
+  /// Total real a cobrar (monto + cargos netos).
+  double get totalACobrar => (monto + cargosNeto).clamp(0, double.infinity);
+
+  /// Saldo pendiente considerando cargos extra.
+  double get saldo => (totalACobrar - montoPagado).clamp(0, double.infinity);
 
   CuotaEstadoVisual estadoVisual(int diasGracia, [DateTime? hoy]) {
     if (estado == CuotaEstado.pagada) return CuotaEstadoVisual.pagada;
@@ -102,6 +110,7 @@ class Cuota {
         fechaVencimiento: DateTime.parse(row['fecha_vencimiento'] as String),
         monto: (row['monto'] as num).toDouble(),
         montoPagado: (row['monto_pagado'] as num? ?? 0).toDouble(),
+        cargosNeto: (row['cargos_neto'] as num? ?? 0).toDouble(),
         estado: CuotaEstado.fromString(row['estado'] as String),
       );
 }

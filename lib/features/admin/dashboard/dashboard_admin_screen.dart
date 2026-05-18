@@ -109,13 +109,14 @@ class _OperativoKPIs extends StatelessWidget {
           (SELECT COUNT(*) FROM clientes WHERE activo = 1) AS clientes,
           (SELECT COUNT(*) FROM cuotas
              WHERE estado IN ('pendiente','parcial')) AS cuotas_pend,
-          (SELECT COALESCE(SUM(monto - monto_pagado), 0) FROM cuotas
-             WHERE estado IN ('pendiente','parcial')) AS saldo,
+          (SELECT COALESCE(SUM(monto + COALESCE(cargos_neto, 0) - monto_pagado), 0)
+             FROM cuotas WHERE estado IN ('pendiente','parcial')) AS saldo,
           (SELECT COUNT(*) FROM cuotas
              WHERE estado IN ('pendiente','parcial')
                AND date(fecha_vencimiento, '+' || ? || ' days') < date('now')
           ) AS vencidas,
-          (SELECT COALESCE(SUM(monto - monto_pagado), 0) FROM cuotas
+          (SELECT COALESCE(SUM(monto + COALESCE(cargos_neto, 0) - monto_pagado), 0)
+             FROM cuotas
              WHERE estado IN ('pendiente','parcial')
                AND date(fecha_vencimiento, '+' || ? || ' days') < date('now')
           ) AS saldo_vencido

@@ -108,6 +108,7 @@ const schema = Schema([
     Column.text('fecha_vencimiento'),
     Column.real('monto'),
     Column.real('monto_pagado'),
+    Column.real('cargos_neto'),
     Column.text('estado'),
     Column.text('anulada_en'),
     Column.text('anulada_por'),

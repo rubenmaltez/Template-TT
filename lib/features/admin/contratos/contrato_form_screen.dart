@@ -213,7 +213,13 @@ class _ContratoFormScreenState extends ConsumerState<ContratoFormScreen> {
                   _SelectorFecha(
                     label: 'Fecha de instalación',
                     fecha: _fechaInicio,
-                    onChanged: (d) => setState(() => _fechaInicio = d),
+                    onChanged: (d) => setState(() {
+                      _fechaInicio = d;
+                      // El día de pago default sigue el día de instalación
+                      // (regla del negocio: 'instalado el 17 paga los 17').
+                      // El admin puede editar el campo después si quiere.
+                      _diaPagoCtrl.text = d.day.toString();
+                    }),
                   ),
                   const SizedBox(height: 12),
                   TextFormField(

@@ -223,7 +223,8 @@ class _ClientesList extends StatelessWidget {
             AND date(cu.fecha_vencimiento, '+' || ? || ' days') < date('now')
         ) AS cuotas_vencidas,
         COALESCE(SUM(CASE WHEN cu.estado IN ('pendiente','parcial')
-                          THEN cu.monto - cu.monto_pagado ELSE 0 END), 0) AS saldo
+                          THEN cu.monto + COALESCE(cu.cargos_neto, 0) - cu.monto_pagado
+                          ELSE 0 END), 0) AS saldo
         FROM clientes c
         LEFT JOIN comunidades co ON co.id = c.comunidad_id
         LEFT JOIN municipios  m  ON m.id = co.municipio_id

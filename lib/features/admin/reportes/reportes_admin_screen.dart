@@ -197,7 +197,7 @@ class _MoraPorComunidadCard extends StatelessWidget {
                 '''
                 SELECT co.nombre AS comunidad, m.nombre AS municipio,
                        COUNT(cu.id) AS vencidas,
-                       COALESCE(SUM(cu.monto - cu.monto_pagado), 0) AS adeudo
+                       COALESCE(SUM(cu.monto + COALESCE(cu.cargos_neto, 0) - cu.monto_pagado), 0) AS adeudo
                   FROM cuotas cu
                   JOIN clientes c ON c.id = cu.cliente_id
                   JOIN comunidades co ON co.id = c.comunidad_id

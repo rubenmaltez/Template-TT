@@ -116,7 +116,9 @@ class _AplicarCargoDialogState extends ConsumerState<AplicarCargoDialog> {
       }
       monto = valor;
     } else if (_tipo == CargoTipo.reconexion) {
-      monto = s.montoReconexion > 0 ? s.montoReconexion : valor;
+      // Usar lo que el usuario ingresó (el setting es sólo default
+      // pre-poblado al elegir el tipo).
+      monto = valor;
     } else {
       // otro
       if (_descripcion.text.trim().isEmpty) {
@@ -187,7 +189,18 @@ class _AplicarCargoDialogState extends ConsumerState<AplicarCargoDialog> {
               items: tipos
                   .map((t) => DropdownMenuItem(value: t, child: Text(t.label)))
                   .toList(),
-              onChanged: (v) => setState(() => _tipo = v),
+              onChanged: (v) {
+                setState(() {
+                  _tipo = v;
+                  // Pre-poblar valor para reconexión con default del setting,
+                  // si está disponible y el campo está vacío.
+                  if (v == CargoTipo.reconexion &&
+                      s.montoReconexion > 0 &&
+                      _valor.text.trim().isEmpty) {
+                    _valor.text = s.montoReconexion.toStringAsFixed(2);
+                  }
+                });
+              },
             ),
             const SizedBox(height: 12),
             TextField(
