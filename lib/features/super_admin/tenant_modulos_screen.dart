@@ -327,7 +327,7 @@ class _MiembrosList extends ConsumerWidget {
 }
 
 /// Acciones disponibles en el menú "..." de cada miembro.
-enum _AccionMiembro { toggleActivo, forzarPassword }
+enum _AccionMiembro { toggleActivo, forzarPassword, cambiarRol }
 
 class _MiembroCard extends ConsumerStatefulWidget {
   const _MiembroCard({required this.cobrador, required this.tenantId});
@@ -348,8 +348,112 @@ class _MiembroCardState extends ConsumerState<_MiembroCard> {
         await _toggleActivo();
       case _AccionMiembro.forzarPassword:
         await _forzarPassword();
+      case _AccionMiembro.cambiarRol:
+        await _cambiarRol();
     }
   }
+
+  Future<void> _cambiarRol() async {
+    final c = widget.cobrador;
+    final container = ProviderScope.containerOf(context, listen: false);
+    final messenger = ScaffoldMessenger.of(context);
+    final repo = container.read(superAdminRepoProvider);
+
+    // Re-fetch para que esUltimoAdmin esté basado en datos frescos del
+    // server, no en una snapshot de hace minutos.
+    container.invalidate(cobradoresTenantProvider(widget.tenantId));
+    final miembros = await container
+        .read(cobradoresTenantProvider(widget.tenantId).future);
+    final otrosAdminsActivos = miembros
+        .where((m) => m.rol == 'admin' && m.activo && m.id != c.id)
+        .length;
+    if (!mounted) return;
+
+    final nuevo = await showDialog<String>(
+      context: context,
+      builder: (_) => _CambiarRolDialog(
+        nombre: c.nombre,
+        rolActual: c.rol,
+        prefijoActual: c.prefijoRecibo,
+        esUltimoAdmin: c.rol == 'admin' && otrosAdminsActivos == 0,
+      ),
+    );
+    if (nuevo == null || nuevo == c.rol) return;
+
+    setState(() => _saving = true);
+    try {
+      await repo.setCobradorRol(
+        cobradorId: c.id,
+        nuevoRol: nuevo,
+      );
+      container.invalidate(cobradoresTenantProvider(widget.tenantId));
+      if (!mounted) return;
+      _mostrarSnackBar(
+        messenger,
+        SnackBar(
+          content: Text(
+            '${c.nombre}: ${_rolLabel(nuevo)}. '
+            'Si está logueado, debe salir y volver a entrar.',
+          ),
+          duration: const Duration(seconds: 5),
+          behavior: SnackBarBehavior.floating,
+          action: SnackBarAction(
+            label: 'Deshacer',
+            onPressed: () async {
+              try {
+                await repo.setCobradorRol(
+                  cobradorId: c.id,
+                  nuevoRol: c.rol,
+                );
+                container.invalidate(
+                    cobradoresTenantProvider(widget.tenantId));
+                _mostrarSnackBar(
+                  messenger,
+                  SnackBar(
+                    content: Text(
+                      '${c.nombre}: revertido a ${_rolLabel(c.rol)}',
+                    ),
+                    duration: const Duration(seconds: 2),
+                    behavior: SnackBarBehavior.floating,
+                  ),
+                );
+              } catch (e) {
+                _mostrarSnackBar(
+                  messenger,
+                  SnackBar(
+                    content: Text('No se pudo deshacer: $e'),
+                    backgroundColor:
+                        Theme.of(context).colorScheme.error,
+                    behavior: SnackBarBehavior.floating,
+                  ),
+                );
+              }
+            },
+          ),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      final msg = e.toString().replaceFirst('Exception: ', '');
+      _mostrarSnackBar(
+        messenger,
+        SnackBar(
+          content: Text('No se pudo cambiar el rol: $msg'),
+          backgroundColor: Theme.of(context).colorScheme.error,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  static String _rolLabel(String rol) => switch (rol) {
+        'admin' => 'Administrador',
+        'admin_cobranza' => 'Admin de cobranza',
+        'cobrador' => 'Cobrador',
+        _ => rol,
+      };
 
   Future<void> _forzarPassword() async {
     final c = widget.cobrador;
@@ -683,6 +787,17 @@ class _MiembroCardState extends ConsumerState<_MiembroCard> {
                             color: scheme.tertiary, size: 20),
                         const SizedBox(width: 12),
                         const Text('Forzar contraseña'),
+                      ],
+                    ),
+                  ),
+                  PopupMenuItem(
+                    value: _AccionMiembro.cambiarRol,
+                    child: Row(
+                      children: [
+                        Icon(Icons.swap_horiz,
+                            color: scheme.secondary, size: 20),
+                        const SizedBox(width: 12),
+                        const Text('Cambiar rol'),
                       ],
                     ),
                   ),
@@ -1029,6 +1144,230 @@ class _PasswordCopiarDialogState extends State<_PasswordCopiarDialog> {
           onPressed: _copiar,
         ),
       ],
+    );
+  }
+}
+
+/// Dialog para elegir un nuevo rol para un miembro del tenant. Devuelve
+/// el rol seleccionado vía Navigator.pop(String) o null si se canceló /
+/// no cambió la selección.
+class _CambiarRolDialog extends StatefulWidget {
+  const _CambiarRolDialog({
+    required this.nombre,
+    required this.rolActual,
+    required this.prefijoActual,
+    required this.esUltimoAdmin,
+  });
+
+  final String nombre;
+  final String rolActual;
+  final String? prefijoActual;
+  final bool esUltimoAdmin;
+
+  @override
+  State<_CambiarRolDialog> createState() => _CambiarRolDialogState();
+}
+
+class _CambiarRolDialogState extends State<_CambiarRolDialog> {
+  late String _seleccionado;
+
+  @override
+  void initState() {
+    super.initState();
+    _seleccionado = widget.rolActual;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final screenW = MediaQuery.sizeOf(context).width;
+    final dialogW = screenW < 460 ? screenW * 0.9 : 420.0;
+
+    // Warnings que dependen del cambio elegido.
+    final perderaAdmin =
+        widget.rolActual == 'admin' && _seleccionado != 'admin';
+    final dejaraDeSerCobrador = widget.rolActual == 'cobrador' &&
+        _seleccionado != 'cobrador' &&
+        widget.prefijoActual != null;
+    final pasaACobradorSinPrefijo = widget.rolActual != 'cobrador' &&
+        _seleccionado == 'cobrador';
+    final cambioReal = _seleccionado != widget.rolActual;
+
+    return AlertDialog(
+      title: Text('¿Cambiar rol de ${widget.nombre}?'),
+      content: SizedBox(
+        width: dialogW,
+        // Wrap en SingleChildScrollView para no clipear contenido en
+        // pantallas cortas (laptop landscape, móvil horizontal).
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Rol actual: ${_label(widget.rolActual)}',
+                style: TextStyle(
+                    color: scheme.onSurfaceVariant, fontSize: 13),
+              ),
+              const SizedBox(height: 8),
+              ..._roles.map((r) {
+                final esActual = r == widget.rolActual;
+                return RadioListTile<String>(
+                  value: r,
+                  groupValue: _seleccionado,
+                  onChanged: (v) => setState(() => _seleccionado = v!),
+                  title: Row(
+                    children: [
+                      Text(_label(r)),
+                      if (esActual) ...[
+                        const SizedBox(width: 6),
+                        Text(
+                          '(actual)',
+                          style: TextStyle(
+                            color: scheme.onSurfaceVariant,
+                            fontSize: 12,
+                            fontStyle: FontStyle.italic,
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                  subtitle: Text(
+                    _descripcion(r),
+                    style: TextStyle(
+                        color: scheme.onSurfaceVariant, fontSize: 12),
+                  ),
+                  tileColor: esActual ? scheme.surfaceContainerLow : null,
+                  contentPadding: EdgeInsets.zero,
+                  visualDensity: VisualDensity.compact,
+                );
+              }),
+              if (widget.esUltimoAdmin && perderaAdmin) ...[
+                const SizedBox(height: 8),
+                _WarningBox(
+                  icon: Icons.warning_amber,
+                  color: scheme.errorContainer,
+                  onColor: scheme.onErrorContainer,
+                  texto: 'Es el único admin activo del tenant. Tras este '
+                      'cambio nadie podrá administrar este ISP hasta que '
+                      'designes otro admin.',
+                ),
+              ],
+              if (dejaraDeSerCobrador) ...[
+                const SizedBox(height: 8),
+                _WarningBox(
+                  icon: Icons.info_outline,
+                  color: scheme.surfaceContainerHighest,
+                  onColor: scheme.onSurfaceVariant,
+                  texto:
+                      'El prefijo de recibo "${widget.prefijoActual}" se '
+                      'va a eliminar (no aplica fuera del rol cobrador).',
+                ),
+              ],
+              if (pasaACobradorSinPrefijo) ...[
+                const SizedBox(height: 8),
+                _WarningBox(
+                  icon: Icons.info_outline,
+                  color: scheme.surfaceContainerHighest,
+                  onColor: scheme.onSurfaceVariant,
+                  texto: 'Después tenés que asignarle un prefijo de recibo '
+                      'desde el panel del tenant antes de que pueda cobrar.',
+                ),
+              ],
+              if (!cambioReal) ...[
+                const SizedBox(height: 8),
+                Text(
+                  'Elegí un rol distinto al actual para habilitar el cambio.',
+                  style: TextStyle(
+                      color: scheme.onSurfaceVariant, fontSize: 12),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+      actions: [
+        TextButton(
+          autofocus: true,
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancelar'),
+        ),
+        FilledButton.icon(
+          icon: const Icon(Icons.swap_horiz),
+          label: const Text('Cambiar'),
+          // Si va a dejar al tenant sin admin activo, le ponemos color
+          // error para alinearse con la severidad del warning de arriba.
+          style: (widget.esUltimoAdmin && perderaAdmin)
+              ? FilledButton.styleFrom(
+                  backgroundColor:
+                      Theme.of(context).colorScheme.error,
+                  foregroundColor:
+                      Theme.of(context).colorScheme.onError,
+                )
+              : null,
+          onPressed: cambioReal
+              ? () => Navigator.of(context).pop(_seleccionado)
+              : null,
+        ),
+      ],
+    );
+  }
+
+  static const _roles = ['admin', 'admin_cobranza', 'cobrador'];
+
+  static String _label(String r) => switch (r) {
+        'admin' => 'Administrador',
+        'admin_cobranza' => 'Admin de cobranza',
+        'cobrador' => 'Cobrador',
+        _ => r,
+      };
+
+  static String _descripcion(String r) => switch (r) {
+        'admin' =>
+          'Acceso completo: clientes, contratos, planes, cobradores, config.',
+        'admin_cobranza' =>
+          'Clientes, contratos, cuotas y pagos. Sin acceso a config.',
+        'cobrador' =>
+          'Sólo sus clientes asignados. Cobra y emite recibos.',
+        _ => '',
+      };
+}
+
+/// Caja de advertencia con ícono — usada en varios dialogs del panel.
+class _WarningBox extends StatelessWidget {
+  const _WarningBox({
+    required this.icon,
+    required this.color,
+    required this.onColor,
+    required this.texto,
+  });
+
+  final IconData icon;
+  final Color color;
+  final Color onColor;
+  final String texto;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: color,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, color: onColor, size: 18),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              texto,
+              style: TextStyle(color: onColor, fontSize: 12),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

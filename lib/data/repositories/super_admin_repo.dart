@@ -57,6 +57,16 @@ class SuperAdminRepo {
     });
   }
 
+  Future<void> setCobradorRol({
+    required String cobradorId,
+    required String nuevoRol,
+  }) async {
+    await _client.rpc('set_cobrador_rol', params: {
+      'p_cobrador_id': cobradorId,
+      'p_nuevo_rol': nuevoRol,
+    });
+  }
+
   /// Llama a la Edge Function `forzar-password-cobrador` con service_role
   /// del lado server. Sólo super_admin lo puede usar; los guards los hace
   /// la Edge Function.
