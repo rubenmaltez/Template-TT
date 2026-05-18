@@ -56,6 +56,28 @@ class SuperAdminRepo {
       'p_activo': activo,
     });
   }
+
+  /// Llama a la Edge Function `forzar-password-cobrador` con service_role
+  /// del lado server. Sólo super_admin lo puede usar; los guards los hace
+  /// la Edge Function.
+  Future<void> forzarPasswordCobrador({
+    required String cobradorId,
+    required String nuevaPassword,
+  }) async {
+    final res = await _client.functions.invoke(
+      'forzar-password-cobrador',
+      body: {
+        'cobrador_id': cobradorId,
+        'nueva_password': nuevaPassword,
+      },
+    );
+    final data = res.data as Map<String, dynamic>?;
+    if (data == null || data['ok'] != true) {
+      throw Exception(
+        (data?['error'] as String?) ?? 'Error desconocido',
+      );
+    }
+  }
 }
 
 final superAdminRepoProvider = Provider<SuperAdminRepo>(

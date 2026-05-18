@@ -1,6 +1,8 @@
 import 'dart:async';
+import 'dart:math';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -325,9 +327,7 @@ class _MiembrosList extends ConsumerWidget {
 }
 
 /// Acciones disponibles en el menú "..." de cada miembro.
-/// Por ahora sólo activar/desactivar — el resto (reset password,
-/// cambiar rol, etc.) se agregan en pasos siguientes.
-enum _AccionMiembro { toggleActivo }
+enum _AccionMiembro { toggleActivo, forzarPassword }
 
 class _MiembroCard extends ConsumerStatefulWidget {
   const _MiembroCard({required this.cobrador, required this.tenantId});
@@ -346,6 +346,58 @@ class _MiembroCardState extends ConsumerState<_MiembroCard> {
     switch (accion) {
       case _AccionMiembro.toggleActivo:
         await _toggleActivo();
+      case _AccionMiembro.forzarPassword:
+        await _forzarPassword();
+    }
+  }
+
+  Future<void> _forzarPassword() async {
+    final c = widget.cobrador;
+    final container = ProviderScope.containerOf(context, listen: false);
+    final messenger = ScaffoldMessenger.of(context);
+    final repo = container.read(superAdminRepoProvider);
+
+    final nueva = await showDialog<String>(
+      context: context,
+      // No permitimos dismiss accidental: si el super_admin ya generó una
+      // password, debe explícitamente Cancelar o Aplicar.
+      barrierDismissible: false,
+      builder: (_) => _ForzarPasswordDialog(nombre: c.nombre),
+    );
+    if (nueva == null || nueva.isEmpty) return;
+
+    setState(() => _saving = true);
+    try {
+      await repo.forzarPasswordCobrador(
+        cobradorId: c.id,
+        nuevaPassword: nueva,
+      );
+      if (!mounted) return;
+      // El dialog de copia es CRÍTICO: si el super_admin lo cierra sin
+      // copiar pierde la password. Bloqueamos dismiss accidental.
+      await showDialog<void>(
+        context: context,
+        barrierDismissible: false,
+        builder: (_) => _PasswordCopiarDialog(
+          nombre: c.nombre,
+          password: nueva,
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      // Cleaneamos "Exception: " del wrapper del repo para mostrar sólo el
+      // mensaje real del servidor.
+      final msg = e.toString().replaceFirst('Exception: ', '');
+      _mostrarSnackBar(
+        messenger,
+        SnackBar(
+          content: Text('No se pudo cambiar la contraseña: $msg'),
+          backgroundColor: Theme.of(context).colorScheme.error,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _saving = false);
     }
   }
 
@@ -623,6 +675,17 @@ class _MiembroCardState extends ConsumerState<_MiembroCard> {
                       ],
                     ),
                   ),
+                  PopupMenuItem(
+                    value: _AccionMiembro.forzarPassword,
+                    child: Row(
+                      children: [
+                        Icon(Icons.password,
+                            color: scheme.tertiary, size: 20),
+                        const SizedBox(width: 12),
+                        const Text('Forzar contraseña'),
+                      ],
+                    ),
+                  ),
                 ],
               ),
           ],
@@ -738,6 +801,234 @@ class _EstadoChip extends StatelessWidget {
                   color: fg, fontSize: 11, fontWeight: FontWeight.w600)),
         ],
       ),
+    );
+  }
+}
+
+/// Pide / genera una nueva contraseña para un miembro y la devuelve al
+/// caller cerrando el dialog con Navigator.pop(password). Si el caller
+/// recibe null o "", interpreta cancelación.
+class _ForzarPasswordDialog extends StatefulWidget {
+  const _ForzarPasswordDialog({required this.nombre});
+
+  final String nombre;
+
+  @override
+  State<_ForzarPasswordDialog> createState() => _ForzarPasswordDialogState();
+}
+
+class _ForzarPasswordDialogState extends State<_ForzarPasswordDialog> {
+  final _ctrl = TextEditingController();
+  bool _mostrar = false;
+  String? _error;
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  void _generar() {
+    // Random.secure() usa una fuente criptográficamente segura del SO.
+    // Excluye caracteres ambiguos para dictar (I, l, 1, O, 0) y limita
+    // símbolos a los que no se confunden con markdown / espacios.
+    const chars =
+        'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789!@#%*-+';
+    final rand = Random.secure();
+    final nueva =
+        List.generate(16, (_) => chars[rand.nextInt(chars.length)]).join();
+    setState(() {
+      _ctrl.text = nueva;
+      _mostrar = true;
+      _error = null;
+    });
+  }
+
+  void _submit() {
+    final v = _ctrl.text;
+    if (v.length < 8) {
+      setState(() => _error = 'Mínimo 8 caracteres');
+      return;
+    }
+    Navigator.of(context).pop(v);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    // Responsive width: 420 en desktop/tablet, 90% del viewport en mobile
+    // chico (iPhone SE = 375, no entra el 420 fijo).
+    final screenW = MediaQuery.sizeOf(context).width;
+    final dialogW = screenW < 460 ? screenW * 0.9 : 420.0;
+    return AlertDialog(
+      title: Text('¿Forzar nueva contraseña para ${widget.nombre}?'),
+      content: SizedBox(
+        width: dialogW,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: scheme.errorContainer,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Icon(Icons.warning_amber,
+                      color: scheme.onErrorContainer, size: 20),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Vas a ver la contraseña una sola vez al terminar. '
+                      'El usuario NO recibe notificación — pasásela por '
+                      'canal seguro (Whatsapp, en persona).',
+                      style: TextStyle(
+                          color: scheme.onErrorContainer, fontSize: 13),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: _ctrl,
+              autofocus: true,
+              obscureText: !_mostrar,
+              onChanged: (_) {
+                // Clear stale error tan pronto el usuario corrige.
+                if (_error != null) setState(() => _error = null);
+              },
+              decoration: InputDecoration(
+                labelText: 'Nueva contraseña',
+                hintText: 'Mínimo 8 caracteres',
+                suffixIcon: IconButton(
+                  tooltip: _mostrar ? 'Ocultar' : 'Mostrar',
+                  icon: Icon(
+                      _mostrar ? Icons.visibility_off : Icons.visibility),
+                  onPressed: () => setState(() => _mostrar = !_mostrar),
+                ),
+              ),
+              onSubmitted: (_) => _submit(),
+            ),
+            const SizedBox(height: 8),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: TextButton.icon(
+                icon: const Icon(Icons.auto_awesome, size: 18),
+                label: const Text('Generar segura'),
+                onPressed: _generar,
+              ),
+            ),
+            if (_error != null) ...[
+              const SizedBox(height: 8),
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: scheme.errorContainer,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(_error!,
+                    style: TextStyle(color: scheme.onErrorContainer)),
+              ),
+            ],
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancelar'),
+        ),
+        FilledButton.icon(
+          icon: const Icon(Icons.lock_reset),
+          label: const Text('Aplicar'),
+          onPressed: _submit,
+        ),
+      ],
+    );
+  }
+}
+
+/// Tras forzar la password con éxito, mostramos esto para que el super_admin
+/// pueda copiar al portapapeles y comunicar al usuario por canal seguro.
+/// Copiar es la acción primaria; cerrar pierde la password permanentemente.
+class _PasswordCopiarDialog extends StatefulWidget {
+  const _PasswordCopiarDialog({
+    required this.nombre,
+    required this.password,
+  });
+
+  final String nombre;
+  final String password;
+
+  @override
+  State<_PasswordCopiarDialog> createState() => _PasswordCopiarDialogState();
+}
+
+class _PasswordCopiarDialogState extends State<_PasswordCopiarDialog> {
+  bool _copiado = false;
+
+  Future<void> _copiar() async {
+    await Clipboard.setData(ClipboardData(text: widget.password));
+    if (!mounted) return;
+    setState(() => _copiado = true);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final screenW = MediaQuery.sizeOf(context).width;
+    final dialogW = screenW < 460 ? screenW * 0.9 : 420.0;
+    return AlertDialog(
+      icon: Icon(Icons.check_circle, color: scheme.primary, size: 40),
+      title: Text('Contraseña aplicada para ${widget.nombre}'),
+      content: SizedBox(
+        width: dialogW,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Esta es la única oportunidad de copiarla. Al cerrar el '
+              'diálogo no vas a poder verla otra vez. Pasásela al usuario '
+              'por un canal seguro.',
+            ),
+            const SizedBox(height: 16),
+            Container(
+              padding: const EdgeInsets.symmetric(
+                  horizontal: 12, vertical: 8),
+              decoration: BoxDecoration(
+                color: scheme.surfaceContainerHighest,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: SelectableText(
+                widget.password,
+                style: const TextStyle(
+                  fontFamily: 'monospace',
+                  fontSize: 16,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+      // Copiar es la acción PRIMARIA — visualmente más prominente. Listo
+      // sólo cierra y la password se pierde.
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: Text(_copiado ? 'Listo' : 'Cerrar sin copiar'),
+        ),
+        FilledButton.icon(
+          icon: Icon(_copiado ? Icons.check : Icons.content_copy),
+          label: Text(_copiado ? 'Copiada' : 'Copiar contraseña'),
+          onPressed: _copiar,
+        ),
+      ],
     );
   }
 }
