@@ -109,7 +109,9 @@ class _SyncIndicator extends ConsumerWidget {
   }
 }
 
-/// Items del menú del panel admin. `adminOnly` = sólo rol 'admin'.
+/// Items del menú del panel admin.
+///   adminOnly       = sólo admin / super_admin (no admin_cobranza).
+///   superAdminOnly  = sólo super_admin (panel SaaS, cross-tenant).
 const _adminMenu = [
   _MenuItem(Icons.dashboard, 'Resumen', '/admin'),
   _MenuItem(Icons.people, 'Clientes', '/admin/clientes'),
@@ -124,14 +126,32 @@ const _adminMenu = [
   _MenuItem(Icons.history_edu, 'Auditoría', '/admin/audit', adminOnly: true),
   _MenuItem(Icons.place, 'Geografía', '/admin/geografia', adminOnly: true),
   _MenuItem(Icons.settings, 'Configuración', '/admin/settings', adminOnly: true),
+  _MenuItem(Icons.shield, 'Tenants', '/super/tenants', superAdminOnly: true),
 ];
 
 class _MenuItem {
-  const _MenuItem(this.icon, this.label, this.path, {this.adminOnly = false});
+  const _MenuItem(
+    this.icon,
+    this.label,
+    this.path, {
+    this.adminOnly = false,
+    this.superAdminOnly = false,
+  });
   final IconData icon;
   final String label;
   final String path;
   final bool adminOnly;
+  final bool superAdminOnly;
+}
+
+bool _menuVisible(
+  _MenuItem m, {
+  required bool esSuperAdmin,
+  required bool tieneAccesoAdmin,
+}) {
+  if (m.superAdminOnly) return esSuperAdmin;
+  if (m.adminOnly) return tieneAccesoAdmin;
+  return true;
 }
 
 class _AdminRail extends ConsumerWidget {
@@ -142,7 +162,11 @@ class _AdminRail extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final cobrador = ref.watch(cobradorActualProvider).valueOrNull;
     final tieneAccesoAdmin = cobrador?.tieneAccesoAdmin ?? false;
-    final items = _adminMenu.where((m) => !m.adminOnly || tieneAccesoAdmin).toList();
+    final esSuperAdmin = cobrador?.esSuperAdmin ?? false;
+    final items = _adminMenu
+        .where((m) => _menuVisible(m,
+            esSuperAdmin: esSuperAdmin, tieneAccesoAdmin: tieneAccesoAdmin))
+        .toList();
     final selectedIndex = items
         .indexWhere((m) => currentPath == m.path || currentPath.startsWith('${m.path}/'));
 
@@ -193,7 +217,11 @@ class _AdminDrawer extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final cobrador = ref.watch(cobradorActualProvider).valueOrNull;
     final tieneAccesoAdmin = cobrador?.tieneAccesoAdmin ?? false;
-    final items = _adminMenu.where((m) => !m.adminOnly || tieneAccesoAdmin).toList();
+    final esSuperAdmin = cobrador?.esSuperAdmin ?? false;
+    final items = _adminMenu
+        .where((m) => _menuVisible(m,
+            esSuperAdmin: esSuperAdmin, tieneAccesoAdmin: tieneAccesoAdmin))
+        .toList();
 
     return Drawer(
       child: SafeArea(

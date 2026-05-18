@@ -21,6 +21,9 @@ import '../features/admin/reportes/reportes_admin_screen.dart';
 import '../features/admin/settings/settings_admin_screen.dart';
 import '../features/admin/shell/admin_shell.dart';
 import '../features/auth/login_screen.dart';
+import '../features/super_admin/super_shell.dart';
+import '../features/super_admin/tenant_modulos_screen.dart';
+import '../features/super_admin/tenants_list_screen.dart';
 import '../features/clientes/cliente_detail_screen.dart';
 import '../features/clientes/clientes_list_screen.dart';
 import '../features/cobro/cobro_screen.dart';
@@ -127,6 +130,12 @@ final routerProvider = Provider<GoRouter>((ref) {
           soloAdmin.any((p) => loc == p || loc.startsWith('$p/'))) {
         return '/admin';
       }
+
+      // Panel /super/* sólo para super_admin. Cualquier otro rol que
+      // intente entrar (por URL directa) se va al panel admin del tenant.
+      if (loc.startsWith('/super') && rol != 'super_admin') {
+        return '/admin';
+      }
       return null;
     },
     routes: [
@@ -191,6 +200,29 @@ final routerProvider = Provider<GoRouter>((ref) {
               builder: (_, s) => _titled('Geografía', const GeografiaAdminScreen())),
           GoRoute(path: '/admin/settings',
               builder: (_, s) => _titled('Configuración', const SettingsAdminScreen())),
+        ],
+      ),
+
+      // ── Super Admin: ShellRoute propio (sólo super_admin lo alcanza) ───
+      ShellRoute(
+        builder: (_, state, child) {
+          final loc = state.matchedLocation;
+          final titulo = loc.startsWith('/super/tenants/') &&
+                  loc.length > '/super/tenants/'.length
+              ? 'Configurar tenant'
+              : 'Tenants';
+          return SuperShell(titulo: titulo, child: child);
+        },
+        routes: [
+          GoRoute(
+            path: '/super/tenants',
+            builder: (_, s) => const TenantsListScreen(),
+          ),
+          GoRoute(
+            path: '/super/tenants/:id',
+            builder: (_, s) =>
+                TenantModulosScreen(tenantId: s.pathParameters['id']!),
+          ),
         ],
       ),
 
