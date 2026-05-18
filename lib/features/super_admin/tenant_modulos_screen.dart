@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../data/models/modulo.dart';
 import '../../data/models/tenant_admin.dart';
@@ -38,6 +39,18 @@ class TenantModulosScreen extends ConsumerWidget {
       padding: const EdgeInsets.all(16),
       children: [
         _Header(tenant: tenant),
+        const SizedBox(height: 16),
+        Align(
+          alignment: Alignment.centerLeft,
+          child: FilledButton.tonalIcon(
+            icon: const Icon(Icons.person_add),
+            label: const Text('Invitar admin a este tenant'),
+            onPressed: () => showDialog<void>(
+              context: context,
+              builder: (_) => _InvitarAdminDialog(tenant: tenant),
+            ),
+          ),
+        ),
         const SizedBox(height: 24),
         Text('Módulos',
             style: Theme.of(context).textTheme.titleLarge),
@@ -231,6 +244,159 @@ class _ModuloTileState extends ConsumerState<_ModuloTile> {
           ],
         ),
       ),
+    );
+  }
+}
+
+/// Dialog para que el super_admin invite el primer/otro admin de un tenant.
+/// Llama a la Edge Function `invitar-cobrador` con tenant_id explícito.
+class _InvitarAdminDialog extends StatefulWidget {
+  const _InvitarAdminDialog({required this.tenant});
+  final TenantAdmin tenant;
+
+  @override
+  State<_InvitarAdminDialog> createState() => _InvitarAdminDialogState();
+}
+
+class _InvitarAdminDialogState extends State<_InvitarAdminDialog> {
+  final _email = TextEditingController();
+  final _nombre = TextEditingController();
+  final _telefono = TextEditingController();
+  bool _enviando = false;
+  String? _error;
+
+  @override
+  void dispose() {
+    _email.dispose();
+    _nombre.dispose();
+    _telefono.dispose();
+    super.dispose();
+  }
+
+  Future<void> _invitar() async {
+    final email = _email.text.trim();
+    final nombre = _nombre.text.trim();
+    if (email.isEmpty || nombre.isEmpty) {
+      setState(() => _error = 'Email y nombre requeridos');
+      return;
+    }
+    if (!RegExp(r'^[^@]+@[^@]+\.[^@]+$').hasMatch(email)) {
+      setState(() => _error = 'Email inválido');
+      return;
+    }
+
+    setState(() {
+      _enviando = true;
+      _error = null;
+    });
+
+    try {
+      final res = await Supabase.instance.client.functions.invoke(
+        'invitar-cobrador',
+        body: {
+          'email': email,
+          'nombre': nombre,
+          'rol': 'admin',
+          'tenant_id': widget.tenant.id,
+          if (_telefono.text.trim().isNotEmpty)
+            'telefono': _telefono.text.trim(),
+        },
+      );
+      final data = res.data as Map<String, dynamic>?;
+      if (data == null || data['ok'] != true) {
+        setState(() {
+          _error = (data?['error'] as String?) ?? 'Error desconocido';
+          _enviando = false;
+        });
+        return;
+      }
+      if (!mounted) return;
+      Navigator.of(context).pop();
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text('Invitación enviada a $email'),
+        duration: const Duration(seconds: 3),
+      ));
+    } catch (e) {
+      setState(() {
+        _error = 'Error: $e';
+        _enviando = false;
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return AlertDialog(
+      title: Text('Invitar admin a ${widget.tenant.nombre}'),
+      content: SizedBox(
+        width: 400,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(
+              'El invitado recibirá un email para crear su contraseña. '
+              'Una vez logueado, será admin de este tenant.',
+              style: TextStyle(color: scheme.outline, fontSize: 13),
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: _email,
+              keyboardType: TextInputType.emailAddress,
+              autofocus: true,
+              decoration: const InputDecoration(
+                labelText: 'Email',
+                hintText: 'admin@empresa.com',
+              ),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _nombre,
+              decoration: const InputDecoration(
+                labelText: 'Nombre completo',
+              ),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _telefono,
+              keyboardType: TextInputType.phone,
+              decoration: const InputDecoration(
+                labelText: 'Teléfono (opcional)',
+              ),
+            ),
+            if (_error != null) ...[
+              const SizedBox(height: 12),
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: scheme.errorContainer,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(_error!,
+                    style: TextStyle(color: scheme.onErrorContainer)),
+              ),
+            ],
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: _enviando ? null : () => Navigator.of(context).pop(),
+          child: const Text('Cancelar'),
+        ),
+        FilledButton.icon(
+          icon: _enviando
+              ? const SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : const Icon(Icons.send),
+          label: const Text('Enviar invitación'),
+          onPressed: _enviando ? null : _invitar,
+        ),
+      ],
     );
   }
 }
