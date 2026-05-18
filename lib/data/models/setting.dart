@@ -22,9 +22,12 @@ class Setting {
   final String? descripcion;
   final String editablePor;
 
-  bool get asBool => valor as bool? ?? false;
-  num get asNumber => (valor as num?) ?? 0;
-  String get asString => (valor as String?) ?? '';
+  // Getters defensivos: el widget de settings lee asBool en initState para
+  // cualquier setting (no sólo los de tipo='boolean'), así que si `valor`
+  // no es del tipo esperado devolvemos un default en vez de tirar TypeError.
+  bool get asBool => valor is bool ? valor as bool : false;
+  num get asNumber => valor is num ? valor as num : 0;
+  String get asString => valor is String ? valor as String : (valor?.toString() ?? '');
 
   factory Setting.fromRow(Map<String, dynamic> row) {
     final raw = row['valor'] as String?;
