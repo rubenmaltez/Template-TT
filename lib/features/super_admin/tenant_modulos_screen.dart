@@ -375,6 +375,7 @@ class _MiembroCardState extends ConsumerState<_MiembroCard> {
         nombre: c.nombre,
         rolActual: c.rol,
         prefijoActual: c.prefijoRecibo,
+        clientesAsignados: c.clientesAsignados,
         esUltimoAdmin: c.rol == 'admin' && otrosAdminsActivos == 0,
       ),
     );
@@ -523,15 +524,28 @@ class _MiembroCardState extends ConsumerState<_MiembroCard> {
     final repo = container.read(superAdminRepoProvider);
 
     if (c.activo) {
-      // Detectar si es el último admin activo del tenant para advertir
-      // — no bloqueamos (super_admin tiene el poder) pero avisamos.
-      final miembros =
-          ref.read(cobradoresTenantProvider(widget.tenantId)).valueOrNull ??
-              const [];
+      // Warnings que muestra el confirm dialog:
+      //   - "último admin": al desactivarlo nadie administra el tenant.
+      //   - "clientes huérfanos": si es cobrador con clientes asignados,
+      //     quedan sin nadie que los cobre hasta reasignar.
+      // Re-fetch antes de leer la lista — así el count y el conteo de
+      // admins están frescos (mismo patrón que _cambiarRol).
+      container.invalidate(cobradoresTenantProvider(widget.tenantId));
+      final miembros = await container
+          .read(cobradoresTenantProvider(widget.tenantId).future);
+      if (!mounted) return;
+      // c también puede estar desactualizado por la invalidación; busco
+      // la versión fresca para tomar clientesAsignados correcto.
+      final cFresh = miembros.firstWhere(
+        (m) => m.id == c.id,
+        orElse: () => c,
+      );
       final adminsActivos = miembros
-          .where((m) => m.rol == 'admin' && m.activo && m.id != c.id)
+          .where((m) => m.rol == 'admin' && m.activo && m.id != cFresh.id)
           .length;
-      final esUltimoAdmin = c.rol == 'admin' && adminsActivos == 0;
+      final esUltimoAdmin = cFresh.rol == 'admin' && adminsActivos == 0;
+      final dejaraClientesHuerfanos =
+          cFresh.rol == 'cobrador' && cFresh.clientesAsignados > 0;
 
       final confirmar = await showDialog<bool>(
         context: context,
@@ -549,32 +563,25 @@ class _MiembroCardState extends ConsumerState<_MiembroCard> {
                   'reactivarlo más tarde sin pérdida.',
                 ),
                 if (esUltimoAdmin) ...[
-                  const SizedBox(height: 16),
-                  Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: dialogScheme.errorContainer,
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Icon(Icons.warning_amber,
-                            color: dialogScheme.onErrorContainer, size: 20),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            'Atención: es el único admin activo del tenant. '
-                            'Tras desactivarlo, nadie podrá administrar este '
-                            'ISP hasta que reactives a alguien o invites '
-                            'otro admin.',
-                            style: TextStyle(
-                                color: dialogScheme.onErrorContainer,
-                                fontSize: 13),
-                          ),
-                        ),
-                      ],
-                    ),
+                  const SizedBox(height: 12),
+                  _WarningBox(
+                    icon: Icons.warning_amber,
+                    color: dialogScheme.errorContainer,
+                    onColor: dialogScheme.onErrorContainer,
+                    texto: 'Es el único admin activo del tenant. Tras '
+                        'desactivarlo, nadie podrá administrar este ISP '
+                        'hasta que reactives a alguien o invites otro '
+                        'admin.',
+                  ),
+                ],
+                if (dejaraClientesHuerfanos) ...[
+                  const SizedBox(height: 12),
+                  _WarningBox(
+                    icon: Icons.warning_amber,
+                    color: dialogScheme.errorContainer,
+                    onColor: dialogScheme.onErrorContainer,
+                    texto:
+                        _warningClientesHuerfanos(cFresh.clientesAsignados),
                   ),
                 ],
               ],
@@ -1156,12 +1163,14 @@ class _CambiarRolDialog extends StatefulWidget {
     required this.nombre,
     required this.rolActual,
     required this.prefijoActual,
+    required this.clientesAsignados,
     required this.esUltimoAdmin,
   });
 
   final String nombre;
   final String rolActual;
   final String? prefijoActual;
+  final int clientesAsignados;
   final bool esUltimoAdmin;
 
   @override
@@ -1186,9 +1195,12 @@ class _CambiarRolDialogState extends State<_CambiarRolDialog> {
     // Warnings que dependen del cambio elegido.
     final perderaAdmin =
         widget.rolActual == 'admin' && _seleccionado != 'admin';
-    final dejaraDeSerCobrador = widget.rolActual == 'cobrador' &&
-        _seleccionado != 'cobrador' &&
-        widget.prefijoActual != null;
+    final dejaraDeSerCobrador =
+        widget.rolActual == 'cobrador' && _seleccionado != 'cobrador';
+    final dejaraClientesHuerfanos =
+        dejaraDeSerCobrador && widget.clientesAsignados > 0;
+    final perderaPrefijo =
+        dejaraDeSerCobrador && widget.prefijoActual != null;
     final pasaACobradorSinPrefijo = widget.rolActual != 'cobrador' &&
         _seleccionado == 'cobrador';
     final cambioReal = _seleccionado != widget.rolActual;
@@ -1243,7 +1255,7 @@ class _CambiarRolDialogState extends State<_CambiarRolDialog> {
                 );
               }),
               if (widget.esUltimoAdmin && perderaAdmin) ...[
-                const SizedBox(height: 8),
+                const SizedBox(height: 12),
                 _WarningBox(
                   icon: Icons.warning_amber,
                   color: scheme.errorContainer,
@@ -1253,8 +1265,17 @@ class _CambiarRolDialogState extends State<_CambiarRolDialog> {
                       'designes otro admin.',
                 ),
               ],
-              if (dejaraDeSerCobrador) ...[
-                const SizedBox(height: 8),
+              if (dejaraClientesHuerfanos) ...[
+                const SizedBox(height: 12),
+                _WarningBox(
+                  icon: Icons.warning_amber,
+                  color: scheme.errorContainer,
+                  onColor: scheme.onErrorContainer,
+                  texto: _warningClientesHuerfanos(widget.clientesAsignados),
+                ),
+              ],
+              if (perderaPrefijo) ...[
+                const SizedBox(height: 12),
                 _WarningBox(
                   icon: Icons.info_outline,
                   color: scheme.surfaceContainerHighest,
@@ -1265,7 +1286,7 @@ class _CambiarRolDialogState extends State<_CambiarRolDialog> {
                 ),
               ],
               if (pasaACobradorSinPrefijo) ...[
-                const SizedBox(height: 8),
+                const SizedBox(height: 12),
                 _WarningBox(
                   icon: Icons.info_outline,
                   color: scheme.surfaceContainerHighest,
@@ -1275,7 +1296,7 @@ class _CambiarRolDialogState extends State<_CambiarRolDialog> {
                 ),
               ],
               if (!cambioReal) ...[
-                const SizedBox(height: 8),
+                const SizedBox(height: 12),
                 Text(
                   'Elegí un rol distinto al actual para habilitar el cambio.',
                   style: TextStyle(
@@ -1295,9 +1316,10 @@ class _CambiarRolDialogState extends State<_CambiarRolDialog> {
         FilledButton.icon(
           icon: const Icon(Icons.swap_horiz),
           label: const Text('Cambiar'),
-          // Si va a dejar al tenant sin admin activo, le ponemos color
-          // error para alinearse con la severidad del warning de arriba.
-          style: (widget.esUltimoAdmin && perderaAdmin)
+          // Color error si hay warning severo (último admin o clientes
+          // huérfanos) — alinea visualmente con la severidad del aviso.
+          style: ((widget.esUltimoAdmin && perderaAdmin) ||
+                  dejaraClientesHuerfanos)
               ? FilledButton.styleFrom(
                   backgroundColor:
                       Theme.of(context).colorScheme.error,
@@ -1334,6 +1356,8 @@ class _CambiarRolDialogState extends State<_CambiarRolDialog> {
 }
 
 /// Caja de advertencia con ícono — usada en varios dialogs del panel.
+/// 13px para texto en background coloreado: 12px era apenas legible para
+/// algunos usuarios; 13px mantiene compactness pero mejora contraste.
 class _WarningBox extends StatelessWidget {
   const _WarningBox({
     required this.icon,
@@ -1363,13 +1387,28 @@ class _WarningBox extends StatelessWidget {
           Expanded(
             child: Text(
               texto,
-              style: TextStyle(color: onColor, fontSize: 12),
+              style: TextStyle(color: onColor, fontSize: 13),
             ),
           ),
         ],
       ),
     );
   }
+}
+
+/// Texto del warning "tiene N clientes asignados que van a quedar
+/// huérfanos". Centralizado para que cambiar-rol y desactivar tengan
+/// exactamente la misma copy y para resolver la concordancia
+/// gramatical (1 cliente VA, N clientes VAN).
+String _warningClientesHuerfanos(int n) {
+  if (n == 1) {
+    return 'Tiene 1 cliente asignado que va a quedar sin cobrador. '
+        'Reasignalo primero desde el panel del tenant '
+        '(Cobradores → Reasignar).';
+  }
+  return 'Tiene $n clientes asignados que van a quedar sin cobrador. '
+      'Reasignalos primero desde el panel del tenant '
+      '(Cobradores → Reasignar).';
 }
 
 /// Dialog para que el super_admin invite el primer/otro admin de un tenant.

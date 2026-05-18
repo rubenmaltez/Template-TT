@@ -15,6 +15,7 @@ class CobradorAdmin {
     this.lastSignInAt,
     this.emailConfirmedAt,
     this.invitedAt,
+    this.clientesAsignados = 0,
   });
 
   final String id;
@@ -30,6 +31,9 @@ class CobradorAdmin {
   final DateTime? lastSignInAt;
   final DateTime? emailConfirmedAt;
   final DateTime? invitedAt;
+  /// Sólo para rol cobrador: cuántos clientes activos están asignados a
+  /// este cobrador. 0 para otros roles.
+  final int clientesAsignados;
 
   /// Fue invitado pero nunca confirmó el email (no completó el signup).
   bool get invitacionPendiente => emailConfirmedAt == null;
@@ -56,5 +60,7 @@ class CobradorAdmin {
         invitedAt: m['invited_at'] != null
             ? DateTime.parse(m['invited_at'] as String)
             : null,
+        clientesAsignados:
+            (m['clientes_asignados'] as num?)?.toInt() ?? 0,
       );
 }
