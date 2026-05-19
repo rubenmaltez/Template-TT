@@ -23,6 +23,7 @@ import '../features/admin/shell/admin_shell.dart';
 import '../features/auth/auth_flow_provider.dart';
 import '../features/auth/login_screen.dart';
 import '../features/auth/set_password_screen.dart';
+import '../features/super_admin/miembro_detalle_screen.dart';
 import '../features/super_admin/super_shell.dart';
 import '../features/super_admin/tenant_modulos_screen.dart';
 import '../features/super_admin/tenants_list_screen.dart';
@@ -248,10 +249,12 @@ final routerProvider = Provider<GoRouter>((ref) {
       ShellRoute(
         builder: (_, state, child) {
           final loc = state.matchedLocation;
-          final titulo = loc.startsWith('/super/tenants/') &&
-                  loc.length > '/super/tenants/'.length
-              ? 'Configurar tenant'
-              : 'Tenants';
+          final titulo = loc.contains('/miembros/')
+              ? 'Detalle del miembro'
+              : (loc.startsWith('/super/tenants/') &&
+                      loc.length > '/super/tenants/'.length
+                  ? 'Configurar tenant'
+                  : 'Tenants');
           return SuperShell(titulo: titulo, child: child);
         },
         routes: [
@@ -263,6 +266,13 @@ final routerProvider = Provider<GoRouter>((ref) {
             path: '/super/tenants/:id',
             builder: (_, s) =>
                 TenantModulosScreen(tenantId: s.pathParameters['id']!),
+          ),
+          GoRoute(
+            path: '/super/tenants/:tid/miembros/:cid',
+            builder: (_, s) => MiembroDetalleScreen(
+              tenantId: s.pathParameters['tid']!,
+              cobradorId: s.pathParameters['cid']!,
+            ),
           ),
         ],
       ),

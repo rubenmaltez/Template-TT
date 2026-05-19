@@ -1,7 +1,9 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../models/audit_entry.dart';
 import '../models/cobrador_admin.dart';
+import '../models/cobrador_stats.dart';
 import '../models/modulo.dart';
 import '../models/tenant_admin.dart';
 
@@ -110,6 +112,29 @@ class SuperAdminRepo {
       );
     }
   }
+
+  Future<CobradorStats?> getCobradorStats(String cobradorId) async {
+    final res = await _client.rpc('get_cobrador_stats', params: {
+      'p_cobrador_id': cobradorId,
+    }) as List<dynamic>;
+    if (res.isEmpty) return null;
+    return CobradorStats.fromMap(
+      Map<String, dynamic>.from(res.first as Map),
+    );
+  }
+
+  Future<List<AuditEntry>> listAuditCobrador({
+    required String cobradorId,
+    int limit = 50,
+  }) async {
+    final res = await _client.rpc('list_audit_cobrador', params: {
+      'p_cobrador_id': cobradorId,
+      'p_limit': limit,
+    }) as List<dynamic>;
+    return res
+        .map((e) => AuditEntry.fromMap(Map<String, dynamic>.from(e as Map)))
+        .toList();
+  }
 }
 
 final superAdminRepoProvider = Provider<SuperAdminRepo>(
@@ -132,4 +157,19 @@ final cobradoresTenantProvider =
     FutureProvider.family<List<CobradorAdmin>, String>(
   (ref, tenantId) =>
       ref.read(superAdminRepoProvider).listCobradoresTenant(tenantId),
+);
+
+/// Stats agregadas de un miembro para la pantalla de detalle.
+final cobradorStatsProvider =
+    FutureProvider.family<CobradorStats?, String>(
+  (ref, cobradorId) =>
+      ref.read(superAdminRepoProvider).getCobradorStats(cobradorId),
+);
+
+/// Timeline de audit_log del miembro (últimos 50 eventos).
+final auditCobradorProvider =
+    FutureProvider.family<List<AuditEntry>, String>(
+  (ref, cobradorId) => ref
+      .read(superAdminRepoProvider)
+      .listAuditCobrador(cobradorId: cobradorId),
 );

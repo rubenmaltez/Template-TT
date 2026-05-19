@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../data/models/cobrador_admin.dart';
@@ -949,9 +950,13 @@ class _MiembroCardState extends ConsumerState<_MiembroCard> {
     final rolColor = _rolColor(scheme, c.rol);
     return Card(
       margin: const EdgeInsets.only(bottom: 8),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Row(
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: () => GoRouter.of(context)
+            .go('/super/tenants/${widget.tenantId}/miembros/${c.id}'),
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             CircleAvatar(
@@ -1098,6 +1103,7 @@ class _MiembroCardState extends ConsumerState<_MiembroCard> {
               ),
           ],
         ),
+      ),
       ),
     );
   }
