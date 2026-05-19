@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
+import 'package:flutter/semantics.dart' show SemanticsService;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -31,6 +32,26 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   bool _busy = false;
   String? _error;
   String? _info;
+
+  @override
+  void initState() {
+    super.initState();
+    // Si el banner de error viene seteado desde el boot (link expirado,
+    // ?error_code=otp_expired, etc.), `liveRegion` no dispara porque
+    // está presente en el primer frame — no es una transición. Usamos
+    // SemanticsService.announce para forzar la anunciación una vez
+    // construido el árbol.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final err = ref.read(initialAuthErrorProvider);
+      if (err != null && err.isNotEmpty) {
+        SemanticsService.announce(
+          _humanizeAuthError(err),
+          Directionality.of(context),
+        );
+      }
+    });
+  }
 
   @override
   void dispose() {
@@ -95,12 +116,14 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
               mainAxisSize: MainAxisSize.min,
               children: [
                 if (authError != null) ...[
-                  // liveRegion: el banner aparece tras un redirect (link
-                  // expirado, etc.); sin esto TalkBack/NVDA no leen el
-                  // mensaje al insertarse — el usuario quedaría sin
-                  // saber por qué cayó al login.
+                  // liveRegion + container para anuncio en transiciones
+                  // (login → login con error). Para el caso boot (banner
+                  // presente desde el primer frame) liveRegion no
+                  // dispara — eso lo cubre el SemanticsService.announce
+                  // de initState.
                   Semantics(
                     liveRegion: true,
+                    container: true,
                     child: Container(
                       width: double.infinity,
                       padding: const EdgeInsets.all(12),
@@ -179,15 +202,38 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                 ],
                 if (_error != null) ...[
                   const SizedBox(height: 16),
-                  // liveRegion para que screen readers anuncien el error
-                  // tras intentar loguear / pedir reset; sin esto el
-                  // texto aparece silenciosamente debajo del form.
+                  // Mismo styling de errorContainer que el banner de
+                  // arriba — antes era texto rojo suelto, débil en
+                  // contraste no-texto (WCAG 1.4.11). liveRegion +
+                  // container aseguran que NVDA/TalkBack anuncien al
+                  // aparecer (null → String es una transición).
                   Semantics(
                     liveRegion: true,
-                    child: Text(
-                      _error!,
-                      style: TextStyle(color: scheme.error),
-                      textAlign: TextAlign.center,
+                    container: true,
+                    child: Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: scheme.errorContainer,
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Icon(Icons.error_outline,
+                              color: scheme.onErrorContainer, size: 20),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              _error!,
+                              style: TextStyle(
+                                color: scheme.onErrorContainer,
+                                fontSize: 13,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
                   ),
                 ],
@@ -195,6 +241,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   const SizedBox(height: 16),
                   Semantics(
                     liveRegion: true,
+                    container: true,
                     child: Container(
                       padding: const EdgeInsets.all(12),
                       decoration: BoxDecoration(

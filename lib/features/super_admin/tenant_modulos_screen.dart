@@ -534,7 +534,7 @@ class _MiembroCardState extends ConsumerState<_MiembroCard> {
                   onColor: s.onSurfaceVariant,
                   texto: 'No abras el link en este browser: quedarías '
                       'logueado como ${c.nombre} y perderías tu sesión '
-                      'de super_admin.',
+                      'de Super Admin.',
                 ),
                 if (!c.activo) ...[
                   const SizedBox(height: 12),
@@ -1169,11 +1169,15 @@ class _MiembroCardState extends ConsumerState<_MiembroCard> {
                       // Label explícito para screen readers — el color
                       // rojo del ícono comunica "sensible" a usuarios
                       // viendo, pero no a quienes navegan con TalkBack.
+                      //
+                      // Sin button:true — el PopupMenuItem ya provee el
+                      // rol "menuitem"; ponerlo de nuevo duplicaría la
+                      // anunciación. `hint` se lee con pausa, así no
+                      // satura la traversal con texto de workflow.
                       child: Semantics(
-                        button: true,
-                        label: 'Forzar contraseña. Acción sensible: '
-                            'genera una contraseña visible para el '
-                            'super admin.',
+                        label: 'Forzar contraseña — acción sensible',
+                        hint: 'Genera una contraseña visible para el '
+                            'Super Admin',
                         excludeSemantics: true,
                         child: Row(
                           children: [
@@ -1249,10 +1253,9 @@ class _MiembroCardState extends ConsumerState<_MiembroCard> {
                     PopupMenuItem(
                       value: _AccionMiembro.eliminar,
                       child: Semantics(
-                        button: true,
-                        label: 'Eliminar miembro permanentemente. '
-                            'Acción destructiva — pide confirmación '
-                            'tipeando el nombre del miembro.',
+                        label: 'Eliminar miembro — acción destructiva',
+                        hint: 'Va a pedir confirmación tipeando el '
+                            'nombre',
                         excludeSemantics: true,
                         child: Row(
                           children: [
@@ -1965,11 +1968,19 @@ class _EliminarDialogState extends State<_EliminarDialog> {
                 ),
               ),
               const SizedBox(height: 4),
-              Text(
-                widget.cobrador.nombre,
-                style: const TextStyle(
-                  fontFamily: 'monospace',
-                  fontWeight: FontWeight.w600,
+              // SelectableText: el usuario puede copiarlo si tiene
+              // problemas con tildes/mayúsculas en su teclado.
+              // Semantics.label explícito porque sin contexto el SR
+              // lee el nombre suelto sin saber su propósito.
+              Semantics(
+                label: 'Nombre a confirmar: ${widget.cobrador.nombre}',
+                excludeSemantics: true,
+                child: SelectableText(
+                  widget.cobrador.nombre,
+                  style: const TextStyle(
+                    fontFamily: 'monospace',
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
               ),
               const SizedBox(height: 8),
@@ -1977,9 +1988,12 @@ class _EliminarDialogState extends State<_EliminarDialog> {
                 controller: _confirmCtrl,
                 onChanged: (_) => setState(() {}),
                 decoration: const InputDecoration(
+                  // labelText (no sólo hintText) — NVDA anuncia
+                  // "edit, blank" cuando solo hay hint; labelText
+                  // queda como nombre accesible del campo.
+                  labelText: 'Confirmá tipeando el nombre',
                   border: OutlineInputBorder(),
                   isDense: true,
-                  hintText: 'Nombre del miembro',
                 ),
               ),
             ],
@@ -1992,17 +2006,26 @@ class _EliminarDialogState extends State<_EliminarDialog> {
           onPressed: () => Navigator.of(context).pop(false),
           child: const Text('Cancelar'),
         ),
-        FilledButton.icon(
-          icon: const Icon(Icons.delete_forever),
-          label: const Text('Eliminar'),
-          style: FilledButton.styleFrom(
-            backgroundColor: scheme.error,
-            foregroundColor: scheme.onError,
-            disabledBackgroundColor: scheme.surfaceContainerHighest,
+        // Botón destructivo: label rico para screen readers que
+        // exponga la naturaleza permanente de la acción. Cuando está
+        // disabled el estado se anuncia por Semantics(enabled).
+        Semantics(
+          button: true,
+          enabled: _puedeEliminar,
+          label: 'Eliminar permanentemente a ${widget.cobrador.nombre}',
+          excludeSemantics: true,
+          child: FilledButton.icon(
+            icon: const Icon(Icons.delete_forever),
+            label: const Text('Eliminar'),
+            style: FilledButton.styleFrom(
+              backgroundColor: scheme.error,
+              foregroundColor: scheme.onError,
+              disabledBackgroundColor: scheme.surfaceContainerHighest,
+            ),
+            onPressed: _puedeEliminar
+                ? () => Navigator.of(context).pop(true)
+                : null,
           ),
-          onPressed: _puedeEliminar
-              ? () => Navigator.of(context).pop(true)
-              : null,
         ),
       ],
     );
