@@ -44,24 +44,14 @@ Future<void> main() async {
     anonKey: Env.supabaseAnonKey,
   );
 
-  // Si vino un código PKCE en la URL y la SDK no lo intercambió sola,
-  // lo hacemos a mano. Después de exchangeCodeForSession, la sesión queda
-  // activa y los providers la van a leer.
-  if (initialPkceCode != null && kIsWeb) {
-    try {
-      await Supabase.instance.client.auth
-          .exchangeCodeForSession(initialPkceCode);
-    } catch (e) {
-      // Si falla (link expirado, code ya usado), no bloqueamos el arranque
-      // — el usuario verá la pantalla de login y puede pedir otro link.
-      debugPrint('exchangeCodeForSession falló: $e');
-    }
-  }
-
   await ps.openDatabase();
 
   // Conectar/desconectar PowerSync siguiendo el ciclo de vida de la sesión.
   // `initialSession` cubre el caso de arranque con token persistido.
+  //
+  // IMPORTANTE: el listener se setea ANTES de exchangeCodeForSession para
+  // que los eventos del exchange (signedIn en flows recovery/invite) sean
+  // capturados — sino PowerSync queda desconectado pese a tener sesión.
   Supabase.instance.client.auth.onAuthStateChange.listen((data) async {
     switch (data.event) {
       case AuthChangeEvent.initialSession:
@@ -82,6 +72,28 @@ Future<void> main() async {
         break;
     }
   });
+
+  // Si la SDK ya restauró sesión durante initialize (usuario con token
+  // persistido), el listener puede haber 'llegado tarde' al initialSession
+  // event. Forzamos un connect manual como red de seguridad.
+  if (Supabase.instance.client.auth.currentSession != null) {
+    await ps.connectPowerSync();
+  }
+
+  // Si vino un código PKCE en la URL y la SDK no lo intercambió sola,
+  // lo hacemos a mano. Después de exchangeCodeForSession, la sesión queda
+  // activa, dispara signedIn, y el listener de arriba conecta PowerSync.
+  if (initialPkceCode != null && kIsWeb) {
+    try {
+      await Supabase.instance.client.auth
+          .exchangeCodeForSession(initialPkceCode);
+    } catch (e) {
+      // Si falla (link expirado, code ya usado, code_verifier no en
+      // localStorage de este browser), no bloqueamos el arranque —
+      // el usuario verá la pantalla de login.
+      debugPrint('exchangeCodeForSession falló: $e');
+    }
+  }
 
   // Background worker: sube fotos del comprobante pendientes cuando hay
   // conexión. El service tiene su propio lock interno — el botón manual
