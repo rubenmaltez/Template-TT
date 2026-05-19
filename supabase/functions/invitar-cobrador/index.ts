@@ -39,6 +39,10 @@ interface InvitarRequest {
   telefono?: string;
   prefijo_recibo?: string;
   tenant_id?: string;
+  // Origen del cliente para que Supabase redirija al usuario tras
+  // verificar el invite. Debe incluir `?flow=invite` o equivalente
+  // para que la app pueda routear a /set-password (ver auth_flow_provider).
+  redirect_to?: string;
 }
 
 const SYSTEM_TENANT = "00000000-0000-0000-0000-000000000000";
@@ -149,6 +153,9 @@ serve(async (req) => {
 
     // Invitar: manda email + crea auth.users row. El trigger
     // handle_new_user creará la fila en `cobradores` con este metadata.
+    // redirect_to: si lo manda el cliente, lo respetamos (debería tener
+    //   `?flow=invite` para que el app route a /set-password). Si no,
+    //   Supabase usa el Site URL configurado.
     const { data: invite, error: invErr } = await admin.auth.admin
       .inviteUserByEmail(body.email, {
         data: {
@@ -160,6 +167,7 @@ serve(async (req) => {
             ? (body.prefijo_recibo ?? null)
             : null,
         },
+        redirectTo: body.redirect_to,
       });
 
     if (invErr) return jsonError(`Auth: ${invErr.message}`, 400);

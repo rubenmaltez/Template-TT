@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -141,6 +142,9 @@ class _InvitarDialogState extends State<_InvitarDialog> {
             'telefono': _telefono.text.trim(),
           if (_rol == 'cobrador' && prefijo.isNotEmpty)
             'prefijo_recibo': prefijo,
+          // ?flow=invite: routea al invitado a /set-password tras
+          // clickear el link del email (ver _extractAuthFlow en main).
+          if (kIsWeb) 'redirect_to': '${Uri.base.origin}/?flow=invite',
         },
       );
       final data = res.data as Map<String, dynamic>?;

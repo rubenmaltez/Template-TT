@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:math';
 
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -1464,6 +1465,10 @@ class _InvitarAdminDialogState extends ConsumerState<_InvitarAdminDialog> {
           'tenant_id': widget.tenant.id,
           if (_telefono.text.trim().isNotEmpty)
             'telefono': _telefono.text.trim(),
+          // ?flow=invite: para que cuando el invitado clickee el link
+          // del email, el app lo route a /set-password en vez del
+          // dashboard sin password. Ver _extractAuthFlow en main.dart.
+          if (kIsWeb) 'redirect_to': '${Uri.base.origin}/?flow=invite',
         },
       );
       final data = res.data as Map<String, dynamic>?;
