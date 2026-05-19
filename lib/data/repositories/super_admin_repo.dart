@@ -88,6 +88,28 @@ class SuperAdminRepo {
       );
     }
   }
+
+  /// Llama a la Edge Function `reenviar-invitacion`. La función borra
+  /// el usuario pending y crea uno nuevo con la misma metadata, así
+  /// el email de invitación llega fresco.
+  Future<void> reenviarInvitacion({
+    required String cobradorId,
+    String? redirectTo,
+  }) async {
+    final res = await _client.functions.invoke(
+      'reenviar-invitacion',
+      body: {
+        'cobrador_id': cobradorId,
+        if (redirectTo != null) 'redirect_to': redirectTo,
+      },
+    );
+    final data = res.data as Map<String, dynamic>?;
+    if (data == null || data['ok'] != true) {
+      throw Exception(
+        (data?['error'] as String?) ?? 'Error desconocido',
+      );
+    }
+  }
 }
 
 final superAdminRepoProvider = Provider<SuperAdminRepo>(

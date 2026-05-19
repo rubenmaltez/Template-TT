@@ -328,7 +328,16 @@ class _MiembrosList extends ConsumerWidget {
 }
 
 /// Acciones disponibles en el menú "..." de cada miembro.
-enum _AccionMiembro { toggleActivo, forzarPassword, cambiarRol }
+/// Algunas son condicionales según el estado del miembro:
+///   - resetPasswordEmail / forzarPassword: sólo si emailConfirmedAt != null
+///   - reenviarInvitacion: sólo si invitacionPendiente
+enum _AccionMiembro {
+  toggleActivo,
+  forzarPassword,
+  resetPasswordEmail,
+  reenviarInvitacion,
+  cambiarRol,
+}
 
 class _MiembroCard extends ConsumerStatefulWidget {
   const _MiembroCard({required this.cobrador, required this.tenantId});
@@ -349,8 +358,224 @@ class _MiembroCardState extends ConsumerState<_MiembroCard> {
         await _toggleActivo();
       case _AccionMiembro.forzarPassword:
         await _forzarPassword();
+      case _AccionMiembro.resetPasswordEmail:
+        await _resetPasswordEmail();
+      case _AccionMiembro.reenviarInvitacion:
+        await _reenviarInvitacion();
       case _AccionMiembro.cambiarRol:
         await _cambiarRol();
+    }
+  }
+
+  Future<void> _resetPasswordEmail() async {
+    final c = widget.cobrador;
+    final email = c.email;
+    final messenger = ScaffoldMessenger.of(context);
+    final scheme = Theme.of(context).colorScheme;
+
+    if (email == null) {
+      _mostrarSnackBar(
+        messenger,
+        SnackBar(
+          content: const Text(
+            'Este usuario no tiene email registrado. No se puede mandar reset.',
+          ),
+          backgroundColor: scheme.error,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
+
+    final screenW = MediaQuery.sizeOf(context).width;
+    final dialogW = screenW < 460 ? screenW * 0.9 : 420.0;
+
+    final confirmar = await showDialog<bool>(
+      context: context,
+      builder: (dialogCtx) {
+        final s = Theme.of(dialogCtx).colorScheme;
+        return AlertDialog(
+          title: Text('¿Mandar reset password a ${c.nombre}?'),
+          content: SizedBox(
+            width: dialogW,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Se le enviará un email a $email con un link para '
+                  'definir una nueva contraseña.',
+                ),
+                const SizedBox(height: 12),
+                _WarningBox(
+                  icon: Icons.info_outline,
+                  color: s.surfaceContainerHighest,
+                  onColor: s.onSurfaceVariant,
+                  texto: 'No abras el link en este browser: quedarías '
+                      'logueado como ${c.nombre} y perderías tu sesión '
+                      'de super_admin.',
+                ),
+                if (!c.activo) ...[
+                  const SizedBox(height: 12),
+                  _WarningBox(
+                    icon: Icons.warning_amber,
+                    color: s.errorContainer,
+                    onColor: s.onErrorContainer,
+                    texto: '${c.nombre} está inactivo. Aunque resetee su '
+                        'contraseña no va a poder iniciar sesión hasta '
+                        'que lo reactives.',
+                  ),
+                ],
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              autofocus: true,
+              onPressed: () => Navigator.of(dialogCtx).pop(false),
+              child: const Text('Cancelar'),
+            ),
+            FilledButton.icon(
+              icon: const Icon(Icons.mail_outline),
+              label: const Text('Enviar email'),
+              onPressed: () => Navigator.of(dialogCtx).pop(true),
+            ),
+          ],
+        );
+      },
+    );
+    if (confirmar != true) return;
+
+    setState(() => _saving = true);
+    try {
+      await Supabase.instance.client.auth.resetPasswordForEmail(
+        email,
+        redirectTo: kIsWeb ? '${Uri.base.origin}/?flow=recovery' : null,
+      );
+      if (!mounted) return;
+      _mostrarSnackBar(
+        messenger,
+        SnackBar(
+          content: Text('Email de reset enviado a $email'),
+          duration: const Duration(seconds: 3),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      final msg = e is AuthException
+          ? e.message
+          : e.toString().replaceFirst('Exception: ', '');
+      _mostrarSnackBar(
+        messenger,
+        SnackBar(
+          content: Text('No se pudo enviar reset: $msg'),
+          backgroundColor: scheme.error,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  Future<void> _reenviarInvitacion() async {
+    final c = widget.cobrador;
+    final email = c.email;
+    final container = ProviderScope.containerOf(context, listen: false);
+    final messenger = ScaffoldMessenger.of(context);
+    final scheme = Theme.of(context).colorScheme;
+    final repo = container.read(superAdminRepoProvider);
+
+    if (email == null) {
+      _mostrarSnackBar(
+        messenger,
+        SnackBar(
+          content: const Text(
+            'Este usuario no tiene email registrado. No se puede reenviar.',
+          ),
+          backgroundColor: scheme.error,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
+
+    final screenW = MediaQuery.sizeOf(context).width;
+    final dialogW = screenW < 460 ? screenW * 0.9 : 420.0;
+
+    final confirmar = await showDialog<bool>(
+      context: context,
+      builder: (dialogCtx) {
+        final s = Theme.of(dialogCtx).colorScheme;
+        return AlertDialog(
+          title: Text('¿Reenviar invitación a ${c.nombre}?'),
+          content: SizedBox(
+            width: dialogW,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Se le enviará un nuevo email de invitación a $email.'),
+                const SizedBox(height: 12),
+                _WarningBox(
+                  icon: Icons.warning_amber,
+                  color: s.errorContainer,
+                  onColor: s.onErrorContainer,
+                  texto: 'Cualquier link de invitación anterior deja de '
+                      'funcionar inmediatamente. Avisale al usuario que '
+                      'use sólo el email más reciente.',
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              autofocus: true,
+              onPressed: () => Navigator.of(dialogCtx).pop(false),
+              child: const Text('Cancelar'),
+            ),
+            FilledButton.icon(
+              icon: const Icon(Icons.send),
+              label: const Text('Reenviar'),
+              onPressed: () => Navigator.of(dialogCtx).pop(true),
+            ),
+          ],
+        );
+      },
+    );
+    if (confirmar != true) return;
+
+    setState(() => _saving = true);
+    try {
+      await repo.reenviarInvitacion(
+        cobradorId: c.id,
+        redirectTo: kIsWeb ? '${Uri.base.origin}/?flow=invite' : null,
+      );
+      container.invalidate(cobradoresTenantProvider(widget.tenantId));
+      container.invalidate(tenantsAdminProvider);
+      if (!mounted) return;
+      _mostrarSnackBar(
+        messenger,
+        SnackBar(
+          content: Text('Invitación reenviada a $email'),
+          duration: const Duration(seconds: 3),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      final msg = e.toString().replaceFirst('Exception: ', '');
+      _mostrarSnackBar(
+        messenger,
+        SnackBar(
+          content: Text('No se pudo reenviar: $msg'),
+          backgroundColor: scheme.error,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _saving = false);
     }
   }
 
@@ -773,6 +998,7 @@ class _MiembroCardState extends ConsumerState<_MiembroCard> {
                 tooltip: 'Acciones para ${c.nombre}',
                 onSelected: _ejecutarAccion,
                 itemBuilder: (_) => [
+                  // Grupo 1: estado.
                   PopupMenuItem(
                     value: _AccionMiembro.toggleActivo,
                     child: Row(
@@ -787,17 +1013,51 @@ class _MiembroCardState extends ConsumerState<_MiembroCard> {
                       ],
                     ),
                   ),
-                  PopupMenuItem(
-                    value: _AccionMiembro.forzarPassword,
-                    child: Row(
-                      children: [
-                        Icon(Icons.password,
-                            color: scheme.tertiary, size: 20),
-                        const SizedBox(width: 12),
-                        const Text('Forzar contraseña'),
-                      ],
+                  const PopupMenuDivider(),
+                  // Grupo 2: credenciales.
+                  // forzarPassword usa error color porque es la única que
+                  // genera una password visible para el super_admin — más
+                  // sensible que las otras dos acciones de credenciales.
+                  if (!c.invitacionPendiente)
+                    PopupMenuItem(
+                      value: _AccionMiembro.forzarPassword,
+                      child: Row(
+                        children: [
+                          Icon(Icons.password,
+                              color: scheme.error, size: 20),
+                          const SizedBox(width: 12),
+                          const Text('Forzar contraseña'),
+                        ],
+                      ),
                     ),
-                  ),
+                  if (!c.invitacionPendiente)
+                    PopupMenuItem(
+                      value: _AccionMiembro.resetPasswordEmail,
+                      child: Row(
+                        children: [
+                          Icon(Icons.mail_outline,
+                              color: scheme.tertiary, size: 20),
+                          const SizedBox(width: 12),
+                          const Text('Reset password vía email'),
+                        ],
+                      ),
+                    ),
+                  // Reenviar invitación: sólo para pending invites — el
+                  // user no aceptó todavía. Para confirmados usá reset.
+                  if (c.invitacionPendiente)
+                    PopupMenuItem(
+                      value: _AccionMiembro.reenviarInvitacion,
+                      child: Row(
+                        children: [
+                          Icon(Icons.send,
+                              color: scheme.tertiary, size: 20),
+                          const SizedBox(width: 12),
+                          const Text('Reenviar invitación'),
+                        ],
+                      ),
+                    ),
+                  const PopupMenuDivider(),
+                  // Grupo 3: rol.
                   PopupMenuItem(
                     value: _AccionMiembro.cambiarRol,
                     child: Row(
