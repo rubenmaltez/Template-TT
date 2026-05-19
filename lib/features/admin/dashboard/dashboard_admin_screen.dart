@@ -36,13 +36,29 @@ class DashboardAdminScreen extends ConsumerWidget {
         const SizedBox(height: 24),
         LayoutBuilder(
           builder: (context, c) {
-            final esDosCols = c.maxWidth >= 700;
-            return Flex(
-              direction: esDosCols ? Axis.horizontal : Axis.vertical,
+            // En narrow (< 700px) NO usamos Flex con Expanded: estamos
+            // adentro de un ListView (altura infinita) y Expanded
+            // necesita altura finita para expandirse, sino tira
+            // assertion "non-zero flex / unbounded height constraints"
+            // y entra en loop de rebuild. Column normal con SizedBox
+            // ya hace stack sin pelearse con el ListView.
+            if (c.maxWidth >= 700) {
+              return Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(child: _TopCobradoresCard(inicioMes: inicioMes)),
+                  const SizedBox(width: 16),
+                  Expanded(
+                      child: _DistribucionCuotasCard(diasGracia: diasGracia)),
+                ],
+              );
+            }
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Expanded(child: _TopCobradoresCard(inicioMes: inicioMes)),
-                SizedBox(width: esDosCols ? 16 : 0, height: esDosCols ? 0 : 16),
-                Expanded(child: _DistribucionCuotasCard(diasGracia: diasGracia)),
+                _TopCobradoresCard(inicioMes: inicioMes),
+                const SizedBox(height: 16),
+                _DistribucionCuotasCard(diasGracia: diasGracia),
               ],
             );
           },
