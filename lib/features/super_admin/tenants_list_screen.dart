@@ -372,9 +372,11 @@ class _CrearTenantDialogState extends ConsumerState<_CrearTenantDialog> {
   // Set de códigos de módulos extras seleccionados (los base ya van
   // automáticos vía trigger, no se muestran como opciones).
   final Set<String> _modulosExtras = {};
-  // Default true: queremos que el flow normal mande el email. El switch
-  // permite saltar el envío y devolver el link (necesario en Resend
-  // sandbox o cuando el destinatario no puede recibir el email).
+  // Default true: queremos que el flow normal mande el email. El
+  // switch permite saltar el envío — el server crea al admin con una
+  // password aleatoria y la devuelve para que el super_admin la
+  // comparta a mano (workaround para SMTP en sandbox o destinatarios
+  // sin email automatizado).
   bool _enviarEmail = true;
   bool _busy = false;
   String? _error;
@@ -791,7 +793,7 @@ class _AdminCredencialesDialogState extends State<_AdminCredencialesDialog> {
       if (!mounted) return;
       setState(() {
         _copyError = 'No pude copiar al portapapeles: '
-            'seleccioná la password y copiala a mano (Ctrl+C).';
+            'seleccioná la contraseña y copiala a mano (Ctrl+C).';
       });
     }
   }
@@ -822,13 +824,36 @@ class _AdminCredencialesDialogState extends State<_AdminCredencialesDialog> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const Text(
-              'El ISP ya está creado y el admin puede loguearse con '
-              'estas credenciales. Pasalas por canal seguro — el admin '
-              'puede cambiar su contraseña una vez adentro.',
+              'El ISP ya está creado y el admin puede loguearse ya '
+              'mismo con estas credenciales. Pasalas por canal '
+              'seguro — si las compartiste por uno inseguro, podés '
+              'rotarle la contraseña en cualquier momento desde el '
+              'detalle del ISP.',
             ),
-            const SizedBox(height: 8),
-            // Warning fuerte: la password es lo único que separa al
-            // admin de su tenant. Cualquiera con ella entra.
+            const SizedBox(height: 16),
+            // Email primero — username, recuperable de la conversación
+            // original si se pierde. La contraseña va abajo, junto al
+            // warning específico que la cubre.
+            Text(
+              'Email',
+              style: TextStyle(
+                color: scheme.onSurfaceVariant,
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const SizedBox(height: 4),
+            _CredencialRow(
+              valor: widget.email,
+              copiado: _copiadoEmail,
+              onCopiar: _copiarEmail,
+              semanticLabel: 'Copiar email',
+            ),
+            const SizedBox(height: 12),
+            // Warning específico para la contraseña: la posicionamos
+            // INMEDIATAMENTE arriba del bloque de la contraseña, no
+            // como header del dialog — sino se lee primero, se
+            // olvida, y se vuelve a la copia sin contexto.
             Container(
               padding: const EdgeInsets.all(10),
               decoration: BoxDecoration(
@@ -843,10 +868,12 @@ class _AdminCredencialesDialogState extends State<_AdminCredencialesDialog> {
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
-                      'La password sólo se muestra una vez. Si la '
-                      'perdés antes de compartirla, andá al detalle '
-                      'del miembro → "Forzar contraseña" para generar '
-                      'otra.',
+                      'La contraseña sólo se muestra una vez. Si la '
+                      'perdés, abrí el ISP y usá "Forzar contraseña" '
+                      'en la fila del admin para generar otra. '
+                      'Si vas a probar el login en este browser, '
+                      'hacelo en una ventana de incógnito — sino vas '
+                      'a cerrar tu sesión de Super Admin.',
                       style: TextStyle(
                         color: scheme.onErrorContainer,
                         fontSize: 12,
@@ -856,24 +883,7 @@ class _AdminCredencialesDialogState extends State<_AdminCredencialesDialog> {
                 ],
               ),
             ),
-            const SizedBox(height: 16),
-            // Email — primero porque es el username y el admin lo
-            // necesita aunque ya lo sepa de la conversación previa.
-            Text(
-              'Email',
-              style: TextStyle(
-                color: scheme.onSurfaceVariant,
-                fontSize: 11,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-            const SizedBox(height: 4),
-            _CredencialRow(
-              valor: widget.email,
-              copiado: _copiadoEmail,
-              onCopiar: _copiarEmail,
-            ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 8),
             Text(
               'Contraseña',
               style: TextStyle(
@@ -887,6 +897,7 @@ class _AdminCredencialesDialogState extends State<_AdminCredencialesDialog> {
               valor: widget.password,
               copiado: _copiadoPassword,
               onCopiar: _copiarPassword,
+              semanticLabel: 'Copiar contraseña',
             ),
             if (_copyError != null) ...[
               const SizedBox(height: 8),
@@ -904,44 +915,61 @@ class _AdminCredencialesDialogState extends State<_AdminCredencialesDialog> {
           ],
         ),
       ),
-      actions: [
-        TextButton(
-          // pop(_copiadoPassword) — sólo navegamos al detalle si copió
-          // la password (lo que sí es crítico). El email se puede
-          // recuperar siempre, la password no.
-          onPressed: () => Navigator.of(context).pop(_copiadoPassword),
-          child: Text(_copiadoPassword ? 'Listo' : 'Cerrar sin copiar'),
-        ),
-        Semantics(
-          button: true,
-          hint: 'Copia la contraseña al portapapeles',
-          child: FilledButton.icon(
-            icon: Icon(
-                _copiadoPassword ? Icons.check : Icons.content_copy),
-            label: Text(_copiadoPassword
-                ? 'Contraseña copiada'
-                : 'Copiar contraseña'),
-            onPressed: _copiarPassword,
-          ),
-        ),
-      ],
+      // Una vez copiada la contraseña, el flow está completo: el
+      // FilledButton primario pasa a ser "Listo" (acción de salir),
+      // y el copy duplicado pasa a TextButton secundario (acción de
+      // re-copiar). Antes había 2 botones compitiendo por la atención
+      // del super_admin tras copiar, con el FilledButton mintiendo:
+      // "Contraseña copiada" sin acción primaria asociada.
+      actions: _copiadoPassword
+          ? [
+              TextButton.icon(
+                icon: const Icon(Icons.content_copy, size: 18),
+                label: const Text('Copiar otra vez'),
+                onPressed: _copiarPassword,
+              ),
+              FilledButton(
+                onPressed: () => Navigator.of(context).pop(true),
+                child: const Text('Listo'),
+              ),
+            ]
+          : [
+              TextButton(
+                // pop(false) — no navegamos al detalle si no copió.
+                onPressed: () => Navigator.of(context).pop(false),
+                child: const Text('Cerrar sin copiar'),
+              ),
+              Semantics(
+                button: true,
+                hint: 'Copia la contraseña al portapapeles',
+                child: FilledButton.icon(
+                  icon: const Icon(Icons.content_copy),
+                  label: const Text('Copiar contraseña'),
+                  onPressed: _copiarPassword,
+                ),
+              ),
+            ],
     );
   }
 }
 
 /// Bloque "monospace + botón copiar" para mostrar una credencial
-/// individual. Usado por _AdminCredencialesDialog para email y password
-/// — mismo styling, distinto contenido.
+/// individual. Usado por _AdminCredencialesDialog para email y
+/// contraseña — mismo styling, distinto contenido. El semanticLabel
+/// distingue ambos roles para screen readers (sino TalkBack lee
+/// "Copiar" suelto sin contexto).
 class _CredencialRow extends StatelessWidget {
   const _CredencialRow({
     required this.valor,
     required this.copiado,
     required this.onCopiar,
+    required this.semanticLabel,
   });
 
   final String valor;
   final bool copiado;
   final VoidCallback onCopiar;
+  final String semanticLabel;
 
   @override
   Widget build(BuildContext context) {
@@ -953,7 +981,11 @@ class _CredencialRow extends StatelessWidget {
         color: scheme.surfaceContainerHighest,
         borderRadius: BorderRadius.circular(8),
       ),
+      // Top alignment: para emails largos (50+ chars) que wrappean en
+      // 2 líneas, el ícono queda anclado al inicio en vez de
+      // centrado a la mitad del bloque.
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Expanded(
             child: SelectableText(
@@ -966,7 +998,7 @@ class _CredencialRow extends StatelessWidget {
             ),
           ),
           IconButton(
-            tooltip: copiado ? 'Copiado' : 'Copiar',
+            tooltip: copiado ? 'Copiado' : semanticLabel,
             icon: Icon(
               copiado ? Icons.check : Icons.content_copy,
               size: 18,

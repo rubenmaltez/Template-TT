@@ -292,7 +292,10 @@ serve(async (req) => {
           user_metadata: metadata,
           // email_confirm=true skipea el email de verificación de
           // Supabase. El user queda confirmado y puede loguearse ya
-          // mismo con la password generada.
+          // mismo con la password generada. Modelo de confianza:
+          // el super_admin verifica la propiedad del email
+          // out-of-band (llamada/whatsapp al ISP); misma postura que
+          // forzar-password-cobrador para users existentes.
           email_confirm: true,
         });
       userIdParcial = created?.user?.id ?? null;
@@ -308,8 +311,23 @@ serve(async (req) => {
       // Rollback: borrar primero el user de auth.users (cascade limpia
       // cobradores via cobradores.id → auth.users(id) ON DELETE
       // CASCADE), después borrar el tenant.
+      //
+      // Si deleteUser falla (raro: blip de red entre createUser y
+      // este punto), la FK cobradores.tenant_id va a bloquear el
+      // delete del tenant — terminamos con auth.users huérfano
+      // apuntando a un tenant inexistente. Loggeamos pero no
+      // abortamos: el rollbackTenant siguiente devolverá su propio
+      // error si la FK se queja, y el orphan_tenant_id en la
+      // respuesta le dice al super_admin que hay que limpiar.
       if (userIdParcial !== null) {
-        await admin.auth.admin.deleteUser(userIdParcial);
+        const { error: delErr } = await admin.auth.admin
+          .deleteUser(userIdParcial);
+        if (delErr) {
+          console.error(
+            `crear-tenant deleteUser falló en rollback (user=${userIdParcial}, ` +
+              `tenant=${tenantId}): ${delErr.message}`,
+          );
+        }
       }
       const rollbackOk = await rollbackTenant(admin, tenantId);
       const msg = humanizeAuthError(invErrMsg ?? "Error desconocido");
@@ -355,7 +373,13 @@ serve(async (req) => {
       },
     );
   } catch (e) {
-    return jsonError(`Error: ${String(e)}`, 500);
+    // No echar el error crudo al cliente: si el throw ocurrió tras
+    // generar la password aleatoria, ésta podría aparecer en el stack
+    // trace según cómo Deno formatee la excepción (depende de
+    // --inspect / --log-level). Loggeamos en server para diagnosticar
+    // y devolvemos un mensaje genérico al cliente.
+    console.error("crear-tenant unhandled error:", e);
+    return jsonError("Error interno — revisá los logs de la función", 500);
   }
 });
 
@@ -370,8 +394,11 @@ function generarPasswordSegura(): string {
   crypto.getRandomValues(bytes);
   let out = "";
   for (let i = 0; i < 16; i++) {
-    // El módulo introduce un sesgo despreciable contra 256 / 63 ≈ 4.06
-    // entradas por bucket. Para password gen de 16 chars es irrelevante.
+    // Sesgo del módulo: 256 mod 63 = 4, así que 4 buckets reciben 5
+    // muestras vs 4 — pérdida total ~0.4 bits sobre 16 chars
+    // (95.27 vs 95.64 bits). Para una password rotable on-demand es
+    // irrelevante; si en algún momento esto se vuelve crítico se
+    // cambia a rejection sampling.
     out += chars[bytes[i] % chars.length];
   }
   return out;

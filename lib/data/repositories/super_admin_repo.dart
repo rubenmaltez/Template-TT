@@ -97,7 +97,10 @@ class SuperAdminRepo {
     return (
       tenantId: data['tenant_id'] as String,
       adminUserId: data['admin_user_id'] as String,
-      adminEmail: data['admin_email'] as String,
+      // Fallback al email que mandamos: si una Edge Function stale
+      // (deploy roto, versión vieja) no eco el campo, evitamos el
+      // crash por cast no-nulo.
+      adminEmail: (data['admin_email'] as String?) ?? adminEmail,
       adminPassword: data['admin_password'] as String?,
     );
   }
