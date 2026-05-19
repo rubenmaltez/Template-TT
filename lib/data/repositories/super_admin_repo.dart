@@ -59,13 +59,20 @@ class SuperAdminRepo {
   /// (best-effort). Si el invite falla tras crear el tenant, la Edge
   /// Function intenta rollback. Devuelve el id del tenant nuevo para
   /// que el caller pueda navegar al detalle.
-  Future<({String tenantId, String adminUserId})> crearTenant({
+  ///
+  /// Si `enviarEmail` es false, no se envía el email — la Edge Function
+  /// devuelve `inviteLink` con la URL para que el super_admin lo pase
+  /// por otro canal (WhatsApp, etc.). Útil cuando el proveedor SMTP
+  /// está en sandbox o no autoriza el destinatario.
+  Future<({String tenantId, String adminUserId, String? inviteLink})>
+      crearTenant({
     required String nombre,
     required String adminEmail,
     required String adminNombre,
     String? adminTelefono,
     List<String> modulosExtra = const [],
     String? redirectTo,
+    bool enviarEmail = true,
   }) async {
     final data = await _invokeFn('crear-tenant', body: {
       'tenant_nombre': nombre,
@@ -75,10 +82,15 @@ class SuperAdminRepo {
         'admin_telefono': adminTelefono,
       if (modulosExtra.isNotEmpty) 'modulos_extra': modulosExtra,
       if (redirectTo != null) 'redirect_to': redirectTo,
+      // Mando el flag siempre (no condicional) — el server tiene su
+      // propio default true, pero ser explícito previene ambigüedad si
+      // cambia ese default en el futuro.
+      'enviar_email': enviarEmail,
     });
     return (
       tenantId: data['tenant_id'] as String,
       adminUserId: data['admin_user_id'] as String,
+      inviteLink: data['invite_link'] as String?,
     );
   }
 

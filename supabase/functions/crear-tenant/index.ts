@@ -3,11 +3,17 @@
 // Crea un tenant completo en un solo click desde el panel super_admin:
 //   1. Inserta el row en `tenants` (el trigger habilita los módulos base).
 //   2. Habilita módulos no-base extra vía set_tenant_modulo RPC.
-//   3. Invita al admin por email (Supabase Auth → email de invitación).
+//   3. Crea al admin con metadata. Dos modos según enviar_email:
+//      - true  → inviteUserByEmail (manda email automático).
+//      - false → generateLink({type:'invite'}) — crea el user y
+//                devuelve invite_link para que el super_admin lo
+//                pase por otro canal (workaround SMTP sandbox).
 //
-// Si el invite falla tras crear el tenant, hace rollback (delete cascade
-// limpia tenant_modulos). Si el rollback también falla (raro), devuelve
-// el `orphan_tenant_id` para que el super_admin lo limpie manualmente.
+// Si algo falla tras crear el tenant, hace rollback completo:
+//   - Borra el user de auth.users (cascade limpia cobradores).
+//   - Borra el tenant (cascade limpia tenant_modulos / settings).
+// Si el rollback también falla, devuelve `orphan_tenant_id` para que
+// el super_admin lo limpie manualmente.
 //
 // Despliegue:
 //   supabase functions deploy crear-tenant
@@ -23,8 +29,13 @@
 //     "admin_nombre": "Marcos Pineda",
 //     "admin_telefono": "+50588881234",      // opcional
 //     "modulos_extra": ["inventario"],        // opcional, sólo no-base
-//     "redirect_to": "https://app.../?flow=invite"   // opcional
+//     "redirect_to": "https://app.../?flow=invite",  // opcional
+//     "enviar_email": true                    // opcional, default true
 //   }
+//
+// Respuesta éxito:
+//   { ok: true, tenant_id, admin_user_id, invite_link?, message }
+//   invite_link sólo viene cuando enviar_email=false.
 
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
@@ -36,6 +47,11 @@ interface CrearTenantRequest {
   admin_telefono?: string;
   modulos_extra?: string[];
   redirect_to?: string;
+  // Si false, no manda email — usa generateLink y devuelve invite_link
+  // para que el super_admin lo copie y pase por otro canal. Útil para
+  // Resend en sandbox o cuando el destinatario no puede recibir el
+  // email automatizado.
+  enviar_email?: boolean;
 }
 
 const SYSTEM_TENANT = "00000000-0000-0000-0000-000000000000";
@@ -93,6 +109,9 @@ serve(async (req) => {
     const modulosExtra = Array.isArray(body.modulos_extra)
       ? body.modulos_extra
       : [];
+    // Default true: el caller tiene que pedir explícitamente "no email"
+    // para activar el flow de generateLink. Falsey check tolera null/undefined.
+    const enviarEmail = body.enviar_email !== false;
 
     if (!nombre) return jsonError("tenant_nombre es requerido", 400);
     if (nombre.length > 120) {
@@ -150,6 +169,38 @@ serve(async (req) => {
       }
     }
 
+    // Pre-flight: chequear que el email no exista en auth.users.
+    // `inviteUserByEmail` ya falla nativamente si existe — pero
+    // `generateLink({type:'invite'})` NO falla: silenciosamente
+    // genera un magic-link para el usuario existente. Eso permitiría:
+    // sembrar el email de un admin de otro tenant, generar el link,
+    // y al loguearse el existente, su row en cobradores se vería
+    // sobrescrita con el tenant nuevo (ON CONFLICT UPDATE) —
+    // perdiendo su rol original. Bloquear acá nivela ambos paths.
+    //
+    // TODO escalado: listUsers con perPage:1000 cubre hasta 1000
+    // users totales en el sistema. Cuando crezca, migrar a un RPC
+    // SECURITY DEFINER que consulte `auth.users` con un WHERE email=…
+    // (auth.users no está expuesto vía PostgREST).
+    const { data: existingUsers, error: lookupErr } = await admin
+      .auth.admin.listUsers({ page: 1, perPage: 1000 });
+    if (lookupErr) {
+      return jsonError(
+        `No pude verificar el email: ${lookupErr.message}`,
+        500,
+      );
+    }
+    const yaExiste = (existingUsers?.users ?? []).some(
+      (u) => (u.email ?? "").toLowerCase() === email,
+    );
+    if (yaExiste) {
+      return jsonError(
+        "Ya existe un usuario con ese email — usá otro o, " +
+          "si querés moverlo de tenant, contactá soporte.",
+        400,
+      );
+    }
+
     // 1. Crear el tenant. RLS `super_admin_all` lo permite vía callerClient.
     //    El trigger `trg_tenants_habilitar_modulos_base` habilita cobranza.
     const { data: nuevoTenant, error: tErr } = await callerClient
@@ -185,25 +236,75 @@ serve(async (req) => {
       }
     }
 
-    // 3. Invitar al admin. La metadata se la come el trigger
-    //    handle_new_user al confirmar la invitación → crea la fila en
-    //    cobradores con rol=admin + tenant_id correcto.
-    const { data: invite, error: invErr } = await admin.auth.admin
-      .inviteUserByEmail(email, {
-        data: {
-          tenant_id: tenantId,
-          rol: "admin",
-          nombre: adminNombre,
-          telefono: adminTelefono,
-        },
-        redirectTo: body.redirect_to,
-      });
+    // 3. Crear el user con metadata. Dos paths:
+    //    a) enviarEmail=true → inviteUserByEmail (manda email).
+    //    b) enviarEmail=false → generateLink({type:'invite'}) (sólo
+    //       crea el user y devuelve action_link para que el super_admin
+    //       lo pase por otro canal). Útil con SMTP en sandbox o
+    //       destinatarios sin email automatizado.
+    //    En ambos casos, el trigger handle_new_user inserta la fila en
+    //    cobradores con rol=admin + tenant_id correcto cuando el user
+    //    abre el link y confirma.
+    const metadata = {
+      tenant_id: tenantId,
+      rol: "admin",
+      nombre: adminNombre,
+      telefono: adminTelefono,
+    };
 
-    if (invErr || !invite?.user) {
-      // Rollback: borramos el tenant — cascade limpia tenant_modulos.
+    let adminUserId: string | null = null;
+    // userIdParcial: captura el id de auth.users incluso si la
+    // respuesta vino malformada (ej. generateLink sin action_link).
+    // Si lo tenemos, el rollback lo borra antes de tocar el tenant —
+    // sin esto, el trigger handle_new_user ya creó la fila en
+    // cobradores apuntando al tenant que queremos borrar, y la FK
+    // bloquearía el DELETE tenants dejando el row huérfano.
+    let userIdParcial: string | null = null;
+    let inviteLink: string | null = null;
+    let invErrMsg: string | null = null;
+
+    if (enviarEmail) {
+      const { data: invite, error: invErr } = await admin.auth.admin
+        .inviteUserByEmail(email, {
+          data: metadata,
+          redirectTo: body.redirect_to,
+        });
+      if (invErr || !invite?.user) {
+        invErrMsg = invErr?.message ?? "No se creó el usuario";
+        userIdParcial = invite?.user?.id ?? null;
+      } else {
+        adminUserId = invite.user.id;
+      }
+    } else {
+      const { data: gen, error: genErr } = await admin.auth.admin
+        .generateLink({
+          type: "invite",
+          email,
+          options: {
+            data: metadata,
+            redirectTo: body.redirect_to,
+          },
+        });
+      // gen.user puede existir aunque properties.action_link falte —
+      // capturamos el id sí o sí para limpiarlo en rollback.
+      userIdParcial = gen?.user?.id ?? null;
+      if (genErr || !gen?.user || !gen.properties?.action_link) {
+        invErrMsg = genErr?.message ?? "No se generó el link de invitación";
+      } else {
+        adminUserId = gen.user.id;
+        inviteLink = gen.properties.action_link;
+      }
+    }
+
+    if (invErrMsg !== null || adminUserId === null) {
+      // Rollback: borrar primero el user de auth.users (cascade limpia
+      // cobradores via cobradores.id → auth.users(id) ON DELETE
+      // CASCADE), después borrar el tenant.
+      if (userIdParcial !== null) {
+        await admin.auth.admin.deleteUser(userIdParcial);
+      }
       const rollbackOk = await rollbackTenant(admin, tenantId);
-      const rawMsg = invErr?.message ?? "No se creó el usuario";
-      const msg = humanizeAuthError(rawMsg);
+      const msg = humanizeAuthError(invErrMsg ?? "Error desconocido");
       if (!rollbackOk) {
         // Cleanup falló — devolvemos el orphan id para limpieza manual.
         return new Response(
@@ -226,8 +327,13 @@ serve(async (req) => {
       JSON.stringify({
         ok: true,
         tenant_id: tenantId,
-        admin_user_id: invite.user.id,
-        message: "Tenant creado e invitación enviada por email",
+        admin_user_id: adminUserId,
+        // invite_link sólo viene cuando enviar_email=false. Para el
+        // path email, queda null (no queremos exponer el link en logs).
+        invite_link: inviteLink,
+        message: enviarEmail
+          ? "Tenant creado e invitación enviada por email"
+          : "Tenant creado — usá el link para invitar al admin",
       }),
       {
         headers: { ...corsHeaders, "Content-Type": "application/json" },

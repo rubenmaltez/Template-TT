@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show Clipboard, ClipboardData;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
@@ -15,17 +16,42 @@ Future<void> _abrirCrearTenant(BuildContext context, WidgetRef ref) async {
   // Capturamos messenger antes del await — el showSnackBar post-éxito lo
   // usamos sin pasar por el context (que podría tener cambios pendientes).
   final messenger = ScaffoldMessenger.of(context);
-  final resultado = await showDialog<({String tenantId, String adminUserId})>(
+  final resultado = await showDialog<
+      ({String tenantId, String adminUserId, String? inviteLink})>(
     context: context,
     barrierDismissible: false,
     builder: (_) => const _CrearTenantDialog(),
   );
   if (resultado == null) return;
   ref.invalidate(tenantsAdminProvider);
-  // Diseño UX: nos quedamos en la lista (donde el ISP recién creado
-  // aparece). Snackbar con acción "Ver detalle" para que el super_admin
-  // pueda saltar al tenant si quiere, sin forzar la navegación cuando
-  // probablemente quiera crear varios seguidos.
+
+  // Si vino un invite_link, el super_admin pidió no-email — abrimos un
+  // dialog que muestra el link con un botón de copiar (mismo patrón
+  // del _PasswordCopiarDialog usado en forzar password). El link es
+  // efímero (expira ~24h) y no queda guardado en la app, así que el
+  // flow es "copialo y compartilo o lo perdés".
+  //
+  // El dialog devuelve true si el user copió, false en otro caso —
+  // navegamos al detalle sólo si copió (parity con la action "Ver
+  // detalle" del path de email). Si cerró sin copiar, probable que
+  // quiera reintentar — lo dejamos en la lista.
+  final link = resultado.inviteLink;
+  if (link != null && link.isNotEmpty) {
+    if (!context.mounted) return;
+    final copio = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => _InviteLinkDialog(link: link),
+    );
+    if (copio == true && context.mounted) {
+      context.go('/super/tenants/${resultado.tenantId}');
+    }
+    return;
+  }
+
+  // Path con email: snackbar + acción "Ver detalle". Nos quedamos en
+  // la lista para que el super_admin pueda crear varios seguidos sin
+  // navegar manualmente cada vez.
   messenger.showSnackBar(
     SnackBar(
       content: const Text('ISP creado e invitación enviada por email'),
@@ -337,6 +363,10 @@ class _CrearTenantDialogState extends ConsumerState<_CrearTenantDialog> {
   // Set de códigos de módulos extras seleccionados (los base ya van
   // automáticos vía trigger, no se muestran como opciones).
   final Set<String> _modulosExtras = {};
+  // Default true: queremos que el flow normal mande el email. El switch
+  // permite saltar el envío y devolver el link (necesario en Resend
+  // sandbox o cuando el destinatario no puede recibir el email).
+  bool _enviarEmail = true;
   bool _busy = false;
   String? _error;
 
@@ -367,10 +397,12 @@ class _CrearTenantDialogState extends ConsumerState<_CrearTenantDialog> {
         adminNombre: _adminNombreCtrl.text.trim(),
         adminTelefono: telTrim.isEmpty ? null : telTrim,
         modulosExtra: _modulosExtras.toList(),
-        // Sin redirect_to con flow=invite, el email del invite cae al
-        // root y se pierde el routing a /set-password.
+        // Sin redirect_to con flow=invite, el link cae al root y se
+        // pierde el routing a /set-password — tanto para emails como
+        // para links generados manualmente.
         redirectTo:
             kIsWeb ? '${Uri.base.origin}/?flow=invite' : null,
+        enviarEmail: _enviarEmail,
       );
       if (!mounted) return;
       Navigator.of(context).pop(resultado);
@@ -523,6 +555,26 @@ class _CrearTenantDialogState extends ConsumerState<_CrearTenantDialog> {
                           },
                   ),
                 ),
+                const SizedBox(height: 8),
+                // Switch para saltar el envío de email y mostrar el link
+                // directo. Default ON (manda email) — el flow normal.
+                SwitchListTile(
+                  value: _enviarEmail,
+                  onChanged: _busy
+                      ? null
+                      : (v) => setState(() => _enviarEmail = v),
+                  title: const Text('Enviar email de invitación'),
+                  subtitle: Text(
+                    _enviarEmail
+                        ? 'El admin recibe el link en su correo.'
+                        : 'No se envía email. Vas a copiar el link y '
+                            'compartirlo manualmente.',
+                    style: const TextStyle(fontSize: 11),
+                  ),
+                  contentPadding: EdgeInsets.zero,
+                  dense: true,
+                  visualDensity: VisualDensity.compact,
+                ),
                 if (_error != null) ...[
                   const SizedBox(height: 16),
                   Semantics(
@@ -566,13 +618,14 @@ class _CrearTenantDialogState extends ConsumerState<_CrearTenantDialog> {
               _busy ? null : () => Navigator.of(context).pop(),
           child: const Text('Cancelar'),
         ),
-        // Semantics.hint comunica el side-effect (manda email externo)
-        // al screen reader — el color rojo no aplica acá pero la
-        // acción tiene consecuencias visibles para un tercero.
+        // Semantics.hint comunica el side-effect al screen reader.
+        // El label y el ícono cambian según el modo email vs link.
         Semantics(
           button: true,
           enabled: !_busy,
-          hint: 'Envía un correo de invitación al admin del ISP',
+          hint: _enviarEmail
+              ? 'Envía un correo de invitación al admin del ISP'
+              : 'Crea el ISP y genera un link de invitación para copiar',
           child: FilledButton.icon(
             icon: _busy
                 ? const SizedBox(
@@ -580,9 +633,13 @@ class _CrearTenantDialogState extends ConsumerState<_CrearTenantDialog> {
                     height: 16,
                     child: CircularProgressIndicator(strokeWidth: 2),
                   )
-                : const Icon(Icons.send),
+                : Icon(_enviarEmail ? Icons.send : Icons.link),
             label: Text(
-              _busy ? 'Creando…' : 'Crear y enviar invitación',
+              _busy
+                  ? 'Creando…'
+                  : _enviarEmail
+                      ? 'Crear y enviar invitación'
+                      : 'Crear y generar link',
             ),
             onPressed: _busy ? null : _crear,
           ),
@@ -669,6 +726,172 @@ class _ModulosPicker extends StatelessWidget {
           controlAffinity: ListTileControlAffinity.leading,
         );
       }).toList(),
+    );
+  }
+}
+
+/// Dialog que muestra el link de invitación recién generado (cuando el
+/// super_admin pidió "no enviar email"). Mismo patrón de UX que
+/// _PasswordCopiarDialog: copiar es la acción primaria, cerrar pierde
+/// el link permanentemente. El link expira en ~24h y no queda guardado
+/// en la app — el super_admin tiene que copiarlo y compartirlo ya.
+///
+/// Devuelve true vía Navigator.pop si el user llegó a copiar el link
+/// (caller usa eso para decidir si navegar al detalle del tenant nuevo).
+class _InviteLinkDialog extends StatefulWidget {
+  const _InviteLinkDialog({required this.link});
+
+  final String link;
+
+  @override
+  State<_InviteLinkDialog> createState() => _InviteLinkDialogState();
+}
+
+class _InviteLinkDialogState extends State<_InviteLinkDialog> {
+  bool _copiado = false;
+  String? _copyError;
+
+  Future<void> _copiar() async {
+    // En web con clipboard bloqueado (iframe, permiso denegado, etc.)
+    // Clipboard.setData lanza PlatformException — antes lo tragábamos
+    // y el botón decía "Copiado" mientras el portapapeles estaba
+    // vacío. Capturamos y mostramos el error para que el super_admin
+    // pueda copiar manualmente del SelectableText.
+    try {
+      await Clipboard.setData(ClipboardData(text: widget.link));
+      if (!mounted) return;
+      setState(() {
+        _copiado = true;
+        _copyError = null;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _copyError = 'No pude copiar al portapapeles: '
+            'seleccioná el link y copialo a mano (Ctrl+C).';
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final screenW = MediaQuery.sizeOf(context).width;
+    final dialogW = screenW < 460 ? screenW * 0.9 : 480.0;
+    return AlertDialog(
+      icon: Icon(Icons.link, color: scheme.primary, size: 40),
+      title: const Text('Link de invitación generado'),
+      content: SizedBox(
+        width: dialogW,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'El ISP ya está creado. Copiá este link y pasalo al '
+              'admin. Al abrirlo, cae directo en la pantalla para que '
+              'cree su contraseña.',
+            ),
+            const SizedBox(height: 8),
+            // Warning de seguridad — el link es un bearer credential:
+            // cualquiera que lo abra crea la contraseña del admin.
+            // No es paranoia, es real: por eso el ícono + tinte error.
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: scheme.errorContainer,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Icon(Icons.shield_outlined,
+                      color: scheme.onErrorContainer, size: 18),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Cualquiera con este link puede crear la '
+                      'contraseña del admin. Compartilo por un '
+                      'canal directo (llamada, mensaje cifrado) y '
+                      'NO lo abras en este mismo navegador o vas a '
+                      'cerrar tu sesión de Super Admin.',
+                      style: TextStyle(
+                        color: scheme.onErrorContainer,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Expira en ~24 h y no queda guardado acá. Si lo perdés, '
+              'tenés que volver a crear el ISP o, una vez que el admin '
+              'lo abrió, podés resetearle la contraseña desde su '
+              'detalle (cuando configures un dominio en Resend, también '
+              'podrás reenviar por email).',
+              style: TextStyle(
+                color: scheme.onSurfaceVariant,
+                fontSize: 12,
+                fontStyle: FontStyle.italic,
+              ),
+            ),
+            const SizedBox(height: 16),
+            Semantics(
+              label: 'Link de invitación, ${widget.link.length} '
+                  'caracteres. Usá el botón Copiar link debajo.',
+              child: ExcludeSemantics(
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 12, vertical: 10),
+                  decoration: BoxDecoration(
+                    color: scheme.surfaceContainerHighest,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: SelectableText(
+                    widget.link,
+                    style: const TextStyle(
+                      fontFamily: 'monospace',
+                      fontSize: 12,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            if (_copyError != null) ...[
+              const SizedBox(height: 8),
+              Semantics(
+                liveRegion: true,
+                child: Text(
+                  _copyError!,
+                  style: TextStyle(
+                    color: scheme.error,
+                    fontSize: 12,
+                  ),
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          // pop(false) si cerró sin copiar — el caller no navega al
+          // detalle, lo deja en la lista para que pueda reintentar.
+          onPressed: () => Navigator.of(context).pop(_copiado),
+          child: Text(_copiado ? 'Listo' : 'Cerrar sin copiar'),
+        ),
+        Semantics(
+          button: true,
+          hint: 'Copia el link al portapapeles',
+          child: FilledButton.icon(
+            icon: Icon(_copiado ? Icons.check : Icons.content_copy),
+            label: Text(_copiado ? 'Link copiado' : 'Copiar link'),
+            onPressed: _copiar,
+          ),
+        ),
+      ],
     );
   }
 }
