@@ -14,6 +14,40 @@ class SuperAdminRepo {
 
   final SupabaseClient _client;
 
+  /// Helper para invocar una Edge Function y devolver el body parseado
+  /// con manejo unificado de errores. Las funciones del panel siempre
+  /// devuelven {ok, error?, ...}; este helper extrae el mensaje real
+  /// del campo `error` tanto en respuestas 200-ok=false como en
+  /// FunctionException (status != 200), evitando que el caller tenga
+  /// que ver el wrapper feo 'FunctionException(status: 409, details:…)'.
+  Future<Map<String, dynamic>> _invokeFn(
+    String name, {
+    Map<String, dynamic>? body,
+  }) async {
+    try {
+      final res = await _client.functions.invoke(name, body: body);
+      final data = res.data as Map<String, dynamic>?;
+      if (data == null) {
+        throw Exception('Sin respuesta del servidor');
+      }
+      if (data['ok'] != true) {
+        throw Exception(
+            (data['error'] as String?) ?? 'Error desconocido');
+      }
+      return data;
+    } on FunctionException catch (e) {
+      // Edge Function devolvió 4xx/5xx — el body parseado vive en
+      // e.details. Extraemos el campo 'error' si está; sino fallback al
+      // status para no mostrar string vacío.
+      final det = e.details;
+      String? mensaje;
+      if (det is Map && det['error'] != null) {
+        mensaje = det['error'].toString();
+      }
+      throw Exception(mensaje ?? 'Error ${e.status}');
+    }
+  }
+
   Future<List<Modulo>> listModulos() async {
     final res = await _client.rpc('list_modulos') as List<dynamic>;
     return res
@@ -76,19 +110,10 @@ class SuperAdminRepo {
     required String cobradorId,
     required String nuevaPassword,
   }) async {
-    final res = await _client.functions.invoke(
-      'forzar-password-cobrador',
-      body: {
-        'cobrador_id': cobradorId,
-        'nueva_password': nuevaPassword,
-      },
-    );
-    final data = res.data as Map<String, dynamic>?;
-    if (data == null || data['ok'] != true) {
-      throw Exception(
-        (data?['error'] as String?) ?? 'Error desconocido',
-      );
-    }
+    await _invokeFn('forzar-password-cobrador', body: {
+      'cobrador_id': cobradorId,
+      'nueva_password': nuevaPassword,
+    });
   }
 
   /// Llama a la Edge Function `reenviar-invitacion`. La función borra
@@ -98,19 +123,10 @@ class SuperAdminRepo {
     required String cobradorId,
     String? redirectTo,
   }) async {
-    final res = await _client.functions.invoke(
-      'reenviar-invitacion',
-      body: {
-        'cobrador_id': cobradorId,
-        if (redirectTo != null) 'redirect_to': redirectTo,
-      },
-    );
-    final data = res.data as Map<String, dynamic>?;
-    if (data == null || data['ok'] != true) {
-      throw Exception(
-        (data?['error'] as String?) ?? 'Error desconocido',
-      );
-    }
+    await _invokeFn('reenviar-invitacion', body: {
+      'cobrador_id': cobradorId,
+      if (redirectTo != null) 'redirect_to': redirectTo,
+    });
   }
 
   /// Llama a la Edge Function `cambiar-email-cobrador`. Sólo super_admin.
@@ -118,34 +134,18 @@ class SuperAdminRepo {
     required String cobradorId,
     required String nuevoEmail,
   }) async {
-    final res = await _client.functions.invoke(
-      'cambiar-email-cobrador',
-      body: {
-        'cobrador_id': cobradorId,
-        'nuevo_email': nuevoEmail,
-      },
-    );
-    final data = res.data as Map<String, dynamic>?;
-    if (data == null || data['ok'] != true) {
-      throw Exception(
-        (data?['error'] as String?) ?? 'Error desconocido',
-      );
-    }
+    await _invokeFn('cambiar-email-cobrador', body: {
+      'cobrador_id': cobradorId,
+      'nuevo_email': nuevoEmail,
+    });
   }
 
   /// Llama a la Edge Function `eliminar-cobrador`. Sólo super_admin.
   /// Bloquea si el usuario tiene historial operativo — sugerirá desactivar.
   Future<void> eliminarCobrador({required String cobradorId}) async {
-    final res = await _client.functions.invoke(
-      'eliminar-cobrador',
-      body: {'cobrador_id': cobradorId},
-    );
-    final data = res.data as Map<String, dynamic>?;
-    if (data == null || data['ok'] != true) {
-      throw Exception(
-        (data?['error'] as String?) ?? 'Error desconocido',
-      );
-    }
+    await _invokeFn('eliminar-cobrador', body: {
+      'cobrador_id': cobradorId,
+    });
   }
 
   Future<CobradorStats?> getCobradorStats(String cobradorId) async {
