@@ -17,17 +17,20 @@ class MetaChip extends StatelessWidget {
     required this.bg,
     required this.fg,
     this.icon,
+    this.padding =
+        const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
   });
 
   final String label;
   final Color bg;
   final Color fg;
   final IconData? icon;
+  final EdgeInsetsGeometry padding;
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      padding: padding,
       decoration: BoxDecoration(
         color: bg,
         borderRadius: BorderRadius.circular(10),
@@ -69,7 +72,14 @@ class RolChip extends StatelessWidget {
         (scheme.secondaryContainer, scheme.onSecondaryContainer),
       _ => (scheme.surfaceContainerHighest, scheme.onSurfaceVariant),
     };
-    return MetaChip(label: rolLabel(rol), bg: bg, fg: fg);
+    // vertical:2 — parity con el `_RolChip` original (1px menos que el
+    // default de MetaChip, que está calibrado para el header del detalle).
+    return MetaChip(
+      label: rolLabel(rol),
+      bg: bg,
+      fg: fg,
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+    );
   }
 }
 
@@ -103,6 +113,12 @@ class EstadoChip extends StatelessWidget {
                 scheme.primaryContainer,
                 scheme.onPrimaryContainer,
               );
-    return MetaChip(label: label, icon: icon, bg: bg, fg: fg);
+    return MetaChip(
+      label: label,
+      icon: icon,
+      bg: bg,
+      fg: fg,
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+    );
   }
 }

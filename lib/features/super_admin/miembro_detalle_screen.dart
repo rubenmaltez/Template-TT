@@ -554,6 +554,7 @@ class _AuditTile extends StatelessWidget {
         'force_password_reset' => 'Contraseña reseteada por super_admin',
         'resent_invitation' => 'Invitación reenviada',
         'previous_invite' => 'Invitación previa',
+        'reset_password_email_sent' => 'Email de reset de contraseña enviado',
         _ => action,
       };
 

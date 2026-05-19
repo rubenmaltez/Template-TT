@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:developer' as developer;
 import 'dart:math';
 
 import 'package:flutter/foundation.dart' show kIsWeb;
@@ -576,11 +577,17 @@ class _MiembroCardState extends ConsumerState<_MiembroCard> {
         redirectTo: kIsWeb ? '${Uri.base.origin}/?flow=recovery' : null,
       );
       // Audit log del intento. Fire-and-forget — si falla no rollback
-      // (el email ya está en tránsito). Loggeamos para visibility.
+      // (el email ya está en tránsito). Usamos developer.log y no
+      // debugPrint porque debugPrint queda mudo en release y queremos
+      // que un audit fallido se vea en la consola del browser.
       try {
         await repo.auditResetPassword(c.id);
       } catch (auditErr) {
-        debugPrint('audit_reset_password falló: $auditErr');
+        developer.log(
+          'audit_reset_password falló para ${c.id}',
+          name: 'super_admin',
+          error: auditErr,
+        );
       }
       if (!mounted) return;
       _mostrarSnackBar(
@@ -1149,7 +1156,14 @@ class _MiembroCardState extends ConsumerState<_MiembroCard> {
                   // forzarPassword usa error color porque es la única que
                   // genera una password visible para el super_admin — más
                   // sensible que las otras dos acciones de credenciales.
-                  if (!c.invitacionPendiente)
+                  //
+                  // Las dos acciones de password están bloqueadas en backend
+                  // para super_admin targets (forzar-password edge fn y la
+                  // RPC audit_reset_password). Ocultamos del menú para que
+                  // el super_admin no envíe un email que después no se va
+                  // a poder auditar — además del flow frustrante de tipear
+                  // datos y comerse un 403.
+                  if (!c.invitacionPendiente && c.rol != 'super_admin')
                     PopupMenuItem(
                       value: _AccionMiembro.forzarPassword,
                       child: Row(
@@ -1161,7 +1175,7 @@ class _MiembroCardState extends ConsumerState<_MiembroCard> {
                         ],
                       ),
                     ),
-                  if (!c.invitacionPendiente)
+                  if (!c.invitacionPendiente && c.rol != 'super_admin')
                     PopupMenuItem(
                       value: _AccionMiembro.resetPasswordEmail,
                       child: Row(
