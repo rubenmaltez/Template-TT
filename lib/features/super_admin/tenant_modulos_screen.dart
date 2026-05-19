@@ -12,8 +12,10 @@ import '../../data/models/cobrador_admin.dart';
 import '../../data/models/modulo.dart';
 import '../../data/models/tenant_admin.dart';
 import '../../data/repositories/super_admin_repo.dart';
+import '../../data/utils/cobrador_helpers.dart';
 import '../../data/utils/formatters.dart';
 import '../shared/widgets/animated_list_entry.dart';
+import '../shared/widgets/chips.dart';
 import '../shared/widgets/empty_state.dart';
 import '../shared/widgets/skeleton.dart';
 
@@ -119,7 +121,7 @@ class _Header extends StatelessWidget {
               backgroundColor: scheme.primaryContainer,
               radius: 28,
               child: Text(
-                _initials(tenant.nombre),
+                initialsFromName(tenant.nombre),
                 style: TextStyle(
                   color: scheme.onPrimaryContainer,
                   fontWeight: FontWeight.w700,
@@ -157,13 +159,6 @@ class _Header extends StatelessWidget {
     );
   }
 
-  String _initials(String s) {
-    final parts = s.trim().split(RegExp(r'\s+')).where((p) => p.isNotEmpty);
-    if (parts.isEmpty) return '?';
-    if (parts.length == 1) return parts.first.substring(0, 1).toUpperCase();
-    return (parts.first.substring(0, 1) + parts.last.substring(0, 1))
-        .toUpperCase();
-  }
 }
 
 class _ModuloTile extends ConsumerStatefulWidget {
@@ -572,11 +567,21 @@ class _MiembroCardState extends ConsumerState<_MiembroCard> {
     if (confirmar != true) return;
 
     setState(() => _saving = true);
+    final repo =
+        ProviderScope.containerOf(context, listen: false)
+            .read(superAdminRepoProvider);
     try {
       await Supabase.instance.client.auth.resetPasswordForEmail(
         email,
         redirectTo: kIsWeb ? '${Uri.base.origin}/?flow=recovery' : null,
       );
+      // Audit log del intento. Fire-and-forget — si falla no rollback
+      // (el email ya está en tránsito). Loggeamos para visibility.
+      try {
+        await repo.auditResetPassword(c.id);
+      } catch (auditErr) {
+        debugPrint('audit_reset_password falló: $auditErr');
+      }
       if (!mounted) return;
       _mostrarSnackBar(
         messenger,
@@ -744,7 +749,7 @@ class _MiembroCardState extends ConsumerState<_MiembroCard> {
         messenger,
         SnackBar(
           content: Text(
-            '${c.nombre}: ${_rolLabel(nuevo)}. '
+            '${c.nombre}: ${rolLabel(nuevo)}. '
             'Si está logueado, debe salir y volver a entrar.',
           ),
           duration: const Duration(seconds: 5),
@@ -763,7 +768,7 @@ class _MiembroCardState extends ConsumerState<_MiembroCard> {
                   messenger,
                   SnackBar(
                     content: Text(
-                      '${c.nombre}: revertido a ${_rolLabel(c.rol)}',
+                      '${c.nombre}: revertido a ${rolLabel(c.rol)}',
                     ),
                     duration: const Duration(seconds: 2),
                     behavior: SnackBarBehavior.floating,
@@ -799,13 +804,6 @@ class _MiembroCardState extends ConsumerState<_MiembroCard> {
       if (mounted) setState(() => _saving = false);
     }
   }
-
-  static String _rolLabel(String rol) => switch (rol) {
-        'admin' => 'Administrador',
-        'admin_cobranza' => 'Admin de cobranza',
-        'cobrador' => 'Cobrador',
-        _ => rol,
-      };
 
   Future<void> _forzarPassword() async {
     final c = widget.cobrador;
@@ -1068,7 +1066,7 @@ class _MiembroCardState extends ConsumerState<_MiembroCard> {
                   : scheme.surfaceContainerHighest,
               foregroundColor: c.activo ? rolColor : scheme.outline,
               child: Text(
-                _initials(c.nombre),
+                initialsFromName(c.nombre),
                 style: const TextStyle(fontWeight: FontWeight.w700),
               ),
             ),
@@ -1089,7 +1087,7 @@ class _MiembroCardState extends ConsumerState<_MiembroCard> {
                         style: const TextStyle(
                             fontWeight: FontWeight.w600, fontSize: 15),
                       ),
-                      _RolChip(rol: c.rol),
+                      RolChip(rol: c.rol),
                     ],
                   ),
                   const SizedBox(height: 2),
@@ -1105,7 +1103,7 @@ class _MiembroCardState extends ConsumerState<_MiembroCard> {
                     runSpacing: 4,
                     crossAxisAlignment: WrapCrossAlignment.center,
                     children: [
-                      _EstadoChip(cobrador: c),
+                      EstadoChip(cobrador: c),
                       Text(
                         _ultimoLoginLabel(c),
                         style: TextStyle(color: scheme.outline, fontSize: 12),
@@ -1248,14 +1246,6 @@ class _MiembroCardState extends ConsumerState<_MiembroCard> {
     );
   }
 
-  static String _initials(String s) {
-    final parts = s.trim().split(RegExp(r'\s+')).where((p) => p.isNotEmpty);
-    if (parts.isEmpty) return '?';
-    if (parts.length == 1) return parts.first.substring(0, 1).toUpperCase();
-    return (parts.first.substring(0, 1) + parts.last.substring(0, 1))
-        .toUpperCase();
-  }
-
   static Color _rolColor(ColorScheme s, String rol) => switch (rol) {
         'super_admin' => s.tertiary,
         'admin' => s.primary,
@@ -1273,89 +1263,6 @@ class _MiembroCardState extends ConsumerState<_MiembroCard> {
     if (dias == 1) return 'Última sesión: ayer';
     if (dias < 30) return 'Última sesión: hace $dias días';
     return 'Última sesión: ${Fmt.fechaLarga(c.lastSignInAt!)}';
-  }
-}
-
-class _RolChip extends StatelessWidget {
-  const _RolChip({required this.rol});
-  final String rol;
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    final (bg, fg) = switch (rol) {
-      'super_admin' => (scheme.tertiaryContainer, scheme.onTertiaryContainer),
-      'admin' => (scheme.primaryContainer, scheme.onPrimaryContainer),
-      'admin_cobranza' =>
-        (scheme.secondaryContainer, scheme.onSecondaryContainer),
-      _ => (scheme.surfaceContainerHighest, scheme.onSurfaceVariant),
-    };
-    final label = switch (rol) {
-      'super_admin' => 'Super Admin',
-      'admin' => 'Administrador',
-      'admin_cobranza' => 'Admin de cobranza',
-      'cobrador' => 'Cobrador',
-      _ => rol,
-    };
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-      decoration: BoxDecoration(
-        color: bg,
-        borderRadius: BorderRadius.circular(10),
-      ),
-      child: Text(label,
-          style: TextStyle(
-              color: fg, fontSize: 11, fontWeight: FontWeight.w600)),
-    );
-  }
-}
-
-class _EstadoChip extends StatelessWidget {
-  const _EstadoChip({required this.cobrador});
-  final CobradorAdmin cobrador;
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    // Cada estado tiene un ícono distinto (no se diferencia sólo por color,
-    // por accesibilidad WCAG 1.4.1).
-    final (label, icon, bg, fg) = !cobrador.activo
-        ? (
-            'Inactivo',
-            Icons.block,
-            scheme.surfaceContainerHighest,
-            scheme.onSurfaceVariant,
-          )
-        : cobrador.invitacionPendiente
-            ? (
-                'Invitación pendiente',
-                Icons.schedule_send,
-                scheme.surfaceContainerHighest,
-                scheme.onSurfaceVariant,
-              )
-            : (
-                'Activo',
-                Icons.check_circle,
-                scheme.primaryContainer,
-                scheme.onPrimaryContainer,
-              );
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-      decoration: BoxDecoration(
-        color: bg,
-        borderRadius: BorderRadius.circular(10),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 12, color: fg),
-          const SizedBox(width: 4),
-          Text(label,
-              style: TextStyle(
-                  color: fg, fontSize: 11, fontWeight: FontWeight.w600)),
-        ],
-      ),
-    );
   }
 }
 

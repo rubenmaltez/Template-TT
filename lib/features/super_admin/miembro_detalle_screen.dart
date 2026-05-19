@@ -5,7 +5,9 @@ import '../../data/models/audit_entry.dart';
 import '../../data/models/cobrador_admin.dart';
 import '../../data/models/cobrador_stats.dart';
 import '../../data/repositories/super_admin_repo.dart';
+import '../../data/utils/cobrador_helpers.dart';
 import '../../data/utils/formatters.dart';
+import '../shared/widgets/chips.dart';
 import '../shared/widgets/empty_state.dart';
 import '../shared/widgets/skeleton.dart';
 
@@ -107,7 +109,7 @@ class _Header extends StatelessWidget {
               foregroundColor:
                   cobrador.activo ? rolColor : scheme.outline,
               child: Text(
-                _initials(cobrador.nombre),
+                initialsFromName(cobrador.nombre),
                 style: const TextStyle(
                   fontWeight: FontWeight.w700,
                   fontSize: 20,
@@ -146,36 +148,18 @@ class _Header extends StatelessWidget {
                     spacing: 8,
                     runSpacing: 4,
                     children: [
-                      _Chip(
-                        label: _rolLabel(cobrador.rol),
+                      // Usamos MetaChip directo (no RolChip) porque queremos
+                      // el tinte derivado de rolColor.withAlpha(0.15) que
+                      // matchea el avatar de esta pantalla — RolChip usa los
+                      // *Container() del scheme, más saturados.
+                      MetaChip(
+                        label: rolLabel(cobrador.rol),
                         bg: rolColor.withValues(alpha: 0.15),
                         fg: rolColor,
                       ),
-                      _Chip(
-                        // Estado con ícono para no diferenciar sólo por
-                        // color (mismo patrón que _EstadoChip de la
-                        // lista; WCAG 1.4.1).
-                        icon: !cobrador.activo
-                            ? Icons.block
-                            : cobrador.invitacionPendiente
-                                ? Icons.schedule_send
-                                : Icons.check_circle,
-                        label: cobrador.activo
-                            ? (cobrador.invitacionPendiente
-                                ? 'Invitación pendiente'
-                                : 'Activo')
-                            : 'Inactivo',
-                        bg: (cobrador.activo &&
-                                !cobrador.invitacionPendiente)
-                            ? scheme.primaryContainer
-                            : scheme.surfaceContainerHighest,
-                        fg: (cobrador.activo &&
-                                !cobrador.invitacionPendiente)
-                            ? scheme.onPrimaryContainer
-                            : scheme.onSurfaceVariant,
-                      ),
+                      EstadoChip(cobrador: cobrador),
                       if (cobrador.prefijoRecibo != null)
-                        _Chip(
+                        MetaChip(
                           icon: Icons.receipt_long,
                           label: 'Prefijo ${cobrador.prefijoRecibo}',
                           bg: scheme.surfaceContainerHighest,
@@ -198,63 +182,6 @@ class _Header extends StatelessWidget {
         'admin_cobranza' => s.secondary,
         _ => s.onSurfaceVariant,
       };
-
-  static String _rolLabel(String rol) => switch (rol) {
-        'super_admin' => 'Super Admin',
-        'admin' => 'Administrador',
-        'admin_cobranza' => 'Admin de cobranza',
-        'cobrador' => 'Cobrador',
-        _ => rol,
-      };
-
-  static String _initials(String s) {
-    final parts = s.trim().split(RegExp(r'\s+')).where((p) => p.isNotEmpty);
-    if (parts.isEmpty) return '?';
-    if (parts.length == 1) return parts.first.substring(0, 1).toUpperCase();
-    return (parts.first.substring(0, 1) + parts.last.substring(0, 1))
-        .toUpperCase();
-  }
-}
-
-class _Chip extends StatelessWidget {
-  const _Chip({
-    required this.label,
-    required this.bg,
-    required this.fg,
-    this.icon,
-  });
-  final String label;
-  final Color bg;
-  final Color fg;
-  final IconData? icon;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-      decoration: BoxDecoration(
-        color: bg,
-        borderRadius: BorderRadius.circular(10),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          if (icon != null) ...[
-            Icon(icon, size: 12, color: fg),
-            const SizedBox(width: 4),
-          ],
-          Text(
-            label,
-            style: TextStyle(
-              color: fg,
-              fontSize: 11,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
 }
 
 class _StatsGrid extends StatelessWidget {
@@ -591,8 +518,8 @@ class _AuditTile extends StatelessWidget {
 
     // Cambio de rol: traducimos los códigos a labels legibles.
     if (campo == 'rol') {
-      final antes = _rolLabelStatic(e.valorAnterior?.toString());
-      final despues = _rolLabelStatic(e.valorNuevo?.toString());
+      final antes = rolLabelOrDash(e.valorAnterior?.toString());
+      final despues = rolLabelOrDash(e.valorNuevo?.toString());
       return 'Cambió de rol: $antes → $despues';
     }
 
@@ -611,15 +538,6 @@ class _AuditTile extends StatelessWidget {
     }
     return '${campo ?? "(evento)"}: $anterior → $nuevo';
   }
-
-  static String _rolLabelStatic(String? rol) => switch (rol) {
-        'super_admin' => 'Super Admin',
-        'admin' => 'Administrador',
-        'admin_cobranza' => 'Admin de cobranza',
-        'cobrador' => 'Cobrador',
-        null => '—',
-        _ => rol,
-      };
 
   static String _formatVal(dynamic v) {
     if (v == null) return '—';

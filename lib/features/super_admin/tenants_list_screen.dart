@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../data/models/tenant_admin.dart';
 import '../../data/repositories/super_admin_repo.dart';
+import '../../data/utils/cobrador_helpers.dart';
 import '../../data/utils/formatters.dart';
 import '../shared/widgets/animated_list_entry.dart';
 import '../shared/widgets/empty_state.dart';
@@ -140,7 +141,7 @@ class _TenantCardState extends State<_TenantCard> {
                   CircleAvatar(
                     backgroundColor: scheme.primaryContainer,
                     child: Text(
-                      _initials(tenant.nombre),
+                      initialsFromName(tenant.nombre),
                       style: TextStyle(
                         color: scheme.onPrimaryContainer,
                         fontWeight: FontWeight.w600,
@@ -203,10 +204,4 @@ class _TenantCardState extends State<_TenantCard> {
     );
   }
 
-  String _initials(String s) {
-    final parts = s.trim().split(RegExp(r'\s+'));
-    if (parts.length == 1) return parts.first.substring(0, 1).toUpperCase();
-    return (parts.first.substring(0, 1) + parts.last.substring(0, 1))
-        .toUpperCase();
-  }
 }

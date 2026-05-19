@@ -148,6 +148,16 @@ class SuperAdminRepo {
     });
   }
 
+  /// Registra en audit_log un intento de reset password vía email. El
+  /// reset en sí lo dispara el cliente con auth.resetPasswordForEmail
+  /// (API pública); esta RPC sólo escribe el audit entry. Si falla, no
+  /// bloqueamos el flow — el email ya está en tránsito.
+  Future<void> auditResetPassword(String cobradorId) async {
+    await _client.rpc('audit_reset_password', params: {
+      'p_cobrador_id': cobradorId,
+    });
+  }
+
   Future<CobradorStats?> getCobradorStats(String cobradorId) async {
     final res = await _client.rpc('get_cobrador_stats', params: {
       'p_cobrador_id': cobradorId,
