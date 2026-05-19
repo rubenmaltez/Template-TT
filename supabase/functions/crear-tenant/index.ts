@@ -255,9 +255,11 @@ async function rollbackTenant(
 /// original para que un mensaje desconocido no quede mudo.
 function humanizeAuthError(raw: string): string {
   const lower = raw.toLowerCase();
+  // Regex tolera variantes de wording: "already registered", "already
+  // been registered", "already exists". Substring strict fallaba sobre
+  // el mensaje real de Supabase ("...has already been registered").
   if (
-    lower.includes("already registered") ||
-    lower.includes("already exists") ||
+    /already.*(registered|exists)/.test(lower) ||
     lower.includes("user already")
   ) {
     return "Ya existe un usuario con ese email — usá otro o, " +
