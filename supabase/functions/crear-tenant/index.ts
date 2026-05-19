@@ -265,6 +265,16 @@ function humanizeAuthError(raw: string): string {
     return "Ya existe un usuario con ese email — usá otro o, " +
       "si querés moverlo de tenant, contactá soporte.";
   }
+  // "Error sending invite email" lo emite Supabase Auth cuando el
+  // SMTP rechaza el destinatario. Caso típico: Resend en modo sandbox
+  // solo permite mandar al email del dueño de la cuenta. Mensaje
+  // explícito para que el super_admin no se vuelva loco buscando un
+  // bug en el código.
+  if (lower.includes("sending invite") || lower.includes("sending email")) {
+    return "El proveedor de email rechazó el envío. Si estás usando " +
+      "Resend en sandbox, solo podés invitar al email dueño de tu " +
+      "cuenta Resend — para invitar a otros, verificá tu dominio.";
+  }
   if (lower.includes("rate limit")) {
     return "Rate limit del proveedor de email alcanzado — esperá un " +
       "rato y reintentá.";
