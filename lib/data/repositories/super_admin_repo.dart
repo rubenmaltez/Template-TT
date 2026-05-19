@@ -55,6 +55,33 @@ class SuperAdminRepo {
         .toList();
   }
 
+  /// Crea un tenant + invita al admin en una sola operación atómica
+  /// (best-effort). Si el invite falla tras crear el tenant, la Edge
+  /// Function intenta rollback. Devuelve el id del tenant nuevo para
+  /// que el caller pueda navegar al detalle.
+  Future<({String tenantId, String adminUserId})> crearTenant({
+    required String nombre,
+    required String adminEmail,
+    required String adminNombre,
+    String? adminTelefono,
+    List<String> modulosExtra = const [],
+    String? redirectTo,
+  }) async {
+    final data = await _invokeFn('crear-tenant', body: {
+      'tenant_nombre': nombre,
+      'admin_email': adminEmail,
+      'admin_nombre': adminNombre,
+      if (adminTelefono != null && adminTelefono.isNotEmpty)
+        'admin_telefono': adminTelefono,
+      if (modulosExtra.isNotEmpty) 'modulos_extra': modulosExtra,
+      if (redirectTo != null) 'redirect_to': redirectTo,
+    });
+    return (
+      tenantId: data['tenant_id'] as String,
+      adminUserId: data['admin_user_id'] as String,
+    );
+  }
+
   Future<List<TenantAdmin>> listTenants() async {
     final res = await _client.rpc('list_tenants_admin') as List<dynamic>;
     return res

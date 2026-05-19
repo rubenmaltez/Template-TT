@@ -1,14 +1,46 @@
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../data/models/modulo.dart';
 import '../../data/models/tenant_admin.dart';
 import '../../data/repositories/super_admin_repo.dart';
 import '../../data/utils/cobrador_helpers.dart';
 import '../../data/utils/formatters.dart';
 import '../shared/widgets/animated_list_entry.dart';
-import '../shared/widgets/empty_state.dart';
 import '../shared/widgets/skeleton.dart';
+
+Future<void> _abrirCrearTenant(BuildContext context, WidgetRef ref) async {
+  // Capturamos messenger antes del await — el showSnackBar post-éxito lo
+  // usamos sin pasar por el context (que podría tener cambios pendientes).
+  final messenger = ScaffoldMessenger.of(context);
+  final resultado = await showDialog<({String tenantId, String adminUserId})>(
+    context: context,
+    barrierDismissible: false,
+    builder: (_) => const _CrearTenantDialog(),
+  );
+  if (resultado == null) return;
+  ref.invalidate(tenantsAdminProvider);
+  // Diseño UX: nos quedamos en la lista (donde el ISP recién creado
+  // aparece). Snackbar con acción "Ver detalle" para que el super_admin
+  // pueda saltar al tenant si quiere, sin forzar la navegación cuando
+  // probablemente quiera crear varios seguidos.
+  messenger.showSnackBar(
+    SnackBar(
+      content: const Text('ISP creado e invitación enviada por email'),
+      behavior: SnackBarBehavior.floating,
+      duration: const Duration(seconds: 6),
+      action: SnackBarAction(
+        label: 'Ver detalle',
+        onPressed: () {
+          if (!context.mounted) return;
+          context.go('/super/tenants/${resultado.tenantId}');
+        },
+      ),
+    ),
+  );
+}
 
 /// Lista de tenants — pantalla raíz del panel /super.
 class TenantsListScreen extends ConsumerWidget {
@@ -44,25 +76,36 @@ class TenantsListScreen extends ConsumerWidget {
         ),
         data: (tenants) {
           if (tenants.isEmpty) {
-            return const EmptyState(
-              icon: Icons.business,
-              titulo: 'Sin tenants',
-              descripcion:
-                  'Aún no creaste ningún ISP. Andá a Supabase Dashboard '
-                  '→ Authentication → Users → "Add user" para invitar al '
-                  'primer admin de un tenant nuevo.',
+            // Sin tenants: la card del CTA es suficiente — agregar un
+            // EmptyState debajo era duplicar el mismo mensaje.
+            return ListView(
+              padding: const EdgeInsets.all(16),
+              children: [
+                _CrearTenantCard(
+                  onTap: () => _abrirCrearTenant(context, ref),
+                ),
+              ],
             );
           }
           return ListView.builder(
             padding: const EdgeInsets.all(16),
-            itemCount: tenants.length,
-            itemBuilder: (_, i) => AnimatedListEntry(
-              // Key estable por id: si la lista crece/shrinkea, los items
-              // existentes no se re-animan ni se descolocan.
-              key: ValueKey(tenants[i].id),
-              index: i,
-              child: _TenantCard(tenant: tenants[i]),
-            ),
+            // +1 por la card de "crear" que renderizamos en index 0.
+            itemCount: tenants.length + 1,
+            itemBuilder: (_, i) {
+              if (i == 0) {
+                return _CrearTenantCard(
+                  onTap: () => _abrirCrearTenant(context, ref),
+                );
+              }
+              final tenant = tenants[i - 1];
+              return AnimatedListEntry(
+                // Key estable por id: si la lista crece/shrinkea, los items
+                // existentes no se re-animan ni se descolocan.
+                key: ValueKey(tenant.id),
+                index: i - 1,
+                child: _TenantCard(tenant: tenant),
+              );
+            },
           );
         },
       ),
@@ -204,4 +247,428 @@ class _TenantCardState extends State<_TenantCard> {
     );
   }
 
+}
+
+/// Card "+ Crear nuevo tenant" arriba de la lista. Mismo border-radius
+/// y altura aproximada que los _TenantCard para que la lista no salte
+/// visualmente, pero con tinte primary y borde resaltado para que sea
+/// claramente un CTA y no un row más.
+class _CrearTenantCard extends StatelessWidget {
+  const _CrearTenantCard({required this.onTap});
+
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Material(
+        color: scheme.primaryContainer.withValues(alpha: 0.35),
+        borderRadius: BorderRadius.circular(12),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: onTap,
+          child: Container(
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                color: scheme.primary.withValues(alpha: 0.4),
+                width: 1.5,
+              ),
+            ),
+            padding: const EdgeInsets.symmetric(
+                horizontal: 16, vertical: 18),
+            child: Row(
+              children: [
+                Icon(Icons.add_business, color: scheme.primary, size: 28),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Crear nuevo ISP',
+                        style: TextStyle(
+                          color: scheme.onSurface,
+                          fontWeight: FontWeight.w600,
+                          fontSize: 15,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        'Da de alta un ISP y enviá la invitación',
+                        style: TextStyle(
+                          color: scheme.onSurfaceVariant,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Icon(Icons.arrow_forward, color: scheme.primary, size: 20),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Dialog del flow alta-tenant. Toma nombre del tenant, datos del admin
+/// y módulos no-base opcionales; llama a la Edge Function `crear-tenant`
+/// y al éxito devuelve {tenantId, adminUserId} al caller para que
+/// navegue al detalle.
+class _CrearTenantDialog extends ConsumerStatefulWidget {
+  const _CrearTenantDialog();
+
+  @override
+  ConsumerState<_CrearTenantDialog> createState() =>
+      _CrearTenantDialogState();
+}
+
+class _CrearTenantDialogState extends ConsumerState<_CrearTenantDialog> {
+  final _formKey = GlobalKey<FormState>();
+  final _nombreCtrl = TextEditingController();
+  final _emailCtrl = TextEditingController();
+  final _adminNombreCtrl = TextEditingController();
+  final _telefonoCtrl = TextEditingController();
+  // Set de códigos de módulos extras seleccionados (los base ya van
+  // automáticos vía trigger, no se muestran como opciones).
+  final Set<String> _modulosExtras = {};
+  bool _busy = false;
+  String? _error;
+
+  @override
+  void dispose() {
+    _nombreCtrl.dispose();
+    _emailCtrl.dispose();
+    _adminNombreCtrl.dispose();
+    _telefonoCtrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _crear() async {
+    if (!_formKey.currentState!.validate()) return;
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+    try {
+      final repo = ref.read(superAdminRepoProvider);
+      // Telefono opcional: si el campo quedó vacío, mandamos null para
+      // que la metadata del invite no quede con "" — el trigger
+      // handle_new_user trataría "" como un valor seteado.
+      final telTrim = _telefonoCtrl.text.trim();
+      final resultado = await repo.crearTenant(
+        nombre: _nombreCtrl.text.trim(),
+        adminEmail: _emailCtrl.text.trim(),
+        adminNombre: _adminNombreCtrl.text.trim(),
+        adminTelefono: telTrim.isEmpty ? null : telTrim,
+        modulosExtra: _modulosExtras.toList(),
+        // Sin redirect_to con flow=invite, el email del invite cae al
+        // root y se pierde el routing a /set-password.
+        redirectTo:
+            kIsWeb ? '${Uri.base.origin}/?flow=invite' : null,
+      );
+      if (!mounted) return;
+      Navigator.of(context).pop(resultado);
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _error = e.toString().replaceFirst('Exception: ', '');
+        _busy = false;
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final screenW = MediaQuery.sizeOf(context).width;
+    final dialogW = screenW < 460 ? screenW * 0.9 : 480.0;
+    final modulosAsync = ref.watch(modulosProvider);
+    // PopScope con canPop:!_busy: evita que Esc o el back-gesture
+    // cierren el dialog mid-request (la operación sigue corriendo en
+    // el server, dejaríamos al user sin saber el resultado).
+    return PopScope(
+      canPop: !_busy,
+      child: AlertDialog(
+      icon: Icon(Icons.add_business, color: scheme.primary, size: 32),
+      title: const Text('Crear ISP'),
+      content: SizedBox(
+        width: dialogW,
+        child: Form(
+          key: _formKey,
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                TextFormField(
+                  controller: _nombreCtrl,
+                  enabled: !_busy,
+                  // autofocus: queremos que arranque tipeando el
+                  // nombre, no que tenga que tabbear primero. Sin esto,
+                  // el textInputAction.next del primer field no tiene
+                  // de dónde saltar.
+                  autofocus: true,
+                  textInputAction: TextInputAction.next,
+                  decoration: const InputDecoration(
+                    labelText: 'Nombre del ISP',
+                    hintText: 'ej: ISP Las Lomas',
+                    border: OutlineInputBorder(),
+                  ),
+                  validator: (v) {
+                    final t = (v ?? '').trim();
+                    if (t.isEmpty) return 'Requerido';
+                    if (t.length > 120) return 'Máximo 120 caracteres';
+                    return null;
+                  },
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  'Admin del tenant',
+                  style: TextStyle(
+                    color: scheme.onSurfaceVariant,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                TextFormField(
+                  controller: _emailCtrl,
+                  enabled: !_busy,
+                  keyboardType: TextInputType.emailAddress,
+                  textInputAction: TextInputAction.next,
+                  autofillHints: const [AutofillHints.email],
+                  decoration: const InputDecoration(
+                    labelText: 'Email',
+                    hintText: 'marcos@laslomas.ni',
+                    border: OutlineInputBorder(),
+                  ),
+                  validator: (v) {
+                    final t = (v ?? '').trim();
+                    if (t.isEmpty) return 'Requerido';
+                    final ok = RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$')
+                        .hasMatch(t);
+                    if (!ok) return 'Email inválido';
+                    return null;
+                  },
+                ),
+                const SizedBox(height: 12),
+                TextFormField(
+                  controller: _adminNombreCtrl,
+                  enabled: !_busy,
+                  textInputAction: TextInputAction.next,
+                  autofillHints: const [AutofillHints.name],
+                  decoration: const InputDecoration(
+                    labelText: 'Nombre completo',
+                    hintText: 'Marcos Pineda',
+                    border: OutlineInputBorder(),
+                  ),
+                  validator: (v) =>
+                      (v ?? '').trim().isEmpty ? 'Requerido' : null,
+                ),
+                const SizedBox(height: 12),
+                TextFormField(
+                  controller: _telefonoCtrl,
+                  enabled: !_busy,
+                  textInputAction: TextInputAction.done,
+                  autofillHints: const [AutofillHints.telephoneNumber],
+                  decoration: const InputDecoration(
+                    labelText: 'Teléfono (opcional)',
+                    hintText: '+505 8888 1234',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  'Módulos adicionales',
+                  style: TextStyle(
+                    color: scheme.onSurfaceVariant,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                modulosAsync.when(
+                  loading: () => const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 12),
+                    child: LinearProgressIndicator(),
+                  ),
+                  error: (e, _) => Text(
+                    'No se pudieron cargar los módulos: $e',
+                    style: TextStyle(
+                        color: scheme.error, fontSize: 12),
+                  ),
+                  // Renderiza TODOS los módulos (base y no-base). Los
+                  // base aparecen disabled-checked para que el
+                  // super_admin vea qué viene incluido y no se quede
+                  // buscando Cobranza en la lista.
+                  data: (mods) => _ModulosPicker(
+                    modulos: mods,
+                    seleccionadosExtra: _modulosExtras,
+                    onChanged: _busy
+                        ? null
+                        : (codigo, checked) {
+                            setState(() {
+                              if (checked) {
+                                _modulosExtras.add(codigo);
+                              } else {
+                                _modulosExtras.remove(codigo);
+                              }
+                            });
+                          },
+                  ),
+                ),
+                if (_error != null) ...[
+                  const SizedBox(height: 16),
+                  Semantics(
+                    liveRegion: true,
+                    container: true,
+                    child: Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: scheme.errorContainer,
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Icon(Icons.error_outline,
+                              color: scheme.onErrorContainer, size: 20),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              _error!,
+                              style: TextStyle(
+                                color: scheme.onErrorContainer,
+                                fontSize: 13,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed:
+              _busy ? null : () => Navigator.of(context).pop(),
+          child: const Text('Cancelar'),
+        ),
+        // Semantics.hint comunica el side-effect (manda email externo)
+        // al screen reader — el color rojo no aplica acá pero la
+        // acción tiene consecuencias visibles para un tercero.
+        Semantics(
+          button: true,
+          enabled: !_busy,
+          hint: 'Envía un correo de invitación al admin del ISP',
+          child: FilledButton.icon(
+            icon: _busy
+                ? const SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.send),
+            label: Text(
+              _busy ? 'Creando…' : 'Crear y enviar invitación',
+            ),
+            onPressed: _busy ? null : _crear,
+          ),
+        ),
+      ],
+    ),
+    );
+  }
+}
+
+/// Picker de módulos para el alta de tenant. Los módulos base se
+/// renderean disabled-checked (el trigger los habilita automáticamente
+/// al crear el tenant — el super_admin no puede ni deseleccionarlos);
+/// los no-base son checkboxes interactivos cuyo estado vive en
+/// `seleccionadosExtra` (set de códigos elegidos por el caller).
+class _ModulosPicker extends StatelessWidget {
+  const _ModulosPicker({
+    required this.modulos,
+    required this.seleccionadosExtra,
+    required this.onChanged,
+  });
+
+  final List<Modulo> modulos;
+  final Set<String> seleccionadosExtra;
+  // onChanged null = todos los checkboxes deshabilitados (estado busy
+  // del dialog padre). Sólo se llama para módulos no-base.
+  final void Function(String codigo, bool checked)? onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    if (modulos.isEmpty) {
+      return Text(
+        'No hay módulos en el catálogo.',
+        style: TextStyle(
+            color: scheme.onSurfaceVariant, fontSize: 12),
+      );
+    }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: modulos.map((m) {
+        final esBase = m.esBase;
+        return CheckboxListTile(
+          value: esBase || seleccionadosExtra.contains(m.codigo),
+          // Base: onChanged null (greyed-out, no se puede tocar).
+          // No-base: si el dialog está busy, también null.
+          onChanged: (esBase || onChanged == null)
+              ? null
+              : (v) => onChanged!(m.codigo, v ?? false),
+          title: Row(
+            children: [
+              Expanded(child: Text(m.nombre)),
+              if (esBase)
+                Padding(
+                  padding: const EdgeInsets.only(left: 6),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 6, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: scheme.surfaceContainerHighest,
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: Text(
+                      'incluido',
+                      style: TextStyle(
+                        color: scheme.onSurfaceVariant,
+                        fontSize: 10,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+          subtitle: m.descripcion == null
+              ? null
+              : Text(
+                  m.descripcion!,
+                  style: const TextStyle(fontSize: 11),
+                ),
+          contentPadding: EdgeInsets.zero,
+          dense: true,
+          visualDensity: VisualDensity.compact,
+          controlAffinity: ListTileControlAffinity.leading,
+        );
+      }).toList(),
+    );
+  }
 }
