@@ -1166,13 +1166,23 @@ class _MiembroCardState extends ConsumerState<_MiembroCard> {
                   if (!c.invitacionPendiente && c.rol != 'super_admin')
                     PopupMenuItem(
                       value: _AccionMiembro.forzarPassword,
-                      child: Row(
-                        children: [
-                          Icon(Icons.password,
-                              color: scheme.error, size: 20),
-                          const SizedBox(width: 12),
-                          const Text('Forzar contraseña'),
-                        ],
+                      // Label explícito para screen readers — el color
+                      // rojo del ícono comunica "sensible" a usuarios
+                      // viendo, pero no a quienes navegan con TalkBack.
+                      child: Semantics(
+                        button: true,
+                        label: 'Forzar contraseña. Acción sensible: '
+                            'genera una contraseña visible para el '
+                            'super admin.',
+                        excludeSemantics: true,
+                        child: Row(
+                          children: [
+                            Icon(Icons.password,
+                                color: scheme.error, size: 20),
+                            const SizedBox(width: 12),
+                            const Text('Forzar contraseña'),
+                          ],
+                        ),
                       ),
                     ),
                   if (!c.invitacionPendiente && c.rol != 'super_admin')
@@ -1238,16 +1248,23 @@ class _MiembroCardState extends ConsumerState<_MiembroCard> {
                     const PopupMenuDivider(),
                     PopupMenuItem(
                       value: _AccionMiembro.eliminar,
-                      child: Row(
-                        children: [
-                          Icon(Icons.delete_forever,
-                              color: scheme.error, size: 20),
-                          const SizedBox(width: 12),
-                          Text(
-                            'Eliminar miembro',
-                            style: TextStyle(color: scheme.error),
-                          ),
-                        ],
+                      child: Semantics(
+                        button: true,
+                        label: 'Eliminar miembro permanentemente. '
+                            'Acción destructiva — pide confirmación '
+                            'tipeando el nombre del miembro.',
+                        excludeSemantics: true,
+                        child: Row(
+                          children: [
+                            Icon(Icons.delete_forever,
+                                color: scheme.error, size: 20),
+                            const SizedBox(width: 12),
+                            Text(
+                              'Eliminar miembro',
+                              style: TextStyle(color: scheme.error),
+                            ),
+                          ],
+                        ),
                       ),
                     ),
                   ],

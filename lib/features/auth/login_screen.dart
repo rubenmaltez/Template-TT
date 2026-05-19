@@ -95,40 +95,47 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
               mainAxisSize: MainAxisSize.min,
               children: [
                 if (authError != null) ...[
-                  Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: scheme.errorContainer,
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Icon(Icons.warning_amber,
-                            color: scheme.onErrorContainer, size: 20),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            _humanizeAuthError(authError),
-                            style: TextStyle(
-                              color: scheme.onErrorContainer,
-                              fontSize: 13,
+                  // liveRegion: el banner aparece tras un redirect (link
+                  // expirado, etc.); sin esto TalkBack/NVDA no leen el
+                  // mensaje al insertarse — el usuario quedaría sin
+                  // saber por qué cayó al login.
+                  Semantics(
+                    liveRegion: true,
+                    child: Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: scheme.errorContainer,
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Icon(Icons.warning_amber,
+                              color: scheme.onErrorContainer, size: 20),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              _humanizeAuthError(authError),
+                              style: TextStyle(
+                                color: scheme.onErrorContainer,
+                                fontSize: 13,
+                              ),
                             ),
                           ),
-                        ),
-                        IconButton(
-                          icon: Icon(Icons.close,
-                              color: scheme.onErrorContainer, size: 18),
-                          tooltip: 'Cerrar',
-                          padding: EdgeInsets.zero,
-                          constraints: const BoxConstraints(
-                              minWidth: 28, minHeight: 28),
-                          onPressed: () => ref
-                              .read(initialAuthErrorProvider.notifier)
-                              .state = null,
-                        ),
-                      ],
+                          IconButton(
+                            icon: Icon(Icons.close,
+                                color: scheme.onErrorContainer, size: 18),
+                            tooltip: 'Cerrar',
+                            padding: EdgeInsets.zero,
+                            constraints: const BoxConstraints(
+                                minWidth: 28, minHeight: 28),
+                            onPressed: () => ref
+                                .read(initialAuthErrorProvider.notifier)
+                                .state = null,
+                          ),
+                        ],
+                      ),
                     ),
                   ),
                   const SizedBox(height: 24),
@@ -172,21 +179,30 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                 ],
                 if (_error != null) ...[
                   const SizedBox(height: 16),
-                  Text(
-                    _error!,
-                    style: TextStyle(color: scheme.error),
-                    textAlign: TextAlign.center,
+                  // liveRegion para que screen readers anuncien el error
+                  // tras intentar loguear / pedir reset; sin esto el
+                  // texto aparece silenciosamente debajo del form.
+                  Semantics(
+                    liveRegion: true,
+                    child: Text(
+                      _error!,
+                      style: TextStyle(color: scheme.error),
+                      textAlign: TextAlign.center,
+                    ),
                   ),
                 ],
                 if (_info != null) ...[
                   const SizedBox(height: 16),
-                  Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: scheme.primaryContainer,
-                      borderRadius: BorderRadius.circular(12),
+                  Semantics(
+                    liveRegion: true,
+                    child: Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: scheme.primaryContainer,
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Text(_info!, textAlign: TextAlign.center),
                     ),
-                    child: Text(_info!, textAlign: TextAlign.center),
                   ),
                 ],
                 const SizedBox(height: 24),
