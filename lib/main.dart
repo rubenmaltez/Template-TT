@@ -21,12 +21,18 @@ Future<void> main() async {
   // como ruta y reviente.
   if (kIsWeb) usePathUrlStrategy();
 
-  // Capturamos el tipo de flow ANTES de Supabase.initialize, porque la SDK
-  // procesa y LIMPIA el fragmento durante la inicialización. Si lo
-  // intentamos leer después, ya no está. Posibles valores: 'recovery'
-  // (forgot password), 'invite' (primera entrada tras invitación),
-  // 'signup' (confirm email), o null si arranque normal.
-  final initialAuthFlow = _extractAuthFlow(Uri.base);
+  // Capturamos el tipo de flow ANTES de Supabase.initialize.
+  //   - Implicit flow (fragment con #type=...): la SDK limpia el fragmento
+  //     al procesarlo, así que se debe leer antes.
+  //   - PKCE flow (query con ?code=... + opcionalmente ?flow=...): la SDK
+  //     puede o no procesar el code automáticamente, depende de la
+  //     versión. Leemos `?flow=...` para conocer el tipo.
+  // Posibles valores: 'recovery' (forgot password), 'invite' (primera
+  // entrada tras invitación), 'signup' (confirm email), null si arranque
+  // normal.
+  final initialUri = Uri.base;
+  final initialAuthFlow = _extractAuthFlow(initialUri);
+  final initialPkceCode = initialUri.queryParameters['code'];
 
   if (!Env.isConfigured) {
     runApp(const _ConfigMissingApp());
@@ -37,6 +43,21 @@ Future<void> main() async {
     url: Env.supabaseUrl,
     anonKey: Env.supabaseAnonKey,
   );
+
+  // Si vino un código PKCE en la URL y la SDK no lo intercambió sola,
+  // lo hacemos a mano. Después de exchangeCodeForSession, la sesión queda
+  // activa y los providers la van a leer.
+  if (initialPkceCode != null && kIsWeb) {
+    try {
+      await Supabase.instance.client.auth
+          .exchangeCodeForSession(initialPkceCode);
+    } catch (e) {
+      // Si falla (link expirado, code ya usado), no bloqueamos el arranque
+      // — el usuario verá la pantalla de login y puede pedir otro link.
+      debugPrint('exchangeCodeForSession falló: $e');
+    }
+  }
+
   await ps.openDatabase();
 
   // Conectar/desconectar PowerSync siguiendo el ciclo de vida de la sesión.
@@ -80,14 +101,36 @@ Future<void> main() async {
   ));
 }
 
-/// Lee el query param `type` del fragmento de la URL inicial.
-/// Supabase manda los links de recovery / invite con el formato
-/// `localhost:55000/#access_token=...&type=recovery&...`.
+/// Determina el tipo de flow de auth a partir de la URL inicial.
+///
+/// Supabase puede mandar el usuario de vuelta vía dos esquemas:
+///   - Implicit flow → `#access_token=...&type=recovery&...` (fragmento)
+///   - PKCE flow     → `?code=...` (query) — preferido en versiones nuevas
+///
+/// Para PKCE el `type` se pierde en el redirect — Supabase no lo
+/// propaga en la URL final. Para preservarlo, agregamos `?flow=...` al
+/// redirectTo al iniciar el flow (ver login_screen y edge fn invitar).
+/// Si la URL tiene `?code=...` pero no `?flow=...` (link viejo o desde
+/// otro path), asumimos 'recovery' como default — es el caso más común
+/// y el SetPasswordScreen funciona igual.
 String? _extractAuthFlow(Uri uri) {
-  final fragment = uri.fragment;
-  if (fragment.isEmpty) return null;
-  final params = Uri.splitQueryString(fragment);
-  return params['type'];
+  // 1. Query param explícito (PKCE con redirectTo customizado).
+  final fromQuery = uri.queryParameters['flow'];
+  if (fromQuery != null) return fromQuery;
+
+  // 2. Fragment (implicit flow).
+  if (uri.fragment.isNotEmpty) {
+    final fragParams = Uri.splitQueryString(uri.fragment);
+    final fromFragment = fragParams['type'];
+    if (fromFragment != null) return fromFragment;
+  }
+
+  // 3. Code PKCE sin flow explícito — asumimos recovery por default.
+  if (uri.queryParameters['code'] != null) {
+    return 'recovery';
+  }
+
+  return null;
 }
 
 class _ConfigMissingApp extends StatelessWidget {

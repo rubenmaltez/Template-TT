@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -51,7 +52,16 @@ class _LoginScreenState extends State<LoginScreen> {
           );
           break;
         case _Modo.recuperar:
-          await Supabase.instance.client.auth.resetPasswordForEmail(email);
+          // redirectTo con flow=recovery: necesario porque Supabase no
+          // propaga el `type` original en el redirect del flow PKCE.
+          // Sin esto, después del exchange caemos en el dashboard sin
+          // pasar por /set-password.
+          await Supabase.instance.client.auth.resetPasswordForEmail(
+            email,
+            redirectTo: kIsWeb
+                ? '${Uri.base.origin}/?flow=recovery'
+                : null,
+          );
           setState(() => _info =
               'Te mandamos un email con el link para recuperar tu contraseña.');
           break;
