@@ -76,7 +76,11 @@ serve(async (req) => {
       );
     }
 
-    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(body.nuevo_email)) {
+    // Normalizar: Supabase guarda emails en lowercase, así la idempotencia
+    // y comparaciones quedan consistentes. Trim por si el cliente mandó
+    // espacios extra.
+    const nuevoEmail = body.nuevo_email.trim().toLowerCase();
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(nuevoEmail)) {
       return jsonError("Email inválido", 400);
     }
 
@@ -111,8 +115,9 @@ serve(async (req) => {
     }
 
     const emailAnterior = targetUser.email;
-    if (emailAnterior === body.nuevo_email) {
-      // Idempotencia: si ya tiene ese email, no hacemos nada.
+    if ((emailAnterior ?? "").toLowerCase() === nuevoEmail) {
+      // Idempotencia: si ya tiene ese email (comparado case-insensitive
+      // porque Supabase guarda en lowercase), no hacemos nada.
       return new Response(
         JSON.stringify({
           ok: true,
@@ -146,11 +151,23 @@ serve(async (req) => {
     // Actualizar email + mantener confirmado (no re-verificación).
     const { error: updErr } = await admin.auth.admin.updateUserById(
       body.cobrador_id,
-      { email: body.nuevo_email, email_confirm: true },
+      { email: nuevoEmail, email_confirm: true },
     );
     if (updErr) {
       // Errores típicos: email ya en uso por otro user.
       return jsonError(`Auth: ${updErr.message}`, 400);
+    }
+
+    // Invalidar todas las sesiones del target — sino sigue logueado con
+    // JWT del email viejo hasta el siguiente refresh (~1h). Para un cambio
+    // de identidad mejor forzamos re-login en todos los devices.
+    const { error: signOutErr } = await admin.auth.admin.signOut(
+      body.cobrador_id,
+      "global",
+    );
+    if (signOutErr) {
+      // No bloqueamos — el email ya cambió. Sólo log.
+      console.error("cambiar-email: signOut global falló", signOutErr);
     }
 
     // Audit log. valor_anterior/nuevo contienen los emails — son PII pero
@@ -161,7 +178,7 @@ serve(async (req) => {
       registro_id: body.cobrador_id,
       campo: "email",
       valor_anterior: emailAnterior,
-      valor_nuevo: body.nuevo_email,
+      valor_nuevo: nuevoEmail,
       user_id: user.id,
       user_rol: "super_admin",
     });

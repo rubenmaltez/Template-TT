@@ -98,7 +98,20 @@ serve(async (req) => {
     // sugerimos desactivar en vez. Evita FK violations + audit huérfano.
     // Pagos/recibos cuentan incluso anulados porque siguen siendo
     // historial relevante.
-    const [pagosRes, recibosRes, cargosRes, clientesRes] = await Promise.all([
+    //
+    // Además de cobrador_id (creador), contamos las columnas de
+    // atribución (anulado_por, aplicado_por) porque son FK ON DELETE
+    // SET NULL — sin esta protección, eliminar al super_admin que anuló
+    // 5000 pagos borraría la atribución de quién los anuló.
+    const [
+      pagosRes,
+      recibosRes,
+      cargosRes,
+      clientesRes,
+      pagosAnuladosPor,
+      recibosAnuladosPor,
+      cargosAplicadosPor,
+    ] = await Promise.all([
       admin.from("pagos").select("id", { count: "exact", head: true })
         .eq("cobrador_id", body.cobrador_id),
       admin.from("recibos").select("id", { count: "exact", head: true })
@@ -107,25 +120,57 @@ serve(async (req) => {
         .eq("cobrador_id", body.cobrador_id),
       admin.from("clientes").select("id", { count: "exact", head: true })
         .eq("cobrador_id", body.cobrador_id),
+      admin.from("pagos").select("id", { count: "exact", head: true })
+        .eq("anulado_por", body.cobrador_id),
+      admin.from("recibos").select("id", { count: "exact", head: true })
+        .eq("anulado_por", body.cobrador_id),
+      admin.from("cargos_extra").select("id", { count: "exact", head: true })
+        .eq("aplicado_por", body.cobrador_id),
     ]);
+
+    // Si alguna count query falla, abortamos por defensiveness — no
+    // queremos eliminar pensando que el count era 0 cuando en realidad
+    // hubo un error.
+    const allRes = [
+      pagosRes,
+      recibosRes,
+      cargosRes,
+      clientesRes,
+      pagosAnuladosPor,
+      recibosAnuladosPor,
+      cargosAplicadosPor,
+    ];
+    for (const r of allRes) {
+      if (r.error) {
+        console.error("eliminar: count query falló", r.error);
+        return jsonError("Error contando historial del usuario", 500);
+      }
+    }
 
     const pagos = pagosRes.count ?? 0;
     const recibos = recibosRes.count ?? 0;
     const cargos = cargosRes.count ?? 0;
     const clientes = clientesRes.count ?? 0;
-    const total = pagos + recibos + cargos + clientes;
+    const pagosAnul = pagosAnuladosPor.count ?? 0;
+    const recibosAnul = recibosAnuladosPor.count ?? 0;
+    const cargosApl = cargosAplicadosPor.count ?? 0;
+    const total = pagos + recibos + cargos + clientes +
+      pagosAnul + recibosAnul + cargosApl;
     if (total > 0) {
       return jsonError(
         "No se puede eliminar: tiene historial operativo " +
-          `(${pagos} pagos, ${recibos} recibos, ${cargos} cargos, ` +
-          `${clientes} clientes asignados). Usá 'Desactivar' en su lugar ` +
-          "para preservar el historial.",
+          `(${pagos} pagos creados, ${recibos} recibos, ${cargos} cargos, ` +
+          `${clientes} clientes asignados, ${pagosAnul} pagos anulados ` +
+          `por él, ${recibosAnul} recibos anulados por él, ${cargosApl} ` +
+          "cargos aplicados por él). Usá 'Desactivar' en su lugar para " +
+          "preservar el historial.",
         409,
       );
     }
 
-    // Audit log ANTES del delete — necesitamos tenant_id que después
-    // cascadea al borrado.
+    // Audit log ANTES del delete por defensiveness: si el insert falla,
+    // abortamos sin haber borrado nada y el super_admin puede reintentar.
+    // El audit row sobrevive al delete de auth.users (no hay FK al revés).
     const { error: auditErr } = await admin.from("audit_log").insert({
       tenant_id: tc.tenant_id,
       tabla: "auth.users",

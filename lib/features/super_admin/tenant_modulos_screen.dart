@@ -1214,22 +1214,31 @@ class _MiembroCardState extends ConsumerState<_MiembroCard> {
                         ],
                       ),
                     ),
-                  const PopupMenuDivider(),
                   // Grupo 4: destructivo (al fondo, separado por divider).
-                  PopupMenuItem(
-                    value: _AccionMiembro.eliminar,
-                    child: Row(
-                      children: [
-                        Icon(Icons.delete_forever,
-                            color: scheme.error, size: 20),
-                        const SizedBox(width: 12),
-                        Text(
-                          'Eliminar miembro',
-                          style: TextStyle(color: scheme.error),
-                        ),
-                      ],
+                  // Ocultamos para self y para otros super_admin — el
+                  // backend ya bloquea, pero esconder evita el flujo
+                  // frustrante de abrir el dialog 'tipear nombre' para
+                  // acabar viendo un error.
+                  if (c.id !=
+                          Supabase
+                              .instance.client.auth.currentUser?.id &&
+                      c.rol != 'super_admin') ...[
+                    const PopupMenuDivider(),
+                    PopupMenuItem(
+                      value: _AccionMiembro.eliminar,
+                      child: Row(
+                        children: [
+                          Icon(Icons.delete_forever,
+                              color: scheme.error, size: 20),
+                          const SizedBox(width: 12),
+                          Text(
+                            'Eliminar miembro',
+                            style: TextStyle(color: scheme.error),
+                          ),
+                        ],
+                      ),
                     ),
-                  ),
+                  ],
                 ],
               ),
           ],
@@ -1940,7 +1949,7 @@ class _CambiarEmailDialogState extends State<_CambiarEmailDialog> {
         ),
         FilledButton.icon(
           icon: const Icon(Icons.check),
-          label: const Text('Cambiar'),
+          label: const Text('Cambiar email'),
           onPressed: _submit,
         ),
       ],
@@ -2010,7 +2019,8 @@ class _EliminarDialogState extends State<_EliminarDialog> {
               ),
               const SizedBox(height: 8),
               Text(
-                'Tipeá el nombre exacto para confirmar:',
+                'Tipeá el nombre exacto (con mayúsculas y tildes) '
+                'para confirmar:',
                 style: TextStyle(
                   color: scheme.onSurfaceVariant,
                   fontSize: 13,
