@@ -17,7 +17,12 @@ Future<void> _abrirCrearTenant(BuildContext context, WidgetRef ref) async {
   // usamos sin pasar por el context (que podría tener cambios pendientes).
   final messenger = ScaffoldMessenger.of(context);
   final resultado = await showDialog<
-      ({String tenantId, String adminUserId, String? inviteLink})>(
+      ({
+        String tenantId,
+        String adminUserId,
+        String adminEmail,
+        String? adminPassword,
+      })>(
     context: context,
     barrierDismissible: false,
     builder: (_) => const _CrearTenantDialog(),
@@ -25,23 +30,27 @@ Future<void> _abrirCrearTenant(BuildContext context, WidgetRef ref) async {
   if (resultado == null) return;
   ref.invalidate(tenantsAdminProvider);
 
-  // Si vino un invite_link, el super_admin pidió no-email — abrimos un
-  // dialog que muestra el link con un botón de copiar (mismo patrón
-  // del _PasswordCopiarDialog usado en forzar password). El link es
-  // efímero (expira ~24h) y no queda guardado en la app, así que el
-  // flow es "copialo y compartilo o lo perdés".
+  // Si vino una password, el super_admin pidió no-email — abrimos
+  // dialog que muestra email+password para copiar (mismo patrón que
+  // _PasswordCopiarDialog de forzar-password). La password se generó
+  // server-side y NO queda guardada en ningún lado — esta es la
+  // única oportunidad de verla; si la pierde, hay que ir a "Forzar
+  // contraseña" desde el detalle del miembro para generar otra.
   //
-  // El dialog devuelve true si el user copió, false en otro caso —
-  // navegamos al detalle sólo si copió (parity con la action "Ver
-  // detalle" del path de email). Si cerró sin copiar, probable que
-  // quiera reintentar — lo dejamos en la lista.
-  final link = resultado.inviteLink;
-  if (link != null && link.isNotEmpty) {
+  // El dialog devuelve true si el user copió la password — sólo en
+  // ese caso navegamos al detalle (parity con la action "Ver detalle"
+  // del path de email). Si cerró sin copiar, lo dejamos en la lista
+  // por si quiere reintentar.
+  final password = resultado.adminPassword;
+  if (password != null && password.isNotEmpty) {
     if (!context.mounted) return;
     final copio = await showDialog<bool>(
       context: context,
       barrierDismissible: false,
-      builder: (_) => _InviteLinkDialog(link: link),
+      builder: (_) => _AdminCredencialesDialog(
+        email: resultado.adminEmail,
+        password: password,
+      ),
     );
     if (copio == true && context.mounted) {
       context.go('/super/tenants/${resultado.tenantId}');
@@ -556,8 +565,11 @@ class _CrearTenantDialogState extends ConsumerState<_CrearTenantDialog> {
                   ),
                 ),
                 const SizedBox(height: 8),
-                // Switch para saltar el envío de email y mostrar el link
-                // directo. Default ON (manda email) — el flow normal.
+                // Switch para saltar el envío de email — útil con SMTP
+                // en sandbox. Default ON (manda email) — el flow
+                // normal con dominio Resend verificado. Cuando OFF,
+                // el server crea al admin con password aleatoria y la
+                // devuelve para que el super_admin la comparta a mano.
                 SwitchListTile(
                   value: _enviarEmail,
                   onChanged: _busy
@@ -567,8 +579,8 @@ class _CrearTenantDialogState extends ConsumerState<_CrearTenantDialog> {
                   subtitle: Text(
                     _enviarEmail
                         ? 'El admin recibe el link en su correo.'
-                        : 'No se envía email. Vas a copiar el link y '
-                            'compartirlo manualmente.',
+                        : 'No se envía email. Te generamos una '
+                            'contraseña para compartir manualmente.',
                     style: const TextStyle(fontSize: 11),
                   ),
                   contentPadding: EdgeInsets.zero,
@@ -619,13 +631,15 @@ class _CrearTenantDialogState extends ConsumerState<_CrearTenantDialog> {
           child: const Text('Cancelar'),
         ),
         // Semantics.hint comunica el side-effect al screen reader.
-        // El label y el ícono cambian según el modo email vs link.
+        // El label y el ícono cambian según el modo: email vs
+        // password generada server-side.
         Semantics(
           button: true,
           enabled: !_busy,
           hint: _enviarEmail
               ? 'Envía un correo de invitación al admin del ISP'
-              : 'Crea el ISP y genera un link de invitación para copiar',
+              : 'Crea el ISP y genera la contraseña del admin para '
+                  'que la copies',
           child: FilledButton.icon(
             icon: _busy
                 ? const SizedBox(
@@ -633,13 +647,13 @@ class _CrearTenantDialogState extends ConsumerState<_CrearTenantDialog> {
                     height: 16,
                     child: CircularProgressIndicator(strokeWidth: 2),
                   )
-                : Icon(_enviarEmail ? Icons.send : Icons.link),
+                : Icon(_enviarEmail ? Icons.send : Icons.key),
             label: Text(
               _busy
                   ? 'Creando…'
                   : _enviarEmail
                       ? 'Crear y enviar invitación'
-                      : 'Crear y generar link',
+                      : 'Crear y generar contraseña',
             ),
             onPressed: _busy ? null : _crear,
           ),
@@ -730,46 +744,66 @@ class _ModulosPicker extends StatelessWidget {
   }
 }
 
-/// Dialog que muestra el link de invitación recién generado (cuando el
+/// Dialog que muestra email + password recién generadas (cuando el
 /// super_admin pidió "no enviar email"). Mismo patrón de UX que
-/// _PasswordCopiarDialog: copiar es la acción primaria, cerrar pierde
-/// el link permanentemente. El link expira en ~24h y no queda guardado
-/// en la app — el super_admin tiene que copiarlo y compartirlo ya.
+/// _PasswordCopiarDialog de forzar-password: copiar es la acción
+/// primaria, cerrar pierde la password permanentemente. La password
+/// la generó el server con crypto.getRandomValues y NO queda guardada
+/// en ningún lado — esta es la única oportunidad de verla. Si la
+/// pierde, el super_admin va al detalle del miembro → "Forzar
+/// contraseña" para generar una nueva.
 ///
-/// Devuelve true vía Navigator.pop si el user llegó a copiar el link
+/// Devuelve true vía Navigator.pop si el user copió la password
 /// (caller usa eso para decidir si navegar al detalle del tenant nuevo).
-class _InviteLinkDialog extends StatefulWidget {
-  const _InviteLinkDialog({required this.link});
+class _AdminCredencialesDialog extends StatefulWidget {
+  const _AdminCredencialesDialog({
+    required this.email,
+    required this.password,
+  });
 
-  final String link;
+  final String email;
+  final String password;
 
   @override
-  State<_InviteLinkDialog> createState() => _InviteLinkDialogState();
+  State<_AdminCredencialesDialog> createState() =>
+      _AdminCredencialesDialogState();
 }
 
-class _InviteLinkDialogState extends State<_InviteLinkDialog> {
-  bool _copiado = false;
+class _AdminCredencialesDialogState extends State<_AdminCredencialesDialog> {
+  bool _copiadoPassword = false;
+  bool _copiadoEmail = false;
   String? _copyError;
 
-  Future<void> _copiar() async {
+  Future<void> _copiarPassword() async {
     // En web con clipboard bloqueado (iframe, permiso denegado, etc.)
     // Clipboard.setData lanza PlatformException — antes lo tragábamos
     // y el botón decía "Copiado" mientras el portapapeles estaba
     // vacío. Capturamos y mostramos el error para que el super_admin
     // pueda copiar manualmente del SelectableText.
     try {
-      await Clipboard.setData(ClipboardData(text: widget.link));
+      await Clipboard.setData(ClipboardData(text: widget.password));
       if (!mounted) return;
       setState(() {
-        _copiado = true;
+        _copiadoPassword = true;
         _copyError = null;
       });
     } catch (e) {
       if (!mounted) return;
       setState(() {
         _copyError = 'No pude copiar al portapapeles: '
-            'seleccioná el link y copialo a mano (Ctrl+C).';
+            'seleccioná la password y copiala a mano (Ctrl+C).';
       });
+    }
+  }
+
+  Future<void> _copiarEmail() async {
+    try {
+      await Clipboard.setData(ClipboardData(text: widget.email));
+      if (!mounted) return;
+      setState(() => _copiadoEmail = true);
+    } catch (_) {
+      // El email no es secreto — si falla, no rompemos UX. Si la
+      // password también falló, ya hay un banner avisando.
     }
   }
 
@@ -779,8 +813,8 @@ class _InviteLinkDialogState extends State<_InviteLinkDialog> {
     final screenW = MediaQuery.sizeOf(context).width;
     final dialogW = screenW < 460 ? screenW * 0.9 : 480.0;
     return AlertDialog(
-      icon: Icon(Icons.link, color: scheme.primary, size: 40),
-      title: const Text('Link de invitación generado'),
+      icon: Icon(Icons.check_circle, color: scheme.primary, size: 40),
+      title: const Text('Credenciales del admin'),
       content: SizedBox(
         width: dialogW,
         child: Column(
@@ -788,14 +822,13 @@ class _InviteLinkDialogState extends State<_InviteLinkDialog> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const Text(
-              'El ISP ya está creado. Copiá este link y pasalo al '
-              'admin. Al abrirlo, cae directo en la pantalla para que '
-              'cree su contraseña.',
+              'El ISP ya está creado y el admin puede loguearse con '
+              'estas credenciales. Pasalas por canal seguro — el admin '
+              'puede cambiar su contraseña una vez adentro.',
             ),
             const SizedBox(height: 8),
-            // Warning de seguridad — el link es un bearer credential:
-            // cualquiera que lo abra crea la contraseña del admin.
-            // No es paranoia, es real: por eso el ícono + tinte error.
+            // Warning fuerte: la password es lo único que separa al
+            // admin de su tenant. Cualquiera con ella entra.
             Container(
               padding: const EdgeInsets.all(10),
               decoration: BoxDecoration(
@@ -810,11 +843,10 @@ class _InviteLinkDialogState extends State<_InviteLinkDialog> {
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
-                      'Cualquiera con este link puede crear la '
-                      'contraseña del admin. Compartilo por un '
-                      'canal directo (llamada, mensaje cifrado) y '
-                      'NO lo abras en este mismo navegador o vas a '
-                      'cerrar tu sesión de Super Admin.',
+                      'La password sólo se muestra una vez. Si la '
+                      'perdés antes de compartirla, andá al detalle '
+                      'del miembro → "Forzar contraseña" para generar '
+                      'otra.',
                       style: TextStyle(
                         color: scheme.onErrorContainer,
                         fontSize: 12,
@@ -824,40 +856,37 @@ class _InviteLinkDialogState extends State<_InviteLinkDialog> {
                 ],
               ),
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 16),
+            // Email — primero porque es el username y el admin lo
+            // necesita aunque ya lo sepa de la conversación previa.
             Text(
-              'Expira en ~24 h y no queda guardado acá. Si lo perdés, '
-              'tenés que volver a crear el ISP o, una vez que el admin '
-              'lo abrió, podés resetearle la contraseña desde su '
-              'detalle (cuando configures un dominio en Resend, también '
-              'podrás reenviar por email).',
+              'Email',
               style: TextStyle(
                 color: scheme.onSurfaceVariant,
-                fontSize: 12,
-                fontStyle: FontStyle.italic,
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
               ),
             ),
-            const SizedBox(height: 16),
-            Semantics(
-              label: 'Link de invitación, ${widget.link.length} '
-                  'caracteres. Usá el botón Copiar link debajo.',
-              child: ExcludeSemantics(
-                child: Container(
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 12, vertical: 10),
-                  decoration: BoxDecoration(
-                    color: scheme.surfaceContainerHighest,
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: SelectableText(
-                    widget.link,
-                    style: const TextStyle(
-                      fontFamily: 'monospace',
-                      fontSize: 12,
-                    ),
-                  ),
-                ),
+            const SizedBox(height: 4),
+            _CredencialRow(
+              valor: widget.email,
+              copiado: _copiadoEmail,
+              onCopiar: _copiarEmail,
+            ),
+            const SizedBox(height: 12),
+            Text(
+              'Contraseña',
+              style: TextStyle(
+                color: scheme.onSurfaceVariant,
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
               ),
+            ),
+            const SizedBox(height: 4),
+            _CredencialRow(
+              valor: widget.password,
+              copiado: _copiadoPassword,
+              onCopiar: _copiarPassword,
             ),
             if (_copyError != null) ...[
               const SizedBox(height: 8),
@@ -877,21 +906,76 @@ class _InviteLinkDialogState extends State<_InviteLinkDialog> {
       ),
       actions: [
         TextButton(
-          // pop(false) si cerró sin copiar — el caller no navega al
-          // detalle, lo deja en la lista para que pueda reintentar.
-          onPressed: () => Navigator.of(context).pop(_copiado),
-          child: Text(_copiado ? 'Listo' : 'Cerrar sin copiar'),
+          // pop(_copiadoPassword) — sólo navegamos al detalle si copió
+          // la password (lo que sí es crítico). El email se puede
+          // recuperar siempre, la password no.
+          onPressed: () => Navigator.of(context).pop(_copiadoPassword),
+          child: Text(_copiadoPassword ? 'Listo' : 'Cerrar sin copiar'),
         ),
         Semantics(
           button: true,
-          hint: 'Copia el link al portapapeles',
+          hint: 'Copia la contraseña al portapapeles',
           child: FilledButton.icon(
-            icon: Icon(_copiado ? Icons.check : Icons.content_copy),
-            label: Text(_copiado ? 'Link copiado' : 'Copiar link'),
-            onPressed: _copiar,
+            icon: Icon(
+                _copiadoPassword ? Icons.check : Icons.content_copy),
+            label: Text(_copiadoPassword
+                ? 'Contraseña copiada'
+                : 'Copiar contraseña'),
+            onPressed: _copiarPassword,
           ),
         ),
       ],
+    );
+  }
+}
+
+/// Bloque "monospace + botón copiar" para mostrar una credencial
+/// individual. Usado por _AdminCredencialesDialog para email y password
+/// — mismo styling, distinto contenido.
+class _CredencialRow extends StatelessWidget {
+  const _CredencialRow({
+    required this.valor,
+    required this.copiado,
+    required this.onCopiar,
+  });
+
+  final String valor;
+  final bool copiado;
+  final VoidCallback onCopiar;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.symmetric(
+          horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: scheme.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: SelectableText(
+              valor,
+              style: const TextStyle(
+                fontFamily: 'monospace',
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+          IconButton(
+            tooltip: copiado ? 'Copiado' : 'Copiar',
+            icon: Icon(
+              copiado ? Icons.check : Icons.content_copy,
+              size: 18,
+            ),
+            onPressed: onCopiar,
+            visualDensity: VisualDensity.compact,
+          ),
+        ],
+      ),
     );
   }
 }

@@ -4,10 +4,12 @@
 //   1. Inserta el row en `tenants` (el trigger habilita los módulos base).
 //   2. Habilita módulos no-base extra vía set_tenant_modulo RPC.
 //   3. Crea al admin con metadata. Dos modos según enviar_email:
-//      - true  → inviteUserByEmail (manda email automático).
-//      - false → generateLink({type:'invite'}) — crea el user y
-//                devuelve invite_link para que el super_admin lo
-//                pase por otro canal (workaround SMTP sandbox).
+//      - true  → inviteUserByEmail (manda email automático con link).
+//      - false → createUser con password aleatoria + email_confirm=true
+//                (no manda email; devuelve admin_password para que el
+//                super_admin lo comparta por otro canal). Workaround
+//                para SMTP en sandbox o destinatarios sin email
+//                automatizado. Mismo patrón que forzar-password-cobrador.
 //
 // Si algo falla tras crear el tenant, hace rollback completo:
 //   - Borra el user de auth.users (cascade limpia cobradores).
@@ -34,8 +36,10 @@
 //   }
 //
 // Respuesta éxito:
-//   { ok: true, tenant_id, admin_user_id, invite_link?, message }
-//   invite_link sólo viene cuando enviar_email=false.
+//   { ok: true, tenant_id, admin_user_id, admin_password?, message }
+//   admin_password sólo viene cuando enviar_email=false — es la
+//   contraseña generada para el admin, que el super_admin tiene que
+//   compartir por canal seguro (no queda guardada en ningún lado).
 
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
@@ -47,10 +51,11 @@ interface CrearTenantRequest {
   admin_telefono?: string;
   modulos_extra?: string[];
   redirect_to?: string;
-  // Si false, no manda email — usa generateLink y devuelve invite_link
-  // para que el super_admin lo copie y pase por otro canal. Útil para
-  // Resend en sandbox o cuando el destinatario no puede recibir el
-  // email automatizado.
+  // Si false, no manda email — crea al user con una password aleatoria
+  // (email_confirm=true para skipear el email de verificación) y la
+  // devuelve en admin_password. El super_admin la comparte por otro
+  // canal y el admin se loguea normal con email+password. Workaround
+  // del bug PKCE+cross-browser para links generados manualmente.
   enviar_email?: boolean;
 }
 
@@ -110,7 +115,8 @@ serve(async (req) => {
       ? body.modulos_extra
       : [];
     // Default true: el caller tiene que pedir explícitamente "no email"
-    // para activar el flow de generateLink. Falsey check tolera null/undefined.
+    // para activar el flow de createUser+password. Falsey check tolera
+    // null/undefined además de false.
     const enviarEmail = body.enviar_email !== false;
 
     if (!nombre) return jsonError("tenant_nombre es requerido", 400);
@@ -170,13 +176,10 @@ serve(async (req) => {
     }
 
     // Pre-flight: chequear que el email no exista en auth.users.
-    // `inviteUserByEmail` ya falla nativamente si existe — pero
-    // `generateLink({type:'invite'})` NO falla: silenciosamente
-    // genera un magic-link para el usuario existente. Eso permitiría:
-    // sembrar el email de un admin de otro tenant, generar el link,
-    // y al loguearse el existente, su row en cobradores se vería
-    // sobrescrita con el tenant nuevo (ON CONFLICT UPDATE) —
-    // perdiendo su rol original. Bloquear acá nivela ambos paths.
+    // - inviteUserByEmail ya falla nativamente si existe (path email).
+    // - createUser también falla con "user already exists" (path no-email).
+    // Hacemos el check antes de cualquier creación para devolver el
+    // error en español sin disparar el rollback de tenant.
     //
     // TODO escalado: listUsers con perPage:1000 cubre hasta 1000
     // users totales en el sistema. Cuando crezca, migrar a un RPC
@@ -237,14 +240,16 @@ serve(async (req) => {
     }
 
     // 3. Crear el user con metadata. Dos paths:
-    //    a) enviarEmail=true → inviteUserByEmail (manda email).
-    //    b) enviarEmail=false → generateLink({type:'invite'}) (sólo
-    //       crea el user y devuelve action_link para que el super_admin
-    //       lo pase por otro canal). Útil con SMTP en sandbox o
-    //       destinatarios sin email automatizado.
-    //    En ambos casos, el trigger handle_new_user inserta la fila en
-    //    cobradores con rol=admin + tenant_id correcto cuando el user
-    //    abre el link y confirma.
+    //    a) enviarEmail=true → inviteUserByEmail (manda email con
+    //       link de set-password).
+    //    b) enviarEmail=false → createUser con password aleatoria +
+    //       email_confirm=true (no manda nada). El super_admin recibe
+    //       la password en la respuesta y la pasa por otro canal —
+    //       el admin se loguea normal por /login. Evita el problema
+    //       PKCE+cross-browser de los magic-links generados a mano.
+    //    En ambos casos, el trigger handle_new_user inserta la fila
+    //    en cobradores con rol=admin + tenant_id correcto al crearse
+    //    el row en auth.users.
     const metadata = {
       tenant_id: tenantId,
       rol: "admin",
@@ -253,14 +258,14 @@ serve(async (req) => {
     };
 
     let adminUserId: string | null = null;
-    // userIdParcial: captura el id de auth.users incluso si la
-    // respuesta vino malformada (ej. generateLink sin action_link).
-    // Si lo tenemos, el rollback lo borra antes de tocar el tenant —
-    // sin esto, el trigger handle_new_user ya creó la fila en
-    // cobradores apuntando al tenant que queremos borrar, y la FK
-    // bloquearía el DELETE tenants dejando el row huérfano.
+    // userIdParcial: captura el id de auth.users incluso si algo en
+    // la respuesta vino malformado. Si lo tenemos, el rollback lo
+    // borra antes de tocar el tenant — sin esto, el trigger
+    // handle_new_user ya creó la fila en cobradores apuntando al
+    // tenant que queremos borrar, y la FK bloquearía el DELETE
+    // tenants dejando un row huérfano en auth.users.
     let userIdParcial: string | null = null;
-    let inviteLink: string | null = null;
+    let adminPassword: string | null = null;
     let invErrMsg: string | null = null;
 
     if (enviarEmail) {
@@ -276,23 +281,26 @@ serve(async (req) => {
         adminUserId = invite.user.id;
       }
     } else {
-      const { data: gen, error: genErr } = await admin.auth.admin
-        .generateLink({
-          type: "invite",
+      // Generamos la password ANTES de createUser. Si la genera el
+      // server, no la conoce nadie más — la response es la única
+      // oportunidad del super_admin de verla.
+      const generated = generarPasswordSegura();
+      const { data: created, error: createErr } = await admin.auth.admin
+        .createUser({
           email,
-          options: {
-            data: metadata,
-            redirectTo: body.redirect_to,
-          },
+          password: generated,
+          user_metadata: metadata,
+          // email_confirm=true skipea el email de verificación de
+          // Supabase. El user queda confirmado y puede loguearse ya
+          // mismo con la password generada.
+          email_confirm: true,
         });
-      // gen.user puede existir aunque properties.action_link falte —
-      // capturamos el id sí o sí para limpiarlo en rollback.
-      userIdParcial = gen?.user?.id ?? null;
-      if (genErr || !gen?.user || !gen.properties?.action_link) {
-        invErrMsg = genErr?.message ?? "No se generó el link de invitación";
+      userIdParcial = created?.user?.id ?? null;
+      if (createErr || !created?.user) {
+        invErrMsg = createErr?.message ?? "No se creó el usuario";
       } else {
-        adminUserId = gen.user.id;
-        inviteLink = gen.properties.action_link;
+        adminUserId = created.user.id;
+        adminPassword = generated;
       }
     }
 
@@ -328,12 +336,18 @@ serve(async (req) => {
         ok: true,
         tenant_id: tenantId,
         admin_user_id: adminUserId,
-        // invite_link sólo viene cuando enviar_email=false. Para el
-        // path email, queda null (no queremos exponer el link en logs).
-        invite_link: inviteLink,
+        // Eco del email — el cliente lo necesita para mostrar el
+        // bloque "email + password" sin tener que re-leerlo del form
+        // (que ya pudo ser disposed).
+        admin_email: email,
+        // admin_password sólo viene cuando enviar_email=false. Es la
+        // única oportunidad del super_admin de verla — no queda
+        // guardada en ningún lado, y si la pierde tiene que ir a
+        // 'Forzar contraseña' desde el detalle del miembro.
+        admin_password: adminPassword,
         message: enviarEmail
           ? "Tenant creado e invitación enviada por email"
-          : "Tenant creado — usá el link para invitar al admin",
+          : "Tenant creado — compartí las credenciales con el admin",
       }),
       {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -344,6 +358,24 @@ serve(async (req) => {
     return jsonError(`Error: ${String(e)}`, 500);
   }
 });
+
+/// Genera una password aleatoria de 16 chars usando crypto.getRandomValues.
+/// Mismo alphabet que _ForzarPasswordDialog del cliente: excluye chars
+/// ambiguos para dictar (I/l/1, O/0) y limita los símbolos a los que no
+/// se confunden con markdown / espacios.
+function generarPasswordSegura(): string {
+  const chars =
+    "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789!@#%*-+";
+  const bytes = new Uint8Array(16);
+  crypto.getRandomValues(bytes);
+  let out = "";
+  for (let i = 0; i < 16; i++) {
+    // El módulo introduce un sesgo despreciable contra 256 / 63 ≈ 4.06
+    // entradas por bucket. Para password gen de 16 chars es irrelevante.
+    out += chars[bytes[i] % chars.length];
+  }
+  return out;
+}
 
 async function rollbackTenant(
   admin: ReturnType<typeof createClient>,

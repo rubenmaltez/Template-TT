@@ -60,12 +60,19 @@ class SuperAdminRepo {
   /// Function intenta rollback. Devuelve el id del tenant nuevo para
   /// que el caller pueda navegar al detalle.
   ///
-  /// Si `enviarEmail` es false, no se envía el email — la Edge Function
-  /// devuelve `inviteLink` con la URL para que el super_admin lo pase
-  /// por otro canal (WhatsApp, etc.). Útil cuando el proveedor SMTP
-  /// está en sandbox o no autoriza el destinatario.
-  Future<({String tenantId, String adminUserId, String? inviteLink})>
-      crearTenant({
+  /// Si `enviarEmail` es false, no se envía email — la Edge Function
+  /// crea al admin con una password aleatoria y la devuelve en
+  /// `adminPassword` para que el super_admin la comparta por otro
+  /// canal (WhatsApp, etc.). Útil cuando el proveedor SMTP está en
+  /// sandbox o no autoriza el destinatario. El admin se loguea con
+  /// email+password normal por /login.
+  Future<
+      ({
+        String tenantId,
+        String adminUserId,
+        String adminEmail,
+        String? adminPassword,
+      })> crearTenant({
     required String nombre,
     required String adminEmail,
     required String adminNombre,
@@ -90,7 +97,8 @@ class SuperAdminRepo {
     return (
       tenantId: data['tenant_id'] as String,
       adminUserId: data['admin_user_id'] as String,
-      inviteLink: data['invite_link'] as String?,
+      adminEmail: data['admin_email'] as String,
+      adminPassword: data['admin_password'] as String?,
     );
   }
 
