@@ -5,7 +5,9 @@ import 'package:go_router/go_router.dart';
 import '../../data/models/tenant_admin.dart';
 import '../../data/repositories/super_admin_repo.dart';
 import '../../data/utils/formatters.dart';
+import '../shared/widgets/animated_list_entry.dart';
 import '../shared/widgets/empty_state.dart';
+import '../shared/widgets/skeleton.dart';
 
 /// Lista de tenants — pantalla raíz del panel /super.
 class TenantsListScreen extends ConsumerWidget {
@@ -18,7 +20,11 @@ class TenantsListScreen extends ConsumerWidget {
     return RefreshIndicator(
       onRefresh: () async => ref.invalidate(tenantsAdminProvider),
       child: tenantsAsync.when(
-        loading: () => const Center(child: CircularProgressIndicator()),
+        // Skeleton imitando la altura final — sin layout jump al cargar.
+        loading: () => const SingleChildScrollView(
+          padding: EdgeInsets.all(16),
+          child: SkeletonList(count: 3, hasAvatar: true, hasChip: true),
+        ),
         error: (e, _) => Center(
           child: Padding(
             padding: const EdgeInsets.all(24),
@@ -40,7 +46,10 @@ class TenantsListScreen extends ConsumerWidget {
           return ListView.builder(
             padding: const EdgeInsets.all(16),
             itemCount: tenants.length,
-            itemBuilder: (_, i) => _TenantCard(tenant: tenants[i]),
+            itemBuilder: (_, i) => AnimatedListEntry(
+              index: i,
+              child: _TenantCard(tenant: tenants[i]),
+            ),
           );
         },
       ),
@@ -48,19 +57,55 @@ class TenantsListScreen extends ConsumerWidget {
   }
 }
 
-class _TenantCard extends StatelessWidget {
+class _TenantCard extends StatefulWidget {
   const _TenantCard({required this.tenant});
   final TenantAdmin tenant;
 
   @override
+  State<_TenantCard> createState() => _TenantCardState();
+}
+
+class _TenantCardState extends State<_TenantCard> {
+  bool _hover = false;
+
+  @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    return Card(
-      margin: const EdgeInsets.only(bottom: 12),
-      child: InkWell(
-        onTap: () => context.go('/super/tenants/${tenant.id}'),
-        borderRadius: BorderRadius.circular(12),
-        child: Padding(
+    final tenant = widget.tenant;
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      onEnter: (_) => setState(() => _hover = true),
+      onExit: (_) => setState(() => _hover = false),
+      // AnimatedContainer maneja color, shadow y desplazamiento en una sola
+      // animación. Material transparente adentro para que el InkWell tenga
+      // su ripple sin pelearse con el bg.
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 150),
+        curve: Curves.easeOut,
+        margin: const EdgeInsets.only(bottom: 12),
+        transform:
+            Matrix4.identity()..translate(0.0, _hover ? -2.0 : 0.0),
+        transformAlignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: _hover
+              ? scheme.surfaceContainerHigh
+              : scheme.surfaceContainerLow,
+          borderRadius: BorderRadius.circular(12),
+          boxShadow: [
+            BoxShadow(
+              color: scheme.shadow.withValues(alpha: _hover ? 0.18 : 0.05),
+              blurRadius: _hover ? 10 : 3,
+              offset: Offset(0, _hover ? 4 : 1),
+            ),
+          ],
+        ),
+        child: Material(
+          color: Colors.transparent,
+          borderRadius: BorderRadius.circular(12),
+          clipBehavior: Clip.antiAlias,
+          child: InkWell(
+            onTap: () => context.go('/super/tenants/${tenant.id}'),
+            child: Padding(
           padding: const EdgeInsets.all(16),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -125,6 +170,8 @@ class _TenantCard extends StatelessWidget {
                     .toList(),
               ),
             ],
+          ),
+        ),
           ),
         ),
       ),

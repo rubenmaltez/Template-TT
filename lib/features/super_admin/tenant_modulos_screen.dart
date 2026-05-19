@@ -12,7 +12,9 @@ import '../../data/models/modulo.dart';
 import '../../data/models/tenant_admin.dart';
 import '../../data/repositories/super_admin_repo.dart';
 import '../../data/utils/formatters.dart';
+import '../shared/widgets/animated_list_entry.dart';
 import '../shared/widgets/empty_state.dart';
+import '../shared/widgets/skeleton.dart';
 
 /// Detalle de un tenant: toggles de módulos. Cada switch llama
 /// set_tenant_modulo() vía RPC y refresca la lista global.
@@ -278,9 +280,12 @@ class _MiembrosList extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final async = ref.watch(cobradoresTenantProvider(tenantId));
     return async.when(
-      loading: () => const Padding(
-        padding: EdgeInsets.symmetric(vertical: 24),
-        child: Center(child: CircularProgressIndicator()),
+      // Skeleton: 2 cards mientras carga — preserva el layout y le da al
+      // user la sensación de "ya está viniendo data".
+      loading: () => const SkeletonList(
+        count: 2,
+        hasAvatar: true,
+        hasChip: true,
       ),
       error: (e, _) => Card(
         child: Padding(
@@ -319,7 +324,13 @@ class _MiembrosList extends ConsumerWidget {
         }
         return Column(
           children: miembros
-              .map((c) => _MiembroCard(cobrador: c, tenantId: tenantId))
+              .asMap()
+              .entries
+              .map((e) => AnimatedListEntry(
+                    index: e.key,
+                    child:
+                        _MiembroCard(cobrador: e.value, tenantId: tenantId),
+                  ))
               .toList(),
         );
       },
