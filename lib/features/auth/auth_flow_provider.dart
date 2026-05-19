@@ -18,3 +18,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 /// cuando aplica. La pantalla SetPasswordScreen lo setea a null tras
 /// guardar la nueva contraseña con éxito, así no queda en redirect loop.
 final initialAuthFlowProvider = StateProvider<String?>((ref) => null);
+
+/// Mensaje de error de auth capturado desde la URL al arrancar la app
+/// (ej. `?error=access_denied&error_code=otp_expired&error_description=...`).
+///
+/// Lo setea main.dart en el override inicial. La pantalla de login lo
+/// muestra como banner y lo limpia (state = null) cuando el user
+/// interactúa, así no queda persistente entre intentos.
+final initialAuthErrorProvider = StateProvider<String?>((ref) => null);

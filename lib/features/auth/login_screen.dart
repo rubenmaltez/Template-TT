@@ -1,6 +1,9 @@
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+
+import 'auth_flow_provider.dart';
 
 /// Pantalla de login.
 ///
@@ -14,14 +17,14 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 ///   - Recuperar contraseña (olvidé mi contraseña)
 enum _Modo { login, recuperar }
 
-class LoginScreen extends StatefulWidget {
+class LoginScreen extends ConsumerStatefulWidget {
   const LoginScreen({super.key});
 
   @override
-  State<LoginScreen> createState() => _LoginScreenState();
+  ConsumerState<LoginScreen> createState() => _LoginScreenState();
 }
 
-class _LoginScreenState extends State<LoginScreen> {
+class _LoginScreenState extends ConsumerState<LoginScreen> {
   final _email = TextEditingController();
   final _pass = TextEditingController();
   _Modo _modo = _Modo.login;
@@ -78,6 +81,10 @@ class _LoginScreenState extends State<LoginScreen> {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
+    // Error capturado desde la URL al boot (link expirado, etc.).
+    // Lo mostramos como banner amber arriba del form. Se limpia cuando
+    // el user clickea o cuando intenta loguear.
+    final authError = ref.watch(initialAuthErrorProvider);
     return Scaffold(
       body: Center(
         child: ConstrainedBox(
@@ -87,6 +94,45 @@ class _LoginScreenState extends State<LoginScreen> {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
+                if (authError != null) ...[
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: scheme.errorContainer,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Icon(Icons.warning_amber,
+                            color: scheme.onErrorContainer, size: 20),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            _humanizeAuthError(authError),
+                            style: TextStyle(
+                              color: scheme.onErrorContainer,
+                              fontSize: 13,
+                            ),
+                          ),
+                        ),
+                        IconButton(
+                          icon: Icon(Icons.close,
+                              color: scheme.onErrorContainer, size: 18),
+                          tooltip: 'Cerrar',
+                          padding: EdgeInsets.zero,
+                          constraints: const BoxConstraints(
+                              minWidth: 28, minHeight: 28),
+                          onPressed: () => ref
+                              .read(initialAuthErrorProvider.notifier)
+                              .state = null,
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+                ],
                 Icon(Icons.wifi_tethering,
                     size: 64, color: scheme.primary),
                 const SizedBox(height: 8),
@@ -182,5 +228,20 @@ class _LoginScreenState extends State<LoginScreen> {
         ),
       ),
     );
+  }
+
+  /// Convierte códigos de error técnicos de Supabase en mensajes legibles.
+  /// Fallback al string original si no hay traducción específica.
+  String _humanizeAuthError(String raw) {
+    final lower = raw.toLowerCase();
+    if (lower.contains('otp_expired') ||
+        lower.contains('invalid or has expired')) {
+      return 'El link expiró o ya fue usado. Pedí un nuevo email de '
+          'recuperación abajo.';
+    }
+    if (lower.contains('access_denied')) {
+      return 'Acceso denegado. Probá iniciar sesión normalmente.';
+    }
+    return raw;
   }
 }

@@ -32,6 +32,7 @@ Future<void> main() async {
   // normal.
   final initialUri = Uri.base;
   final initialAuthFlow = _extractAuthFlow(initialUri);
+  final initialAuthError = _extractAuthError(initialUri);
   final initialPkceCode = initialUri.queryParameters['code'];
 
   if (!Env.isConfigured) {
@@ -108,9 +109,22 @@ Future<void> main() async {
   runApp(ProviderScope(
     overrides: [
       initialAuthFlowProvider.overrideWith((_) => initialAuthFlow),
+      initialAuthErrorProvider.overrideWith((_) => initialAuthError),
     ],
     child: const IspBillingApp(),
   ));
+}
+
+/// Lee el código de error de la URL inicial. Supabase manda errores en
+/// query params cuando el link caduca o es inválido:
+///   `?error=access_denied&error_code=otp_expired&error_description=…`
+/// Preferimos error_description (legible) > error_code > error.
+String? _extractAuthError(Uri uri) {
+  final desc = uri.queryParameters['error_description'];
+  if (desc != null && desc.isNotEmpty) return desc.replaceAll('+', ' ');
+  final code = uri.queryParameters['error_code'];
+  if (code != null && code.isNotEmpty) return code;
+  return uri.queryParameters['error'];
 }
 
 /// Determina el tipo de flow de auth a partir de la URL inicial.

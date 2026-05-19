@@ -20,6 +20,7 @@ import '../features/admin/planes/planes_admin_screen.dart';
 import '../features/admin/reportes/reportes_admin_screen.dart';
 import '../features/admin/settings/settings_admin_screen.dart';
 import '../features/admin/shell/admin_shell.dart';
+import '../data/providers/cobrador_provider.dart';
 import '../features/auth/auth_flow_provider.dart';
 import '../features/auth/login_screen.dart';
 import '../features/auth/set_password_screen.dart';
@@ -81,9 +82,15 @@ final routerProvider = Provider<GoRouter>((ref) {
   // en AsyncData(null) — el redirect siempre vería rol=null y bloquearía
   // /super/*. Invalidamos los providers en cada cambio de auth para que
   // Riverpod los recree con el user.id correcto.
+  //
+  // También invalidamos cobradorActualProvider: sin esto, cuando user A
+  // hace logout y user B login en el mismo browser, el AdminShell sigue
+  // mostrando los datos de A (nombre, rol, menú filtrado) hasta que algo
+  // dispare una recarga manual.
   final authSub = auth.onAuthStateChange.listen((_) {
     ref.invalidate(_rolUsuarioProvider);
     ref.invalidate(_empresaNombreProvider);
+    ref.invalidate(cobradorActualProvider);
   });
   ref.onDispose(authSub.cancel);
 
