@@ -54,15 +54,24 @@ class SkeletonAvatar extends StatelessWidget {
 /// Card placeholder que imita la silueta de un card de lista
 /// (avatar + 2 líneas de texto + chip). Repetir N veces para listas.
 class SkeletonCard extends StatelessWidget {
-  const SkeletonCard({super.key, this.hasAvatar = true, this.hasChip = true});
+  const SkeletonCard({
+    super.key,
+    this.hasAvatar = true,
+    this.hasChip = true,
+    this.marginBottom = 8,
+  });
 
   final bool hasAvatar;
   final bool hasChip;
 
+  /// Para evitar layout jump al cargar, el caller pasa el mismo margin
+  /// que usen los cards reales (8 para _MiembroCard, 12 para _TenantCard).
+  final double marginBottom;
+
   @override
   Widget build(BuildContext context) {
     return Card(
-      margin: const EdgeInsets.only(bottom: 12),
+      margin: EdgeInsets.only(bottom: marginBottom),
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Row(
@@ -77,11 +86,19 @@ class SkeletonCard extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   const SkeletonBox(width: 160, height: 16),
+                  const SizedBox(height: 6),
+                  const SkeletonBox(width: 200, height: 12),
                   const SizedBox(height: 8),
                   const SkeletonBox(width: 120, height: 12),
                   if (hasChip) ...[
                     const SizedBox(height: 10),
-                    const SkeletonBox(width: 72, height: 14, borderRadius: 10),
+                    Row(
+                      children: const [
+                        SkeletonBox(width: 64, height: 16, borderRadius: 10),
+                        SizedBox(width: 8),
+                        SkeletonBox(width: 80, height: 16, borderRadius: 10),
+                      ],
+                    ),
                   ],
                 ],
               ),
@@ -100,18 +117,24 @@ class SkeletonList extends StatelessWidget {
     this.count = 3,
     this.hasAvatar = true,
     this.hasChip = true,
+    this.cardMarginBottom = 8,
   });
 
   final int count;
   final bool hasAvatar;
   final bool hasChip;
+  final double cardMarginBottom;
 
   @override
   Widget build(BuildContext context) {
     return Column(
       children: List.generate(
         count,
-        (_) => SkeletonCard(hasAvatar: hasAvatar, hasChip: hasChip),
+        (_) => SkeletonCard(
+          hasAvatar: hasAvatar,
+          hasChip: hasChip,
+          marginBottom: cardMarginBottom,
+        ),
       ),
     );
   }
@@ -130,14 +153,28 @@ class _SkeletonPulse extends StatefulWidget {
 class _SkeletonPulseState extends State<_SkeletonPulse>
     with SingleTickerProviderStateMixin {
   late final AnimationController _ctrl;
+  bool _started = false;
 
   @override
   void initState() {
     super.initState();
     _ctrl = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 1200),
-    )..repeat(reverse: true);
+      duration: const Duration(milliseconds: 1400),
+    );
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_started) return;
+    _started = true;
+    if (MediaQuery.of(context).disableAnimations) {
+      // Reduce motion: skeleton estático en opacidad media — sin pulso.
+      _ctrl.value = 0.5;
+    } else {
+      _ctrl.repeat(reverse: true);
+    }
   }
 
   @override

@@ -29,7 +29,18 @@ class TenantModulosScreen extends ConsumerWidget {
     final modulosAsync = ref.watch(modulosProvider);
 
     if (tenantsAsync.isLoading || modulosAsync.isLoading) {
-      return const Center(child: CircularProgressIndicator());
+      // Skeleton de header + módulos + miembros para preservar el layout
+      // mientras viene la data (en vez del spinner que flasheaba antes).
+      return ListView(
+        padding: const EdgeInsets.all(16),
+        children: const [
+          SkeletonCard(hasAvatar: true, hasChip: false, marginBottom: 16),
+          SizedBox(height: 8),
+          SkeletonList(count: 2, hasAvatar: false, hasChip: false),
+          SizedBox(height: 16),
+          SkeletonList(count: 2, hasAvatar: true, hasChip: true),
+        ],
+      );
     }
     if (tenantsAsync.hasError) {
       return Center(child: Text('Error: ${tenantsAsync.error}'));
@@ -327,6 +338,9 @@ class _MiembrosList extends ConsumerWidget {
               .asMap()
               .entries
               .map((e) => AnimatedListEntry(
+                    // Key estable por id para que list shrink/grow no
+                    // re-anime los items existentes.
+                    key: ValueKey(e.value.id),
                     index: e.key,
                     child:
                         _MiembroCard(cobrador: e.value, tenantId: tenantId),

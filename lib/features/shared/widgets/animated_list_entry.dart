@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 /// Anima el primer render de un ítem de lista con fade + slide-up,
@@ -37,6 +39,8 @@ class _AnimatedListEntryState extends State<AnimatedListEntry>
   late final AnimationController _ctrl;
   late final Animation<double> _opacity;
   late final Animation<Offset> _offset;
+  Timer? _startTimer;
+  bool _scheduled = false;
 
   @override
   void initState() {
@@ -47,19 +51,35 @@ class _AnimatedListEntryState extends State<AnimatedListEntry>
       begin: const Offset(0, 0.06),
       end: Offset.zero,
     ).animate(CurvedAnimation(parent: _ctrl, curve: Curves.easeOutCubic));
+  }
 
-    // Delay escalonado por índice, cap a maxDelay para que listas largas
-    // no esperen segundos antes del primer item visible.
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Schedule sólo la primera vez — didChangeDependencies puede ser
+    // llamado múltiples veces si cambia el theme/locale.
+    if (_scheduled) return;
+    _scheduled = true;
+
+    // Si el usuario tiene 'reducir animaciones' activado a nivel OS,
+    // salteamos al estado final inmediatamente (WCAG 2.3.3).
+    if (MediaQuery.of(context).disableAnimations) {
+      _ctrl.value = 1.0;
+      return;
+    }
+
+    // Delay escalonado por índice, cap a maxDelay.
     final rawDelayMs = widget.delayPerIndex.inMilliseconds * widget.index;
     final cappedMs =
         rawDelayMs.clamp(0, widget.maxDelay.inMilliseconds).toInt();
-    Future.delayed(Duration(milliseconds: cappedMs), () {
+    _startTimer = Timer(Duration(milliseconds: cappedMs), () {
       if (mounted) _ctrl.forward();
     });
   }
 
   @override
   void dispose() {
+    _startTimer?.cancel();
     _ctrl.dispose();
     super.dispose();
   }
