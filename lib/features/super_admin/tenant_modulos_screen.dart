@@ -363,6 +363,8 @@ enum _AccionMiembro {
   resetPasswordEmail,
   reenviarInvitacion,
   cambiarRol,
+  cambiarEmail,
+  eliminar,
 }
 
 class _MiembroCard extends ConsumerStatefulWidget {
@@ -390,6 +392,103 @@ class _MiembroCardState extends ConsumerState<_MiembroCard> {
         await _reenviarInvitacion();
       case _AccionMiembro.cambiarRol:
         await _cambiarRol();
+      case _AccionMiembro.cambiarEmail:
+        await _cambiarEmail();
+      case _AccionMiembro.eliminar:
+        await _eliminar();
+    }
+  }
+
+  Future<void> _cambiarEmail() async {
+    final c = widget.cobrador;
+    final container = ProviderScope.containerOf(context, listen: false);
+    final messenger = ScaffoldMessenger.of(context);
+    final scheme = Theme.of(context).colorScheme;
+    final repo = container.read(superAdminRepoProvider);
+
+    final nuevo = await showDialog<String>(
+      context: context,
+      builder: (_) => _CambiarEmailDialog(
+        nombre: c.nombre,
+        emailActual: c.email ?? '(sin email)',
+      ),
+    );
+    if (nuevo == null || nuevo.isEmpty || nuevo == c.email) return;
+
+    setState(() => _saving = true);
+    try {
+      await repo.cambiarEmailCobrador(
+        cobradorId: c.id,
+        nuevoEmail: nuevo,
+      );
+      container.invalidate(cobradoresTenantProvider(widget.tenantId));
+      if (!mounted) return;
+      _mostrarSnackBar(
+        messenger,
+        SnackBar(
+          content: Text('${c.nombre}: email cambiado a $nuevo'),
+          duration: const Duration(seconds: 3),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      final msg = e.toString().replaceFirst('Exception: ', '');
+      _mostrarSnackBar(
+        messenger,
+        SnackBar(
+          content: Text('No se pudo cambiar el email: $msg'),
+          backgroundColor: scheme.error,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  Future<void> _eliminar() async {
+    final c = widget.cobrador;
+    final container = ProviderScope.containerOf(context, listen: false);
+    final messenger = ScaffoldMessenger.of(context);
+    final scheme = Theme.of(context).colorScheme;
+    final repo = container.read(superAdminRepoProvider);
+
+    final confirmado = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => _EliminarDialog(cobrador: c),
+    );
+    if (confirmado != true) return;
+
+    setState(() => _saving = true);
+    try {
+      await repo.eliminarCobrador(cobradorId: c.id);
+      container.invalidate(cobradoresTenantProvider(widget.tenantId));
+      container.invalidate(tenantsAdminProvider);
+      if (!mounted) return;
+      _mostrarSnackBar(
+        messenger,
+        SnackBar(
+          content: Text('${c.nombre} eliminado'),
+          duration: const Duration(seconds: 3),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      final msg = e.toString().replaceFirst('Exception: ', '');
+      _mostrarSnackBar(
+        messenger,
+        SnackBar(
+          content: Text(msg),
+          backgroundColor: scheme.error,
+          behavior: SnackBarBehavior.floating,
+          duration: const Duration(seconds: 6),
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _saving = false);
     }
   }
 
@@ -1091,7 +1190,7 @@ class _MiembroCardState extends ConsumerState<_MiembroCard> {
                       ),
                     ),
                   const PopupMenuDivider(),
-                  // Grupo 3: rol.
+                  // Grupo 3: identidad (rol + email).
                   PopupMenuItem(
                     value: _AccionMiembro.cambiarRol,
                     child: Row(
@@ -1100,6 +1199,34 @@ class _MiembroCardState extends ConsumerState<_MiembroCard> {
                             color: scheme.secondary, size: 20),
                         const SizedBox(width: 12),
                         const Text('Cambiar rol'),
+                      ],
+                    ),
+                  ),
+                  if (!c.invitacionPendiente)
+                    PopupMenuItem(
+                      value: _AccionMiembro.cambiarEmail,
+                      child: Row(
+                        children: [
+                          Icon(Icons.alternate_email,
+                              color: scheme.secondary, size: 20),
+                          const SizedBox(width: 12),
+                          const Text('Cambiar email'),
+                        ],
+                      ),
+                    ),
+                  const PopupMenuDivider(),
+                  // Grupo 4: destructivo (al fondo, separado por divider).
+                  PopupMenuItem(
+                    value: _AccionMiembro.eliminar,
+                    child: Row(
+                      children: [
+                        Icon(Icons.delete_forever,
+                            color: scheme.error, size: 20),
+                        const SizedBox(width: 12),
+                        Text(
+                          'Eliminar miembro',
+                          style: TextStyle(color: scheme.error),
+                        ),
                       ],
                     ),
                   ),
@@ -1705,6 +1832,233 @@ String _warningClientesHuerfanos(int n) {
   return 'Tiene $n clientes asignados que van a quedar sin cobrador. '
       'Reasignalos primero desde el panel del tenant '
       '(Cobradores → Reasignar).';
+}
+
+/// Pide un nuevo email para un miembro confirmado. Devuelve el email
+/// vía Navigator.pop(String) o null si se canceló.
+class _CambiarEmailDialog extends StatefulWidget {
+  const _CambiarEmailDialog({
+    required this.nombre,
+    required this.emailActual,
+  });
+
+  final String nombre;
+  final String emailActual;
+
+  @override
+  State<_CambiarEmailDialog> createState() => _CambiarEmailDialogState();
+}
+
+class _CambiarEmailDialogState extends State<_CambiarEmailDialog> {
+  final _ctrl = TextEditingController();
+  String? _error;
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  void _submit() {
+    final v = _ctrl.text.trim();
+    if (v.isEmpty) {
+      setState(() => _error = 'Ingresá el nuevo email');
+      return;
+    }
+    if (!RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$').hasMatch(v)) {
+      setState(() => _error = 'Email inválido');
+      return;
+    }
+    if (v == widget.emailActual) {
+      setState(() => _error = 'Ya es ese email');
+      return;
+    }
+    Navigator.of(context).pop(v);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final screenW = MediaQuery.sizeOf(context).width;
+    final dialogW = screenW < 460 ? screenW * 0.9 : 420.0;
+    return AlertDialog(
+      title: Text('Cambiar email de ${widget.nombre}'),
+      content: SizedBox(
+        width: dialogW,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Email actual: ${widget.emailActual}',
+              style: TextStyle(
+                  color: scheme.onSurfaceVariant, fontSize: 13),
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: _ctrl,
+              autofocus: true,
+              keyboardType: TextInputType.emailAddress,
+              onChanged: (_) {
+                if (_error != null) setState(() => _error = null);
+              },
+              onSubmitted: (_) => _submit(),
+              decoration: const InputDecoration(
+                border: OutlineInputBorder(),
+                labelText: 'Nuevo email',
+                hintText: 'usuario@empresa.com',
+              ),
+            ),
+            const SizedBox(height: 12),
+            _WarningBox(
+              icon: Icons.info_outline,
+              color: scheme.surfaceContainerHighest,
+              onColor: scheme.onSurfaceVariant,
+              texto: 'El nuevo email queda confirmado automáticamente — no '
+                  'se envía verificación. Avisá al usuario por canal '
+                  'seguro que su email de login cambió.',
+            ),
+            if (_error != null) ...[
+              const SizedBox(height: 12),
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: scheme.errorContainer,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(_error!,
+                    style: TextStyle(color: scheme.onErrorContainer)),
+              ),
+            ],
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancelar'),
+        ),
+        FilledButton.icon(
+          icon: const Icon(Icons.check),
+          label: const Text('Cambiar'),
+          onPressed: _submit,
+        ),
+      ],
+    );
+  }
+}
+
+/// Dialog destructivo para eliminar un miembro. Doble confirmación:
+///   1. Aviso explicativo + ack del usuario.
+///   2. Tipear el nombre del miembro tal cual para habilitar el botón.
+class _EliminarDialog extends StatefulWidget {
+  const _EliminarDialog({required this.cobrador});
+  final CobradorAdmin cobrador;
+
+  @override
+  State<_EliminarDialog> createState() => _EliminarDialogState();
+}
+
+class _EliminarDialogState extends State<_EliminarDialog> {
+  final _confirmCtrl = TextEditingController();
+  bool _entiendo = false;
+
+  @override
+  void dispose() {
+    _confirmCtrl.dispose();
+    super.dispose();
+  }
+
+  bool get _puedeEliminar =>
+      _entiendo && _confirmCtrl.text.trim() == widget.cobrador.nombre.trim();
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final screenW = MediaQuery.sizeOf(context).width;
+    final dialogW = screenW < 460 ? screenW * 0.9 : 460.0;
+    return AlertDialog(
+      icon: Icon(Icons.warning_amber, color: scheme.error, size: 36),
+      title: Text('¿Eliminar a ${widget.cobrador.nombre}?'),
+      content: SizedBox(
+        width: dialogW,
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _WarningBox(
+                icon: Icons.warning_amber,
+                color: scheme.errorContainer,
+                onColor: scheme.onErrorContainer,
+                texto: 'Esta acción es PERMANENTE. Si el usuario tiene '
+                    'historial operativo (pagos, recibos, clientes '
+                    'asignados), la operación va a fallar. Para esos '
+                    'casos, usá "Desactivar" — preserva todo el historial.',
+              ),
+              const SizedBox(height: 16),
+              CheckboxListTile(
+                value: _entiendo,
+                onChanged: (v) => setState(() => _entiendo = v ?? false),
+                title: const Text(
+                  'Entiendo que esta acción no se puede deshacer',
+                  style: TextStyle(fontSize: 13),
+                ),
+                contentPadding: EdgeInsets.zero,
+                visualDensity: VisualDensity.compact,
+                controlAffinity: ListTileControlAffinity.leading,
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Tipeá el nombre exacto para confirmar:',
+                style: TextStyle(
+                  color: scheme.onSurfaceVariant,
+                  fontSize: 13,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                widget.cobrador.nombre,
+                style: const TextStyle(
+                  fontFamily: 'monospace',
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(height: 8),
+              TextField(
+                controller: _confirmCtrl,
+                onChanged: (_) => setState(() {}),
+                decoration: const InputDecoration(
+                  border: OutlineInputBorder(),
+                  isDense: true,
+                  hintText: 'Nombre del miembro',
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+      actions: [
+        TextButton(
+          autofocus: true,
+          onPressed: () => Navigator.of(context).pop(false),
+          child: const Text('Cancelar'),
+        ),
+        FilledButton.icon(
+          icon: const Icon(Icons.delete_forever),
+          label: const Text('Eliminar'),
+          style: FilledButton.styleFrom(
+            backgroundColor: scheme.error,
+            foregroundColor: scheme.onError,
+            disabledBackgroundColor: scheme.surfaceContainerHighest,
+          ),
+          onPressed: _puedeEliminar
+              ? () => Navigator.of(context).pop(true)
+              : null,
+        ),
+      ],
+    );
+  }
 }
 
 /// Dialog para que el super_admin invite el primer/otro admin de un tenant.

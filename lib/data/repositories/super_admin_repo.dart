@@ -113,6 +113,41 @@ class SuperAdminRepo {
     }
   }
 
+  /// Llama a la Edge Function `cambiar-email-cobrador`. Sólo super_admin.
+  Future<void> cambiarEmailCobrador({
+    required String cobradorId,
+    required String nuevoEmail,
+  }) async {
+    final res = await _client.functions.invoke(
+      'cambiar-email-cobrador',
+      body: {
+        'cobrador_id': cobradorId,
+        'nuevo_email': nuevoEmail,
+      },
+    );
+    final data = res.data as Map<String, dynamic>?;
+    if (data == null || data['ok'] != true) {
+      throw Exception(
+        (data?['error'] as String?) ?? 'Error desconocido',
+      );
+    }
+  }
+
+  /// Llama a la Edge Function `eliminar-cobrador`. Sólo super_admin.
+  /// Bloquea si el usuario tiene historial operativo — sugerirá desactivar.
+  Future<void> eliminarCobrador({required String cobradorId}) async {
+    final res = await _client.functions.invoke(
+      'eliminar-cobrador',
+      body: {'cobrador_id': cobradorId},
+    );
+    final data = res.data as Map<String, dynamic>?;
+    if (data == null || data['ok'] != true) {
+      throw Exception(
+        (data?['error'] as String?) ?? 'Error desconocido',
+      );
+    }
+  }
+
   Future<CobradorStats?> getCobradorStats(String cobradorId) async {
     final res = await _client.rpc('get_cobrador_stats', params: {
       'p_cobrador_id': cobradorId,
