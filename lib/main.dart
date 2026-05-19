@@ -9,6 +9,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'app.dart';
 import 'config/env.dart';
 import 'data/services/foto_comprobante_service.dart';
+import 'features/auth/auth_flow_provider.dart';
 import 'powersync/db.dart' as ps;
 
 Future<void> main() async {
@@ -19,6 +20,13 @@ Future<void> main() async {
   // con `#access_token=...` sin que GoRouter intente parsear el fragmento
   // como ruta y reviente.
   if (kIsWeb) usePathUrlStrategy();
+
+  // Capturamos el tipo de flow ANTES de Supabase.initialize, porque la SDK
+  // procesa y LIMPIA el fragmento durante la inicialización. Si lo
+  // intentamos leer después, ya no está. Posibles valores: 'recovery'
+  // (forgot password), 'invite' (primera entrada tras invitación),
+  // 'signup' (confirm email), o null si arranque normal.
+  final initialAuthFlow = _extractAuthFlow(Uri.base);
 
   if (!Env.isConfigured) {
     runApp(const _ConfigMissingApp());
@@ -64,7 +72,22 @@ Future<void> main() async {
     if (status.connected) unawaited(fotoService.sincronizarPendientes());
   });
 
-  runApp(const ProviderScope(child: IspBillingApp()));
+  runApp(ProviderScope(
+    overrides: [
+      initialAuthFlowProvider.overrideWith((_) => initialAuthFlow),
+    ],
+    child: const IspBillingApp(),
+  ));
+}
+
+/// Lee el query param `type` del fragmento de la URL inicial.
+/// Supabase manda los links de recovery / invite con el formato
+/// `localhost:55000/#access_token=...&type=recovery&...`.
+String? _extractAuthFlow(Uri uri) {
+  final fragment = uri.fragment;
+  if (fragment.isEmpty) return null;
+  final params = Uri.splitQueryString(fragment);
+  return params['type'];
 }
 
 class _ConfigMissingApp extends StatelessWidget {

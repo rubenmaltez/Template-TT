@@ -20,7 +20,9 @@ import '../features/admin/planes/planes_admin_screen.dart';
 import '../features/admin/reportes/reportes_admin_screen.dart';
 import '../features/admin/settings/settings_admin_screen.dart';
 import '../features/admin/shell/admin_shell.dart';
+import '../features/auth/auth_flow_provider.dart';
 import '../features/auth/login_screen.dart';
+import '../features/auth/set_password_screen.dart';
 import '../features/super_admin/super_shell.dart';
 import '../features/super_admin/tenant_modulos_screen.dart';
 import '../features/super_admin/tenants_list_screen.dart';
@@ -90,6 +92,10 @@ final routerProvider = Provider<GoRouter>((ref) {
   ref.listen(_rolUsuarioProvider, (_, __) => refresh.poke());
   // Idem para detectar setup completo del tenant.
   ref.listen(_empresaNombreProvider, (_, __) => refresh.poke());
+  // Y para que SetPasswordScreen pueda limpiar el flow y desencadenar
+  // una re-evaluación del redirect (sino quedaría atrapado en
+  // /set-password después de actualizar la contraseña).
+  ref.listen(initialAuthFlowProvider, (_, __) => refresh.poke());
 
   return GoRouter(
     initialLocation: '/',
@@ -99,6 +105,25 @@ final routerProvider = Provider<GoRouter>((ref) {
       final goingToLogin = state.matchedLocation == '/login';
       if (!loggedIn) return goingToLogin ? null : '/login';
       if (goingToLogin) return '/';
+
+      // Si la app arrancó desde un link de recovery / invite, el user
+      // ya está logueado (Supabase auto-procesó el token) pero todavía
+      // no setó su contraseña. Lo desviamos a /set-password antes de
+      // dejarlo entrar al resto de la app. Funciona también para
+      // invite (primera vez tras aceptar).
+      final authFlow = ref.read(initialAuthFlowProvider);
+      final yaEstaEnSetPassword =
+          state.matchedLocation == '/set-password';
+      if ((authFlow == 'recovery' || authFlow == 'invite') &&
+          !yaEstaEnSetPassword) {
+        return '/set-password';
+      }
+      // Si el flow ya no aplica (user terminó de setear o no había
+      // flow) pero está en /set-password, lo sacamos.
+      if (yaEstaEnSetPassword && authFlow != 'recovery' &&
+          authFlow != 'invite') {
+        return '/';
+      }
 
       final rol = ref.read(_rolUsuarioProvider).valueOrNull;
       final loc = state.matchedLocation;
@@ -152,6 +177,10 @@ final routerProvider = Provider<GoRouter>((ref) {
     },
     routes: [
       GoRoute(path: '/login', builder: (_, __) => const LoginScreen()),
+      GoRoute(
+        path: '/set-password',
+        builder: (_, __) => const SetPasswordScreen(),
+      ),
       GoRoute(
         path: '/admin/onboarding',
         builder: (_, __) => const OnboardingScreen(),
