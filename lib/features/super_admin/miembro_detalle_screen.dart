@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../data/models/audit_entry.dart';
 import '../../data/models/cobrador_admin.dart';
+import '../../data/models/cobrador_stats.dart';
 import '../../data/repositories/super_admin_repo.dart';
 import '../../data/utils/formatters.dart';
 import '../shared/widgets/empty_state.dart';
@@ -48,6 +49,9 @@ class MiembroDetalleScreen extends ConsumerWidget {
         }
         return RefreshIndicator(
           onRefresh: () async {
+            // Refrescamos también la lista del tenant para que el header
+            // no quede stale con datos cacheados después del pull.
+            ref.invalidate(cobradoresTenantProvider(tenantId));
             ref.invalidate(cobradorStatsProvider(cobradorId));
             ref.invalidate(auditCobradorProvider(cobradorId));
           },
@@ -56,7 +60,7 @@ class MiembroDetalleScreen extends ConsumerWidget {
             children: [
               _Header(cobrador: c),
               const SizedBox(height: 24),
-              Text('Stats',
+              Text('Actividad',
                   style: Theme.of(context).textTheme.titleLarge),
               const SizedBox(height: 12),
               _StatsGrid(stats: statsAsync, cobrador: c),
@@ -148,20 +152,31 @@ class _Header extends StatelessWidget {
                         fg: rolColor,
                       ),
                       _Chip(
-                        label: cobrador.activo
-                            ? 'Activo'
+                        // Estado con ícono para no diferenciar sólo por
+                        // color (mismo patrón que _EstadoChip de la
+                        // lista; WCAG 1.4.1).
+                        icon: !cobrador.activo
+                            ? Icons.block
                             : cobrador.invitacionPendiente
+                                ? Icons.schedule_send
+                                : Icons.check_circle,
+                        label: cobrador.activo
+                            ? (cobrador.invitacionPendiente
                                 ? 'Invitación pendiente'
-                                : 'Inactivo',
-                        bg: cobrador.activo
+                                : 'Activo')
+                            : 'Inactivo',
+                        bg: (cobrador.activo &&
+                                !cobrador.invitacionPendiente)
                             ? scheme.primaryContainer
                             : scheme.surfaceContainerHighest,
-                        fg: cobrador.activo
+                        fg: (cobrador.activo &&
+                                !cobrador.invitacionPendiente)
                             ? scheme.onPrimaryContainer
                             : scheme.onSurfaceVariant,
                       ),
                       if (cobrador.prefijoRecibo != null)
                         _Chip(
+                          icon: Icons.receipt_long,
                           label: 'Prefijo ${cobrador.prefijoRecibo}',
                           bg: scheme.surfaceContainerHighest,
                           fg: scheme.onSurfaceVariant,
@@ -202,10 +217,16 @@ class _Header extends StatelessWidget {
 }
 
 class _Chip extends StatelessWidget {
-  const _Chip({required this.label, required this.bg, required this.fg});
+  const _Chip({
+    required this.label,
+    required this.bg,
+    required this.fg,
+    this.icon,
+  });
   final String label;
   final Color bg;
   final Color fg;
+  final IconData? icon;
 
   @override
   Widget build(BuildContext context) {
@@ -215,13 +236,22 @@ class _Chip extends StatelessWidget {
         color: bg,
         borderRadius: BorderRadius.circular(10),
       ),
-      child: Text(
-        label,
-        style: TextStyle(
-          color: fg,
-          fontSize: 11,
-          fontWeight: FontWeight.w600,
-        ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (icon != null) ...[
+            Icon(icon, size: 12, color: fg),
+            const SizedBox(width: 4),
+          ],
+          Text(
+            label,
+            style: TextStyle(
+              color: fg,
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -230,7 +260,9 @@ class _Chip extends StatelessWidget {
 class _StatsGrid extends StatelessWidget {
   const _StatsGrid({required this.stats, required this.cobrador});
 
-  final AsyncValue<dynamic> stats;
+  // Tipo concreto (no dynamic) para que el compiler nos avise si el
+  // modelo cambia de shape.
+  final AsyncValue<CobradorStats?> stats;
   final CobradorAdmin cobrador;
 
   @override
@@ -246,35 +278,49 @@ class _StatsGrid extends StatelessWidget {
       data: (s) {
         // s puede ser null si el cobrador es super_admin (excluido por
         // la RPC). En ese caso caemos a defaults para que la UI no rompa.
-        final lastSignIn = s?.lastSignInAt as DateTime?;
-        final clientes = (s?.clientesAsignados as int?) ?? 0;
-        final pagosCount = (s?.pagosMesCount as int?) ?? 0;
-        final pagosTotal = (s?.pagosMesTotal as double?) ?? 0.0;
+        final lastSignIn = s?.lastSignInAt;
+        final clientes = s?.clientesAsignados ?? 0;
+        final pagosCount = s?.pagosMesCount ?? 0;
+        final pagosTotal = s?.pagosMesTotal ?? 0.0;
+        final esCobrador = cobrador.rol == 'cobrador';
         return LayoutBuilder(
           builder: (_, constraints) {
             final wide = constraints.maxWidth > 600;
+            // Si lastSignIn ya pasó >30 días, el valor del card muestra
+            // la fecha larga — evitamos repetirla en hint.
+            final ultimoStr = _ultimoLogin(lastSignIn);
+            final lastSignInLejano = lastSignIn != null &&
+                DateTime.now().difference(lastSignIn).inDays >= 30;
             final children = [
               _StatCard(
                 icon: Icons.schedule,
                 label: 'Última sesión',
-                valor: _ultimoLogin(lastSignIn),
-                hint: lastSignIn != null
-                    ? Fmt.fechaLarga(lastSignIn)
-                    : 'Nunca inició sesión',
+                valor: ultimoStr,
+                hint: lastSignIn == null
+                    ? 'Nunca inició sesión'
+                    : (lastSignInLejano
+                        ? null
+                        : Fmt.fechaLarga(lastSignIn)),
               ),
               _StatCard(
                 icon: Icons.people_outline,
                 label: 'Clientes asignados',
-                valor: clientes.toString(),
-                hint: cobrador.rol == 'cobrador'
+                // Para no-cobradores, no tiene sentido un número 0 —
+                // mostramos '—' para distinguirlo de "cobrador con 0".
+                valor: esCobrador ? clientes.toString() : '—',
+                hint: esCobrador
                     ? 'Activos en su ruta'
-                    : 'Solo aplica a rol cobrador',
+                    : 'Sólo aplica al rol cobrador',
               ),
               _StatCard(
                 icon: Icons.payments_outlined,
                 label: 'Cobrado este mes',
-                valor: 'C\$ ${pagosTotal.toStringAsFixed(2)}',
-                hint: '$pagosCount cobros',
+                valor: esCobrador
+                    ? 'C\$ ${pagosTotal.toStringAsFixed(2)}'
+                    : '—',
+                hint: esCobrador
+                    ? '$pagosCount cobros'
+                    : 'Sólo aplica al rol cobrador',
               ),
             ];
             return wide
@@ -368,6 +414,8 @@ class _StatCard extends StatelessWidget {
   final IconData icon;
   final String label;
   final String valor;
+  /// Hint opcional debajo del valor. Si es null o vacío, no se renderiza
+  /// (evita repetir info — ej. fechaLarga ya está en `valor`).
   final String? hint;
 
   @override
@@ -401,7 +449,7 @@ class _StatCard extends StatelessWidget {
                 fontWeight: FontWeight.w700,
               ),
             ),
-            if (hint != null) ...[
+            if (hint != null && hint!.isNotEmpty) ...[
               const SizedBox(height: 4),
               Text(
                 hint!,
@@ -439,15 +487,15 @@ class _AuditTimeline extends StatelessWidget {
       ),
       data: (entries) {
         if (entries.isEmpty) {
-          return Card(
+          return const Card(
             child: Padding(
-              padding: const EdgeInsets.all(24),
-              child: Center(
-                child: Text(
-                  'Sin cambios registrados en la auditoría.',
-                  style: TextStyle(
-                      color: Theme.of(context).colorScheme.onSurfaceVariant),
-                ),
+              padding: EdgeInsets.symmetric(vertical: 16),
+              child: EmptyState(
+                icon: Icons.history_toggle_off,
+                titulo: 'Sin cambios registrados',
+                descripcion:
+                    'Cuando alguien edite a este miembro (rol, estado, '
+                    'contraseña, invitación), los eventos aparecen acá.',
               ),
             ),
           );
@@ -522,27 +570,61 @@ class _AuditTile extends StatelessWidget {
   }
 
   /// Resumen humano del cambio según los campos del audit_log.
-  /// `campo` indica qué se cambió; valor_anterior/nuevo son jsonb.
+  /// Para campos conocidos generamos copy amigable; para el resto
+  /// caemos al patrón genérico `campo: anterior → nuevo`.
   String _resumenCambio(AuditEntry e) {
-    final campo = e.campo ?? '(evento)';
+    // Eventos basados en 'action' (force_password_reset, etc.) que no
+    // tienen valor_anterior tradicional.
+    final actionNuevo = e.valorNuevo is Map
+        ? (e.valorNuevo as Map)['action']?.toString()
+        : null;
+    if (actionNuevo != null) return _accionLabel(actionNuevo);
+
+    final campo = e.campo;
+
+    // Toggle activo: distintos labels según dirección del cambio.
+    if (campo == 'activo') {
+      final paso = e.valorNuevo;
+      if (paso == true) return 'Reactivado';
+      if (paso == false) return 'Desactivado';
+    }
+
+    // Cambio de rol: traducimos los códigos a labels legibles.
+    if (campo == 'rol') {
+      final antes = _rolLabelStatic(e.valorAnterior?.toString());
+      final despues = _rolLabelStatic(e.valorNuevo?.toString());
+      return 'Cambió de rol: $antes → $despues';
+    }
+
+    // Prefijo de recibo.
+    if (campo == 'prefijo_recibo') {
+      final antes = e.valorAnterior?.toString() ?? '—';
+      final despues = e.valorNuevo?.toString() ?? '—';
+      return 'Prefijo de recibo: $antes → $despues';
+    }
+
+    // Fallback genérico para campos no especiales.
     final anterior = _formatVal(e.valorAnterior);
     final nuevo = _formatVal(e.valorNuevo);
     if (e.valorAnterior == null && e.valorNuevo != null) {
-      // Eventos tipo 'force_password_reset' que sólo registran acción.
-      final action = e.valorNuevo is Map
-          ? (e.valorNuevo as Map)['action']?.toString()
-          : null;
-      if (action != null) return _accionLabel(action);
-      return '$campo: $nuevo';
+      return '${campo ?? "(evento)"}: $nuevo';
     }
-    return '$campo: $anterior → $nuevo';
+    return '${campo ?? "(evento)"}: $anterior → $nuevo';
   }
+
+  static String _rolLabelStatic(String? rol) => switch (rol) {
+        'super_admin' => 'Super Admin',
+        'admin' => 'Administrador',
+        'admin_cobranza' => 'Admin de cobranza',
+        'cobrador' => 'Cobrador',
+        null => '—',
+        _ => rol,
+      };
 
   static String _formatVal(dynamic v) {
     if (v == null) return '—';
     if (v is bool) return v ? 'sí' : 'no';
     if (v is Map) {
-      // Para audit rows con action embebida.
       final action = v['action']?.toString();
       if (action != null) return action;
       return v.toString();

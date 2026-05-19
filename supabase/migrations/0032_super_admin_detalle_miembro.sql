@@ -109,6 +109,10 @@ begin
     left join auth.users u on u.id = a.user_id
     left join public.cobradores c on c.id = a.user_id
     where a.registro_id = p_cobrador_id
+      -- Defense in depth: aunque la chance de colisión UUID entre tablas
+      -- es astronómica, restringimos a las tablas donde nuestras acciones
+      -- sobre cobradores escriben audit (cobradores, auth.users).
+      and a.tabla in ('cobradores', 'auth.users')
     order by a.created_at desc
     limit greatest(p_limit, 1);
 end;

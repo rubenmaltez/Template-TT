@@ -952,8 +952,12 @@ class _MiembroCardState extends ConsumerState<_MiembroCard> {
       margin: const EdgeInsets.only(bottom: 8),
       clipBehavior: Clip.antiAlias,
       child: InkWell(
-        onTap: () => GoRouter.of(context)
-            .go('/super/tenants/${widget.tenantId}/miembros/${c.id}'),
+        // Si hay una acción en curso (spinner), bloqueamos la navegación
+        // para que el usuario no pierda el snackbar / feedback en medio.
+        onTap: _saving
+            ? null
+            : () => GoRouter.of(context)
+                .go('/super/tenants/${widget.tenantId}/miembros/${c.id}'),
         child: Padding(
           padding: const EdgeInsets.all(16),
           child: Row(
