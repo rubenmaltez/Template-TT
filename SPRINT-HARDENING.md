@@ -25,7 +25,7 @@ Resultado: 22 findings (R1–R22) — clasificados así:
 | Día 1 — DB integrity | R2, R16, R17, R18, R19, R20 | ✅ Cerrado (migration 0034). |
 | Día 1 — descartado | R1 | RLS de pagos cross-cobrador, ya documentado en 0025 como decisión de producto. |
 | Día 2 — Edge Functions resilience | R22 (audit-first), control chars, length caps, scrub mensajes, intent/success split, snapshot pre-recreate | ✅ Cerrado. |
-| Día 3 — Frontend bugs + tech debt | R7 ✅, R8 ✅, R9 ✅, R10 ✅, R11 ✅, R12, R13, R14, R15, R21 | ⏳ En curso (R7+R8+R9+R10+R11 cerrados). |
+| Día 3 — Frontend bugs + tech debt | R7 ✅, R8 ✅, R9 ✅, R10 ✅, R11 ✅, R12 ✅, R13, R14, R15, R21 | ⏳ En curso (R7+R8+R9+R10+R11+R12 cerrados). |
 
 ---
 
@@ -287,9 +287,38 @@ que eran código muerto.
   al volver al mismo miembro (antes cache stale). UX: leve flash
   de loading vs datos siempre frescos — preferible para audit logs.
 
-### R12 — Modelos `==`/`hashCode`
-Modelos manuales sin `==`/`hashCode` causan rebuilds innecesarios en
-listas. Migrar a equatable o regenerar.
+### R12 — Modelos `==`/`hashCode` ✅ CERRADO
+
+**Implementado** en commit `c58d193`. 10 modelos parchados con `==`
+y `hashCode` manuales usando `Object.hash` (sin agregar dep nueva).
+
+**Singletons emitidos por providers**: `Cliente`, `Cobrador`,
+`CobrosKpis`, `OperativoKpis`, `DistribucionCuotas` — beneficio
+directo de dedup en Riverpod.
+
+**Items de `List<T>`**: `Cuota`, `CobradorAdmin`, `TenantAdmin`,
+`TopCobrador`, `AuditEntry` — beneficio indirecto (ver alcance).
+
+**Casos especiales**:
+- `AuditEntry`: id-only equality (audit_log es append-only, dos rows
+  con mismo id son idénticas por construcción; evita deep-eq de
+  los jsonb dynamic).
+- `TenantAdmin.modulosHabilitados` (List<String>): `listEquals` de
+  `foundation.dart` + `Object.hashAll` para el hash.
+
+**Alcance real (auditado)**:
+- ✅ Dedup de singletons funciona — providers que emiten `T?` o `T`
+  individual (KPIs del dashboard, `clienteByIdProvider`,
+  `cobradorActualProvider`) ahora suprimen rebuilds redundantes.
+- ⚠️ Dedup de `List<T>` top-level NO funciona porque `List.==` es
+  identity equality default en Dart. Cada `rows.map(...).toList()`
+  crea instancia nueva → Riverpod siempre propaga. Para extraer
+  ese beneficio, los watchers tendrían que hacer
+  `.select((list) => slice)` o usar collección con value equality.
+  Queda al backlog.
+
+**No tocados**: `Pago`, `Setting`, `Modulo`, `Contrato`,
+`CobradorStats` (bajo impacto — no aparecen en streams hot).
 
 ### R13 — Validators centralizados
 Email regex, control char strip, length caps están duplicados en
