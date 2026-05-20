@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../data/utils/validators.dart';
+
 /// Dialog de cambio de contraseña self-service.
 ///
 /// Disponible en /perfil (cobrador) y en el shell admin. Pide contraseña
@@ -163,7 +165,7 @@ class _CambiarPasswordDialogState extends State<CambiarPasswordDialog> {
                       ),
                     ),
                     validator: (v) =>
-                        (v ?? '').isEmpty ? 'Requerida' : null,
+                        Validators.requiredField(v, label: 'Contraseña'),
                   ),
                   const SizedBox(height: 12),
                   TextFormField(
@@ -188,10 +190,12 @@ class _CambiarPasswordDialogState extends State<CambiarPasswordDialog> {
                       ),
                     ),
                     validator: (v) {
-                      final t = v ?? '';
-                      if (t.isEmpty) return 'Requerida';
-                      if (t.length < 8) return 'Mínimo 8 caracteres';
-                      if (t == _actualCtrl.text) {
+                      final reqErr = Validators.requiredField(v,
+                          label: 'Contraseña');
+                      if (reqErr != null) return reqErr;
+                      final minErr = Validators.minLength(v, 8);
+                      if (minErr != null) return minErr;
+                      if ((v ?? '') == _actualCtrl.text) {
                         return 'La nueva tiene que ser distinta de la actual';
                       }
                       return null;
@@ -223,7 +227,9 @@ class _CambiarPasswordDialogState extends State<CambiarPasswordDialog> {
                       ),
                     ),
                     validator: (v) {
-                      if ((v ?? '').isEmpty) return 'Requerida';
+                      final reqErr = Validators.requiredField(v,
+                          label: 'Contraseña');
+                      if (reqErr != null) return reqErr;
                       if (v != _nuevaCtrl.text) return 'No coincide';
                       return null;
                     },

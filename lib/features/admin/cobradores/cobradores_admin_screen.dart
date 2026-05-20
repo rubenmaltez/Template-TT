@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../data/utils/formatters.dart';
+import '../../../data/utils/validators.dart';
 import '../../../powersync/db.dart' as ps;
 import '../../shared/widgets/empty_state.dart';
 
@@ -116,8 +117,9 @@ class _InvitarDialogState extends State<_InvitarDialog> {
       setState(() => _error = 'Email y nombre requeridos');
       return;
     }
-    if (!RegExp(r'^[^@]+@[^@]+\.[^@]+$').hasMatch(email)) {
-      setState(() => _error = 'Email inválido');
+    final emailErr = Validators.email(email);
+    if (emailErr != null) {
+      setState(() => _error = emailErr);
       return;
     }
     final prefijo = _prefijo.text.trim().toUpperCase();

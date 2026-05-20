@@ -15,6 +15,7 @@ import '../../data/models/tenant_admin.dart';
 import '../../data/repositories/super_admin_repo.dart';
 import '../../data/utils/cobrador_helpers.dart';
 import '../../data/utils/formatters.dart';
+import '../../data/utils/validators.dart';
 import '../shared/widgets/animated_list_entry.dart';
 import '../shared/widgets/chips.dart';
 import '../shared/widgets/credenciales_dialog.dart';
@@ -1500,8 +1501,9 @@ class _ForzarPasswordDialogState extends State<_ForzarPasswordDialog> {
 
   void _submit() {
     final v = _ctrl.text;
-    if (v.length < 8) {
-      setState(() => _error = 'Mínimo 8 caracteres');
+    final err = Validators.minLength(v, 8);
+    if (err != null) {
+      setState(() => _error = err);
       return;
     }
     Navigator.of(context).pop(v);
@@ -1974,8 +1976,9 @@ class _CambiarEmailDialogState extends State<_CambiarEmailDialog> {
       setState(() => _error = 'Ingresá el nuevo email');
       return;
     }
-    if (!RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$').hasMatch(v)) {
-      setState(() => _error = 'Email inválido');
+    final emailErr = Validators.email(v);
+    if (emailErr != null) {
+      setState(() => _error = emailErr);
       return;
     }
     if (v == widget.emailActual) {
@@ -2224,8 +2227,9 @@ class _InvitarAdminDialogState extends ConsumerState<_InvitarAdminDialog> {
       setState(() => _error = 'Email y nombre requeridos');
       return;
     }
-    if (!RegExp(r'^[^@]+@[^@]+\.[^@]+$').hasMatch(email)) {
-      setState(() => _error = 'Email inválido');
+    final emailErr = Validators.email(email);
+    if (emailErr != null) {
+      setState(() => _error = emailErr);
       return;
     }
 

@@ -10,6 +10,7 @@ import 'package:uuid/uuid.dart';
 
 import '../../../data/providers/cobrador_provider.dart';
 import '../../../data/services/foto_cliente_service.dart';
+import '../../../data/utils/validators.dart';
 import '../../../powersync/db.dart' as ps;
 import 'widgets/geo_picker.dart';
 
@@ -260,12 +261,9 @@ class _ClienteFormScreenState extends ConsumerState<ClienteFormScreen> {
               TextFormField(
                 controller: _nombre,
                 decoration: const InputDecoration(labelText: 'Nombre completo *'),
-                validator: (v) {
-                  final t = v?.trim() ?? '';
-                  if (t.isEmpty) return 'Requerido';
-                  if (t.length < 3) return 'Mínimo 3 caracteres';
-                  return null;
-                },
+                validator: (v) =>
+                    Validators.requiredField(v, label: 'Nombre') ??
+                    Validators.minLength(v, 3),
                 textInputAction: TextInputAction.next,
               ),
               const SizedBox(height: 12),
@@ -296,9 +294,9 @@ class _ClienteFormScreenState extends ConsumerState<ClienteFormScreen> {
                           hintText: '+505 8888-8888'),
                       keyboardType: TextInputType.phone,
                       validator: (v) {
-                        final t = (v ?? '').replaceAll(RegExp(r'[^0-9]'), '');
-                        if (t.isEmpty) return null; // Opcional
-                        if (t.length < 8) return 'Mínimo 8 dígitos';
+                        final digits = sanitizePhoneForWhatsApp(v ?? '');
+                        if (digits.isEmpty) return null; // Opcional
+                        if (digits.length < 8) return 'Mínimo 8 dígitos';
                         return null;
                       },
                     ),

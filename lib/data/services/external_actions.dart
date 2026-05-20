@@ -3,13 +3,15 @@ import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../utils/validators.dart';
+
 /// Acciones del sistema operativo (llamar, abrir mapa de navegación, etc.).
 /// Web-safe: en mobile abre la app nativa; en web hace fallback a clipboard
 /// + snackbar cuando no aplica.
 class ExternalActions {
   /// Abre el dialer con el teléfono. En web copia al clipboard.
   static Future<void> llamar(BuildContext context, String telefono) async {
-    final normalizado = telefono.replaceAll(RegExp(r'[^0-9+]'), '');
+    final normalizado = sanitizePhone(telefono);
     if (kIsWeb) {
       await Clipboard.setData(ClipboardData(text: normalizado));
       if (context.mounted) {
@@ -31,7 +33,7 @@ class ExternalActions {
 
   /// Abre WhatsApp con el teléfono (sólo mobile; en web abre web.whatsapp.com).
   static Future<void> whatsapp(BuildContext context, String telefono) async {
-    final n = telefono.replaceAll(RegExp(r'[^0-9]'), '');
+    final n = sanitizePhoneForWhatsApp(telefono);
     final uri = Uri.parse(
         kIsWeb ? 'https://wa.me/$n' : 'whatsapp://send?phone=$n');
     if (await canLaunchUrl(uri)) {

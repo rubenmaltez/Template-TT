@@ -8,6 +8,7 @@ import '../../data/models/tenant_admin.dart';
 import '../../data/repositories/super_admin_repo.dart';
 import '../../data/utils/cobrador_helpers.dart';
 import '../../data/utils/formatters.dart';
+import '../../data/utils/validators.dart';
 import '../shared/widgets/animated_list_entry.dart';
 import '../shared/widgets/credenciales_dialog.dart';
 import '../shared/widgets/skeleton.dart';
@@ -468,12 +469,9 @@ class _CrearTenantDialogState extends ConsumerState<_CrearTenantDialog> {
                     hintText: 'ej: ISP Las Lomas',
                     border: OutlineInputBorder(),
                   ),
-                  validator: (v) {
-                    final t = (v ?? '').trim();
-                    if (t.isEmpty) return 'Requerido';
-                    if (t.length > 120) return 'Máximo 120 caracteres';
-                    return null;
-                  },
+                  validator: (v) =>
+                      Validators.requiredField(v, label: 'Nombre') ??
+                      Validators.maxLength(v, 120),
                 ),
                 const SizedBox(height: 16),
                 Text(
@@ -496,14 +494,9 @@ class _CrearTenantDialogState extends ConsumerState<_CrearTenantDialog> {
                     hintText: 'marcos@laslomas.ni',
                     border: OutlineInputBorder(),
                   ),
-                  validator: (v) {
-                    final t = (v ?? '').trim();
-                    if (t.isEmpty) return 'Requerido';
-                    final ok = RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$')
-                        .hasMatch(t);
-                    if (!ok) return 'Email inválido';
-                    return null;
-                  },
+                  validator: (v) =>
+                      Validators.requiredField(v, label: 'Email') ??
+                      Validators.email(v),
                 ),
                 const SizedBox(height: 12),
                 TextFormField(
@@ -517,7 +510,7 @@ class _CrearTenantDialogState extends ConsumerState<_CrearTenantDialog> {
                     border: OutlineInputBorder(),
                   ),
                   validator: (v) =>
-                      (v ?? '').trim().isEmpty ? 'Requerido' : null,
+                      Validators.requiredField(v, label: 'Nombre'),
                 ),
                 const SizedBox(height: 12),
                 TextFormField(
