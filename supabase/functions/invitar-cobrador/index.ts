@@ -96,13 +96,20 @@ serve(async (req) => {
       );
     }
 
-    // Validar body.
+    // Validar body. Rechazamos chars de control C0 (\x00-\x1F) y C1 (\x7F-\x9F) para evitar inputs que rompen jsonb o text en
+    // Postgres con errores opacos. Telefono también trimmed para que
+    // "   " (espacios) no pase el length check.
     const body: InvitarRequest = await req.json();
     const email = (body.email ?? "").trim().toLowerCase();
     const nombre = (body.nombre ?? "").trim();
+    const telefono = (body.telefono ?? "").trim();
+    const CONTROL = /[\x00-\x1F\x7F-\x9F]/;
 
     if (!email || !nombre || !body.rol) {
       return jsonError("email, nombre y rol son requeridos", 400);
+    }
+    if (CONTROL.test(email) || CONTROL.test(nombre) || CONTROL.test(telefono)) {
+      return jsonError("Los campos no pueden contener caracteres de control", 400);
     }
     // Email regex: mismo patrón que crear-tenant para consistencia.
     if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
@@ -111,7 +118,7 @@ serve(async (req) => {
     if (nombre.length > 120) {
       return jsonError("nombre demasiado largo (max 120)", 400);
     }
-    if (body.telefono && body.telefono.length > 32) {
+    if (telefono.length > 32) {
       return jsonError("telefono demasiado largo (max 32)", 400);
     }
     if (!["admin", "admin_cobranza", "cobrador"].includes(body.rol)) {
@@ -175,7 +182,7 @@ serve(async (req) => {
           tenant_id: targetTenantId,
           rol: body.rol,
           nombre: nombre,
-          telefono: body.telefono ?? null,
+          telefono: telefono === "" ? null : telefono,
           prefijo_recibo: body.rol === "cobrador"
             ? (body.prefijo_recibo ?? null)
             : null,

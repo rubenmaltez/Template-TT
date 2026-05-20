@@ -253,7 +253,8 @@ serve(async (req) => {
     }
 
     if (invErr !== null || newUserId === null) {
-      const msg = invErr?.message ?? "error desconocido";
+      const rawMsg = invErr?.message ?? "error desconocido";
+      const msg = humanizeAuthError(rawMsg);
       console.error(
         "reenviar: re-creación falló DESPUÉS de delete — recovery manual " +
           "requerida con este snapshot:",
@@ -268,16 +269,23 @@ serve(async (req) => {
       );
     }
 
-    // Audit log: registrar el reenvío. valor_anterior tiene el id viejo
-    // (ahora borrado), valor_nuevo el id del nuevo user + el canal
-    // usado (email vs link generado server-side) para que en el
-    // timeline quede claro qué se hizo.
+    // Audit log: registrar el reenvío. valor_anterior tiene el id
+    // viejo (ahora borrado) + el snapshot del cobrador antes del
+    // delete (incluido inline para que el row sea visible en el
+    // timeline del miembro nuevo — la row "snapshot_before_resend"
+    // anterior usa registro_id=old y queda invisible al filtrar
+    // por el nuevo user_id). valor_nuevo tiene el id del nuevo user
+    // y el canal usado (email vs link generado server-side).
     const { error: auditErr } = await admin.from("audit_log").insert({
       tenant_id: tc.tenant_id,
       tabla: "auth.users",
       registro_id: newUserId,
       campo: "invitacion",
-      valor_anterior: { id: body.cobrador_id, action: "previous_invite" },
+      valor_anterior: {
+        id: body.cobrador_id,
+        action: "previous_invite",
+        snapshot: snapshot,
+      },
       valor_nuevo: {
         id: newUserId,
         action: enviarEmail
@@ -318,6 +326,32 @@ serve(async (req) => {
     return jsonError("Error interno — revisá los logs de la función", 500);
   }
 });
+
+/// Mapea los errores conocidos de Supabase Auth (en inglés) a copy en
+/// español. Mismo patrón que crear-tenant y invitar-cobrador.
+function humanizeAuthError(raw: string): string {
+  const lower = raw.toLowerCase();
+  if (
+    /already.*(registered|exists)/.test(lower) ||
+    lower.includes("user already")
+  ) {
+    return "Ya existe un usuario con ese email — usá otro o, " +
+      "si querés moverlo de tenant, contactá soporte.";
+  }
+  if (lower.includes("sending invite") || lower.includes("sending email")) {
+    return "El proveedor de email rechazó el envío. Si estás usando " +
+      "Resend en sandbox, solo podés invitar al email dueño de tu " +
+      "cuenta Resend — para invitar a otros, verificá tu dominio.";
+  }
+  if (lower.includes("rate limit")) {
+    return "Rate limit del proveedor de email alcanzado — esperá un " +
+      "rato y reintentá.";
+  }
+  if (lower.includes("invalid email")) {
+    return "Email inválido según el proveedor de email.";
+  }
+  return raw;
+}
 
 function jsonError(message: string, status: number): Response {
   return new Response(

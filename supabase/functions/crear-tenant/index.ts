@@ -149,6 +149,27 @@ serve(async (req) => {
       return jsonError("admin_email inválido", 400);
     }
     if (!adminNombre) return jsonError("admin_nombre es requerido", 400);
+    // Rechazamos chars de control C0/C1 — Postgres text/jsonb los
+    // tratan inconsistente y dan errores opacos en lugar de input
+    // validation clara. adminTelefono puede ser null.
+    const CONTROL = /[\x00-\x1F\x7F-\x9F]/;
+    if (
+      CONTROL.test(nombre) ||
+      CONTROL.test(email) ||
+      CONTROL.test(adminNombre) ||
+      (adminTelefono !== null && CONTROL.test(adminTelefono))
+    ) {
+      return jsonError(
+        "Los campos no pueden contener caracteres de control",
+        400,
+      );
+    }
+    if (adminNombre.length > 120) {
+      return jsonError("admin_nombre demasiado largo (max 120)", 400);
+    }
+    if (adminTelefono !== null && adminTelefono.length > 32) {
+      return jsonError("admin_telefono demasiado largo (max 32)", 400);
+    }
 
     // service_role: sólo para el invite (auth.admin) y rollback. Las
     // operaciones de DB van vía callerClient para que la RLS valide.
@@ -344,6 +365,12 @@ serve(async (req) => {
         }
       }
       const rollbackOk = await rollbackTenant(admin, tenantId);
+      // Nulleamos las vars del outer scope para que el outer catch
+      // no intente un segundo rollback sobre los mismos ids (no
+      // afecta correctness — los delete son idempotentes — pero
+      // genera noise en los logs).
+      userIdParcial = null;
+      tenantId = null;
       const msg = humanizeAuthError(invErrMsg ?? "Error desconocido");
       if (!rollbackOk) {
         // Cleanup falló — devolvemos el orphan id para limpieza manual.
@@ -401,22 +428,42 @@ serve(async (req) => {
     // una excepción rompió el flow antes del response, hay que limpiar
     // para no dejar orphans. success=true significa que llegamos al
     // happy path; si está false acá hay que rollbackear.
+    //
+    // Cada delete está envuelto en su propio try/catch: si el SDK
+    // tira excepción síncrona (UUID malformado, etc.), no queremos
+    // que rebrote del outer catch y produzca un 500 sin nuestro
+    // mensaje genérico — preferimos loggear el problema y continuar
+    // con la response genérica.
     if (!success && adminForRollback !== null) {
       if (userIdParcial !== null) {
-        const { error: delUserErr } = await adminForRollback.auth.admin
-          .deleteUser(userIdParcial);
-        if (delUserErr) {
+        try {
+          const { error: delUserErr } = await adminForRollback.auth.admin
+            .deleteUser(userIdParcial);
+          if (delUserErr) {
+            console.error(
+              `crear-tenant rollback deleteUser falló (user=${userIdParcial}): ${delUserErr.message}`,
+            );
+          }
+        } catch (deleteUserThrow) {
           console.error(
-            `crear-tenant rollback deleteUser falló (user=${userIdParcial}): ${delUserErr.message}`,
+            `crear-tenant rollback deleteUser threw (user=${userIdParcial}):`,
+            deleteUserThrow,
           );
         }
       }
       if (tenantId !== null) {
-        const { error: delTenantErr } = await adminForRollback
-          .from("tenants").delete().eq("id", tenantId);
-        if (delTenantErr) {
+        try {
+          const { error: delTenantErr } = await adminForRollback
+            .from("tenants").delete().eq("id", tenantId);
+          if (delTenantErr) {
+            console.error(
+              `crear-tenant rollback deleteTenant falló (tenant=${tenantId}): ${delTenantErr.message}. ORPHAN.`,
+            );
+          }
+        } catch (deleteTenantThrow) {
           console.error(
-            `crear-tenant rollback deleteTenant falló (tenant=${tenantId}): ${delTenantErr.message}. ORPHAN.`,
+            `crear-tenant rollback deleteTenant threw (tenant=${tenantId}). ORPHAN:`,
+            deleteTenantThrow,
           );
         }
       }

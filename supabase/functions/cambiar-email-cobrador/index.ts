@@ -148,21 +148,27 @@ serve(async (req) => {
       );
     }
 
-    // Audit-first ordering — ver justificación en forzar-password-cobrador.
-    // valor_anterior/nuevo contienen los emails — son PII pero queda en
-    // el audit que sólo super_admin lee.
-    const { error: auditErr } = await admin.from("audit_log").insert({
+    // Intent/success split. Ver justificación en forzar-password-cobrador.
+    //
+    // Para email, el intent row usa valor_nuevo Map con action y
+    // 'intent' (el email destino) para que el timeline distinga del
+    // success row (que usa strings y dispara el path "genérico" del
+    // _resumenCambio que muestra "email: viejo → nuevo").
+    //
+    // valor_anterior/valor_nuevo contienen los emails — son PII pero
+    // queda en el audit que sólo super_admin lee.
+    const { error: intentErr } = await admin.from("audit_log").insert({
       tenant_id: tc.tenant_id,
       tabla: "auth.users",
       registro_id: body.cobrador_id,
       campo: "email",
       valor_anterior: emailAnterior,
-      valor_nuevo: nuevoEmail,
+      valor_nuevo: { action: "email_change_intent", intent: nuevoEmail },
       user_id: user.id,
       user_rol: "super_admin",
     });
-    if (auditErr) {
-      console.error("cambiar-email: audit insert falló", auditErr);
+    if (intentErr) {
+      console.error("cambiar-email: intent audit insert falló", intentErr);
       return jsonError(
         "No se pudo registrar la auditoría — el cambio no se aplicó. " +
           "Reintentá en unos segundos.",
@@ -176,13 +182,35 @@ serve(async (req) => {
       { email: nuevoEmail, email_confirm: true },
     );
     if (updErr) {
-      // Audit row quedó como intent. Append-only, no se borra.
+      // El intent row queda como evidencia del intento fallido.
       console.error(
-        "cambiar-email: updateUserById falló DESPUÉS del audit. " +
-          `cobrador_id=${body.cobrador_id}, audit row queda como intent.`,
+        "cambiar-email: updateUserById falló DESPUÉS del intent audit. " +
+          `cobrador_id=${body.cobrador_id}. Timeline mostrará solo el intent.`,
         updErr,
       );
       return jsonError(`Auth: ${updErr.message}`, 400);
+    }
+
+    // Cambio aplicado — registramos el success con valores strings
+    // (no Map) para que _resumenCambio del timeline muestre el formato
+    // genérico "email: viejo → nuevo".
+    const { error: successErr } = await admin.from("audit_log").insert({
+      tenant_id: tc.tenant_id,
+      tabla: "auth.users",
+      registro_id: body.cobrador_id,
+      campo: "email",
+      valor_anterior: emailAnterior,
+      valor_nuevo: nuevoEmail,
+      user_id: user.id,
+      user_rol: "super_admin",
+    });
+    if (successErr) {
+      // Email ya cambió pero success audit perdido. Log loud.
+      console.error(
+        "cambiar-email: success audit insert FALLÓ — email sí cambió, " +
+          `intent row está, success row NO. cobrador_id=${body.cobrador_id}`,
+        successErr,
+      );
     }
 
     // Invalidar todas las sesiones del target — sino sigue logueado con

@@ -551,7 +551,16 @@ class _AuditTile extends StatelessWidget {
   }
 
   static String _accionLabel(String action) => switch (action) {
+        // Audit rows legacy de antes del intent/success split.
         'force_password_reset' => 'Contraseña reseteada por super_admin',
+        // Audit rows del flow nuevo (forzar-password Día 2).
+        'force_password_reset_intent' =>
+          'Intento de reset de contraseña',
+        'force_password_reset_success' =>
+          'Contraseña reseteada por super_admin',
+        // Audit row de email change "intent" (el success usa strings,
+        // disparando el path genérico de _resumenCambio).
+        'email_change_intent' => 'Intento de cambio de email',
         'resent_invitation' => 'Invitación reenviada por email',
         'regenerated_credentials' =>
           'Contraseña regenerada sin enviar email',

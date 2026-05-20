@@ -111,27 +111,32 @@ serve(async (req) => {
       );
     }
 
-    // Audit-first ordering: en compliance contexts, NO tener audit
-    // cuando algo PASÓ es peor que tener un audit "fantasma" cuando
-    // algo NO pasó. Si insertamos audit ANTES del cambio y el cambio
-    // falla, queda un audit row de "intent" — molesta pero defendible.
-    // Si insertamos audit DESPUÉS del cambio y el audit falla, la
-    // operación queda sin trail — eso sí es problemático para auditoría
-    // regulatoria. NUNCA guardamos la password en el audit row.
-    const { error: auditErr } = await admin.from("audit_log").insert({
+    // Intent/success split. Dos rows en audit_log:
+    //   1. ANTES del update: action='force_password_reset_intent'.
+    //      Si el insert falla, abortamos sin aplicar el cambio.
+    //      Si el insert OK pero el update falla, el intent queda como
+    //      rastro de que se intentó (timeline muestra el intent solo).
+    //   2. DESPUÉS del update exitoso: action='force_password_reset_success'.
+    //      Si el insert success falla, log loud (el cambio ya está
+    //      aplicado, no podemos rollback; el operador investigará
+    //      por server logs).
+    //
+    // Esto resuelve el problema de "audit-first" donde una sola row
+    // de "reset" se muestra aunque la operación falle: el timeline
+    // distinguía mal éxito de intento. Append-only se mantiene.
+    // NUNCA guardamos la password en ninguno de los rows.
+    const { error: intentErr } = await admin.from("audit_log").insert({
       tenant_id: target.tenant_id,
       tabla: "auth.users",
       registro_id: body.cobrador_id,
       campo: "encrypted_password",
       valor_anterior: null,
-      valor_nuevo: { action: "force_password_reset" },
+      valor_nuevo: { action: "force_password_reset_intent" },
       user_id: user.id,
       user_rol: "super_admin",
     });
-    if (auditErr) {
-      // Si no podemos auditar, no aplicamos el cambio. Mejor un user
-      // sin password reseteada que un reset sin trail.
-      console.error("forzar-password: audit insert falló", auditErr);
+    if (intentErr) {
+      console.error("forzar-password: intent audit insert falló", intentErr);
       return jsonError(
         "No se pudo registrar la auditoría — el cambio no se aplicó. " +
           "Reintentá en unos segundos.",
@@ -145,16 +150,38 @@ serve(async (req) => {
       { password: body.nueva_password },
     );
     if (updErr) {
-      // El audit row quedó como "intent" sin operación real. Logueamos
-      // loud para que sea visible en server logs. No intentamos delete
-      // del audit row porque el patrón "audit append-only" lo prohíbe;
-      // la inconsistencia es preferible al borrado de evidencia.
+      // El intent row queda en audit_log como evidencia del intento
+      // fallido — el operador puede ver "intentó pero no se aplicó"
+      // sin que el timeline mienta diciendo que pasó.
       console.error(
-        "forzar-password: updateUserById falló DESPUÉS de audit insert. " +
-          `cobrador_id=${body.cobrador_id}, audit row queda como intent.`,
+        "forzar-password: updateUserById falló DESPUÉS de intent audit. " +
+          `cobrador_id=${body.cobrador_id}. Timeline mostrará solo el intent.`,
         updErr,
       );
       return jsonError(`Auth: ${updErr.message}`, 400);
+    }
+
+    // Cambio aplicado — registramos el success.
+    const { error: successErr } = await admin.from("audit_log").insert({
+      tenant_id: target.tenant_id,
+      tabla: "auth.users",
+      registro_id: body.cobrador_id,
+      campo: "encrypted_password",
+      valor_anterior: null,
+      valor_nuevo: { action: "force_password_reset_success" },
+      user_id: user.id,
+      user_rol: "super_admin",
+    });
+    if (successErr) {
+      // Cambio aplicado pero success audit perdido. Log loud — el
+      // intent row da pista de que algo intentó, pero el operador
+      // tiene que verificar manualmente si se aplicó.
+      console.error(
+        "forzar-password: success audit insert FALLÓ — password sí " +
+          `cambió, intent row está, success row NO. ` +
+          `cobrador_id=${body.cobrador_id}`,
+        successErr,
+      );
     }
 
     // Invalidar todas las sesiones activas del target.
