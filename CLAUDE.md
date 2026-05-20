@@ -177,6 +177,18 @@ Estos viven acá hasta que se ataquen explícitamente. NO re-flag en audits.
   sin red, ve `ClientException: Failed to fetch, uri=https://...supabase.co/auth/v1/token...`.
   Expone URL del backend y string técnico. Fix: catch `ClientException` en login_screen
   y mostrar "Sin conexión. Verificá tu red e intentá de nuevo."
+- **Dashboard admin: overflow vertical en cards en narrow viewport** (~< 500px). El
+  `childAspectRatio: 4` para 1 columna deja altura insuficiente; el contenido (icon +
+  label + value + sub) tira "BOTTOM OVERFLOWED BY 18 PIXELS". Pre-existente, no de R10.
+  Fix: bajar el ratio a `3.2` o agregar `mainAxisSize: MainAxisSize.min` con padding
+  reducido.
+- **Validator de teléfono permite letras si hay 8+ dígitos**. El validator usa
+  `sanitizePhoneForWhatsApp` (regex `[^0-9]`) para contar dígitos, pero al guardar
+  persiste el valor original con letras intactas. Resultado: BD termina con
+  `"abc12345678"` en `clientes.telefono`. Al usarlo (llamar, WhatsApp) los sanitizers
+  limpian al consumir, pero el form lo muestra horrible. Fix: TextFormField con
+  `inputFormatters` que rechace caracteres no `[0-9+]`, o sanitizar al guardar
+  además de al validar.
 - **AppBar back arrow ausente en sub-rutas** — el AdminShell y SuperShell tienen
   `drawer:` así que el leading auto-implícito es el hamburger menu, no el back
   arrow, incluso después de un `push` que sí permitiría `canPop()`. Material no
