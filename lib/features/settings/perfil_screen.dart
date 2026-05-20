@@ -10,6 +10,7 @@ import '../../data/providers/impresora_provider.dart';
 import '../../data/providers/sync_status_provider.dart';
 import '../../data/utils/formatters.dart';
 import '../../powersync/db.dart' as ps;
+import '../auth/cambiar_password_dialog.dart';
 import '../shared/widgets/empty_state.dart';
 
 class PerfilScreen extends ConsumerWidget {
@@ -70,6 +71,12 @@ class PerfilScreen extends ConsumerWidget {
         const SizedBox(height: 12),
         const _FotosPendientesCard(),
         const SizedBox(height: 24),
+        OutlinedButton.icon(
+          icon: const Icon(Icons.lock_outline),
+          label: const Text('Cambiar contraseña'),
+          onPressed: () => mostrarCambiarPasswordDialog(context),
+        ),
+        const SizedBox(height: 12),
         OutlinedButton.icon(
           icon: const Icon(Icons.logout),
           label: const Text('Cerrar sesión'),

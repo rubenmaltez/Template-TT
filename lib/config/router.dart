@@ -57,7 +57,12 @@ final _rolUsuarioProvider = StreamProvider<String?>((ref) async* {
 
 /// Stream de `empresa.nombre` para detectar si falta onboarding del tenant.
 /// Si está vacío, redirigimos al wizard.
-final _empresaNombreProvider = StreamProvider<String?>((ref) async* {
+///
+/// Público porque el AdminShell también lo consume — el gate de carga
+/// inicial tiene que usar EXACTAMENTE el mismo signal que esta lógica
+/// de redirect, sino la pantalla rendea con el redirect todavía
+/// pendiente y se ve un flash del dashboard antes del onboarding.
+final empresaNombreProvider = StreamProvider<String?>((ref) async* {
   yield* ps.db
       .watch("SELECT valor FROM settings WHERE clave = 'empresa.nombre'")
       .map((rows) {
@@ -89,7 +94,7 @@ final routerProvider = Provider<GoRouter>((ref) {
   // dispare una recarga manual.
   final authSub = auth.onAuthStateChange.listen((_) {
     ref.invalidate(_rolUsuarioProvider);
-    ref.invalidate(_empresaNombreProvider);
+    ref.invalidate(empresaNombreProvider);
     ref.invalidate(cobradorActualProvider);
   });
   ref.onDispose(authSub.cancel);
@@ -99,7 +104,7 @@ final routerProvider = Provider<GoRouter>((ref) {
   // valueOrNull antes de que el stream tenga data y nadie se enteraría.
   ref.listen(_rolUsuarioProvider, (_, __) => refresh.poke());
   // Idem para detectar setup completo del tenant.
-  ref.listen(_empresaNombreProvider, (_, __) => refresh.poke());
+  ref.listen(empresaNombreProvider, (_, __) => refresh.poke());
   // Y para que SetPasswordScreen pueda limpiar el flow y desencadenar
   // una re-evaluación del redirect (sino quedaría atrapado en
   // /set-password después de actualizar la contraseña).
@@ -150,7 +155,7 @@ final routerProvider = Provider<GoRouter>((ref) {
       // wizard. NO aplica a super_admin (vive en el tenant System, no
       // necesita onboarding del producto).
       if (rol == 'admin') {
-        final empresaState = ref.read(_empresaNombreProvider);
+        final empresaState = ref.read(empresaNombreProvider);
         final needsOnboarding =
             empresaState.hasValue && empresaState.value == null;
         if (needsOnboarding && loc != '/admin/onboarding') {

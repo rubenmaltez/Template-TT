@@ -6,6 +6,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../config/router.dart';
 import '../../../data/providers/cobrador_provider.dart';
 import '../../../data/providers/sync_status_provider.dart';
+import '../../auth/cambiar_password_dialog.dart';
 import '../../shared/widgets/offline_banner.dart';
 
 /// Shell del admin/admin_cobranza. Layout adaptativo:
@@ -23,6 +24,43 @@ class AdminShell extends ConsumerWidget {
     final titulo = ShellTitleScope.of(context) ?? 'Panel admin';
     final location = GoRouterState.of(context).matchedLocation;
 
+    // Gate de carga inicial: mientras `empresaNombreProvider` no haya
+    // emitido su primer valor, no rendeamos el child. Sin esto, el
+    // redirect del router corre con empresaState=loading
+    // (hasValue=false → needsOnboarding=false), no manda al wizard, y
+    // un admin nuevo cae en el dashboard con KPIs en cero por una
+    // fracción de segundo antes del redirect a /admin/onboarding.
+    //
+    // IMPORTANTE: usamos el MISMO provider que consume el redirect
+    // (router.dart:158). Si watcheáramos un signal distinto (ej
+    // settingsMapProvider) podría liberar el gate antes que el router
+    // tenga su data — la race se mantendría. El gate scoped al content
+    // mantiene visible el sidebar/topbar — menos pérdida de contexto.
+    final empresaAsync = ref.watch(empresaNombreProvider);
+    final bodyContent = empresaAsync.when(
+      data: (_) => OfflineBanner(child: child),
+      loading: () => const Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            CircularProgressIndicator(),
+            SizedBox(height: 12),
+            Text('Cargando…'),
+          ],
+        ),
+      ),
+      error: (e, _) => Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Text(
+            'No se pudo cargar la configuración del ISP: $e',
+            textAlign: TextAlign.center,
+          ),
+        ),
+      ),
+    );
+
     if (isDesktop) {
       return Scaffold(
         body: Row(
@@ -33,7 +71,7 @@ class AdminShell extends ConsumerWidget {
               child: Column(
                 children: [
                   _TopBar(titulo: titulo, showMenu: false),
-                  Expanded(child: OfflineBanner(child: child)),
+                  Expanded(child: bodyContent),
                 ],
               ),
             ),
@@ -48,7 +86,7 @@ class AdminShell extends ConsumerWidget {
         title: Text(titulo),
         actions: const [_SyncIndicator(), SizedBox(width: 8)],
       ),
-      body: OfflineBanner(child: child),
+      body: bodyContent,
     );
   }
 }
@@ -197,6 +235,11 @@ class _AdminRail extends ConsumerWidget {
             ),
             const Divider(height: 1),
             ListTile(
+              leading: const Icon(Icons.lock_outline),
+              title: const Text('Cambiar contraseña'),
+              onTap: () => mostrarCambiarPasswordDialog(context),
+            ),
+            ListTile(
               leading: const Icon(Icons.logout),
               title: const Text('Cerrar sesión'),
               onTap: () => Supabase.instance.client.auth.signOut(),
@@ -243,6 +286,17 @@ class _AdminDrawer extends ConsumerWidget {
                         ))
                     .toList(),
               ),
+            ),
+            ListTile(
+              leading: const Icon(Icons.lock_outline),
+              title: const Text('Cambiar contraseña'),
+              onTap: () {
+                // Cerrar el drawer ANTES del dialog para que no quede
+                // de fondo: en mobile el drawer ocupa ancho completo
+                // y el dialog quedaría detrás.
+                Navigator.of(context).pop();
+                mostrarCambiarPasswordDialog(context);
+              },
             ),
             ListTile(
               leading: const Icon(Icons.logout),
