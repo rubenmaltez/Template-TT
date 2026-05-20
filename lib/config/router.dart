@@ -21,9 +21,11 @@ import '../features/admin/reportes/reportes_admin_screen.dart';
 import '../features/admin/settings/settings_admin_screen.dart';
 import '../features/admin/shell/admin_shell.dart';
 import '../data/providers/cobrador_provider.dart';
+import '../data/providers/sync_ready_provider.dart';
 import '../features/auth/auth_flow_provider.dart';
 import '../features/auth/login_screen.dart';
 import '../features/auth/set_password_screen.dart';
+import '../features/shared/widgets/sync_gate_screen.dart';
 import '../features/super_admin/miembro_detalle_screen.dart';
 import '../features/super_admin/super_shell.dart';
 import '../features/super_admin/tenant_modulos_screen.dart';
@@ -109,6 +111,10 @@ final routerProvider = Provider<GoRouter>((ref) {
   // una re-evaluación del redirect (sino quedaría atrapado en
   // /set-password después de actualizar la contraseña).
   ref.listen(initialAuthFlowProvider, (_, __) => refresh.poke());
+  // Sync gate (R7): cuando PowerSync confirma sync post-cambio de
+  // identidad, syncReady flippa a true y queremos que el redirect
+  // saque al user de /sync-gate hacia su pantalla por rol.
+  ref.listen(syncReadyProvider, (_, __) => refresh.poke());
 
   return GoRouter(
     initialLocation: '/',
@@ -137,6 +143,16 @@ final routerProvider = Provider<GoRouter>((ref) {
           authFlow != 'invite') {
         return '/';
       }
+
+      // Sync gate (R7): si la identidad cambió (signOut + signIn, o
+      // user switch) y PowerSync todavía no confirmó un sync posterior
+      // al cambio, esperamos en /sync-gate. Va DESPUÉS del set-password
+      // gate porque ese flow no toca la identidad de PowerSync — el
+      // user que setea contraseña ya es el dueño del cache.
+      final syncReady = ref.read(syncReadyProvider);
+      final goingToGate = state.matchedLocation == '/sync-gate';
+      if (!syncReady) return goingToGate ? null : '/sync-gate';
+      if (goingToGate) return '/';
 
       final rol = ref.read(_rolUsuarioProvider).valueOrNull;
       final loc = state.matchedLocation;
@@ -193,6 +209,10 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/set-password',
         builder: (_, __) => const SetPasswordScreen(),
+      ),
+      GoRoute(
+        path: '/sync-gate',
+        builder: (_, __) => const SyncGateScreen(),
       ),
       GoRoute(
         path: '/admin/onboarding',
