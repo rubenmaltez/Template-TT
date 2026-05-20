@@ -25,7 +25,7 @@ Resultado: 22 findings (R1–R22) — clasificados así:
 | Día 1 — DB integrity | R2, R16, R17, R18, R19, R20 | ✅ Cerrado (migration 0034). |
 | Día 1 — descartado | R1 | RLS de pagos cross-cobrador, ya documentado en 0025 como decisión de producto. |
 | Día 2 — Edge Functions resilience | R22 (audit-first), control chars, length caps, scrub mensajes, intent/success split, snapshot pre-recreate | ✅ Cerrado. |
-| Día 3 — Frontend bugs + tech debt | R7 ✅, R8 ✅, R9 ✅, R10 ✅, R11 ✅, R12 ✅, R13 ✅, R14 ✅, R15, R21 | ⏳ En curso (R7→R14 cerrados). |
+| Día 3 — Frontend bugs + tech debt | R7 ✅, R8 ✅, R9 ✅, R10 ✅, R11 ✅, R12 ✅, R13 ✅, R14 ✅, R21 ✅, R15 deferido | ✅ Cerrado salvo R15 (pendiente análisis de uso real). |
 
 ---
 
@@ -372,22 +372,50 @@ backlog original) NO se centralizó porque vive en Edge Functions
   caller — refactor futuro con genéricos `<T>(parse: T Function(Map))`
   sale del scope.
 
-### R15 — Paginación
-Listas de cuotas/pagos cargan todo el dataset del tenant. Implementar
-paginación o virtualización.
+### R21 — Split `tenant_modulos_screen.dart` ✅ CERRADO
 
-### R21 — Split `tenant_modulos_screen.dart` (2354 LOC)
-Archivo monstruoso. Extraer widgets y dialogs a su propio archivo.
+**Implementado** en commits `97c7794` (split) + `5a6b2d3` (comentarios
+stale). Archivo monolítico de 2354 LOC dividido en 4 partes por
+dominio:
+
+- `tenant_modulos_screen.dart` (340 LOC): orquestador.
+  `TenantModulosScreen`, `_Header`, `_ModuloTile`, `_MiembrosList`.
+- `tenant_dialogs_invitar.dart` (168): `InvitarAdminDialog`.
+- `tenant_dialogs_miembro.dart` (935): `WarningBox`,
+  `warningClientesHuerfanos`, y los 6 dialogs de gestión de miembros.
+- `tenant_miembro_card.dart` (939): `MiembroCard` con todos los
+  handlers + enum `_AccionMiembro` privado.
+
+**Cambios de privacidad**: clases referenciadas cross-file pasaron de
+`_X` a `X`. Los `_FooState` siguen privados, igual que el enum
+`_AccionMiembro`. Sin cambios de lógica.
+
+### R15 — Paginación (DEFERIDO)
+
+El backlog original decía "explota a 10k+ rows" pero auditando el
+problema con cabeza fría:
+- Flutter `ListView.builder` ya virtualiza renderizado.
+- Los cobradores típicos manejan 200-500 clientes (no 10k).
+- El problema real probablemente es búsqueda/filtrado inline sobre
+  la lista entera, NO el rendering — paginar sin entender eso podría
+  empeorar UX.
+
+Approach correcto requiere análisis previo (paginación vs filtros SQL
+vs cursor). Lo dejamos al backlog persistente (CLAUDE.md) para
+abordar post-merge si tenants reales lo justifican.
 
 ---
 
 ## Cierre del sprint
 
-Cuando el Día 3 esté cerrado:
+Días 1, 2 y 3 cerrados. R15 deferido al backlog. Próximos pasos:
 
-1. PR `claude/powersync-sdk-setup-KZF1R` → `main`.
-2. 3 audits (Code Audit + QA + UX/Security) sobre el diff completo.
-3. Resolver findings críticos.
-4. Merge.
-5. **Borrar este archivo** (`SPRINT-HARDENING.md`).
-6. Backlog que sobreviva → `CLAUDE.md` sección "Backlog persistente".
+1. **Testing manual** del feature set completo en la app.
+2. **PR `claude/powersync-sdk-setup-KZF1R` → `main`** cuando Rubén lo
+   indique.
+3. 3 audits (Code Audit + QA + UX/Security) sobre el diff completo
+   del sprint.
+4. Resolver findings críticos.
+5. Merge.
+6. **Borrar este archivo** (`SPRINT-HARDENING.md`).
+7. Backlog que sobreviva → `CLAUDE.md` sección "Backlog persistente".
