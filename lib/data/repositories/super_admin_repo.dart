@@ -263,23 +263,25 @@ final tenantsAdminProvider = FutureProvider<List<TenantAdmin>>((ref) {
 });
 
 /// Lista de miembros (cobradores) de un tenant específico. Family por
-/// tenant_id para que cada pantalla de detalle cachee independientemente.
+/// tenant_id, autoDispose para liberar memoria al salir de la pantalla
+/// del tenant — `invalidate` + `read(future)` siguen funcionando porque
+/// la pantalla mantiene un watcher activo mientras está mounted.
 final cobradoresTenantProvider =
-    FutureProvider.family<List<CobradorAdmin>, String>(
+    FutureProvider.autoDispose.family<List<CobradorAdmin>, String>(
   (ref, tenantId) =>
       ref.read(superAdminRepoProvider).listCobradoresTenant(tenantId),
 );
 
 /// Stats agregadas de un miembro para la pantalla de detalle.
 final cobradorStatsProvider =
-    FutureProvider.family<CobradorStats?, String>(
+    FutureProvider.autoDispose.family<CobradorStats?, String>(
   (ref, cobradorId) =>
       ref.read(superAdminRepoProvider).getCobradorStats(cobradorId),
 );
 
 /// Timeline de audit_log del miembro (últimos 50 eventos).
 final auditCobradorProvider =
-    FutureProvider.family<List<AuditEntry>, String>(
+    FutureProvider.autoDispose.family<List<AuditEntry>, String>(
   (ref, cobradorId) => ref
       .read(superAdminRepoProvider)
       .listAuditCobrador(cobradorId: cobradorId),

@@ -6,19 +6,6 @@ import '../models/cuota.dart';
 class CuotasRepo {
   const CuotasRepo();
 
-  Stream<List<Cuota>> watchPorCliente(String clienteId) {
-    return ps.db
-        .watch(
-          '''
-          SELECT * FROM cuotas
-           WHERE cliente_id = ?
-           ORDER BY periodo DESC
-          ''',
-          parameters: [clienteId],
-        )
-        .map((rows) => rows.map(Cuota.fromRow).toList());
-  }
-
   Stream<List<Cuota>> watchCobrables() {
     return ps.db
         .watch(
@@ -29,12 +16,6 @@ class CuotasRepo {
           ''',
         )
         .map((rows) => rows.map(Cuota.fromRow).toList());
-  }
-
-  Stream<Cuota?> watchById(String id) {
-    return ps.db
-        .watch('SELECT * FROM cuotas WHERE id = ?', parameters: [id])
-        .map((rows) => rows.isEmpty ? null : Cuota.fromRow(rows.first));
   }
 
   Future<Cuota?> getById(String id) async {
@@ -72,15 +53,6 @@ class CuotasRepo {
 
 final cuotasRepoProvider = Provider((_) => const CuotasRepo());
 
-final cuotasPorClienteProvider =
-    StreamProvider.family<List<Cuota>, String>((ref, clienteId) {
-  return ref.watch(cuotasRepoProvider).watchPorCliente(clienteId);
-});
-
 final cuotasCobrablesProvider = StreamProvider<List<Cuota>>((ref) {
   return ref.watch(cuotasRepoProvider).watchCobrables();
-});
-
-final cuotaByIdProvider = StreamProvider.family<Cuota?, String>((ref, id) {
-  return ref.watch(cuotasRepoProvider).watchById(id);
 });

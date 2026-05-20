@@ -50,6 +50,6 @@ final clientesAsignadosProvider = StreamProvider<List<Cliente>>((ref) {
 });
 
 final clienteByIdProvider =
-    StreamProvider.family<Cliente?, String>((ref, id) {
+    StreamProvider.autoDispose.family<Cliente?, String>((ref, id) {
   return ref.watch(clientesRepoProvider).watchById(id);
 });
