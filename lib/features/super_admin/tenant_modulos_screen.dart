@@ -1034,7 +1034,7 @@ class _MiembroCardState extends ConsumerState<_MiembroCard> {
         onTap: _saving
             ? null
             : () => GoRouter.of(context)
-                .go('/super/tenants/${widget.tenantId}/miembros/${c.id}'),
+                .push('/super/tenants/${widget.tenantId}/miembros/${c.id}'),
         child: Padding(
           padding: const EdgeInsets.all(16),
           child: Row(

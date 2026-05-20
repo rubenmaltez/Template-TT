@@ -213,7 +213,7 @@ class _TenantCardState extends State<_TenantCard> {
           borderRadius: BorderRadius.circular(12),
           clipBehavior: Clip.antiAlias,
           child: InkWell(
-            onTap: () => context.go('/super/tenants/${tenant.id}'),
+            onTap: () => context.push('/super/tenants/${tenant.id}'),
             child: Padding(
           padding: const EdgeInsets.all(16),
           child: Column(

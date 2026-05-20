@@ -73,7 +73,7 @@ class _ClientesAdminScreenState extends ConsumerState<ClientesAdminScreen> {
               FilledButton.icon(
                 icon: const Icon(Icons.person_add),
                 label: const Text('Nuevo cliente'),
-                onPressed: () => context.go('/admin/clientes/nuevo'),
+                onPressed: () => context.push('/admin/clientes/nuevo'),
               ),
             ],
           ),
@@ -483,7 +483,7 @@ class _ClienteCard extends StatelessWidget {
     return Card(
       color: selected ? scheme.primaryContainer.withValues(alpha: 0.4) : null,
       child: InkWell(
-        onTap: () => context.go('/admin/clientes/${row['id']}/editar'),
+        onTap: () => context.push('/admin/clientes/${row['id']}/editar'),
         borderRadius: BorderRadius.circular(16),
         child: Padding(
           padding: const EdgeInsets.all(12),

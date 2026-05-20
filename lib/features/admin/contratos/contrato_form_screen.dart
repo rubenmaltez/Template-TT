@@ -158,7 +158,13 @@ class _ContratoFormScreenState extends ConsumerState<ContratoFormScreen> {
                 : 'Contrato creado. Cuotas generadas automáticamente.'),
           ),
         );
-        context.go('/admin/contratos');
+        // pop si vinimos vía push (caso normal); fallback go al listado
+        // si fue deep-link directo a la edición/creación.
+        if (context.canPop()) {
+          context.pop();
+        } else {
+          context.go('/admin/contratos');
+        }
       }
     } catch (e) {
       if (mounted) setState(() => _error = e.toString());
@@ -303,7 +309,9 @@ class _ContratoFormScreenState extends ConsumerState<ContratoFormScreen> {
                 child: OutlinedButton(
                   onPressed: _guardando
                       ? null
-                      : () => context.go('/admin/contratos'),
+                      : () => context.canPop()
+                          ? context.pop()
+                          : context.go('/admin/contratos'),
                   child: const Text('Cancelar'),
                 ),
               ),

@@ -35,7 +35,7 @@ class _ContratosAdminScreenState extends ConsumerState<ContratosAdminScreen> {
               FilledButton.icon(
                 icon: const Icon(Icons.add),
                 label: const Text('Nuevo contrato'),
-                onPressed: () => context.go('/admin/contratos/nuevo'),
+                onPressed: () => context.push('/admin/contratos/nuevo'),
               ),
             ],
           ),
@@ -141,7 +141,7 @@ class _ContratoCard extends StatelessWidget {
                 visualDensity: VisualDensity.compact,
               )
             : null,
-        onTap: () => context.go('/admin/contratos/${row['id']}/editar'),
+        onTap: () => context.push('/admin/contratos/${row['id']}/editar'),
       ),
     );
   }

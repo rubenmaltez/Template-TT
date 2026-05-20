@@ -194,7 +194,13 @@ class _ClienteFormScreenState extends ConsumerState<ClienteFormScreen> {
               ? 'Cliente creado'
               : 'Cambios guardados')),
         );
-        context.go('/admin/clientes');
+        // pop si vinimos vía push (caso normal); fallback go al listado
+        // si fue deep-link directo a la edición.
+        if (context.canPop()) {
+          context.pop();
+        } else {
+          context.go('/admin/clientes');
+        }
       }
     } catch (e) {
       if (mounted) setState(() => _error = e.toString());
@@ -413,8 +419,11 @@ class _ClienteFormScreenState extends ConsumerState<ClienteFormScreen> {
             children: [
               Expanded(
                 child: OutlinedButton(
-                  onPressed:
-                      _guardando ? null : () => context.go('/admin/clientes'),
+                  onPressed: _guardando
+                      ? null
+                      : () => context.canPop()
+                          ? context.pop()
+                          : context.go('/admin/clientes'),
                   child: const Text('Cancelar'),
                 ),
               ),
