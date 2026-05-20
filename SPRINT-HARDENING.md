@@ -25,7 +25,7 @@ Resultado: 22 findings (R1–R22) — clasificados así:
 | Día 1 — DB integrity | R2, R16, R17, R18, R19, R20 | ✅ Cerrado (migration 0034). |
 | Día 1 — descartado | R1 | RLS de pagos cross-cobrador, ya documentado en 0025 como decisión de producto. |
 | Día 2 — Edge Functions resilience | R22 (audit-first), control chars, length caps, scrub mensajes, intent/success split, snapshot pre-recreate | ✅ Cerrado. |
-| Día 3 — Frontend bugs + tech debt | R7, R8, R9, R10, R11, R12, R13, R14, R15, R21 | ⏳ Pendiente. |
+| Día 3 — Frontend bugs + tech debt | R7 ✅, R8, R9, R10, R11, R12, R13, R14, R15, R21 | ⏳ En curso (R7 cerrado). |
 
 ---
 
@@ -141,34 +141,39 @@ con labels nuevos:
 
 ---
 
-## Día 3 — Frontend bugs + tech debt (PENDIENTE)
+## Día 3 — Frontend bugs + tech debt (EN CURSO)
 
-Empezar acá cuando el usuario diga "vamos al día 3".
-
-### R7 — Smart sync gate (PRIORITARIO)
+### R7 — Smart sync gate ✅ CERRADO
 
 **Constraint del usuario** (verbatim):
 > "no quiero que este mandando peticiones con data que puede mantener
 > local, en todo caso si se cierra la ventana se debe de loguear
 > nuevamente y no necesariamente borrar la base de dato local y
 > rehacer el llamado"
-> "hay usuarios que pueden usar un mismo telefono por ejemplo por X o Y
-> motivo, y no quiero que se tenga que limpiar toda la data del usuario
-> anterior para que el nuevo usuario no la vea momentaneamente al
-> iniciar sesion, siento que eso es falla de UX y sobrecarga de la DB"
 
-**Decisión**: NO usar `disconnectAndClear()` en logout.
+**Implementado** en commit `79af46f`:
+- `authIdentityProvider` (StateNotifier) trackea `(userId, changedAt)`.
+- `syncReadyProvider` (Provider derivado) = `lastSyncedAt > changedAt`.
+- Persistencia cross-session via `SharedPreferences`
+  (`last_known_user_id`) para detectar switch aunque el browser cierre
+  entre signOut y signIn.
+- `SyncGateScreen` con offline UX (8s slow hint, 25s escape hatch).
+- Redirect en `/sync-gate` después del set-password gate.
+- Container pre-creado en main.dart con `UncontrolledProviderScope`
+  para que el auth listener pueda mutar providers antes de runApp.
+- Guard contra double-connect del initial restore fallback.
 
-**Diseño**: `syncReadyProvider`:
-- Trackea `authChangedAt` (timestamp del último auth state change).
-- Watch `PowerSync.lastSyncedAt`.
-- Bool = `lastSyncedAt > authChangedAt`.
-- Shells (admin/cobrador/super_admin) gatean en este bool y muestran
-  un loader mientras es false.
-- Si el user vuelve a logearse con la misma cuenta → instantáneo
-  porque PowerSync ya tiene los buckets.
-- Si es otro user → breve loader mientras PowerSync hace delete-and-
-  replace de los buckets que no aplican.
+**Follow-ups (no bloqueantes, ya en CLAUDE.md backlog)**:
+- Verificar semantics de `PowerSync.lastSyncedAt` vs aplicación de
+  DELETEs de buckets descartados (¿el checkpoint signal puede llegar
+  antes de los deletes locales?). Si sí, queda una ventana de race
+  de algunos ms.
+- PKCE recovery + user-switch (edge case raro): gate post-set-password
+  con cache de otro user — UX inesperada pero correcta.
+- Listener de auth en main.dart nunca se cancela — dev noise en
+  hot-restart.
+- Bug pre-existente: super_admin landing post-login va a `/` no a
+  `/super/tenants`.
 
 ### R8 — Upload error surface
 Errores de upload de archivos a Storage caen a console pero el user no
