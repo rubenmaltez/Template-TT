@@ -42,6 +42,39 @@ class CobradorAdmin {
   /// haberse logueado todavía).
   bool get nuncaLogueado => lastSignInAt == null;
 
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is CobradorAdmin &&
+          other.id == id &&
+          other.email == email &&
+          other.nombre == nombre &&
+          other.telefono == telefono &&
+          other.rol == rol &&
+          other.activo == activo &&
+          other.prefijoRecibo == prefijoRecibo &&
+          other.createdAt == createdAt &&
+          other.lastSignInAt == lastSignInAt &&
+          other.emailConfirmedAt == emailConfirmedAt &&
+          other.invitedAt == invitedAt &&
+          other.clientesAsignados == clientesAsignados;
+
+  @override
+  int get hashCode => Object.hash(
+        id,
+        email,
+        nombre,
+        telefono,
+        rol,
+        activo,
+        prefijoRecibo,
+        createdAt,
+        lastSignInAt,
+        emailConfirmedAt,
+        invitedAt,
+        clientesAsignados,
+      );
+
   factory CobradorAdmin.fromMap(Map<String, dynamic> m) => CobradorAdmin(
         id: m['id'] as String,
         email: m['email'] as String?,

@@ -29,6 +29,29 @@ class Cobrador {
   /// super_admin hereda todos los permisos de admin.
   bool get tieneAccesoAdmin => esAdmin || esSuperAdmin;
 
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is Cobrador &&
+          other.id == id &&
+          other.tenantId == tenantId &&
+          other.nombre == nombre &&
+          other.telefono == telefono &&
+          other.rol == rol &&
+          other.prefijoRecibo == prefijoRecibo &&
+          other.activo == activo;
+
+  @override
+  int get hashCode => Object.hash(
+        id,
+        tenantId,
+        nombre,
+        telefono,
+        rol,
+        prefijoRecibo,
+        activo,
+      );
+
   factory Cobrador.fromRow(Map<String, dynamic> row) => Cobrador(
         id: row['id'] as String,
         tenantId: row['tenant_id'] as String,

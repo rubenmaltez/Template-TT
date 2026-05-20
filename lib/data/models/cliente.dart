@@ -31,6 +31,41 @@ class Cliente {
 
   bool get tieneUbicacion => latitud != null && longitud != null;
 
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is Cliente &&
+          other.id == id &&
+          other.tenantId == tenantId &&
+          other.cobradorId == cobradorId &&
+          other.comunidadId == comunidadId &&
+          other.nombre == nombre &&
+          other.cedula == cedula &&
+          other.telefono == telefono &&
+          other.direccion == direccion &&
+          other.direccionReferencia == direccionReferencia &&
+          other.latitud == latitud &&
+          other.longitud == longitud &&
+          other.fotoPath == fotoPath &&
+          other.activo == activo;
+
+  @override
+  int get hashCode => Object.hash(
+        id,
+        tenantId,
+        cobradorId,
+        comunidadId,
+        nombre,
+        cedula,
+        telefono,
+        direccion,
+        direccionReferencia,
+        latitud,
+        longitud,
+        fotoPath,
+        activo,
+      );
+
   factory Cliente.fromRow(Map<String, dynamic> row) => Cliente(
         id: row['id'] as String,
         tenantId: row['tenant_id'] as String,

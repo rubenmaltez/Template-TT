@@ -1,3 +1,5 @@
+import 'package:flutter/foundation.dart';
+
 /// Tenant tal como lo ve el super_admin. Llega desde la RPC
 /// `list_tenants_admin` con métricas pre-calculadas.
 class TenantAdmin {
@@ -16,6 +18,25 @@ class TenantAdmin {
   final List<String> modulosHabilitados;
 
   bool tieneModulo(String codigo) => modulosHabilitados.contains(codigo);
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is TenantAdmin &&
+          other.id == id &&
+          other.nombre == nombre &&
+          other.createdAt == createdAt &&
+          other.cobradoresCount == cobradoresCount &&
+          listEquals(other.modulosHabilitados, modulosHabilitados);
+
+  @override
+  int get hashCode => Object.hash(
+        id,
+        nombre,
+        createdAt,
+        cobradoresCount,
+        Object.hashAll(modulosHabilitados),
+      );
 
   factory TenantAdmin.fromMap(Map<String, dynamic> m) => TenantAdmin(
         id: m['id'] as String,

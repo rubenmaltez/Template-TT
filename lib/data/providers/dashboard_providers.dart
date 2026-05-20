@@ -40,6 +40,21 @@ class CobrosKpis {
   final int qtyHoy;
   final int qtySemana;
   final int qtyMes;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is CobrosKpis &&
+          other.hoy == hoy &&
+          other.semana == semana &&
+          other.mes == mes &&
+          other.qtyHoy == qtyHoy &&
+          other.qtySemana == qtySemana &&
+          other.qtyMes == qtyMes;
+
+  @override
+  int get hashCode =>
+      Object.hash(hoy, semana, mes, qtyHoy, qtySemana, qtyMes);
 }
 
 class OperativoKpis {
@@ -55,6 +70,20 @@ class OperativoKpis {
   final num saldo;
   final int vencidas;
   final num saldoVencido;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is OperativoKpis &&
+          other.clientes == clientes &&
+          other.cuotasPend == cuotasPend &&
+          other.saldo == saldo &&
+          other.vencidas == vencidas &&
+          other.saldoVencido == saldoVencido;
+
+  @override
+  int get hashCode =>
+      Object.hash(clientes, cuotasPend, saldo, vencidas, saldoVencido);
 }
 
 class TopCobrador {
@@ -68,6 +97,18 @@ class TopCobrador {
   final String nombre;
   final num total;
   final int qty;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is TopCobrador &&
+          other.id == id &&
+          other.nombre == nombre &&
+          other.total == total &&
+          other.qty == qty;
+
+  @override
+  int get hashCode => Object.hash(id, nombre, total, qty);
 }
 
 class DistribucionCuotas {
@@ -83,6 +124,20 @@ class DistribucionCuotas {
   final int enGracia;
   final int vencida;
   final int pagada;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is DistribucionCuotas &&
+          other.alDia == alDia &&
+          other.parcial == parcial &&
+          other.enGracia == enGracia &&
+          other.vencida == vencida &&
+          other.pagada == pagada;
+
+  @override
+  int get hashCode =>
+      Object.hash(alDia, parcial, enGracia, vencida, pagada);
 }
 
 ({String hoy, String inicioSemana, String inicioMes}) _dashboardDates() {

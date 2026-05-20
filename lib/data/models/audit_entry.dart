@@ -31,6 +31,16 @@ class AuditEntry {
   String get autorDisplay =>
       userNombre ?? userEmail ?? (userId != null ? 'user $userId' : '—');
 
+  // Audit log es append-only — dos rows con mismo id son idénticas.
+  // Comparar por id es semánticamente correcto y evita el complejo
+  // deep-equality de los jsonb dynamic (valorAnterior/valorNuevo).
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) || other is AuditEntry && other.id == id;
+
+  @override
+  int get hashCode => id.hashCode;
+
   factory AuditEntry.fromMap(Map<String, dynamic> m) => AuditEntry(
         id: m['id'] as String,
         tabla: m['tabla'] as String,

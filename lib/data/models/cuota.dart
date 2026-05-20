@@ -100,6 +100,37 @@ class Cuota {
     return CuotaEstadoVisual.vencida;
   }
 
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is Cuota &&
+          other.id == id &&
+          other.tenantId == tenantId &&
+          other.contratoId == contratoId &&
+          other.clienteId == clienteId &&
+          other.cobradorId == cobradorId &&
+          other.periodo == periodo &&
+          other.fechaVencimiento == fechaVencimiento &&
+          other.monto == monto &&
+          other.montoPagado == montoPagado &&
+          other.cargosNeto == cargosNeto &&
+          other.estado == estado;
+
+  @override
+  int get hashCode => Object.hash(
+        id,
+        tenantId,
+        contratoId,
+        clienteId,
+        cobradorId,
+        periodo,
+        fechaVencimiento,
+        monto,
+        montoPagado,
+        cargosNeto,
+        estado,
+      );
+
   factory Cuota.fromRow(Map<String, dynamic> row) => Cuota(
         id: row['id'] as String,
         tenantId: row['tenant_id'] as String,
