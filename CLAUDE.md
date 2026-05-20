@@ -171,6 +171,12 @@ Estos viven acá hasta que se ataquen explícitamente. NO re-flag en audits.
 
 - **OfflineBanner false-positive** durante handshake inicial PowerSync (~2s "Sin conexión"
   antes de establecerse). Necesita debounce de ~3s.
+- **Animación brusca login → shell** post-sync-gate. El spinner desaparece y aparece
+  el shell sin transición. Recomendado: fade transition de 200-300ms.
+- **Mensaje de error técnico expuesto en login offline**. Si el user intenta loguearse
+  sin red, ve `ClientException: Failed to fetch, uri=https://...supabase.co/auth/v1/token...`.
+  Expone URL del backend y string técnico. Fix: catch `ClientException` en login_screen
+  y mostrar "Sin conexión. Verificá tu red e intentá de nuevo."
 - **AppBar back arrow ausente en sub-rutas** — el AdminShell y SuperShell tienen
   `drawer:` así que el leading auto-implícito es el hamburger menu, no el back
   arrow, incluso después de un `push` que sí permitiría `canPop()`. Material no
