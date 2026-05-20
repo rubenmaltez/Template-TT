@@ -25,7 +25,7 @@ Resultado: 22 findings (R1–R22) — clasificados así:
 | Día 1 — DB integrity | R2, R16, R17, R18, R19, R20 | ✅ Cerrado (migration 0034). |
 | Día 1 — descartado | R1 | RLS de pagos cross-cobrador, ya documentado en 0025 como decisión de producto. |
 | Día 2 — Edge Functions resilience | R22 (audit-first), control chars, length caps, scrub mensajes, intent/success split, snapshot pre-recreate | ✅ Cerrado. |
-| Día 3 — Frontend bugs + tech debt | R7 ✅, R8 ✅, R9 ✅, R10, R11, R12, R13, R14, R15, R21 | ⏳ En curso (R7+R8+R9 cerrados). |
+| Día 3 — Frontend bugs + tech debt | R7 ✅, R8 ✅, R9 ✅, R10 ✅, R11, R12, R13, R14, R15, R21 | ⏳ En curso (R7+R8+R9+R10 cerrados). |
 
 ---
 
@@ -230,9 +230,33 @@ con labels nuevos:
   visual no mejoró — solo el behavior del browser back y el botón
   Cancelar).
 
-### R10 — Dashboard recompute
-StreamProviders del dashboard recomputan en cada rebuild del parent.
-Usar `select` o memoizar el slice.
+### R10 — Dashboard recompute ✅ CERRADO
+
+**Implementado** en commit `4165866`. El backlog original decía
+"StreamProviders recomputan" pero en realidad NO había providers —
+los KPIs vivían en `StreamBuilder` directos con `ps.db.watch(...)` que
+retorna nueva instancia de Stream en cada rebuild, causando
+re-subscripciones costosas + flash de loading.
+
+**Cambios**:
+- Nuevo `lib/data/providers/dashboard_providers.dart` con 4
+  StreamProviders (`cobrosKpisProvider`, `operativoKpisProvider`,
+  `topCobradoresProvider`, `distribucionCuotasProvider`) y 4 data
+  classes tipadas. Riverpod cachea por identidad → stream se subscribe
+  una sola vez por sesión.
+- `appSettingsProvider.select((s) => s.diasGracia)` en los 2 providers
+  que dependen de ese campo — el dashboard ya no rebuildea cuando
+  cambia otro setting (nombre empresa, etc.).
+- Cards refactoreadas a `ConsumerWidget` con `AsyncValue.when`.
+- `_AccesosRapidos`: `Nuevo cliente`/`Nuevo contrato` usan `push`
+  (consistencia con R9), `Ver mora`/`Configuración` mantienen `go`
+  (tabs del shell).
+
+**Trade-offs documentados en el código**:
+- Providers no son `autoDispose` (cache-hit instantáneo al volver al
+  dashboard).
+- Fechas se computan dentro del factory; cambio de día sin reload
+  manual deja stats un día atrás. Edge case aceptado.
 
 ### R11 — `autoDispose`
 Providers que sobreviven a navegaciones por no estar marcados
