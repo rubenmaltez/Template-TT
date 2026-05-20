@@ -17,6 +17,7 @@ import '../../data/utils/cobrador_helpers.dart';
 import '../../data/utils/formatters.dart';
 import '../shared/widgets/animated_list_entry.dart';
 import '../shared/widgets/chips.dart';
+import '../shared/widgets/credenciales_dialog.dart';
 import '../shared/widgets/empty_state.dart';
 import '../shared/widgets/skeleton.dart';
 
@@ -622,7 +623,6 @@ class _MiembroCardState extends ConsumerState<_MiembroCard> {
     final container = ProviderScope.containerOf(context, listen: false);
     final messenger = ScaffoldMessenger.of(context);
     final scheme = Theme.of(context).colorScheme;
-    final repo = container.read(superAdminRepoProvider);
 
     if (email == null) {
       _mostrarSnackBar(
@@ -641,78 +641,51 @@ class _MiembroCardState extends ConsumerState<_MiembroCard> {
     final screenW = MediaQuery.sizeOf(context).width;
     final dialogW = screenW < 460 ? screenW * 0.9 : 420.0;
 
-    final confirmar = await showDialog<bool>(
+    // Dialog ConsumerStateful que corre el network call internamente
+    // (mismo patrón que _CrearTenantDialog). Devuelve null si cancela,
+    // o el record completo con nuevaPassword? null/non-null según
+    // el modo elegido. Sin esto teníamos un await entre dos modales
+    // que en web mostraba un frame en blanco.
+    final r = await showDialog<
+        ({String newUserId, String email, String? nuevaPassword})>(
       context: context,
-      builder: (dialogCtx) {
-        final s = Theme.of(dialogCtx).colorScheme;
-        return AlertDialog(
-          title: Text('¿Reenviar invitación a ${c.nombre}?'),
-          content: SizedBox(
-            width: dialogW,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text('Se le enviará un nuevo email de invitación a $email.'),
-                const SizedBox(height: 12),
-                _WarningBox(
-                  icon: Icons.warning_amber,
-                  color: s.errorContainer,
-                  onColor: s.onErrorContainer,
-                  texto: 'Cualquier link de invitación anterior deja de '
-                      'funcionar inmediatamente. Avisale al usuario que '
-                      'use sólo el email más reciente.',
-                ),
-              ],
-            ),
-          ),
-          actions: [
-            TextButton(
-              autofocus: true,
-              onPressed: () => Navigator.of(dialogCtx).pop(false),
-              child: const Text('Cancelar'),
-            ),
-            FilledButton.icon(
-              icon: const Icon(Icons.send),
-              label: const Text('Reenviar'),
-              onPressed: () => Navigator.of(dialogCtx).pop(true),
-            ),
-          ],
-        );
-      },
+      barrierDismissible: false,
+      builder: (_) =>
+          _ReenviarInvitacionDialog(cobrador: c, dialogW: dialogW),
     );
-    if (confirmar != true) return;
+    if (r == null) return;
+    container.invalidate(cobradoresTenantProvider(widget.tenantId));
+    container.invalidate(tenantsAdminProvider);
+    if (!mounted) return;
 
-    setState(() => _saving = true);
-    try {
-      await repo.reenviarInvitacion(
-        cobradorId: c.id,
-        redirectTo: kIsWeb ? '${Uri.base.origin}/?flow=invite' : null,
+    final nueva = r.nuevaPassword;
+    if (nueva != null && nueva.isNotEmpty) {
+      // Path no-email: el server creó al user con password aleatoria;
+      // mostramos email + password para copiar. Si el super_admin
+      // cierra sin copiar, la password se pierde — puede regenerar con
+      // "Forzar contraseña" en la fila del miembro.
+      await showDialog<bool>(
+        context: context,
+        barrierDismissible: false,
+        builder: (_) => CredencialesDialog(
+          title: 'Credenciales de ${c.nombre}',
+          email: r.email,
+          password: nueva,
+          intro: 'Generamos una contraseña nueva para ${c.nombre}. '
+              'Pasale email + contraseña por canal seguro — la '
+              'invitación anterior dejó de funcionar.',
+        ),
       );
-      container.invalidate(cobradoresTenantProvider(widget.tenantId));
-      container.invalidate(tenantsAdminProvider);
-      if (!mounted) return;
+    } else {
+      // Path email: snackbar tradicional.
       _mostrarSnackBar(
         messenger,
         SnackBar(
-          content: Text('Invitación reenviada a $email'),
+          content: Text('Invitación reenviada a ${r.email}'),
           duration: const Duration(seconds: 3),
           behavior: SnackBarBehavior.floating,
         ),
       );
-    } catch (e) {
-      if (!mounted) return;
-      final msg = e.toString().replaceFirst('Exception: ', '');
-      _mostrarSnackBar(
-        messenger,
-        SnackBar(
-          content: Text('No se pudo reenviar: $msg'),
-          backgroundColor: scheme.error,
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
-    } finally {
-      if (mounted) setState(() => _saving = false);
     }
   }
 
@@ -1297,6 +1270,192 @@ class _MiembroCardState extends ConsumerState<_MiembroCard> {
     if (dias == 1) return 'Última sesión: ayer';
     if (dias < 30) return 'Última sesión: hace $dias días';
     return 'Última sesión: ${Fmt.fechaLarga(c.lastSignInAt!)}';
+  }
+}
+
+/// Dialog de confirmación + ejecución del reenvío de invitación. El
+/// switch elige modo (email vs no-email) y se renderea ARRIBA del
+/// body para que sea el anchor de la decisión — el resto del contenido
+/// (texto explicativo, warning, copy del botón) varía según el modo.
+///
+/// El dialog corre el network call internamente (mismo patrón que
+/// _CrearTenantDialog) — evita el flash entre "confirm pop" y "open
+/// credenciales dialog" que se veía cuando dos modales se intercambian
+/// con un await en el medio. En éxito devuelve el record completo;
+/// el caller decide qué hacer con `nuevaPassword`.
+class _ReenviarInvitacionDialog extends ConsumerStatefulWidget {
+  const _ReenviarInvitacionDialog({
+    required this.cobrador,
+    required this.dialogW,
+  });
+
+  final CobradorAdmin cobrador;
+  final double dialogW;
+
+  @override
+  ConsumerState<_ReenviarInvitacionDialog> createState() =>
+      _ReenviarInvitacionDialogState();
+}
+
+class _ReenviarInvitacionDialogState
+    extends ConsumerState<_ReenviarInvitacionDialog> {
+  bool _enviarEmail = true;
+  bool _busy = false;
+  String? _error;
+
+  Future<void> _submit() async {
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+    try {
+      final repo = ref.read(superAdminRepoProvider);
+      final r = await repo.reenviarInvitacion(
+        cobradorId: widget.cobrador.id,
+        redirectTo: kIsWeb ? '${Uri.base.origin}/?flow=invite' : null,
+        enviarEmail: _enviarEmail,
+      );
+      if (!mounted) return;
+      Navigator.of(context).pop(r);
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _error = e.toString().replaceFirst('Exception: ', '');
+        _busy = false;
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final s = Theme.of(context).colorScheme;
+    final email = widget.cobrador.email ?? '(sin email)';
+    return PopScope(
+      canPop: !_busy,
+      child: AlertDialog(
+        title: Text('¿Reenviar invitación a ${widget.cobrador.nombre}?'),
+        content: SizedBox(
+          width: widget.dialogW,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Switch arriba — es el selector de modo del flow, todo
+              // lo de abajo (body, warning, botones) depende de él.
+              // Sin esto el user leía la explicación antes de saber
+              // qué modo estaba eligiendo.
+              SwitchListTile(
+                value: _enviarEmail,
+                onChanged: _busy
+                    ? null
+                    : (v) => setState(() => _enviarEmail = v),
+                title: const Text('Enviar email de invitación'),
+                subtitle: Text(
+                  _enviarEmail
+                      ? 'El usuario recibe el link en su correo.'
+                      : 'No se envía email. Te generamos una contraseña '
+                          'para compartir manualmente.',
+                  style: const TextStyle(fontSize: 11),
+                ),
+                contentPadding: EdgeInsets.zero,
+                dense: true,
+                visualDensity: VisualDensity.compact,
+              ),
+              const SizedBox(height: 8),
+              Text(
+                _enviarEmail
+                    ? 'Se le enviará un nuevo email de invitación a $email.'
+                    : 'Se generará una contraseña nueva para $email '
+                        '(no se manda email — la vas a copiar y '
+                        'compartir vos).',
+              ),
+              const SizedBox(height: 12),
+              _WarningBox(
+                icon: Icons.warning_amber,
+                color: s.errorContainer,
+                onColor: s.onErrorContainer,
+                // Mode-aware: el "qué deja de funcionar" cambia entre
+                // invitaciones (link) y contraseñas (string). Antes
+                // era "link / contraseña" con slash — ambiguo.
+                texto: _enviarEmail
+                    ? 'Cualquier invitación anterior deja de '
+                        'funcionar. Avisale al usuario que use sólo '
+                        'el último email.'
+                    : 'Cualquier contraseña anterior deja de '
+                        'funcionar. Compartile sólo la nueva.',
+              ),
+              if (_error != null) ...[
+                const SizedBox(height: 16),
+                Semantics(
+                  liveRegion: true,
+                  container: true,
+                  child: Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: s.errorContainer,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Icon(Icons.error_outline,
+                            color: s.onErrorContainer, size: 20),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            _error!,
+                            style: TextStyle(
+                              color: s.onErrorContainer,
+                              fontSize: 13,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            autofocus: true,
+            onPressed:
+                _busy ? null : () => Navigator.of(context).pop(),
+            child: const Text('Cancelar'),
+          ),
+          // Labels paralelos: ambos describen el artifact resultante
+          // ("invitación" en email-mode, "nueva contraseña" en
+          // no-email-mode), no el canal. Sin esto teníamos
+          // "Reenviar email" (canal) vs "Generar contraseña"
+          // (artifact) — verbos descalibrados.
+          Semantics(
+            button: true,
+            enabled: !_busy,
+            hint: _enviarEmail
+                ? 'Manda un nuevo email de invitación al usuario'
+                : 'Genera una contraseña nueva para que la copies',
+            child: FilledButton.icon(
+              icon: _busy
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : Icon(_enviarEmail ? Icons.send : Icons.lock_reset),
+              label: Text(_busy
+                  ? 'Procesando…'
+                  : _enviarEmail
+                      ? 'Reenviar invitación'
+                      : 'Generar nueva contraseña'),
+              onPressed: _busy ? null : _submit,
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }
 

@@ -1,13 +1,21 @@
 // Edge Function: reenviar-invitacion
 //
-// Re-envía el email de invitación a un usuario que aún no completó el
-// signup (email_confirmed_at IS NULL). El link original puede haber
-// expirado o haberse perdido en spam.
+// Re-envía la invitación a un usuario que aún no completó el signup
+// (email_confirmed_at IS NULL). El link original puede haber expirado
+// o haberse perdido en spam.
 //
-// Implementación pragmática: borra el usuario y lo re-invita con la
+// Implementación pragmática: borra el usuario y lo re-crea con la
 // misma metadata. Para pending invites es seguro — la row de cobradores
 // cascadea por la FK, no hay clientes asignados aún, no hay pagos /
 // recibos huérfanos. La fila se recrea limpia al re-aceptar.
+//
+// Dos modos según `enviar_email`:
+//   - true (default) → inviteUserByEmail (manda email nuevo).
+//   - false          → createUser con password aleatoria + email_confirm=true
+//                      (no manda nada; devuelve nueva_password para que
+//                      el caller la comparta por otro canal). Útil
+//                      cuando SMTP está en sandbox y el destinatario
+//                      no recibe email automatizado.
 //
 // Guards:
 //   - Sólo super_admin o admin (rol en cobradores).
@@ -19,9 +27,14 @@
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 
+import { generarPasswordSegura } from "../_shared/passwords.ts";
+
 interface ReenviarRequest {
   cobrador_id: string;
   redirect_to?: string;
+  // Si false: createUser con password aleatoria, devuelve nueva_password.
+  // Default true: inviteUserByEmail con el redirect_to del caller.
+  enviar_email?: boolean;
 }
 
 const corsHeaders = {
@@ -161,55 +174,92 @@ serve(async (req) => {
       return jsonError("Error eliminando el usuario previo", 500);
     }
 
-    // Re-invitar con la misma metadata, mismo email.
-    // ATENCIÓN: si esta call falla, el usuario quedó borrado sin
-    // reemplazo. Logueamos el snapshot loud para que el super_admin pueda
-    // recrear manualmente desde Authentication o ejecutar la invitación
-    // a mano.
-    const { data: invite, error: invErr } = await admin.auth.admin
-      .inviteUserByEmail(targetEmail, {
-        data: {
-          tenant_id: snapshot.tenant_id,
-          rol: snapshot.rol,
-          nombre: snapshot.nombre,
-          telefono: snapshot.telefono,
-          prefijo_recibo: snapshot.prefijo_recibo,
-        },
-        redirectTo: body.redirect_to,
-      });
+    // Re-crear el user con la misma metadata, mismo email. Dos paths:
+    //   - enviarEmail=true → inviteUserByEmail (Supabase manda email
+    //     con magic-link al user).
+    //   - enviarEmail=false → createUser con password aleatoria +
+    //     email_confirm=true (no manda nada; devolvemos la password
+    //     en nueva_password para que el caller la comparta por otro
+    //     canal). Mismo patrón que crear-tenant.
+    //
+    // ATENCIÓN: si la re-creación falla, el user quedó borrado sin
+    // reemplazo. Logueamos el snapshot loud para recovery manual.
+    const enviarEmail = body.enviar_email !== false;
+    const metadata = {
+      tenant_id: snapshot.tenant_id,
+      rol: snapshot.rol,
+      nombre: snapshot.nombre,
+      telefono: snapshot.telefono,
+      prefijo_recibo: snapshot.prefijo_recibo,
+    };
 
-    if (invErr) {
+    let invErr: { message: string } | null = null;
+    let newUserId: string | null = null;
+    let nuevaPassword: string | null = null;
+
+    if (enviarEmail) {
+      const { data: invite, error } = await admin.auth.admin
+        .inviteUserByEmail(targetEmail, {
+          data: metadata,
+          redirectTo: body.redirect_to,
+        });
+      if (error) {
+        invErr = error;
+      } else if (!invite.user) {
+        invErr = { message: "invite sin user" };
+      } else {
+        newUserId = invite.user.id;
+      }
+    } else {
+      const generated = generarPasswordSegura();
+      const { data: created, error } = await admin.auth.admin.createUser({
+        email: targetEmail,
+        password: generated,
+        user_metadata: metadata,
+        email_confirm: true,
+      });
+      if (error) {
+        invErr = error;
+      } else if (!created?.user) {
+        invErr = { message: "createUser sin user" };
+      } else {
+        newUserId = created.user.id;
+        nuevaPassword = generated;
+      }
+    }
+
+    if (invErr !== null || newUserId === null) {
+      const msg = invErr?.message ?? "error desconocido";
       console.error(
-        "reenviar: invite falló DESPUÉS de delete — recovery manual " +
+        "reenviar: re-creación falló DESPUÉS de delete — recovery manual " +
           "requerida con este snapshot:",
         JSON.stringify(snapshot),
         invErr,
       );
       return jsonError(
-        "El usuario fue eliminado pero el reinvite falló. Recreá la " +
+        "El usuario fue eliminado pero la re-creación falló. Recreá la " +
           "invitación manualmente desde 'Invitar' con email=" +
-          `${snapshot.email} y rol=${snapshot.rol}. Detalle: ${invErr.message}`,
-        500,
-      );
-    }
-    if (!invite.user) {
-      console.error("reenviar: invite sin user, snapshot:", snapshot);
-      return jsonError(
-        "El usuario fue eliminado pero no se recreó. Recreá la invitación " +
-          "manualmente con email=" + snapshot.email,
+          `${snapshot.email} y rol=${snapshot.rol}. Detalle: ${msg}`,
         500,
       );
     }
 
     // Audit log: registrar el reenvío. valor_anterior tiene el id viejo
-    // (ahora borrado), valor_nuevo el id del re-invite.
+    // (ahora borrado), valor_nuevo el id del nuevo user + el canal
+    // usado (email vs link generado server-side) para que en el
+    // timeline quede claro qué se hizo.
     const { error: auditErr } = await admin.from("audit_log").insert({
       tenant_id: tc.tenant_id,
       tabla: "auth.users",
-      registro_id: invite.user.id,
+      registro_id: newUserId,
       campo: "invitacion",
       valor_anterior: { id: body.cobrador_id, action: "previous_invite" },
-      valor_nuevo: { id: invite.user.id, action: "resent_invitation" },
+      valor_nuevo: {
+        id: newUserId,
+        action: enviarEmail
+          ? "resent_invitation"
+          : "regenerated_credentials",
+      },
       user_id: user.id,
       user_rol: yo.rol,
     });
@@ -220,8 +270,15 @@ serve(async (req) => {
     return new Response(
       JSON.stringify({
         ok: true,
-        message: "Invitación reenviada",
-        new_user_id: invite.user.id,
+        message: enviarEmail
+          ? "Invitación reenviada por email"
+          : "Credenciales generadas — compartilas con el usuario",
+        new_user_id: newUserId,
+        // Eco del email + password nueva sólo cuando enviar_email=false.
+        // Para el flow email queda null (no exponer en logs ni en
+        // history del browser).
+        email: targetEmail,
+        nueva_password: nuevaPassword,
       }),
       {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -229,8 +286,12 @@ serve(async (req) => {
       },
     );
   } catch (e) {
+    // No echar el error crudo al cliente: si el throw ocurrió tras
+    // generar la password aleatoria (modo no-email), ésta podría
+    // aparecer en el stack trace según cómo Deno formatee la
+    // excepción. Loggeamos en server y devolvemos mensaje genérico.
     console.error("reenviar-invitacion: unhandled error", e);
-    return jsonError("Error interno", 500);
+    return jsonError("Error interno — revisá los logs de la función", 500);
   }
 });
 

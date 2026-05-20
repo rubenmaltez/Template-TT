@@ -44,6 +44,8 @@
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 
+import { generarPasswordSegura } from "../_shared/passwords.ts";
+
 interface CrearTenantRequest {
   tenant_nombre: string;
   admin_email: string;
@@ -382,27 +384,6 @@ serve(async (req) => {
     return jsonError("Error interno — revisá los logs de la función", 500);
   }
 });
-
-/// Genera una password aleatoria de 16 chars usando crypto.getRandomValues.
-/// Mismo alphabet que _ForzarPasswordDialog del cliente: excluye chars
-/// ambiguos para dictar (I/l/1, O/0) y limita los símbolos a los que no
-/// se confunden con markdown / espacios.
-function generarPasswordSegura(): string {
-  const chars =
-    "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789!@#%*-+";
-  const bytes = new Uint8Array(16);
-  crypto.getRandomValues(bytes);
-  let out = "";
-  for (let i = 0; i < 16; i++) {
-    // Sesgo del módulo: 256 mod 63 = 4, así que 4 buckets reciben 5
-    // muestras vs 4 — pérdida total ~0.4 bits sobre 16 chars
-    // (95.27 vs 95.64 bits). Para una password rotable on-demand es
-    // irrelevante; si en algún momento esto se vuelve crítico se
-    // cambia a rejection sampling.
-    out += chars[bytes[i] % chars.length];
-  }
-  return out;
-}
 
 async function rollbackTenant(
   admin: ReturnType<typeof createClient>,

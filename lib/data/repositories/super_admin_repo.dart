@@ -166,17 +166,33 @@ class SuperAdminRepo {
     });
   }
 
-  /// Llama a la Edge Function `reenviar-invitacion`. La función borra
-  /// el usuario pending y crea uno nuevo con la misma metadata, así
-  /// el email de invitación llega fresco.
-  Future<void> reenviarInvitacion({
+  /// Llama a la Edge Function `reenviar-invitacion`. Borra el user
+  /// pending y lo re-crea con la misma metadata.
+  ///
+  /// Si `enviarEmail` es true (default): Supabase manda un email nuevo
+  /// con magic-link. Si es false: se genera password aleatoria server
+  /// side y se devuelve en `nuevaPassword` para que el caller la
+  /// muestre y el super_admin la comparta por otro canal (workaround
+  /// SMTP en sandbox). En ambos modos devolvemos también el email y
+  /// el nuevo user_id.
+  Future<({String newUserId, String email, String? nuevaPassword})>
+      reenviarInvitacion({
     required String cobradorId,
     String? redirectTo,
+    bool enviarEmail = true,
   }) async {
-    await _invokeFn('reenviar-invitacion', body: {
+    final data = await _invokeFn('reenviar-invitacion', body: {
       'cobrador_id': cobradorId,
       if (redirectTo != null) 'redirect_to': redirectTo,
+      // Explícito siempre para que un cambio futuro del default en el
+      // server no rompa este caller silenciosamente.
+      'enviar_email': enviarEmail,
     });
+    return (
+      newUserId: data['new_user_id'] as String,
+      email: data['email'] as String,
+      nuevaPassword: data['nueva_password'] as String?,
+    );
   }
 
   /// Llama a la Edge Function `cambiar-email-cobrador`. Sólo super_admin.
