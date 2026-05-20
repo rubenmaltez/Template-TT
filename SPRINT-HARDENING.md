@@ -25,7 +25,7 @@ Resultado: 22 findings (R1–R22) — clasificados así:
 | Día 1 — DB integrity | R2, R16, R17, R18, R19, R20 | ✅ Cerrado (migration 0034). |
 | Día 1 — descartado | R1 | RLS de pagos cross-cobrador, ya documentado en 0025 como decisión de producto. |
 | Día 2 — Edge Functions resilience | R22 (audit-first), control chars, length caps, scrub mensajes, intent/success split, snapshot pre-recreate | ✅ Cerrado. |
-| Día 3 — Frontend bugs + tech debt | R7 ✅, R8, R9, R10, R11, R12, R13, R14, R15, R21 | ⏳ En curso (R7 cerrado). |
+| Día 3 — Frontend bugs + tech debt | R7 ✅, R8 ✅, R9, R10, R11, R12, R13, R14, R15, R21 | ⏳ En curso (R7+R8 cerrados). |
 
 ---
 
@@ -175,9 +175,31 @@ con labels nuevos:
 - Bug pre-existente: super_admin landing post-login va a `/` no a
   `/super/tenants`.
 
-### R8 — Upload error surface
-Errores de upload de archivos a Storage caen a console pero el user no
-ve nada. Surface el error en SnackBar.
+### R8 — Upload error surface ✅ CERRADO
+
+**Implementado** en commit `ce787ca`:
+- `UploadResult` class + `StreamController.broadcast()` en
+  `foto_comprobante_service`.
+- `_sincronizarImpl` cuenta succeeded/failed por corrida y emite el
+  summary si hubo intento real de upload (no spam cuando no hay
+  pendientes).
+- Throttle interno de 2 min entre emisiones de error (evita spam en
+  redes intermitentes con error estructural).
+- `uploadResultsProvider` (StreamProvider) bridge a Riverpod.
+- `rootScaffoldMessengerKey` global + `ref.listen` en `app.dart`.
+  SnackBar floating con action "Ver detalles" → /perfil. Gate por
+  `currentSession` (no mostrar errores del user anterior en /login).
+- `main.dart` consume el service via `container.read(...)` (sino dos
+  instancias = dos streams separados).
+- Botón "Intentar ahora" en perfil ya no muestra snack de error (lo
+  cubre el global).
+
+**Follow-ups (al backlog persistente, no bloqueantes)**:
+- Persistencia del último error para sobrevivir F5/reload (broadcast
+  stream no replaya).
+- Indicador opcional en el shell "X fotos con error reciente".
+- `lastErrorMessage` no se surfacea hoy — disponible en el stream
+  para diagnóstico futuro.
 
 ### R9 — `context.push` refactor
 Algunas rutas usan `context.push` cuando deberían usar `context.go` (o

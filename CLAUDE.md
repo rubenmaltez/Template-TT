@@ -187,6 +187,11 @@ Estos viven acá hasta que se ataquen explícitamente. NO re-flag en audits.
   UX inesperada pero técnicamente correcta. Documentar o detectar y skipear.
 - **Auth listener en main.dart nunca se cancela** — causa exceptions en consola al hot-restart
   en dev (intenta `container.read` sobre container disposed). En prod no se manifiesta.
+- **R8 follow-ups**: el `StreamController.broadcast()` del `FotoComprobanteService` no replaya, así
+  que F5/reload pierde el último UploadResult con failures. Mitigación futura: persistir
+  `lastFailureSummary` en SharedPreferences o agregar un badge en el shell con count de fallidas
+  recientes. El próximo intento de upload re-emite si la causa persiste, así que en práctica el
+  user se entera eventualmente.
 - **Sin tests automatizados**. Carpeta `test/` no existe. `pagos_repo._calcularEstado`
   mirror del trigger SQL es riesgo top — primer test a escribir cuando arranquemos.
 - **Resend en sandbox** — limita el flow email a "self-invite del owner". Por eso el modo
