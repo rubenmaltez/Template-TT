@@ -555,6 +555,7 @@ class _AuditTile extends StatelessWidget {
         'resent_invitation' => 'Invitación reenviada por email',
         'regenerated_credentials' =>
           'Contraseña regenerada sin enviar email',
+        'snapshot_before_resend' => 'Snapshot previo al reenvío',
         'previous_invite' => 'Invitación previa',
         'reset_password_email_sent' => 'Email de reset de contraseña enviado',
         _ => action,
