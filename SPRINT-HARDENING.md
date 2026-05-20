@@ -1,0 +1,219 @@
+# Sprint Hardening (pre-producción)
+
+> Archivo **temporal**. Borrar cuando el sprint cierre (después del Día 3 + merge a `main`).
+> Para contexto permanente del proyecto, ver `CLAUDE.md`.
+
+---
+
+## Origen
+
+4 audits paralelos sobre `claude/powersync-sdk-setup-KZF1R` antes de
+mergear a `main`:
+
+1. **Security** (auth, RLS, edge functions, JWT, signOut global).
+2. **Database** (RLS policies, índices, audit_log, integridad referencial).
+3. **Edge Functions** (idempotencia, atomicidad, rollback, error
+   handling, scrubbing de mensajes internos).
+4. **Architecture** (Riverpod patterns, go_router, sync, PowerSync
+   buckets, navegación, dispose).
+
+Resultado: 22 findings (R1–R22) — clasificados así:
+
+| Categoría | IDs | Acción |
+|---|---|---|
+| OUT OF SCOPE (workflow choice) | R3, R4, R5, R6 | No tocar. Signup disabled, no Resend domain, no email path. El usuario asume el trade-off. |
+| Día 1 — DB integrity | R2, R16, R17, R18, R19, R20 | ✅ Cerrado (migration 0034). |
+| Día 1 — descartado | R1 | RLS de pagos cross-cobrador, ya documentado en 0025 como decisión de producto. |
+| Día 2 — Edge Functions resilience | R22 (audit-first), control chars, length caps, scrub mensajes, intent/success split, snapshot pre-recreate | ✅ Cerrado. |
+| Día 3 — Frontend bugs + tech debt | R7, R8, R9, R10, R11, R12, R13, R14, R15, R21 | ⏳ Pendiente. |
+
+---
+
+## Día 1 — DB Integrity (CERRADO)
+
+Migration: `supabase/migrations/0034_db_integrity_hardening.sql`.
+
+| ID | Fix | Detalle |
+|---|---|---|
+| R2 | Storage path regex jpg/jpeg/png/webp | Limita uploads a esos formatos a nivel de policy. |
+| R16 | `propagar_cambio_monto_a_cuotas_pendientes` | Sólo toca cuotas con estado `pendiente` o `parcial` — no rescribe cuotas pagadas. |
+| R17 | `actualizar_notificaciones_mora` con `SET LOCAL row_security = off` | El cron job ya no se filtra por RLS. |
+| R18 | Índice parcial `cuotas_cron_mora_idx` | Acelera el sweep mensual. |
+| R19 | `client_local_id` UNIQUE por tenant | DO block con `pg_constraint` para idempotencia + pre-flight de duplicados. Bloqueante encontrado en review, fixed. |
+| R20 | `set_tenant_modulo` escribe en `audit_log` | Cambios de toggles ahora trazables. |
+
+**Decisión explícita — R1 (descartado)**: `pagos_insert_propio` permite a
+un cobrador insertar pagos como otro cobrador del mismo tenant.
+Documentado como trade-off de producto en migration 0025 — los dueños de
+ISPs chicos quieren poder marcar pagos a nombre del cobrador que cobró
+fuera de la app. No se modifica.
+
+**Commits**: `ce4b856` (WIP) → `0ba6fee` (fixes de los 3 agents).
+
+---
+
+## Día 2 — Edge Functions Resilience (CERRADO)
+
+Tres parches en paralelo: input hygiene, audit append-only con
+intent/success split, y rollback atómico para multi-paso.
+
+### Funciones modificadas
+1. `invitar-cobrador`
+2. `forzar-password-cobrador`
+3. `cambiar-email-cobrador`
+4. `reenviar-invitacion`
+5. `crear-tenant`
+
+### Patrones aplicados a todas
+
+**Input hygiene (de validation a sanitización)**:
+- Email regex: `/^[^@\s]+@[^@\s]+\.[^@\s]+$/`
+- Strip de control chars: `/[\x00-\x1F\x7F-\x9F]/`
+- Length caps: nombre 120, telefono 32 (trim antes de chequear)
+- Normalización a lowercase para emails
+
+**Audit-first con intent/success split** (R22):
+- ANTES del side effect → insert `valor_nuevo: { action: '*_intent' }`.
+  Si falla → abort sin aplicar el cambio.
+- DESPUÉS del side effect exitoso → insert `valor_nuevo: { action: '*_success' }`
+  o strings (para que `_resumenCambio` muestre el diff genérico).
+- Si el side effect falla post-intent → intent queda como evidencia
+  del intento, response devuelve el error de Auth.
+- Si el success-insert falla → `console.error` loud, el cambio queda
+  aplicado y el operador investiga por server logs.
+
+**Mensajes scrubbed**:
+- Outer catches devuelven "Error interno" genérico — no filtran el
+  string del DB al cliente.
+- `humanizeAuthError` local en cada función traduce los errores
+  conocidos de Supabase Auth a copy en español.
+
+### Específico por función
+
+**`forzar-password-cobrador`**: intent + success ambos con action map,
+nunca se persiste la password en audit_log.
+
+**`cambiar-email-cobrador`**: intent guarda `{ action: 'email_change_intent', intent: nuevoEmail }`,
+success guarda `valor_anterior: emailViejo, valor_nuevo: nuevoEmail`
+como strings — el timeline lo renderea como diff genérico
+"email: viejo → nuevo". signOut global post-cambio para invalidar JWT
+con el email viejo (~1h de drift sino).
+
+**`reenviar-invitacion`** (modo no-email):
+- Snapshot del cobrador en audit_log con `action: 'snapshot_before_resend'`
+  ANTES del delete del user viejo.
+- Re-creación con `createUser + email_confirm: true`.
+- Audit row post-creación incluye `snapshot: snapshot` inline en
+  `valor_anterior` para que el timeline del nuevo user muestre el
+  histórico previo a la re-invitación.
+
+**`crear-tenant`** (atomicidad multi-paso):
+- Variables outer-scope: `tenantId`, `userIdParcial`, `adminForRollback`,
+  `success`.
+- `success = true` se setea justo antes del Response final.
+- Outer catch wrappea cada delete en su propio try/catch con
+  `deleteUserThrow` / `deleteTenantThrow` para que un delete que tira
+  no rompa el rollback del otro.
+- Inner rollback nullifica las vars para evitar double-rollback noise
+  desde el outer catch.
+- **Security HIGH** fixed: outer catch antes podía dejar tenant huérfano
+  si el delete tiraba sincrónicamente.
+
+### UI side
+`lib/features/super_admin/miembro_detalle_screen.dart` — `_accionLabel`
+con labels nuevos:
+```dart
+'force_password_reset_intent' => 'Intento de reset de contraseña',
+'force_password_reset_success' => 'Contraseña reseteada por super_admin',
+'email_change_intent'          => 'Intento de cambio de email',
+'snapshot_before_resend'       => 'Snapshot previo al reenvío',
+'force_password_reset'         => 'Contraseña reseteada por super_admin', // legacy
+```
+
+**Commits**: `c256593` (WIP) → `104de49` (snapshot_before_resend label)
+→ `62748bf` (fixes de los 3 agents).
+
+**Fixes incidentales del review**:
+- Control char regex que el Edit tool escribió como literal bytes —
+  re-escrito vía script Python con `re.sub` + lambda repl.
+- Telefono length check movido después del trim.
+- `_accionLabel` faltaba `snapshot_before_resend`.
+
+---
+
+## Día 3 — Frontend bugs + tech debt (PENDIENTE)
+
+Empezar acá cuando el usuario diga "vamos al día 3".
+
+### R7 — Smart sync gate (PRIORITARIO)
+
+**Constraint del usuario** (verbatim):
+> "no quiero que este mandando peticiones con data que puede mantener
+> local, en todo caso si se cierra la ventana se debe de loguear
+> nuevamente y no necesariamente borrar la base de dato local y
+> rehacer el llamado"
+> "hay usuarios que pueden usar un mismo telefono por ejemplo por X o Y
+> motivo, y no quiero que se tenga que limpiar toda la data del usuario
+> anterior para que el nuevo usuario no la vea momentaneamente al
+> iniciar sesion, siento que eso es falla de UX y sobrecarga de la DB"
+
+**Decisión**: NO usar `disconnectAndClear()` en logout.
+
+**Diseño**: `syncReadyProvider`:
+- Trackea `authChangedAt` (timestamp del último auth state change).
+- Watch `PowerSync.lastSyncedAt`.
+- Bool = `lastSyncedAt > authChangedAt`.
+- Shells (admin/cobrador/super_admin) gatean en este bool y muestran
+  un loader mientras es false.
+- Si el user vuelve a logearse con la misma cuenta → instantáneo
+  porque PowerSync ya tiene los buckets.
+- Si es otro user → breve loader mientras PowerSync hace delete-and-
+  replace de los buckets que no aplican.
+
+### R8 — Upload error surface
+Errores de upload de archivos a Storage caen a console pero el user no
+ve nada. Surface el error en SnackBar.
+
+### R9 — `context.push` refactor
+Algunas rutas usan `context.push` cuando deberían usar `context.go` (o
+viceversa), genera back stack raro en sub-routes de admin.
+
+### R10 — Dashboard recompute
+StreamProviders del dashboard recomputan en cada rebuild del parent.
+Usar `select` o memoizar el slice.
+
+### R11 — `autoDispose`
+Providers que sobreviven a navegaciones por no estar marcados
+`autoDispose`. Auditar todos los FutureProvider.family.
+
+### R12 — Modelos `==`/`hashCode`
+Modelos manuales sin `==`/`hashCode` causan rebuilds innecesarios en
+listas. Migrar a equatable o regenerar.
+
+### R13 — Validators centralizados
+Email regex, control char strip, length caps están duplicados en
+~5 lugares de UI. Mover a `lib/core/validators.dart`.
+
+### R14 — `_InvitarAdminDialog` usa `_invokeFn`
+Hay un dialog que llama directo a `supabase.functions.invoke` en vez
+del helper centralizado con retry/timeout.
+
+### R15 — Paginación
+Listas de cuotas/pagos cargan todo el dataset del tenant. Implementar
+paginación o virtualización.
+
+### R21 — Split `tenant_modulos_screen.dart` (2354 LOC)
+Archivo monstruoso. Extraer widgets y dialogs a su propio archivo.
+
+---
+
+## Cierre del sprint
+
+Cuando el Día 3 esté cerrado:
+
+1. PR `claude/powersync-sdk-setup-KZF1R` → `main`.
+2. 3 audits (Code Audit + QA + UX/Security) sobre el diff completo.
+3. Resolver findings críticos.
+4. Merge.
+5. **Borrar este archivo** (`SPRINT-HARDENING.md`).
+6. Backlog que sobreviva → `CLAUDE.md` sección "Backlog persistente".
