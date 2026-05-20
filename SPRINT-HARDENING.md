@@ -25,7 +25,7 @@ Resultado: 22 findings (R1–R22) — clasificados así:
 | Día 1 — DB integrity | R2, R16, R17, R18, R19, R20 | ✅ Cerrado (migration 0034). |
 | Día 1 — descartado | R1 | RLS de pagos cross-cobrador, ya documentado en 0025 como decisión de producto. |
 | Día 2 — Edge Functions resilience | R22 (audit-first), control chars, length caps, scrub mensajes, intent/success split, snapshot pre-recreate | ✅ Cerrado. |
-| Día 3 — Frontend bugs + tech debt | R7 ✅, R8 ✅, R9 ✅, R10 ✅, R11 ✅, R12 ✅, R13 ✅, R14, R15, R21 | ⏳ En curso (R7→R13 cerrados). |
+| Día 3 — Frontend bugs + tech debt | R7 ✅, R8 ✅, R9 ✅, R10 ✅, R11 ✅, R12 ✅, R13 ✅, R14 ✅, R15, R21 | ⏳ En curso (R7→R14 cerrados). |
 
 ---
 
@@ -346,9 +346,31 @@ muestran etiqueta específica: `"Nombre requerido"`,
 backlog original) NO se centralizó porque vive en Edge Functions
 (TypeScript), no en UI Dart.
 
-### R14 — `_InvitarAdminDialog` usa `_invokeFn`
-Hay un dialog que llama directo a `supabase.functions.invoke` en vez
-del helper centralizado con retry/timeout.
+### R14 — Helper centralizado de Edge Functions ✅ CERRADO
+
+**Implementado** en commit `630f6d6`. Nuevo módulo
+`lib/data/utils/edge_functions.dart` con
+`invokeEdgeFunction(client, name, body)` top-level reusable.
+
+**Cambios**:
+- `SuperAdminRepo._invokeFn` (privado) → eliminado. Los 5 callsites
+  internos usan el helper top-level.
+- `_InvitarDialog` (cobradores_admin_screen, admin invitando cobrador
+  dentro del tenant) y `_InvitarAdminDialog` (tenant_modulos_screen,
+  super_admin invitando admin a un tenant) refactoreados — ya no
+  hacen `supabase.functions.invoke` directo ni unwrap manual de
+  `res.data['ok']`.
+- Catches pelan el prefijo `"Exception: "` técnico (alineado con la
+  convención ya usada en 7 hermanos del super_admin screen).
+
+**Follow-ups al backlog** (no críticos):
+- Naming `invokeEdgeFunction` (vs el inicial `invokeEdgeFn`):
+  resuelto en este commit.
+- Mensaje fallback genérico `'Error ${e.status}'` sin nombre del
+  endpoint — ayudaría a debug agregar `name`.
+- Tipo retorno `Map<String, dynamic>` obliga a casts en cada
+  caller — refactor futuro con genéricos `<T>(parse: T Function(Map))`
+  sale del scope.
 
 ### R15 — Paginación
 Listas de cuotas/pagos cargan todo el dataset del tenant. Implementar
