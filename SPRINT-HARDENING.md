@@ -25,7 +25,7 @@ Resultado: 22 findings (R1–R22) — clasificados así:
 | Día 1 — DB integrity | R2, R16, R17, R18, R19, R20 | ✅ Cerrado (migration 0034). |
 | Día 1 — descartado | R1 | RLS de pagos cross-cobrador, ya documentado en 0025 como decisión de producto. |
 | Día 2 — Edge Functions resilience | R22 (audit-first), control chars, length caps, scrub mensajes, intent/success split, snapshot pre-recreate | ✅ Cerrado. |
-| Día 3 — Frontend bugs + tech debt | R7 ✅, R8 ✅, R9 ✅, R10 ✅, R11, R12, R13, R14, R15, R21 | ⏳ En curso (R7+R8+R9+R10 cerrados). |
+| Día 3 — Frontend bugs + tech debt | R7 ✅, R8 ✅, R9 ✅, R10 ✅, R11 ✅, R12, R13, R14, R15, R21 | ⏳ En curso (R7+R8+R9+R10+R11 cerrados). |
 
 ---
 
@@ -258,9 +258,34 @@ re-subscripciones costosas + flash de loading.
 - Fechas se computan dentro del factory; cambio de día sin reload
   manual deja stats un día atrás. Edge case aceptado.
 
-### R11 — `autoDispose`
-Providers que sobreviven a navegaciones por no estar marcados
-`autoDispose`. Auditar todos los FutureProvider.family.
+### R11 — `autoDispose` ✅ CERRADO
+
+**Implementado** en commit `98ecfad`. Auditados los 35 providers
+del repo. Encontré 4 `.family()` con memory leak real + 2 `.family()`
+que eran código muerto.
+
+**Cambios**:
+- `clienteByIdProvider` → `.autoDispose.family`.
+- `cobradoresTenantProvider`, `cobradorStatsProvider`,
+  `auditCobradorProvider` → `.autoDispose.family`.
+- Eliminados `cuotasPorClienteProvider`, `cuotaByIdProvider` y los
+  métodos huérfanos `CuotasRepo.watchPorCliente` y `watchById` —
+  cero consumers en `lib/`.
+
+**Resto del inventario**:
+- 26 providers globales (services singletons, sync status, auth
+  identity, settings, KPIs del dashboard R10, etc.) — correctamente
+  SIN autoDispose. Su lifetime es deliberado: cache cross-navigation,
+  router los watchea continuamente, o son service stateless.
+
+**Trade-offs**:
+- `cobradoresTenantProvider` se invalida + lee via `.future` desde
+  varios handlers de `tenant_modulos_screen`. La pantalla mantiene
+  watcher activo durante esos handlers → autoDispose no dispone
+  prematuramente.
+- `auditCobradorProvider` y `cobradorStatsProvider` ahora re-fetch
+  al volver al mismo miembro (antes cache stale). UX: leve flash
+  de loading vs datos siempre frescos — preferible para audit logs.
 
 ### R12 — Modelos `==`/`hashCode`
 Modelos manuales sin `==`/`hashCode` causan rebuilds innecesarios en
