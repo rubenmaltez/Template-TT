@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../../data/utils/edge_functions.dart';
 import '../../../data/utils/formatters.dart';
 import '../../../data/utils/validators.dart';
 import '../../../powersync/db.dart' as ps;
@@ -134,7 +135,8 @@ class _InvitarDialogState extends State<_InvitarDialog> {
     });
 
     try {
-      final res = await Supabase.instance.client.functions.invoke(
+      await invokeEdgeFunction(
+        Supabase.instance.client,
         'invitar-cobrador',
         body: {
           'email': email,
@@ -149,10 +151,6 @@ class _InvitarDialogState extends State<_InvitarDialog> {
           if (kIsWeb) 'redirect_to': '${Uri.base.origin}/?flow=invite',
         },
       );
-      final data = res.data as Map<String, dynamic>?;
-      if (data == null || data['ok'] != true) {
-        throw Exception(data?['error'] ?? 'Respuesta inválida');
-      }
       if (mounted) {
         Navigator.pop(context);
         ScaffoldMessenger.of(context).showSnackBar(
@@ -160,7 +158,12 @@ class _InvitarDialogState extends State<_InvitarDialog> {
         );
       }
     } catch (e) {
-      if (mounted) setState(() => _error = e.toString());
+      // El helper invokeEdgeFunction lanza Exception(msg); pelamos el
+      // prefijo "Exception: " técnico antes de mostrar al user.
+      if (mounted) {
+        setState(() =>
+            _error = e.toString().replaceFirst('Exception: ', ''));
+      }
     } finally {
       if (mounted) setState(() => _enviando = false);
     }

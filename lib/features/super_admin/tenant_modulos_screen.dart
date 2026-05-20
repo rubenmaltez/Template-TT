@@ -14,6 +14,7 @@ import '../../data/models/modulo.dart';
 import '../../data/models/tenant_admin.dart';
 import '../../data/repositories/super_admin_repo.dart';
 import '../../data/utils/cobrador_helpers.dart';
+import '../../data/utils/edge_functions.dart';
 import '../../data/utils/formatters.dart';
 import '../../data/utils/validators.dart';
 import '../shared/widgets/animated_list_entry.dart';
@@ -2239,7 +2240,8 @@ class _InvitarAdminDialogState extends ConsumerState<_InvitarAdminDialog> {
     });
 
     try {
-      final res = await Supabase.instance.client.functions.invoke(
+      await invokeEdgeFunction(
+        Supabase.instance.client,
         'invitar-cobrador',
         body: {
           'email': email,
@@ -2254,14 +2256,6 @@ class _InvitarAdminDialogState extends ConsumerState<_InvitarAdminDialog> {
           if (kIsWeb) 'redirect_to': '${Uri.base.origin}/?flow=invite',
         },
       );
-      final data = res.data as Map<String, dynamic>?;
-      if (data == null || data['ok'] != true) {
-        setState(() {
-          _error = (data?['error'] as String?) ?? 'Error desconocido';
-          _enviando = false;
-        });
-        return;
-      }
       // Refrescar lista de tenants (cobradores_count) y lista de miembros
       // para que aparezca el nuevo invitado con estado "pendiente".
       ref.invalidate(tenantsAdminProvider);
@@ -2273,8 +2267,11 @@ class _InvitarAdminDialogState extends ConsumerState<_InvitarAdminDialog> {
         duration: const Duration(seconds: 3),
       ));
     } catch (e) {
+      // Helper invokeEdgeFunction lanza Exception(msg); pelamos el
+      // prefijo "Exception: " — alineado con los hermanos de este
+      // archivo y la convención del codebase.
       setState(() {
-        _error = 'Error: $e';
+        _error = e.toString().replaceFirst('Exception: ', '');
         _enviando = false;
       });
     }

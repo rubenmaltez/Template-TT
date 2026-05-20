@@ -6,6 +6,7 @@ import '../models/cobrador_admin.dart';
 import '../models/cobrador_stats.dart';
 import '../models/modulo.dart';
 import '../models/tenant_admin.dart';
+import '../utils/edge_functions.dart';
 
 /// Repo del panel /super/*. Habla con Supabase por RPC — no toca el SQLite
 /// local. Las tablas modulos / tenant_modulos no se sincronizan al cliente.
@@ -13,40 +14,6 @@ class SuperAdminRepo {
   const SuperAdminRepo(this._client);
 
   final SupabaseClient _client;
-
-  /// Helper para invocar una Edge Function y devolver el body parseado
-  /// con manejo unificado de errores. Las funciones del panel siempre
-  /// devuelven {ok, error?, ...}; este helper extrae el mensaje real
-  /// del campo `error` tanto en respuestas 200-ok=false como en
-  /// FunctionException (status != 200), evitando que el caller tenga
-  /// que ver el wrapper feo 'FunctionException(status: 409, details:…)'.
-  Future<Map<String, dynamic>> _invokeFn(
-    String name, {
-    Map<String, dynamic>? body,
-  }) async {
-    try {
-      final res = await _client.functions.invoke(name, body: body);
-      final data = res.data as Map<String, dynamic>?;
-      if (data == null) {
-        throw Exception('Sin respuesta del servidor');
-      }
-      if (data['ok'] != true) {
-        throw Exception(
-            (data['error'] as String?) ?? 'Error desconocido');
-      }
-      return data;
-    } on FunctionException catch (e) {
-      // Edge Function devolvió 4xx/5xx — el body parseado vive en
-      // e.details. Extraemos el campo 'error' si está; sino fallback al
-      // status para no mostrar string vacío.
-      final det = e.details;
-      String? mensaje;
-      if (det is Map && det['error'] != null) {
-        mensaje = det['error'].toString();
-      }
-      throw Exception(mensaje ?? 'Error ${e.status}');
-    }
-  }
 
   Future<List<Modulo>> listModulos() async {
     final res = await _client.rpc('list_modulos') as List<dynamic>;
@@ -81,7 +48,7 @@ class SuperAdminRepo {
     String? redirectTo,
     bool enviarEmail = true,
   }) async {
-    final data = await _invokeFn('crear-tenant', body: {
+    final data = await invokeEdgeFunction(_client, 'crear-tenant', body: {
       'tenant_nombre': nombre,
       'admin_email': adminEmail,
       'admin_nombre': adminNombre,
@@ -160,7 +127,7 @@ class SuperAdminRepo {
     required String cobradorId,
     required String nuevaPassword,
   }) async {
-    await _invokeFn('forzar-password-cobrador', body: {
+    await invokeEdgeFunction(_client, 'forzar-password-cobrador', body: {
       'cobrador_id': cobradorId,
       'nueva_password': nuevaPassword,
     });
@@ -181,7 +148,7 @@ class SuperAdminRepo {
     String? redirectTo,
     bool enviarEmail = true,
   }) async {
-    final data = await _invokeFn('reenviar-invitacion', body: {
+    final data = await invokeEdgeFunction(_client, 'reenviar-invitacion', body: {
       'cobrador_id': cobradorId,
       if (redirectTo != null) 'redirect_to': redirectTo,
       // Explícito siempre para que un cambio futuro del default en el
@@ -200,7 +167,7 @@ class SuperAdminRepo {
     required String cobradorId,
     required String nuevoEmail,
   }) async {
-    await _invokeFn('cambiar-email-cobrador', body: {
+    await invokeEdgeFunction(_client, 'cambiar-email-cobrador', body: {
       'cobrador_id': cobradorId,
       'nuevo_email': nuevoEmail,
     });
@@ -209,7 +176,7 @@ class SuperAdminRepo {
   /// Llama a la Edge Function `eliminar-cobrador`. Sólo super_admin.
   /// Bloquea si el usuario tiene historial operativo — sugerirá desactivar.
   Future<void> eliminarCobrador({required String cobradorId}) async {
-    await _invokeFn('eliminar-cobrador', body: {
+    await invokeEdgeFunction(_client, 'eliminar-cobrador', body: {
       'cobrador_id': cobradorId,
     });
   }
