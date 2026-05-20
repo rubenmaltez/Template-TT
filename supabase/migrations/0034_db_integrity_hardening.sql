@@ -130,8 +130,14 @@ $$;
 
 -- =========================================================================
 -- R17: actualizar_notificaciones_mora — set local row_security off
--- explícito para hacer la dependencia de RLS bypass explícita en vez
--- de implícita (postgres tiene BYPASSRLS pero no debemos depender de eso).
+-- explícito. NO usa BYPASSRLS implícito de postgres: queremos que la
+-- dependencia sea explícita en código.
+--
+-- Importante: `row_security = off` NO bypassa silenciosamente — si el
+-- owner del function pierde BYPASSRLS, la query con `row_security off`
+-- raisea error explícito en vez de devolver 0 rows silenciosamente.
+-- Eso es mejor que el comportamiento anterior (auth.uid() NULL pasaba
+-- por policy y devolvía 0 rows sin error, masking del bug en cron).
 -- =========================================================================
 
 create or replace function public.actualizar_notificaciones_mora(p_tenant_id uuid)
@@ -196,28 +202,97 @@ create index if not exists cuotas_cron_mora_idx
 -- Si dos tenants generan el mismo UUID v4 (raro pero deterministic
 -- possible bajo manipulación), el segundo tenant queda bloqueado del
 -- sync. Cambiamos a UNIQUE compuesto.
+--
+-- Pre-flight: verificamos que no haya duplicados existentes en
+-- (tenant_id, client_local_id) antes de tocar las constraints. Sin
+-- esto, el ADD CONSTRAINT falla con error críptico de Postgres y la
+-- transacción entera rollbackea sin pista clara de qué row es el
+-- problema. Astronómicamente improbable con UUID v4, pero el guard
+-- lo hace explícito.
+--
+-- Idempotency: los ADD CONSTRAINT van dentro de DO blocks que checkean
+-- pg_constraint. Sin esto, un segundo run de la migración fallaría
+-- porque ADD CONSTRAINT no tiene IF NOT EXISTS en Postgres.
 -- =========================================================================
+
+-- Pre-flight: detectar duplicados antes de cambiar constraints.
+do $$
+declare
+  v_dup_pagos int;
+  v_dup_recibos int;
+  v_dup_cargos int;
+begin
+  select count(*) into v_dup_pagos
+    from (select tenant_id, client_local_id
+            from public.pagos
+           where client_local_id is not null
+           group by tenant_id, client_local_id
+          having count(*) > 1) d;
+
+  select count(*) into v_dup_recibos
+    from (select tenant_id, client_local_id
+            from public.recibos
+           where client_local_id is not null
+           group by tenant_id, client_local_id
+          having count(*) > 1) d;
+
+  select count(*) into v_dup_cargos
+    from (select tenant_id, client_local_id
+            from public.cargos_extra
+           where client_local_id is not null
+           group by tenant_id, client_local_id
+          having count(*) > 1) d;
+
+  if v_dup_pagos > 0 or v_dup_recibos > 0 or v_dup_cargos > 0 then
+    raise exception 'R19: hay duplicados de (tenant_id, client_local_id) — pagos=%, recibos=%, cargos_extra=%. Resolvelos antes de aplicar esta migración.',
+      v_dup_pagos, v_dup_recibos, v_dup_cargos;
+  end if;
+end$$;
 
 -- pagos
 alter table public.pagos
   drop constraint if exists pagos_client_local_id_key;
-alter table public.pagos
-  add constraint pagos_tenant_client_local_id_key
-  unique (tenant_id, client_local_id);
+do $$ begin
+  if not exists (
+    select 1 from pg_constraint
+     where conname = 'pagos_tenant_client_local_id_key'
+       and conrelid = 'public.pagos'::regclass
+  ) then
+    alter table public.pagos
+      add constraint pagos_tenant_client_local_id_key
+      unique (tenant_id, client_local_id);
+  end if;
+end$$;
 
 -- recibos
 alter table public.recibos
   drop constraint if exists recibos_client_local_id_key;
-alter table public.recibos
-  add constraint recibos_tenant_client_local_id_key
-  unique (tenant_id, client_local_id);
+do $$ begin
+  if not exists (
+    select 1 from pg_constraint
+     where conname = 'recibos_tenant_client_local_id_key'
+       and conrelid = 'public.recibos'::regclass
+  ) then
+    alter table public.recibos
+      add constraint recibos_tenant_client_local_id_key
+      unique (tenant_id, client_local_id);
+  end if;
+end$$;
 
 -- cargos_extra
 alter table public.cargos_extra
   drop constraint if exists cargos_extra_client_local_id_key;
-alter table public.cargos_extra
-  add constraint cargos_extra_tenant_client_local_id_key
-  unique (tenant_id, client_local_id);
+do $$ begin
+  if not exists (
+    select 1 from pg_constraint
+     where conname = 'cargos_extra_tenant_client_local_id_key'
+       and conrelid = 'public.cargos_extra'::regclass
+  ) then
+    alter table public.cargos_extra
+      add constraint cargos_extra_tenant_client_local_id_key
+      unique (tenant_id, client_local_id);
+  end if;
+end$$;
 
 
 -- =========================================================================
