@@ -10,7 +10,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'app.dart';
 import 'config/env.dart';
 import 'data/providers/auth_identity_provider.dart';
-import 'data/services/foto_comprobante_service.dart';
+import 'data/providers/foto_comprobante_provider.dart';
 import 'features/auth/auth_flow_provider.dart';
 import 'powersync/db.dart' as ps;
 
@@ -143,8 +143,13 @@ Future<void> main() async {
   // Background worker: sube fotos del comprobante pendientes cuando hay
   // conexión. El service tiene su propio lock interno — el botón manual
   // en perfil y este worker comparten la misma protección.
+  //
+  // Importante: leemos del container (mismo singleton que la UI consume).
+  // Con instancia local separada, el StreamController de `results` no
+  // sería el mismo que el UI watchea via `uploadResultsProvider` y los
+  // SnackBars de R8 nunca llegarían.
   // GC de archivos huérfanos al arrancar (cobros cancelados, etc.).
-  final fotoService = FotoComprobanteService(Supabase.instance.client);
+  final fotoService = container.read(fotoComprobanteServiceProvider);
   unawaited(fotoService.limpiarHuerfanos());
   ps.db.statusStream.listen((status) {
     if (status.connected) unawaited(fotoService.sincronizarPendientes());

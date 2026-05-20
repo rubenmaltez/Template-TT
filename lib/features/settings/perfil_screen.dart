@@ -229,18 +229,21 @@ class _FotosPendientesCardState extends ConsumerState<_FotosPendientesCard> {
           .read(fotoComprobanteServiceProvider)
           .sincronizarPendientes();
       if (mounted) {
+        // Mostramos sólo el feedback positivo. Los errores de upload
+        // los surfacea el listener global en app.dart (R8) — sino
+        // mostraríamos dos SnackBars solapados con mensajes
+        // contradictorios cuando la corrida es parcial.
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text(n == 0
-              ? 'Sin conexión o sin pendientes elegibles'
+              ? 'No hay fotos elegibles para subir ahora.'
               : '$n foto(s) subidas')),
         );
       }
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error: $e')),
-        );
-      }
+      // sincronizarPendientes captura sus propios errores de upload
+      // y los emite por el stream. Si llegamos acá es algo inesperado
+      // (provider disposed, etc.) — logueamos sin molestar al user.
+      if (kDebugMode) debugPrint('_intentar: error inesperado: $e');
     } finally {
       if (mounted) setState(() => _ejecutando = false);
     }

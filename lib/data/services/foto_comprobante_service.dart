@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart';
@@ -7,6 +8,25 @@ import 'package:uuid/uuid.dart';
 
 import '../../powersync/db.dart' as ps;
 import 'foto_local_storage.dart';
+
+/// Resumen de una corrida de `sincronizarPendientes`. Emitido por el
+/// stream `FotoComprobanteService.results` para que la UI surface
+/// fallas via SnackBar (R8) sin reventar el flujo offline-first.
+///
+/// `succeeded` + `failed` son uploads reales intentados. Los skip
+/// (path sospechoso, archivo local desaparecido) NO se cuentan acá —
+/// no son fallas del sync, son cleanup automático.
+class UploadResult {
+  const UploadResult({
+    required this.succeeded,
+    required this.failed,
+    this.lastErrorMessage,
+  });
+
+  final int succeeded;
+  final int failed;
+  final String? lastErrorMessage;
+}
 
 /// Manejo de fotos del comprobante de pago.
 ///
@@ -33,7 +53,26 @@ class FotoComprobanteService {
   // Flag de corrida única ESTÁTICO: compartido entre TODAS las instancias
   // (worker en main.dart y el provider Riverpod podrían instanciar el
   // servicio por separado). Previene doble upload del mismo path.
+  //
+  // R8 nota: para que el stream `results` sea único (sino tendríamos dos
+  // streams separados, uno por instancia, y la UI watchearía uno mientras
+  // el worker emite al otro), el servicio se debe consumir SIEMPRE vía
+  // `fotoComprobanteServiceProvider`. main.dart ya hace container.read.
   static bool _sincronizando = false;
+
+  /// Broadcast del resultado de cada corrida con upload real (no se
+  /// emite cuando no hubo pendientes elegibles).
+  ///
+  /// Tiene throttle interno: si el último resultado con `failed > 0`
+  /// se emitió hace menos de `_throttleErrores`, no re-emitimos —
+  /// evita spam de SnackBars cuando hay un error estructural
+  /// (token expirado, bucket caído) y PowerSync reconecta cada pocos
+  /// segundos. El éxito siempre se emite y resetea el throttle.
+  final _results = StreamController<UploadResult>.broadcast();
+  Stream<UploadResult> get results => _results.stream;
+
+  static const _throttleErrores = Duration(minutes: 2);
+  DateTime? _ultimaEmisionError;
 
   /// Toma una foto con cámara o galería, la comprime y la guarda en disco
   /// local. Devuelve el path con prefijo `local://`. Null si el usuario
@@ -87,6 +126,10 @@ class FotoComprobanteService {
     );
 
     var subidas = 0;
+    var fallidas = 0;
+    String? ultimoError;
+    var huboUploadIntentado = false;
+
     for (final row in pendientes) {
       final pagoId = row['id'] as String;
       final tenantId = row['tenant_id'] as String;
@@ -115,6 +158,7 @@ class FotoComprobanteService {
           continue;
         }
 
+        huboUploadIntentado = true;
         final pathRemoto = '$tenantId/comp/$pagoId.jpg';
         await _supabase.storage.from(_bucket).uploadBinary(
               pathRemoto,
@@ -136,10 +180,45 @@ class FotoComprobanteService {
         subidas++;
       } catch (e) {
         if (kDebugMode) debugPrint('Foto $pagoId no subió aún: $e');
+        fallidas++;
+        ultimoError = e.toString();
         // Continuar — reintenta en próximo sync.
       }
     }
+
+    // R8: emitimos el summary sólo si hubo intento real de upload. Sin
+    // pendientes elegibles (o todos eran skip de cleanup) → silencio,
+    // no spam de SnackBars en cada heartbeat de PowerSync.
+    if (huboUploadIntentado) {
+      final result = UploadResult(
+        succeeded: subidas,
+        failed: fallidas,
+        lastErrorMessage: ultimoError,
+      );
+      if (_debeEmitir(result)) {
+        _results.add(result);
+      }
+    }
     return subidas;
+  }
+
+  /// Throttle de la emisión: las corridas exitosas siempre se emiten
+  /// (resetean el contador), pero las corridas con failures se filtran
+  /// si fue muy poco después de la última. Sino un error estructural
+  /// dispara un SnackBar por cada reconexión, lo cual en redes
+  /// intermitentes es insufrible.
+  bool _debeEmitir(UploadResult result) {
+    if (result.failed == 0) {
+      _ultimaEmisionError = null;
+      return true;
+    }
+    final ahora = DateTime.now();
+    final ultima = _ultimaEmisionError;
+    if (ultima != null && ahora.difference(ultima) < _throttleErrores) {
+      return false;
+    }
+    _ultimaEmisionError = ahora;
+    return true;
   }
 
   /// Genera URL firmada para mostrar la foto desde Storage. TTL 1h.
