@@ -2,23 +2,15 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../../data/repositories/settings_repo.dart';
+import '../../../data/providers/dashboard_providers.dart';
 import '../../../data/utils/formatters.dart';
-import '../../../powersync/db.dart' as ps;
 
-class DashboardAdminScreen extends ConsumerWidget {
+class DashboardAdminScreen extends StatelessWidget {
   const DashboardAdminScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final diasGracia = ref.watch(appSettingsProvider).diasGracia;
+  Widget build(BuildContext context) {
     final now = DateTime.now();
-    final hoy = DateTime(now.year, now.month, now.day).toIso8601String().substring(0, 10);
-    final inicioMes = DateTime(now.year, now.month, 1).toIso8601String().substring(0, 10);
-    final inicioSemana = DateTime(now.year, now.month, now.day)
-        .subtract(Duration(days: now.weekday - 1))
-        .toIso8601String()
-        .substring(0, 10);
 
     return ListView(
       padding: const EdgeInsets.all(24),
@@ -30,9 +22,9 @@ class DashboardAdminScreen extends ConsumerWidget {
           style: TextStyle(color: Theme.of(context).colorScheme.outline),
         ),
         const SizedBox(height: 24),
-        _CobrosKPIs(hoy: hoy, inicioSemana: inicioSemana, inicioMes: inicioMes),
+        const _CobrosKPIs(),
         const SizedBox(height: 24),
-        _OperativoKPIs(diasGracia: diasGracia),
+        const _OperativoKPIs(),
         const SizedBox(height: 24),
         LayoutBuilder(
           builder: (context, c) {
@@ -43,119 +35,75 @@ class DashboardAdminScreen extends ConsumerWidget {
             // y entra en loop de rebuild. Column normal con SizedBox
             // ya hace stack sin pelearse con el ListView.
             if (c.maxWidth >= 700) {
-              return Row(
+              return const Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Expanded(child: _TopCobradoresCard(inicioMes: inicioMes)),
-                  const SizedBox(width: 16),
-                  Expanded(
-                      child: _DistribucionCuotasCard(diasGracia: diasGracia)),
+                  Expanded(child: _TopCobradoresCard()),
+                  SizedBox(width: 16),
+                  Expanded(child: _DistribucionCuotasCard()),
                 ],
               );
             }
-            return Column(
+            return const Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                _TopCobradoresCard(inicioMes: inicioMes),
-                const SizedBox(height: 16),
-                _DistribucionCuotasCard(diasGracia: diasGracia),
+                _TopCobradoresCard(),
+                SizedBox(height: 16),
+                _DistribucionCuotasCard(),
               ],
             );
           },
         ),
         const SizedBox(height: 24),
-        _AccesosRapidos(),
+        const _AccesosRapidos(),
       ],
     );
   }
 }
 
-class _CobrosKPIs extends StatelessWidget {
-  const _CobrosKPIs({
-    required this.hoy,
-    required this.inicioSemana,
-    required this.inicioMes,
-  });
-  final String hoy;
-  final String inicioSemana;
-  final String inicioMes;
+class _CobrosKPIs extends ConsumerWidget {
+  const _CobrosKPIs();
 
   @override
-  Widget build(BuildContext context) {
-    return StreamBuilder(
-      stream: ps.db.watch(
-        '''
-        SELECT
-          COALESCE(SUM(CASE WHEN date(fecha_pago) = ?            THEN monto_cordobas ELSE 0 END), 0) AS hoy,
-          COALESCE(SUM(CASE WHEN date(fecha_pago) >= ?           THEN monto_cordobas ELSE 0 END), 0) AS semana,
-          COALESCE(SUM(CASE WHEN date(fecha_pago) >= ?           THEN monto_cordobas ELSE 0 END), 0) AS mes,
-          COUNT(CASE WHEN date(fecha_pago) = ?  THEN 1 END) AS qty_hoy,
-          COUNT(CASE WHEN date(fecha_pago) >= ? THEN 1 END) AS qty_semana,
-          COUNT(CASE WHEN date(fecha_pago) >= ? THEN 1 END) AS qty_mes
-          FROM pagos
-         WHERE anulado = 0
-        ''',
-        parameters: [hoy, inicioSemana, inicioMes, hoy, inicioSemana, inicioMes],
-      ),
-      builder: (context, snap) {
-        if (!snap.hasData || snap.data!.isEmpty) {
-          return const SizedBox(height: 100, child: Center(child: CircularProgressIndicator()));
-        }
-        final r = snap.data!.first;
-        return _Kpis(items: [
-          _KpiData('Hoy', Fmt.cordobas(r['hoy'] as num), '${r['qty_hoy']} cobros', Icons.today),
-          _KpiData('Esta semana', Fmt.cordobas(r['semana'] as num), '${r['qty_semana']} cobros', Icons.calendar_view_week),
-          _KpiData('Este mes', Fmt.cordobas(r['mes'] as num), '${r['qty_mes']} cobros', Icons.calendar_month, primary: true),
-        ]);
-      },
+  Widget build(BuildContext context, WidgetRef ref) {
+    final async = ref.watch(cobrosKpisProvider);
+    return async.when(
+      data: (k) => _Kpis(items: [
+        _KpiData('Hoy', Fmt.cordobas(k.hoy), '${k.qtyHoy} cobros', Icons.today),
+        _KpiData('Esta semana', Fmt.cordobas(k.semana),
+            '${k.qtySemana} cobros', Icons.calendar_view_week),
+        _KpiData('Este mes', Fmt.cordobas(k.mes), '${k.qtyMes} cobros',
+            Icons.calendar_month,
+            primary: true),
+      ]),
+      loading: () => const SizedBox(
+          height: 100, child: Center(child: CircularProgressIndicator())),
+      error: (_, __) => const SizedBox.shrink(),
     );
   }
 }
 
-class _OperativoKPIs extends StatelessWidget {
-  const _OperativoKPIs({required this.diasGracia});
-  final int diasGracia;
+class _OperativoKPIs extends ConsumerWidget {
+  const _OperativoKPIs();
 
   @override
-  Widget build(BuildContext context) {
-    return StreamBuilder(
-      stream: ps.db.watch(
-        '''
-        SELECT
-          (SELECT COUNT(*) FROM clientes WHERE activo = 1) AS clientes,
-          (SELECT COUNT(*) FROM cuotas
-             WHERE estado IN ('pendiente','parcial')) AS cuotas_pend,
-          (SELECT COALESCE(SUM(monto + COALESCE(cargos_neto, 0) - monto_pagado), 0)
-             FROM cuotas WHERE estado IN ('pendiente','parcial')) AS saldo,
-          (SELECT COUNT(*) FROM cuotas
-             WHERE estado IN ('pendiente','parcial')
-               AND date(fecha_vencimiento, '+' || ? || ' days') < date('now')
-          ) AS vencidas,
-          (SELECT COALESCE(SUM(monto + COALESCE(cargos_neto, 0) - monto_pagado), 0)
-             FROM cuotas
-             WHERE estado IN ('pendiente','parcial')
-               AND date(fecha_vencimiento, '+' || ? || ' days') < date('now')
-          ) AS saldo_vencido
-        ''',
-        parameters: [diasGracia, diasGracia],
-      ),
-      builder: (context, snap) {
-        if (!snap.hasData || snap.data!.isEmpty) {
-          return const SizedBox.shrink();
-        }
-        final r = snap.data!.first;
-        return _Kpis(items: [
-          _KpiData('Clientes activos', '${r['clientes']}', null, Icons.people),
-          _KpiData('Cuotas por cobrar', '${r['cuotas_pend']}', Fmt.cordobas(r['saldo'] as num), Icons.pending),
-          _KpiData(
-            'En mora',
-            '${r['vencidas']}',
-            Fmt.cordobas(r['saldo_vencido'] as num),
-            Icons.warning,
-            error: true,
-          ),
-        ]);
-      },
+  Widget build(BuildContext context, WidgetRef ref) {
+    final async = ref.watch(operativoKpisProvider);
+    return async.when(
+      data: (k) => _Kpis(items: [
+        _KpiData('Clientes activos', '${k.clientes}', null, Icons.people),
+        _KpiData('Cuotas por cobrar', '${k.cuotasPend}',
+            Fmt.cordobas(k.saldo), Icons.pending),
+        _KpiData(
+          'En mora',
+          '${k.vencidas}',
+          Fmt.cordobas(k.saldoVencido),
+          Icons.warning,
+          error: true,
+        ),
+      ]),
+      loading: () => const SizedBox.shrink(),
+      error: (_, __) => const SizedBox.shrink(),
     );
   }
 }
@@ -182,7 +130,8 @@ class _Kpis extends StatelessWidget {
 }
 
 class _KpiData {
-  const _KpiData(this.label, this.value, this.sub, this.icon, {this.primary = false, this.error = false});
+  const _KpiData(this.label, this.value, this.sub, this.icon,
+      {this.primary = false, this.error = false});
   final String label;
   final String value;
   final String? sub;
@@ -198,9 +147,12 @@ class _KpiCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    final color = data.error ? scheme.error : (data.primary ? scheme.primary : scheme.outline);
+    final color = data.error
+        ? scheme.error
+        : (data.primary ? scheme.primary : scheme.outline);
     return Card(
-      color: data.primary ? scheme.primaryContainer.withValues(alpha: 0.4) : null,
+      color:
+          data.primary ? scheme.primaryContainer.withValues(alpha: 0.4) : null,
       child: Padding(
         padding: const EdgeInsets.all(20),
         child: Column(
@@ -229,12 +181,12 @@ class _KpiCard extends StatelessWidget {
   }
 }
 
-class _TopCobradoresCard extends StatelessWidget {
-  const _TopCobradoresCard({required this.inicioMes});
-  final String inicioMes;
+class _TopCobradoresCard extends ConsumerWidget {
+  const _TopCobradoresCard();
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final async = ref.watch(topCobradoresProvider);
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(20),
@@ -244,34 +196,19 @@ class _TopCobradoresCard extends StatelessWidget {
             Text('Top cobradores (este mes)',
                 style: Theme.of(context).textTheme.titleMedium),
             const SizedBox(height: 16),
-            StreamBuilder(
-              stream: ps.db.watch(
-                '''
-                SELECT co.id, co.nombre,
-                       COALESCE(SUM(p.monto_cordobas), 0) AS total,
-                       COUNT(p.id) AS qty
-                  FROM cobradores co
-             LEFT JOIN pagos p ON p.cobrador_id = co.id
-                              AND p.anulado = 0
-                              AND date(p.fecha_pago) >= ?
-                 WHERE co.activo = 1 AND co.rol = 'cobrador'
-                 GROUP BY co.id, co.nombre
-                 ORDER BY total DESC
-                 LIMIT 5
-                ''',
-                parameters: [inicioMes],
-              ),
-              builder: (context, snap) {
-                if (!snap.hasData) return const SizedBox.shrink();
-                final rows = snap.data!;
+            async.when(
+              data: (rows) {
                 if (rows.isEmpty) {
                   return Text('Sin cobradores activos',
-                      style: TextStyle(color: Theme.of(context).colorScheme.outline));
+                      style: TextStyle(
+                          color: Theme.of(context).colorScheme.outline));
                 }
-                final maxTotal = rows.map((r) => (r['total'] as num).toDouble()).reduce((a, b) => a > b ? a : b);
+                final maxTotal = rows
+                    .map((r) => r.total.toDouble())
+                    .reduce((a, b) => a > b ? a : b);
                 return Column(
                   children: rows.map((r) {
-                    final total = (r['total'] as num).toDouble();
+                    final total = r.total.toDouble();
                     final pct = maxTotal > 0 ? total / maxTotal : 0.0;
                     return Padding(
                       padding: const EdgeInsets.symmetric(vertical: 6),
@@ -280,9 +217,10 @@ class _TopCobradoresCard extends StatelessWidget {
                         children: [
                           Row(
                             children: [
-                              Expanded(child: Text(r['nombre'] as String)),
+                              Expanded(child: Text(r.nombre)),
                               Text(Fmt.cordobas(total),
-                                  style: const TextStyle(fontWeight: FontWeight.w600)),
+                                  style: const TextStyle(
+                                      fontWeight: FontWeight.w600)),
                             ],
                           ),
                           const SizedBox(height: 4),
@@ -291,7 +229,9 @@ class _TopCobradoresCard extends StatelessWidget {
                             child: LinearProgressIndicator(
                               value: pct,
                               minHeight: 6,
-                              backgroundColor: Theme.of(context).colorScheme.surfaceContainerHighest,
+                              backgroundColor: Theme.of(context)
+                                  .colorScheme
+                                  .surfaceContainerHighest,
                             ),
                           ),
                         ],
@@ -300,6 +240,8 @@ class _TopCobradoresCard extends StatelessWidget {
                   }).toList(),
                 );
               },
+              loading: () => const SizedBox.shrink(),
+              error: (_, __) => const SizedBox.shrink(),
             ),
           ],
         ),
@@ -308,12 +250,12 @@ class _TopCobradoresCard extends StatelessWidget {
   }
 }
 
-class _DistribucionCuotasCard extends StatelessWidget {
-  const _DistribucionCuotasCard({required this.diasGracia});
-  final int diasGracia;
+class _DistribucionCuotasCard extends ConsumerWidget {
+  const _DistribucionCuotasCard();
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final async = ref.watch(distribucionCuotasProvider);
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(20),
@@ -323,42 +265,24 @@ class _DistribucionCuotasCard extends StatelessWidget {
             Text('Distribución de cuotas',
                 style: Theme.of(context).textTheme.titleMedium),
             const SizedBox(height: 16),
-            StreamBuilder(
-              stream: ps.db.watch(
-                '''
-                SELECT
-                  COUNT(CASE WHEN estado = 'pagada' THEN 1 END) AS pagada,
-                  COUNT(CASE WHEN estado = 'parcial' THEN 1 END) AS parcial,
-                  COUNT(CASE WHEN estado = 'pendiente'
-                            AND fecha_vencimiento >= date('now') THEN 1 END) AS al_dia,
-                  COUNT(CASE WHEN estado IN ('pendiente','parcial')
-                            AND fecha_vencimiento < date('now')
-                            AND date(fecha_vencimiento, '+' || ? || ' days') >= date('now')
-                       THEN 1 END) AS en_gracia,
-                  COUNT(CASE WHEN estado IN ('pendiente','parcial')
-                            AND date(fecha_vencimiento, '+' || ? || ' days') < date('now')
-                       THEN 1 END) AS vencida
-                  FROM cuotas
-                 WHERE estado != 'anulada'
-                ''',
-                parameters: [diasGracia, diasGracia],
-              ),
-              builder: (context, snap) {
-                if (!snap.hasData || snap.data!.isEmpty) {
-                  return const SizedBox.shrink();
-                }
-                final r = snap.data!.first;
+            async.when(
+              data: (k) {
                 final scheme = Theme.of(context).colorScheme;
                 return Column(
                   children: [
-                    _row('Al día', '${r['al_dia']}', scheme.primary, Icons.event),
-                    _row('Pago parcial', '${r['parcial']}', scheme.secondary, Icons.hourglass_bottom),
-                    _row('En gracia', '${r['en_gracia']}', scheme.tertiary, Icons.schedule),
-                    _row('Vencidas', '${r['vencida']}', scheme.error, Icons.warning),
-                    _row('Pagadas', '${r['pagada']}', scheme.outline, Icons.check),
+                    _row('Al día', '${k.alDia}', scheme.primary, Icons.event),
+                    _row('Pago parcial', '${k.parcial}', scheme.secondary,
+                        Icons.hourglass_bottom),
+                    _row('En gracia', '${k.enGracia}', scheme.tertiary,
+                        Icons.schedule),
+                    _row('Vencidas', '${k.vencida}', scheme.error,
+                        Icons.warning),
+                    _row('Pagadas', '${k.pagada}', scheme.outline, Icons.check),
                   ],
                 );
               },
+              loading: () => const SizedBox.shrink(),
+              error: (_, __) => const SizedBox.shrink(),
             ),
           ],
         ),
@@ -374,7 +298,8 @@ class _DistribucionCuotasCard extends StatelessWidget {
           Icon(icon, size: 18, color: color),
           const SizedBox(width: 8),
           Expanded(child: Text(label)),
-          Text(value, style: TextStyle(fontWeight: FontWeight.w600, color: color)),
+          Text(value,
+              style: TextStyle(fontWeight: FontWeight.w600, color: color)),
         ],
       ),
     );
@@ -382,6 +307,8 @@ class _DistribucionCuotasCard extends StatelessWidget {
 }
 
 class _AccesosRapidos extends StatelessWidget {
+  const _AccesosRapidos();
+
   @override
   Widget build(BuildContext context) {
     return Card(
@@ -397,10 +324,16 @@ class _AccesosRapidos extends StatelessWidget {
               spacing: 12,
               runSpacing: 12,
               children: [
-                _accion(context, Icons.person_add, 'Nuevo cliente', '/admin/clientes/nuevo'),
-                _accion(context, Icons.assignment_add, 'Nuevo contrato', '/admin/contratos/nuevo'),
+                // Forms CRUD: push para que back vuelva al dashboard
+                // (consistente con R9 en clientes/contratos admin).
+                _accion(context, Icons.person_add, 'Nuevo cliente',
+                    '/admin/clientes/nuevo', push: true),
+                _accion(context, Icons.assignment_add, 'Nuevo contrato',
+                    '/admin/contratos/nuevo', push: true),
+                // Tabs del shell: go reemplaza la stack (navegación lateral).
                 _accion(context, Icons.warning, 'Ver mora', '/admin/cuotas'),
-                _accion(context, Icons.settings, 'Configuración', '/admin/settings'),
+                _accion(context, Icons.settings, 'Configuración',
+                    '/admin/settings'),
               ],
             ),
           ],
@@ -409,11 +342,13 @@ class _AccesosRapidos extends StatelessWidget {
     );
   }
 
-  Widget _accion(BuildContext context, IconData icon, String label, String path) {
+  Widget _accion(BuildContext context, IconData icon, String label,
+      String path,
+      {bool push = false}) {
     return OutlinedButton.icon(
       icon: Icon(icon),
       label: Text(label),
-      onPressed: () => context.go(path),
+      onPressed: () => push ? context.push(path) : context.go(path),
     );
   }
 }
