@@ -65,7 +65,7 @@ class SkeletonCard extends StatelessWidget {
   final bool hasChip;
 
   /// Para evitar layout jump al cargar, el caller pasa el mismo margin
-  /// que usen los cards reales (8 para _MiembroCard, 12 para _TenantCard).
+  /// que usen los cards reales (8 para MiembroCard, 12 para _TenantCard).
   final double marginBottom;
 
   @override

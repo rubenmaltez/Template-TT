@@ -11,7 +11,7 @@ import '../../data/utils/validators.dart';
 /// Después llama a auth.updateUser para setear la nueva.
 ///
 /// Para v1 el largo mínimo es 8 chars (mismo criterio que
-/// _ForzarPasswordDialog del panel super_admin); más adelante podemos
+/// ForzarPasswordDialog del panel super_admin); más adelante podemos
 /// agregar checks de complejidad (mix de mayúsculas/dígitos/etc.).
 class CambiarPasswordDialog extends StatefulWidget {
   const CambiarPasswordDialog({super.key});
@@ -279,7 +279,7 @@ class _CambiarPasswordDialogState extends State<CambiarPasswordDialog> {
           ),
           // Semantics.hint para que el screen reader anuncie el flow
           // de dos pasos (verifica actual + guarda nueva). Icono
-          // lock_reset alinea visualmente con _ForzarPasswordDialog
+          // lock_reset alinea visualmente con ForzarPasswordDialog
           // del panel super_admin (mismo concepto de "rotar password").
           // Label corto "Guardar" para no duplicar el título arriba.
           Semantics(

@@ -33,7 +33,7 @@ Future<void> _abrirCrearTenant(BuildContext context, WidgetRef ref) async {
 
   // Si vino una password, el super_admin pidió no-email — abrimos
   // dialog que muestra email+password para copiar (mismo patrón que
-  // _PasswordCopiarDialog de forzar-password). La password se generó
+  // PasswordCopiarDialog de forzar-password). La password se generó
   // server-side y NO queda guardada en ningún lado — esta es la
   // única oportunidad de verla; si la pierde, hay que ir a "Forzar
   // contraseña" desde el detalle del miembro para generar otra.
