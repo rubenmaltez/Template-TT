@@ -148,30 +148,9 @@ serve(async (req) => {
       );
     }
 
-    // Actualizar email + mantener confirmado (no re-verificación).
-    const { error: updErr } = await admin.auth.admin.updateUserById(
-      body.cobrador_id,
-      { email: nuevoEmail, email_confirm: true },
-    );
-    if (updErr) {
-      // Errores típicos: email ya en uso por otro user.
-      return jsonError(`Auth: ${updErr.message}`, 400);
-    }
-
-    // Invalidar todas las sesiones del target — sino sigue logueado con
-    // JWT del email viejo hasta el siguiente refresh (~1h). Para un cambio
-    // de identidad mejor forzamos re-login en todos los devices.
-    const { error: signOutErr } = await admin.auth.admin.signOut(
-      body.cobrador_id,
-      "global",
-    );
-    if (signOutErr) {
-      // No bloqueamos — el email ya cambió. Sólo log.
-      console.error("cambiar-email: signOut global falló", signOutErr);
-    }
-
-    // Audit log. valor_anterior/nuevo contienen los emails — son PII pero
-    // queda en el audit que sólo super_admin lee. No es password.
+    // Audit-first ordering — ver justificación en forzar-password-cobrador.
+    // valor_anterior/nuevo contienen los emails — son PII pero queda en
+    // el audit que sólo super_admin lee.
     const { error: auditErr } = await admin.from("audit_log").insert({
       tenant_id: tc.tenant_id,
       tabla: "auth.users",
@@ -184,6 +163,38 @@ serve(async (req) => {
     });
     if (auditErr) {
       console.error("cambiar-email: audit insert falló", auditErr);
+      return jsonError(
+        "No se pudo registrar la auditoría — el cambio no se aplicó. " +
+          "Reintentá en unos segundos.",
+        500,
+      );
+    }
+
+    // Actualizar email + mantener confirmado (no re-verificación).
+    const { error: updErr } = await admin.auth.admin.updateUserById(
+      body.cobrador_id,
+      { email: nuevoEmail, email_confirm: true },
+    );
+    if (updErr) {
+      // Audit row quedó como intent. Append-only, no se borra.
+      console.error(
+        "cambiar-email: updateUserById falló DESPUÉS del audit. " +
+          `cobrador_id=${body.cobrador_id}, audit row queda como intent.`,
+        updErr,
+      );
+      return jsonError(`Auth: ${updErr.message}`, 400);
+    }
+
+    // Invalidar todas las sesiones del target — sino sigue logueado con
+    // JWT del email viejo hasta el siguiente refresh (~1h). Para un cambio
+    // de identidad mejor forzamos re-login en todos los devices.
+    const { error: signOutErr } = await admin.auth.admin.signOut(
+      body.cobrador_id,
+      "global",
+    );
+    if (signOutErr) {
+      // No bloqueamos — el email ya cambió.
+      console.error("cambiar-email: signOut global falló", signOutErr);
     }
 
     return new Response(

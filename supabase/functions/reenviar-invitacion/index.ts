@@ -142,8 +142,8 @@ serve(async (req) => {
     }
 
     // Snapshot de la data del cobrador antes de borrar — necesario para
-    // poder reportar al super_admin si el invite falla después del delete
-    // y debe recrearse manualmente.
+    // poder reportar al super_admin si la re-creación falla después del
+    // delete y debe recrearse manualmente.
     const snapshot = {
       email: targetEmail,
       tenant_id: tc.tenant_id,
@@ -152,6 +152,32 @@ serve(async (req) => {
       telefono: tc.telefono ?? null,
       prefijo_recibo: tc.rol === "cobrador" ? (tc.prefijo_recibo ?? null) : null,
     };
+
+    // Persistir el snapshot al audit_log ANTES del delete. Antes
+    // sólo iba a console.error; los logs rotan a los pocos días y si
+    // la re-creación falla y nadie atiende a tiempo, perdemos toda la
+    // info para reconstruir el invite manualmente. En audit_log queda
+    // para siempre y el super_admin lo ve en el timeline del miembro.
+    const { error: snapAuditErr } = await admin.from("audit_log").insert({
+      tenant_id: tc.tenant_id,
+      tabla: "auth.users",
+      registro_id: body.cobrador_id,
+      campo: "invitacion",
+      valor_anterior: snapshot,
+      valor_nuevo: { action: "snapshot_before_resend" },
+      user_id: user.id,
+      user_rol: yo.rol,
+    });
+    if (snapAuditErr) {
+      // Si no podemos auditar el snapshot, no destruimos el user. Mejor
+      // dejar el pending invite intacto que borrarlo sin recovery info.
+      console.error("reenviar: snapshot audit insert falló", snapAuditErr);
+      return jsonError(
+        "No se pudo registrar la auditoría previa al reenvío — la " +
+          "invitación NO se tocó. Reintentá en unos segundos.",
+        500,
+      );
+    }
 
     // Borrar el user (cascadea cobradores). Para pending invites esto es
     // seguro porque no hay datos operativos asociados.

@@ -98,8 +98,21 @@ serve(async (req) => {
 
     // Validar body.
     const body: InvitarRequest = await req.json();
-    if (!body.email || !body.nombre || !body.rol) {
+    const email = (body.email ?? "").trim().toLowerCase();
+    const nombre = (body.nombre ?? "").trim();
+
+    if (!email || !nombre || !body.rol) {
       return jsonError("email, nombre y rol son requeridos", 400);
+    }
+    // Email regex: mismo patrón que crear-tenant para consistencia.
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
+      return jsonError("email inválido", 400);
+    }
+    if (nombre.length > 120) {
+      return jsonError("nombre demasiado largo (max 120)", 400);
+    }
+    if (body.telefono && body.telefono.length > 32) {
+      return jsonError("telefono demasiado largo (max 32)", 400);
     }
     if (!["admin", "admin_cobranza", "cobrador"].includes(body.rol)) {
       return jsonError("Rol inválido", 400);
@@ -157,11 +170,11 @@ serve(async (req) => {
     //   `?flow=invite` para que el app route a /set-password). Si no,
     //   Supabase usa el Site URL configurado.
     const { data: invite, error: invErr } = await admin.auth.admin
-      .inviteUserByEmail(body.email, {
+      .inviteUserByEmail(email, {
         data: {
           tenant_id: targetTenantId,
           rol: body.rol,
-          nombre: body.nombre,
+          nombre: nombre,
           telefono: body.telefono ?? null,
           prefijo_recibo: body.rol === "cobrador"
             ? (body.prefijo_recibo ?? null)
@@ -170,7 +183,9 @@ serve(async (req) => {
         redirectTo: body.redirect_to,
       });
 
-    if (invErr) return jsonError(`Auth: ${invErr.message}`, 400);
+    if (invErr) {
+      return jsonError(humanizeAuthError(invErr.message), 400);
+    }
     if (!invite.user) return jsonError("No se creó el usuario", 500);
 
     return new Response(
@@ -186,9 +201,38 @@ serve(async (req) => {
       },
     );
   } catch (e) {
-    return jsonError(`Error: ${String(e)}`, 500);
+    // No echar el error crudo al cliente — puede leakear stack o data
+    // sensible. Loggeamos server-side y devolvemos mensaje genérico.
+    console.error("invitar-cobrador unhandled error:", e);
+    return jsonError("Error interno — revisá los logs de la función", 500);
   }
 });
+
+/// Mapea los errores conocidos de Supabase Auth (en inglés) a copy en
+/// español. Mismo patrón que crear-tenant y reenviar-invitacion.
+function humanizeAuthError(raw: string): string {
+  const lower = raw.toLowerCase();
+  if (
+    /already.*(registered|exists)/.test(lower) ||
+    lower.includes("user already")
+  ) {
+    return "Ya existe un usuario con ese email — usá otro o, " +
+      "si querés moverlo de tenant, contactá soporte.";
+  }
+  if (lower.includes("sending invite") || lower.includes("sending email")) {
+    return "El proveedor de email rechazó el envío. Si estás usando " +
+      "Resend en sandbox, solo podés invitar al email dueño de tu " +
+      "cuenta Resend — para invitar a otros, verificá tu dominio.";
+  }
+  if (lower.includes("rate limit")) {
+    return "Rate limit del proveedor de email alcanzado — esperá un " +
+      "rato y reintentá.";
+  }
+  if (lower.includes("invalid email")) {
+    return "Email inválido según el proveedor de email.";
+  }
+  return raw;
+}
 
 function jsonError(message: string, status: number): Response {
   return new Response(

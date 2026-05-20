@@ -73,6 +73,19 @@ serve(async (req) => {
     return new Response("ok", { headers: corsHeaders });
   }
 
+  // Variables que sobreviven al outer catch para poder rollbackear si
+  // una excepción no anticipada ocurre tras la creación parcial. Sin
+  // esto, una excepción entre createUser éxito y `new Response()`
+  // dejaba orphan tenant + auth.users.
+  let tenantId: string | null = null;
+  let userIdParcial: string | null = null;
+  // admin client se setea apenas leemos las env vars — necesario para
+  // el rollback en el outer catch.
+  let adminForRollback: ReturnType<typeof createClient> | null = null;
+  // Flag que marcamos true cuando llegamos al final del flow happy.
+  // Si está false en el catch, hay state parcial para limpiar.
+  let success = false;
+
   try {
     const authHeader = req.headers.get("Authorization");
     if (!authHeader) {
@@ -139,9 +152,12 @@ serve(async (req) => {
 
     // service_role: sólo para el invite (auth.admin) y rollback. Las
     // operaciones de DB van vía callerClient para que la RLS valide.
+    // Lo asignamos también a adminForRollback para que el outer catch
+    // pueda usarlo si tiene que limpiar state parcial.
     const admin = createClient(supabaseUrl, serviceKey, {
       auth: { autoRefreshToken: false, persistSession: false },
     });
+    adminForRollback = admin;
 
     // Pre-flight: validar que los módulos extra existen y no son base.
     // (Base se habilita auto por trigger; pasarlos en "extra" sería
@@ -214,7 +230,9 @@ serve(async (req) => {
     if (tErr || !nuevoTenant) {
       return jsonError(`Error creando tenant: ${tErr?.message}`, 500);
     }
-    const tenantId: string = nuevoTenant.id;
+    // Asignamos al outer scope para que el catch pueda rollbackear si
+    // una excepción no anticipada ocurre más adelante.
+    tenantId = nuevoTenant.id as string;
 
     // Guard contra accidente cósmico: el insert NO debería retornar el
     // System tenant, pero si por algún motivo se devolviera, abortamos.
@@ -258,13 +276,9 @@ serve(async (req) => {
     };
 
     let adminUserId: string | null = null;
-    // userIdParcial: captura el id de auth.users incluso si algo en
-    // la respuesta vino malformado. Si lo tenemos, el rollback lo
-    // borra antes de tocar el tenant — sin esto, el trigger
-    // handle_new_user ya creó la fila en cobradores apuntando al
-    // tenant que queremos borrar, y la FK bloquearía el DELETE
-    // tenants dejando un row huérfano en auth.users.
-    let userIdParcial: string | null = null;
+    // userIdParcial está declarado en el outer scope (línea ~81) para
+    // que el outer catch pueda hacer cleanup si una excepción
+    // inesperada ocurre tras la creación del user. Acá lo asignamos.
     let adminPassword: string | null = null;
     let invErrMsg: string | null = null;
 
@@ -349,6 +363,9 @@ serve(async (req) => {
       return jsonError(`Invite falló: ${msg}`, 400);
     }
 
+    // Marcamos success ANTES de armar la response, así el outer catch
+    // sabe que llegamos al estado limpio (no necesita rollback).
+    success = true;
     return new Response(
       JSON.stringify({
         ok: true,
@@ -379,6 +396,32 @@ serve(async (req) => {
     // --inspect / --log-level). Loggeamos en server para diagnosticar
     // y devolvemos un mensaje genérico al cliente.
     console.error("crear-tenant unhandled error:", e);
+
+    // Cleanup de state parcial: si llegamos a crear user/tenant pero
+    // una excepción rompió el flow antes del response, hay que limpiar
+    // para no dejar orphans. success=true significa que llegamos al
+    // happy path; si está false acá hay que rollbackear.
+    if (!success && adminForRollback !== null) {
+      if (userIdParcial !== null) {
+        const { error: delUserErr } = await adminForRollback.auth.admin
+          .deleteUser(userIdParcial);
+        if (delUserErr) {
+          console.error(
+            `crear-tenant rollback deleteUser falló (user=${userIdParcial}): ${delUserErr.message}`,
+          );
+        }
+      }
+      if (tenantId !== null) {
+        const { error: delTenantErr } = await adminForRollback
+          .from("tenants").delete().eq("id", tenantId);
+        if (delTenantErr) {
+          console.error(
+            `crear-tenant rollback deleteTenant falló (tenant=${tenantId}): ${delTenantErr.message}. ORPHAN.`,
+          );
+        }
+      }
+    }
+
     return jsonError("Error interno — revisá los logs de la función", 500);
   }
 });

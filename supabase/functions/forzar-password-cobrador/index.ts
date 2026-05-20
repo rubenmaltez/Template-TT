@@ -111,37 +111,13 @@ serve(async (req) => {
       );
     }
 
-    // Actualizar password vía auth.admin (única vía sin email).
-    const { error: updErr } = await admin.auth.admin.updateUserById(
-      body.cobrador_id,
-      { password: body.nueva_password },
-    );
-    if (updErr) {
-      // Errores típicos: password no cumple la policy del proyecto (HIBP,
-      // longitud mínima del dashboard). El mensaje es informativo, lo
-      // dejamos pasar al cliente.
-      return jsonError(`Auth: ${updErr.message}`, 400);
-    }
-
-    // Invalidar todas las sesiones activas del target — el usuario sale
-    // expulsado de cualquier dispositivo donde estuviera logueado, así
-    // el reseteo es efectivo inmediatamente y no esperan al refresh del
-    // token (~1h).
-    const { error: signOutErr } = await admin.auth.admin.signOut(
-      body.cobrador_id,
-      "global",
-    );
-    if (signOutErr) {
-      // No bloqueamos — la password ya cambió. Sólo logueamos.
-      console.error(
-        "forzar-password: global signOut failed",
-        signOutErr,
-      );
-    }
-
-    // Audit trail: NUNCA guardamos la password.
-    //   valor_anterior=null + valor_nuevo={action} deja claro que no
-    //   estamos almacenando ningún valor sensible, sólo el evento.
+    // Audit-first ordering: en compliance contexts, NO tener audit
+    // cuando algo PASÓ es peor que tener un audit "fantasma" cuando
+    // algo NO pasó. Si insertamos audit ANTES del cambio y el cambio
+    // falla, queda un audit row de "intent" — molesta pero defendible.
+    // Si insertamos audit DESPUÉS del cambio y el audit falla, la
+    // operación queda sin trail — eso sí es problemático para auditoría
+    // regulatoria. NUNCA guardamos la password en el audit row.
     const { error: auditErr } = await admin.from("audit_log").insert({
       tenant_id: target.tenant_id,
       tabla: "auth.users",
@@ -153,12 +129,44 @@ serve(async (req) => {
       user_rol: "super_admin",
     });
     if (auditErr) {
-      // El cambio de password ya está aplicado; no podemos rollback.
-      // Log loud para que aparezca en function logs y se pueda alertar.
+      // Si no podemos auditar, no aplicamos el cambio. Mejor un user
+      // sin password reseteada que un reset sin trail.
+      console.error("forzar-password: audit insert falló", auditErr);
+      return jsonError(
+        "No se pudo registrar la auditoría — el cambio no se aplicó. " +
+          "Reintentá en unos segundos.",
+        500,
+      );
+    }
+
+    // Actualizar password vía auth.admin (única vía sin email).
+    const { error: updErr } = await admin.auth.admin.updateUserById(
+      body.cobrador_id,
+      { password: body.nueva_password },
+    );
+    if (updErr) {
+      // El audit row quedó como "intent" sin operación real. Logueamos
+      // loud para que sea visible en server logs. No intentamos delete
+      // del audit row porque el patrón "audit append-only" lo prohíbe;
+      // la inconsistencia es preferible al borrado de evidencia.
       console.error(
-        "forzar-password: AUDIT INSERT FAILED — password was changed " +
-          "but no audit row was written",
-        auditErr,
+        "forzar-password: updateUserById falló DESPUÉS de audit insert. " +
+          `cobrador_id=${body.cobrador_id}, audit row queda como intent.`,
+        updErr,
+      );
+      return jsonError(`Auth: ${updErr.message}`, 400);
+    }
+
+    // Invalidar todas las sesiones activas del target.
+    const { error: signOutErr } = await admin.auth.admin.signOut(
+      body.cobrador_id,
+      "global",
+    );
+    if (signOutErr) {
+      // No bloqueamos — la password ya cambió.
+      console.error(
+        "forzar-password: global signOut failed",
+        signOutErr,
       );
     }
 
