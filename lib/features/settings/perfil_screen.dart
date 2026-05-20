@@ -58,7 +58,7 @@ class PerfilScreen extends ConsumerWidget {
         ),
         const SizedBox(height: 12),
         _InfoCard([
-          if (email != null) (_, 'Email', email),
+          if (email != null) (null, 'Email', email),
           (Icons.phone, 'Teléfono', cobrador.telefono ?? '—'),
           (Icons.receipt, 'Prefijo recibo', cobrador.prefijoRecibo ?? 'No asignado'),
         ]),
