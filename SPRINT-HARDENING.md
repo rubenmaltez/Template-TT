@@ -25,7 +25,7 @@ Resultado: 22 findings (R1–R22) — clasificados así:
 | Día 1 — DB integrity | R2, R16, R17, R18, R19, R20 | ✅ Cerrado (migration 0034). |
 | Día 1 — descartado | R1 | RLS de pagos cross-cobrador, ya documentado en 0025 como decisión de producto. |
 | Día 2 — Edge Functions resilience | R22 (audit-first), control chars, length caps, scrub mensajes, intent/success split, snapshot pre-recreate | ✅ Cerrado. |
-| Día 3 — Frontend bugs + tech debt | R7 ✅, R8 ✅, R9, R10, R11, R12, R13, R14, R15, R21 | ⏳ En curso (R7+R8 cerrados). |
+| Día 3 — Frontend bugs + tech debt | R7 ✅, R8 ✅, R9 ✅, R10, R11, R12, R13, R14, R15, R21 | ⏳ En curso (R7+R8+R9 cerrados). |
 
 ---
 
@@ -201,9 +201,34 @@ con labels nuevos:
 - `lastErrorMessage` no se surfacea hoy — disponible en el stream
   para diagnóstico futuro.
 
-### R9 — `context.push` refactor
-Algunas rutas usan `context.push` cuando deberían usar `context.go` (o
-viceversa), genera back stack raro en sub-routes de admin.
+### R9 — `context.push` refactor ✅ CERRADO
+
+**Implementado** en commit `04e984e`. 10 cambios en 6 archivos.
+
+**Convención adoptada**:
+- `push` para entries a sub-rutas (tap fila → editar, botón "Nuevo" → form).
+- `pop` (con fallback `go(lista)` para deep-link sin stack) para exits
+  (post-save, botón Cancelar).
+- `go` se preserva para tabs, redirects de auth, post-submit de creación
+  de tenants (donde queremos reemplazar el form en la stack).
+
+**Cambios**:
+- `admin/clientes/`: `clientes_admin_screen.dart` (botón Nuevo + tap fila),
+  `cliente_form_screen.dart` (post-save + Cancelar).
+- `admin/contratos/`: idem patrón.
+- `super_admin/tenants_list_screen.dart:216` (tap fila tenant) y
+  `tenant_modulos_screen.dart:1036` (tap miembro) — mismo bug, mismo fix.
+
+**NO tocado**:
+- `recibo_screen.dart:29` — IconButton(Icons.home) es "ir a home", no back.
+- Líneas 61/78 de `tenants_list` — post-submit son correctos con `go`.
+
+**Follow-ups al backlog**:
+- PopScope guard en forms con cambios sin guardar.
+- AppBar back arrow condicional en AdminShell cuando estás en sub-rutas
+  (hoy siempre muestra hamburger porque hay drawer, así que el affordance
+  visual no mejoró — solo el behavior del browser back y el botón
+  Cancelar).
 
 ### R10 — Dashboard recompute
 StreamProviders del dashboard recomputan en cada rebuild del parent.
