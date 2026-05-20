@@ -44,8 +44,6 @@
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 
-import { generarPasswordSegura } from "../_shared/passwords.ts";
-
 interface CrearTenantRequest {
   tenant_nombre: string;
   admin_email: string;
@@ -439,4 +437,28 @@ function jsonError(message: string, status: number): Response {
       status,
     },
   );
+}
+
+/// Genera una password aleatoria de 16 chars usando crypto.getRandomValues.
+///
+/// NOTA: Esta función está duplicada en crear-tenant y reenviar-invitacion
+/// porque el Dashboard de Supabase deploya un único archivo por función
+/// — no soporta importar `../_shared/...` cuando subís el código vía
+/// paste. Si en el futuro se migra a Supabase CLI (`supabase functions
+/// deploy`), mover esta función a `supabase/functions/_shared/passwords.ts`
+/// y reemplazar ambos cuerpos por un import. Sincronizar el alphabet con
+/// _ForzarPasswordDialog del cliente.
+function generarPasswordSegura(): string {
+  const chars =
+    "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789!@#%*-+";
+  const bytes = new Uint8Array(16);
+  crypto.getRandomValues(bytes);
+  let out = "";
+  for (let i = 0; i < 16; i++) {
+    // Sesgo del módulo: 256 mod 63 = 4, así que 4 buckets reciben 5
+    // muestras vs 4 — pérdida total ~0.4 bits sobre 16 chars
+    // (95.27 vs 95.64 bits). Irrelevante para una password rotable.
+    out += chars[bytes[i] % chars.length];
+  }
+  return out;
 }
