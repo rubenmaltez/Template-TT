@@ -181,6 +181,15 @@ Estos viven acá hasta que se ataquen explícitamente. NO re-flag en audits.
   o el campo está vacío, Supabase Auth devuelve "Invalid login credentials" en inglés
   y el login_screen lo muestra tal cual. Inconsistente con el resto del UI 100%
   español. Fix: humanizar (`AuthException` → "Credenciales inválidas").
+- **Crash en pantalla Geografía al navegar de vuelta**. Reproducible: ir a
+  `/admin/geografia` → tocar "Agregar nuevo" (departamento/municipio) → cambiar
+  a Settings vía sidebar → volver a Geografía. Red screen of death con
+  `Assertion failed: _elements.contains(element) is not true` desde
+  `framework.dart:2168`. Bug de lifecycle: probable `GlobalKey` reusado entre
+  builds o un controller que retiene referencia a Element desmontado.
+  Pre-existente, no del sprint. Fix: revisar uso de `GlobalKey` en
+  `geografia_admin_screen.dart` y dialogs hijos; considerar
+  `ValueKey`/`ObjectKey` con identifier estable o eliminar la key si no se usa.
 - **Dashboard admin: overflow vertical en cards en narrow viewport** (~< 500px). El
   `childAspectRatio: 4` para 1 columna deja altura insuficiente; el contenido (icon +
   label + value + sub) tira "BOTTOM OVERFLOWED BY 18 PIXELS". Pre-existente, no de R10.
