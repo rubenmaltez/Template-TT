@@ -423,7 +423,7 @@ class _MiembroCardState extends ConsumerState<MiembroCard> {
                 _mostrarSnackBar(
                   messenger,
                   SnackBar(
-                    content: Text('No se pudo deshacer: $e'),
+                    content: Text('No se pudo deshacer: ' + e.toString().replaceFirst('Exception: ', '')),
                     backgroundColor:
                         Theme.of(context).colorScheme.error,
                     behavior: SnackBarBehavior.floating,
@@ -643,7 +643,7 @@ class _MiembroCardState extends ConsumerState<MiembroCard> {
                 _mostrarSnackBar(
                   messenger,
                   SnackBar(
-                    content: Text('No se pudo deshacer: $e'),
+                    content: Text('No se pudo deshacer: ' + e.toString().replaceFirst('Exception: ', '')),
                     backgroundColor: scheme.error,
                     behavior: SnackBarBehavior.floating,
                   ),
@@ -658,7 +658,7 @@ class _MiembroCardState extends ConsumerState<MiembroCard> {
       _mostrarSnackBar(
         messenger,
         SnackBar(
-          content: Text('Error: $e'),
+          content: Text('Error: ' + e.toString().replaceFirst('Exception: ', '')),
           backgroundColor: scheme.error,
           behavior: SnackBarBehavior.floating,
         ),

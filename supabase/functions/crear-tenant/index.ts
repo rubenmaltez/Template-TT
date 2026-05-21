@@ -365,6 +365,11 @@ serve(async (req) => {
         }
       }
       const rollbackOk = await rollbackTenant(admin, tenantId);
+      // Capturamos el id ANTES de nullear las vars — el rollback fallido
+      // necesita reportar `orphan_tenant_id` al super_admin para limpieza
+      // manual, y si lo leemos del scope outer (que vamos a nullear),
+      // termina como `null`. Bug encontrado en QA audit pre-merge.
+      const orphanTenantId = tenantId;
       // Nulleamos las vars del outer scope para que el outer catch
       // no intente un segundo rollback sobre los mismos ids (no
       // afecta correctness — los delete son idempotentes — pero
@@ -378,8 +383,8 @@ serve(async (req) => {
           JSON.stringify({
             ok: false,
             error: `Invite falló (${msg}) y el rollback también. ` +
-              `Borrá manualmente el tenant ${tenantId}.`,
-            orphan_tenant_id: tenantId,
+              `Borrá manualmente el tenant ${orphanTenantId}.`,
+            orphan_tenant_id: orphanTenantId,
           }),
           {
             headers: { ...corsHeaders, "Content-Type": "application/json" },

@@ -188,7 +188,7 @@ serve(async (req) => {
           `cobrador_id=${body.cobrador_id}. Timeline mostrará solo el intent.`,
         updErr,
       );
-      return jsonError(`Auth: ${updErr.message}`, 400);
+      return jsonError(humanizeAuthError(updErr.message), 400);
     }
 
     // Cambio aplicado — registramos el success con valores strings
@@ -240,6 +240,33 @@ serve(async (req) => {
     return jsonError("Error interno", 500);
   }
 });
+
+/// Traduce errores conocidos del SDK de Supabase Auth a copy en español.
+/// Mismo patrón que `invitar-cobrador`; duplicado inline porque el Dashboard
+/// no soporta _shared/ (ver CLAUDE.md).
+function humanizeAuthError(raw: string): string {
+  const lower = raw.toLowerCase();
+  if (
+    /already.*(registered|exists)/.test(lower) ||
+    lower.includes("user already") ||
+    lower.includes("email_exists") ||
+    lower.includes("duplicate")
+  ) {
+    return "Ese email ya está registrado en otro usuario. Elegí otro o, " +
+      "si es del mismo usuario, contactá soporte.";
+  }
+  if (lower.includes("invalid email") || lower.includes("invalid_format")) {
+    return "Email inválido según el proveedor.";
+  }
+  if (lower.includes("user not found")) {
+    return "Usuario no encontrado en auth.users — pudo haber sido " +
+      "eliminado entre el guard y el update.";
+  }
+  if (lower.includes("rate limit")) {
+    return "Rate limit del proveedor alcanzado — esperá un rato y reintentá.";
+  }
+  return raw;
+}
 
 function jsonError(message: string, status: number): Response {
   return new Response(
