@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 /// Invoca una Edge Function de Supabase y devuelve el body parseado
@@ -32,6 +33,10 @@ Future<Map<String, dynamic>> invokeEdgeFunction(
     // Edge Function devolvió 4xx/5xx — el body parseado vive en
     // e.details. Extraemos el campo 'error' si está; sino fallback al
     // status para no mostrar string vacío.
+    if (kDebugMode) {
+      debugPrint(
+          '[invokeEdgeFunction] FunctionException matched. status=${e.status}, details=${e.details}');
+    }
     final det = e.details;
     String? mensaje;
     if (det is Map && det['error'] != null) {
@@ -45,10 +50,14 @@ Future<Map<String, dynamic>> invokeEdgeFunction(
     // de extraer el mensaje del toString. Sin esto el caller ve el
     // string completo `FunctionException(status: 400, details: {...})`
     // que era exactamente lo que R14 quería evitar.
+    if (kDebugMode) {
+      debugPrint(
+          '[invokeEdgeFunction] generic catch. type=${e.runtimeType}, toString=$e');
+    }
     final s = e.toString();
     if (s.contains('FunctionException')) {
-      final match =
-          RegExp(r'error:\s*(.+?)\}\s*,\s*reasonPhrase').firstMatch(s);
+      // Regex permisivo: cualquier cosa entre "error:" y el primer `}`.
+      final match = RegExp(r'error:\s*([^}]+)').firstMatch(s);
       if (match != null) {
         final extracted = match.group(1)?.trim();
         if (extracted != null && extracted.isNotEmpty) {
