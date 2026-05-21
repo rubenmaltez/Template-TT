@@ -190,6 +190,37 @@ Estos viven acá hasta que se ataquen explícitamente. NO re-flag en audits.
   Pre-existente, no del sprint. Fix: revisar uso de `GlobalKey` en
   `geografia_admin_screen.dart` y dialogs hijos; considerar
   `ValueKey`/`ObjectKey` con identifier estable o eliminar la key si no se usa.
+- **Edge Functions — `humanizeAuthError` duplicado en 5 funciones**. Cada Edge
+  Function tiene su propia copia inline del helper (limitación del Dashboard
+  que no soporta `_shared/`). Cuando migremos a CLI, consolidar en `_shared/`.
+- **`invokeEdgeFunction` workaround `_humanizarError` duplicado**. Aparece copy-
+  pasted en `tenant_dialogs_invitar.dart`, `cobradores_admin_screen.dart` y
+  en el catch defensivo del helper mismo. Cuando el SDK arregle el type mismatch
+  de `FunctionException`, hay 3 lugares que limpiar. Considerar exportar como
+  helper público desde `edge_functions.dart` y consumirlo en callers.
+- **Race teórica del double-connect en `main.dart`**. El listener async de
+  `onAuthStateChange` y el fallback manual de connect pueden ejecutarse en
+  paralelo. El comment lo reconoce pero no usa un lock/latch. Probable que
+  PowerSync.connect sea idempotente; verificar y/o agregar guard.
+- **`forzar-password-cobrador` no chequea `tenant_id === SYSTEM_TENANT`**.
+  Bloquea targets con `rol === 'super_admin'` pero no defiende contra un admin
+  que esté en el tenant System por algún bug futuro. Defensa en profundidad.
+- **R12 cobertura incompleta**: `Pago`, `Contrato`, `Modulo`, `Setting`,
+  `CobradorStats` siguen sin `==`/`hashCode`. `Modulo` se usa en
+  `FutureProvider<List<Modulo>>` (`super_admin_repo.dart`). Si en el futuro
+  se exponen los demás como Streams, el flicker reaparece.
+- **Cross-tab no sync entre tabs del mismo browser**. Tab A queda con sesión
+  vieja si tab B hace signOut — los `onAuthStateChange` events son por
+  `SupabaseClient` instance, no cross-tab. Hasta el refresh del token (~1h)
+  o reload manual.
+- **Race autoDispose en navegación rápida entre tenants**. Si el user navega
+  super rápido entre 2 tenants y el `read(.future)` del provider autoDispose
+  sigue en vuelo, puede tirar `ProviderDisposedException` o devolver datos
+  del tenant equivocado. Edge case, no reproducible en flujo normal.
+- **`cambiar-email-cobrador` sin pre-flight de email duplicado**. Supabase
+  rechaza el update con el mensaje humanizado (con el fix de B2), pero el
+  intent row del audit_log ya quedó escrito → pollution con intents fallidos.
+  Agregar `listUsers` filtro por email antes del update.
 - **Edge Functions — hardening incremental (security audit MEDIUM)**:
     - `forzar-password-cobrador`: si `auth.admin.signOut(uid, "global")` falla
       post-éxito, el target sigue con JWT viejo hasta ~1h. Hoy solo se loguea.
