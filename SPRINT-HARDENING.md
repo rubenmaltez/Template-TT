@@ -25,7 +25,7 @@ Resultado: 22 findings (R1–R22) — clasificados así:
 | Día 1 — DB integrity | R2, R16, R17, R18, R19, R20 | ✅ Cerrado (migration 0034). |
 | Día 1 — descartado | R1 | RLS de pagos cross-cobrador, ya documentado en 0025 como decisión de producto. |
 | Día 2 — Edge Functions resilience | R22 (audit-first), control chars, length caps, scrub mensajes, intent/success split, snapshot pre-recreate | ✅ Cerrado. |
-| Día 3 — Frontend bugs + tech debt | R7 ✅, R8 ✅, R9 ✅, R10 ✅, R11 ✅, R12 ✅, R13 ✅, R14 ✅, R21 ✅, R15 deferido | ✅ Cerrado salvo R15 (pendiente análisis de uso real). |
+| Día 3 — Frontend bugs + tech debt | R7 ✅, R8 ✅, R9 ✅, R10 ✅, R11 ✅, R12 ✅, R13 ✅, R14 ✅, R21 ✅, R15 deferido | ✅ Cerrado. Testing manual completo. |
 
 ---
 
@@ -408,13 +408,52 @@ abordar post-merge si tenants reales lo justifican.
 
 ## Cierre del sprint
 
-Días 1, 2 y 3 cerrados. R15 deferido al backlog. Próximos pasos:
+Días 1, 2 y 3 cerrados. R15 deferido al backlog. **Testing manual
+completo** (todas las secciones del plan ejecutadas).
 
-1. **Testing manual** del feature set completo en la app.
-2. **PR `claude/powersync-sdk-setup-KZF1R` → `main`** cuando Rubén lo
-   indique.
-3. 3 audits (Code Audit + QA + UX/Security) sobre el diff completo
-   del sprint.
+### Testing manual — bugs encontrados y RESUELTOS in-sprint
+
+- **FunctionException raw expuesto al user** — el helper
+  `invokeEdgeFunction` debería procesarlo pero el `on FunctionException
+  catch` no matcheaba (probable type mismatch entre versiones del SDK).
+  Workaround: `_humanizarError` inline en los 2 dialogs de invitación
+  hace parse del toString si empieza con `FunctionException`. Commit
+  `28b92dd`.
+- **Compile errors post-pull en working directory local** — el
+  Flutter SDK del owner había sido actualizado y el pubspec/imports
+  no estaban sincronizados:
+    - `intl: ^0.19.0` → `^0.20.2` (commit `d1e9f4e`).
+    - `external_actions.dart` importaba `widgets.dart` para
+      `ScaffoldMessenger`/`SnackBar` — cambiado a `material.dart`
+      (commit `a129c81`).
+    - `app.dart` importaba sólo el provider, no el service donde
+      vive `UploadResult` — agregado import.
+    - `cobro_screen.dart:231` `clamp(0, double.infinity)` infería
+      `num`, no `double` — cambiado a `clamp(0.0, ...)`.
+
+### Backlog acumulado del testing (todo en CLAUDE.md)
+
+Priorizado para post-merge:
+
+1. **Switch email inconsistente entre dialogs** —
+   `InvitarAdminDialog` y `_InvitarDialog` no tienen el switch
+   "Enviar email de invitación" como sí tiene `_CrearTenantDialog`.
+   Confunde al workflow no-email del owner.
+2. **Crash en pantalla Geografía** — assertion failure de
+   `_elements.contains(element)` al navegar back. Bug de lifecycle.
+3. **Sync gate sin progreso visible** — el primer login del
+   super_admin tras user switch tarda varios minutos sin feedback.
+4. **Error de login NO localizado** — "Invalid login credentials"
+   en inglés.
+5. **Mensaje técnico expuesto en login offline** —
+   `ClientException: Failed to fetch...`.
+
+### Siguientes pasos
+
+1. ✅ **Testing manual** del feature set completo en la app.
+2. **PR `claude/powersync-sdk-setup-KZF1R` → `main`** (en curso).
+3. 3 audits (Code Audit + QA + Security) sobre el diff completo
+   del sprint corriendo en paralelo.
 4. Resolver findings críticos.
 5. Merge.
 6. **Borrar este archivo** (`SPRINT-HARDENING.md`).
