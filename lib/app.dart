@@ -7,6 +7,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'config/router.dart';
 import 'config/theme.dart';
 import 'data/providers/foto_comprobante_provider.dart';
+import 'data/services/foto_comprobante_service.dart';
 
 /// Key global del ScaffoldMessenger raíz. Permite mostrar SnackBars
 /// desde lugares que no tienen un Scaffold ascendente (R8: listener

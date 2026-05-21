@@ -228,7 +228,7 @@ class _CobroScreenState extends ConsumerState<CobroScreen> {
             : null;
 
     final cuota = _cuota!;
-    final saldo = (_totalACobrar - cuota.montoPagado).clamp(0, double.infinity);
+    final saldo = (_totalACobrar - cuota.montoPagado).clamp(0.0, double.infinity);
 
     final montoEnNio = _moneda == Moneda.usd
         ? (double.tryParse(_montoCtrl.text) ?? 0) * settings.tasaUsd
