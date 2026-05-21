@@ -177,6 +177,10 @@ Estos viven acá hasta que se ataquen explícitamente. NO re-flag en audits.
   sin red, ve `ClientException: Failed to fetch, uri=https://...supabase.co/auth/v1/token...`.
   Expone URL del backend y string técnico. Fix: catch `ClientException` en login_screen
   y mostrar "Sin conexión. Verificá tu red e intentá de nuevo."
+- **Error de credenciales en login NO localizado**. Cuando el password es incorrecto
+  o el campo está vacío, Supabase Auth devuelve "Invalid login credentials" en inglés
+  y el login_screen lo muestra tal cual. Inconsistente con el resto del UI 100%
+  español. Fix: humanizar (`AuthException` → "Credenciales inválidas").
 - **Dashboard admin: overflow vertical en cards en narrow viewport** (~< 500px). El
   `childAspectRatio: 4` para 1 columna deja altura insuficiente; el contenido (icon +
   label + value + sub) tira "BOTTOM OVERFLOWED BY 18 PIXELS". Pre-existente, no de R10.
