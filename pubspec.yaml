@@ -29,7 +29,7 @@ dependencies:
   cupertino_icons: ^1.0.8
 
   # Utils
-  intl: ^0.19.0
+  intl: ^0.20.2
   uuid: ^4.4.0
   collection: ^1.18.0
 
