@@ -82,12 +82,26 @@ class _InvitarAdminDialogState extends ConsumerState<InvitarAdminDialog> {
     } catch (e) {
       // Helper invokeEdgeFunction lanza Exception(msg); pelamos el
       // prefijo "Exception: " — alineado con los hermanos de este
-      // archivo y la convención del codebase.
+      // archivo y la convención del codebase. Si por algún motivo el
+      // helper no procesó y llega un FunctionException raw, extraemos
+      // el campo `error` del toString para no exponer el wrapper.
       setState(() {
-        _error = e.toString().replaceFirst('Exception: ', '');
+        _error = _humanizarError(e);
         _enviando = false;
       });
     }
+  }
+
+  String _humanizarError(Object e) {
+    final raw = e.toString();
+    if (raw.startsWith('FunctionException')) {
+      final match = RegExp(r'error:\s*([^}]+)').firstMatch(raw);
+      if (match != null) {
+        final extracted = match.group(1)?.trim();
+        if (extracted != null && extracted.isNotEmpty) return extracted;
+      }
+    }
+    return raw.replaceFirst('Exception: ', '');
   }
 
   @override

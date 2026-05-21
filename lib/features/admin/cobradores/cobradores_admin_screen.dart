@@ -158,15 +158,35 @@ class _InvitarDialogState extends State<_InvitarDialog> {
         );
       }
     } catch (e) {
-      // El helper invokeEdgeFunction lanza Exception(msg); pelamos el
-      // prefijo "Exception: " técnico antes de mostrar al user.
+      // El helper invokeEdgeFunction debería lanzar Exception(msg);
+      // pelamos el prefijo "Exception: " técnico antes de mostrar al
+      // user. Defensive: si por algún motivo el helper no procesó y
+      // llega un FunctionException raw, extraemos el campo `error`
+      // del toString para no exponer el wrapper técnico.
       if (mounted) {
-        setState(() =>
-            _error = e.toString().replaceFirst('Exception: ', ''));
+        setState(() => _error = _humanizarError(e));
       }
     } finally {
       if (mounted) setState(() => _enviando = false);
     }
+  }
+
+  /// Convierte cualquier excepción del flujo en un mensaje user-friendly.
+  /// Cubre tres casos:
+  ///   - `Exception("msg")` lanzado por el helper invokeEdgeFunction → pelamos "Exception: ".
+  ///   - `FunctionException` raw que se escapó (type mismatch en versiones del SDK) →
+  ///     extraemos el campo `error` del toString con regex.
+  ///   - Cualquier otra excepción → toString tal cual.
+  String _humanizarError(Object e) {
+    final raw = e.toString();
+    if (raw.startsWith('FunctionException')) {
+      final match = RegExp(r'error:\s*([^}]+)').firstMatch(raw);
+      if (match != null) {
+        final extracted = match.group(1)?.trim();
+        if (extracted != null && extracted.isNotEmpty) return extracted;
+      }
+    }
+    return raw.replaceFirst('Exception: ', '');
   }
 
   @override
