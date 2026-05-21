@@ -38,5 +38,24 @@ Future<Map<String, dynamic>> invokeEdgeFunction(
       mensaje = det['error'].toString();
     }
     throw Exception(mensaje ?? 'Error ${e.status}');
+  } catch (e) {
+    // Defensive: si por algún motivo el `on FunctionException` no
+    // capturó (versión del SDK que expone el tipo desde un namespace
+    // distinto al re-exportado, wrap en otra exception, etc.), tratamos
+    // de extraer el mensaje del toString. Sin esto el caller ve el
+    // string completo `FunctionException(status: 400, details: {...})`
+    // que era exactamente lo que R14 quería evitar.
+    final s = e.toString();
+    if (s.contains('FunctionException')) {
+      final match =
+          RegExp(r'error:\s*(.+?)\}\s*,\s*reasonPhrase').firstMatch(s);
+      if (match != null) {
+        final extracted = match.group(1)?.trim();
+        if (extracted != null && extracted.isNotEmpty) {
+          throw Exception(extracted);
+        }
+      }
+    }
+    rethrow;
   }
 }
