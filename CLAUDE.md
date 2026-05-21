@@ -190,6 +190,17 @@ Estos viven acá hasta que se ataquen explícitamente. NO re-flag en audits.
   Pre-existente, no del sprint. Fix: revisar uso de `GlobalKey` en
   `geografia_admin_screen.dart` y dialogs hijos; considerar
   `ValueKey`/`ObjectKey` con identifier estable o eliminar la key si no se usa.
+- **Edge Functions — hardening incremental (security audit MEDIUM)**:
+    - `forzar-password-cobrador`: si `auth.admin.signOut(uid, "global")` falla
+      post-éxito, el target sigue con JWT viejo hasta ~1h. Hoy solo se loguea.
+      Agregar audit row `force_password_reset_signout_failed` para trazabilidad.
+    - `reenviar-invitacion`: ventana entre `deleteUser` y `createUser` sin
+      lock — explotable solo con super_admins concurrentes (Rubén es 1 en
+      producción, marcado como hardening defensivo).
+    - `cambiar-email-cobrador`: sin pre-flight check de email duplicado.
+      Supabase rechaza el update pero el intent row del audit_log ya quedó
+      escrito → timeline pollution con intents fallidos. Agregar `listUsers`
+      filtro por email antes del update (mismo patrón que `crear-tenant`).
 - **Dashboard admin: overflow vertical en cards en narrow viewport** (~< 500px). El
   `childAspectRatio: 4` para 1 columna deja altura insuficiente; el contenido (icon +
   label + value + sub) tira "BOTTOM OVERFLOWED BY 18 PIXELS". Pre-existente, no de R10.
