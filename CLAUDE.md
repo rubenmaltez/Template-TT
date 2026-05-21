@@ -189,6 +189,16 @@ Estos viven acá hasta que se ataquen explícitamente. NO re-flag en audits.
   limpian al consumir, pero el form lo muestra horrible. Fix: TextFormField con
   `inputFormatters` que rechace caracteres no `[0-9+]`, o sanitizar al guardar
   además de al validar.
+- **Sync gate (R7) no flippa cuando PowerSync confirma sync en user switch con
+  mucha data**. Caso reproducible: super_admin con varios tenants se loguea tras
+  signOut del admin de un tenant. PowerSync logs muestran `lastSyncedAt`
+  actualizado post-signIn y `connected: true, downloading: false, hasSynced: null`,
+  pero el spinner `/sync-gate` no se cierra hasta los 25s donde aparece el escape
+  hatch "Volver al login". Hipótesis: el `syncStatusProvider` cacheó un valor
+  stale o el `ref.listen(syncReadyProvider)` no propaga la transición. Workaround:
+  el escape hatch funciona — el user puede usarlo para salir. Fix futuro:
+  agregar `hasSynced == true` al criterio de `syncReadyProvider` además de
+  `lastSyncedAt > changedAt`.
 - **AppBar back arrow ausente en sub-rutas** — el AdminShell y SuperShell tienen
   `drawer:` así que el leading auto-implícito es el hamburger menu, no el back
   arrow, incluso después de un `push` que sí permitiría `canPop()`. Material no
