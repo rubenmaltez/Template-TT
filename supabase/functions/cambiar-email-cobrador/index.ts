@@ -266,7 +266,11 @@ serve(async (req) => {
       },
     );
   } catch (e) {
-    console.error("cambiar-email-cobrador: unhandled", e);
+    // Scrub por consistencia con crear-tenant / reenviar-invitacion /
+    // invitar-cobrador. Acá no hay password generada en scope, pero
+    // `nuevoEmail` (PII) sí, y los logs del Dashboard son consultables.
+    const safeMessage = e instanceof Error ? e.message : String(e);
+    console.error("cambiar-email-cobrador: unhandled", safeMessage);
     return jsonError("Error interno", 500);
   }
 });

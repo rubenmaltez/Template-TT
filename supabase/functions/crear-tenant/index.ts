@@ -458,9 +458,16 @@ serve(async (req) => {
             );
           }
         } catch (deleteUserThrow) {
+          // Scrub: misma justificación que el outer catch — `generated`
+          // (la password) sigue viva en este scope. Si el SDK alguna vez
+          // incluyera el request body en el Error, el message-only impide
+          // que aparezca en los logs.
+          const msg = deleteUserThrow instanceof Error
+            ? deleteUserThrow.message
+            : String(deleteUserThrow);
           console.error(
             `crear-tenant rollback deleteUser threw (user=${userIdParcial}):`,
-            deleteUserThrow,
+            msg,
           );
         }
       }
@@ -474,9 +481,12 @@ serve(async (req) => {
             );
           }
         } catch (deleteTenantThrow) {
+          const msg = deleteTenantThrow instanceof Error
+            ? deleteTenantThrow.message
+            : String(deleteTenantThrow);
           console.error(
             `crear-tenant rollback deleteTenant threw (tenant=${tenantId}). ORPHAN:`,
-            deleteTenantThrow,
+            msg,
           );
         }
       }

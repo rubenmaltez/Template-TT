@@ -63,13 +63,26 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   }
 
   Future<void> _ejecutar() async {
+    // Guards client-side antes de pegarle al backend. Sin esto, un submit
+    // con campos vacíos se cuenta contra el rate-limit del IP/email y
+    // gasta un round-trip al pedo. Además el error humanizado de
+    // "credenciales inválidas" sería técnicamente correcto pero misleading
+    // (el problema real es que no completaste el form).
+    final email = _email.text.trim();
+    if (email.isEmpty) {
+      setState(() => _error = 'Ingresá tu email.');
+      return;
+    }
+    if (_modo == _Modo.login && _pass.text.isEmpty) {
+      setState(() => _error = 'Ingresá tu contraseña.');
+      return;
+    }
     setState(() {
       _busy = true;
       _error = null;
       _info = null;
     });
     try {
-      final email = _email.text.trim();
       switch (_modo) {
         case _Modo.login:
           await Supabase.instance.client.auth.signInWithPassword(
@@ -115,9 +128,11 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   ///     importar el tipo del exception.
   ///   - `AuthException` con mensajes conocidos de Supabase Auth
   ///     (credenciales inválidas, email no confirmado, rate limit,
-  ///     rate-limit-por-tiempo del recovery, formato de email, etc.).
-  ///   - Fallback: toString tal cual (raro — los logs de developer.log
-  ///     capturan el detalle si pasa).
+  ///     rate-limit-por-tiempo del recovery, formato de email, link
+  ///     expirado, etc.).
+  ///   - Fallback en español (no `e.message` crudo): los mensajes raros
+  ///     de Supabase Auth en inglés ya no llegan al UI; el detalle queda
+  ///     en `developer.log` para debugging en DevTools.
   String _humanizarLoginError(Object e) {
     // Network check primero. El AuthException de Supabase puede traer
     // "ClientException: Failed to fetch, uri=..." en el `message` cuando
@@ -159,9 +174,24 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       if (m.contains('user not found')) {
         return 'No encontramos ese email en el sistema.';
       }
-      return e.message;
+      // Link de recovery expirado / ya usado. Mismo wording que el
+      // banner del boot (_humanizeAuthError) — si en el futuro
+      // consolidamos los dos helpers en uno (ver backlog CLAUDE.md),
+      // este copy queda single-source.
+      if (m.contains('invalid or has expired') ||
+          m.contains('otp_expired')) {
+        return 'El link expiró o ya fue usado. Pedí un nuevo email de '
+            'recuperación.';
+      }
+      // Fallback en español. Antes devolvíamos e.message crudo —
+      // re-exponía strings técnicos en inglés del SDK (ej:
+      // "Database error querying schema", "Signup not allowed"). El
+      // detalle queda en developer.log para debugging.
+      return 'No pudimos completar la operación. Probá de nuevo en unos '
+          'segundos.';
     }
-    return str;
+    return 'No pudimos completar la operación. Probá de nuevo en unos '
+        'segundos.';
   }
 
   @override
