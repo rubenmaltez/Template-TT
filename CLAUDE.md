@@ -393,13 +393,26 @@ Estos viven acá hasta que se ataquen explícitamente. NO re-flag en audits.
   label + value + sub) tira "BOTTOM OVERFLOWED BY 18 PIXELS". Pre-existente, no de R10.
   Fix: bajar el ratio a `3.2` o agregar `mainAxisSize: MainAxisSize.min` con padding
   reducido.
-- **Validator de teléfono permite letras si hay 8+ dígitos**. El validator usa
-  `sanitizePhoneForWhatsApp` (regex `[^0-9]`) para contar dígitos, pero al guardar
-  persiste el valor original con letras intactas. Resultado: BD termina con
-  `"abc12345678"` en `clientes.telefono`. Al usarlo (llamar, WhatsApp) los sanitizers
-  limpian al consumir, pero el form lo muestra horrible. Fix: TextFormField con
-  `inputFormatters` que rechace caracteres no `[0-9+]`, o sanitizar al guardar
-  además de al validar.
+- **Búsqueda por teléfono LIKE no normaliza el query**. Tras el fix del
+  validator de cliente, los nuevos teléfonos se guardan sin espacios ni
+  guiones (`"+50588888888"`). Pero el search en `clientes_admin_screen.dart:390`
+  y `clientes_list_screen.dart:204` usa `c.telefono LIKE '%query%'` sobre
+  el valor raw. Si el user busca `"8888-8888"`, no matchea clientes nuevos
+  (que están sin guión). Fix: aplicar `sanitizePhone(query)` antes del
+  LIKE, y también sanitizar el comparando con substring sobre la versión
+  ya limpia de la BD. Aplica especialmente al cobrador en campo.
+- **Validator de teléfono — extender el fix del cliente a otros 4 forms**.
+  El sprint que arregló `cliente_form_screen.dart` (inputFormatters
+  `[0-9+\s-]` + sanitizePhone al guardar) NO cubrió los otros forms con
+  campo teléfono donde aplica el mismo patrón: `cobradores_admin_screen.dart`
+  (invitar + editar cobrador), `onboarding_screen.dart` (wizard admin
+  llenando `empresa.telefono`), `tenant_dialogs_invitar.dart` (invitar
+  admin a tenant), `tenants_list_screen.dart` (crear tenant + telefono
+  del admin). Riesgo: persistir `"abc12345678"` en `cobradores.telefono`
+  o `settings['empresa.telefono']`. Mismo fix, copy-paste a cada form.
+  Vale considerar extraer un widget compartido `PhoneTextField` o un
+  helper `Validators.phoneInputFormatters()` para no duplicar el regex
+  en 5 lugares.
 - **Sync gate (R7) sin feedback de progreso en syncs iniciales largos**. Caso
   reproducido en testing manual: super_admin (que ve todos los tenants) se loguea
   tras haber estado como admin de un tenant. PowerSync hace delete-and-replace
