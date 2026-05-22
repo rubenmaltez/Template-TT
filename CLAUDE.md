@@ -454,15 +454,6 @@ Estos viven acá hasta que se ataquen explícitamente. NO re-flag en audits.
   multi-plataforma (web + Android + Windows installer) — ahí podemos
   agregar animaciones de transición que enmascaren el flash y/o
   refactorear el guard del router para ser más estable.
-- **Switch "Enviar email de invitación" inconsistente entre dialogs**. El dialog
-  "Crear nuevo ISP" (super_admin) tiene el switch para alternar entre modo email
-  y modo no-email (password generada server-side). Pero los dialogs `InvitarAdminDialog`
-  (super_admin invitando admin a tenant existente) y `_InvitarDialog`
-  (admin invitando cobrador dentro del tenant) NO tienen ese switch — solo flujo email.
-  Inconsistente con el workflow operativo dominante. Fix: replicar el patrón del switch
-  en ambos dialogs + manejar el CredencialesDialog post-success cuando viene la password
-  del server. La Edge Function `invitar-cobrador` probablemente ya soporta el parámetro
-  `enviar_email: false` (verificar). Feature gap, no del sprint.
 - **AppBar back arrow ausente en sub-rutas** — el AdminShell y SuperShell tienen
   `drawer:` así que el leading auto-implícito es el hamburger menu, no el back
   arrow, incluso después de un `push` que sí permitiría `canPop()`. Material no
