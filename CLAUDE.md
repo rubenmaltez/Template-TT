@@ -296,8 +296,22 @@ NO soporta multi-file via paste — `_shared/passwords.ts` no funcionaría. Por 
 
 Estos viven acá hasta que se ataquen explícitamente. NO re-flag en audits.
 
-- **OfflineBanner false-positive** durante handshake inicial PowerSync (~2s "Sin conexión"
-  antes de establecerse). Necesita debounce de ~3s.
+- **OfflineBanner follow-ups del sprint debounce**:
+    - **Indicador de red inestable**: el debounce de 3s silencia flickers
+      rápidos (`false → true → false` en <3s) — bueno para ocultar el
+      handshake, malo para señalar "red intermitente real". Agregar un
+      indicador sutil aparte del banner (ej. ícono de nube en topbar
+      con opacity menor) cuando hubo N flickers en M segundos.
+    - **Indicador durante los primeros 3s offline**: el cobrador en
+      modo avión tipea data por 3s sin feedback visual. Aunque la data
+      persiste offline-first, sería bueno un indicador más leve antes
+      del banner full (ej. nube en topbar atenuada).
+    - **Botón "Reintentar" en el banner**: hoy el user puede solo
+      esperar al heartbeat de PowerSync. Botón que llame
+      `disconnectPowerSync() + connectPowerSync()` (mismo flow del
+      SyncGate retry) ayudaría en red caída transient.
+    - **AnimatedSwitcher para fade del banner**: hoy es pop visual.
+      Fade 150ms al entrar/salir es más pulido.
 - **Error logging — follow-ups del sprint 0035**:
     - **Paginación del viewer `/super/logs`**: hoy limit hard-coded a 100
       con cap server-side a 500. Sin cursor ni filtro de rango fechas.
