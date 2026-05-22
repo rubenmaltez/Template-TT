@@ -50,7 +50,18 @@ no en hardening por escenarios hipotéticos.
 - `supabase_flutter: 2.x`
 - `flutter_riverpod: 2.x`
 - `go_router: latest`
+- `package_info_plus` para anexar app version a los error logs.
 - Edge Functions usan `@supabase/supabase-js@2.45.0` + Deno std 0.224.0.
+
+### Error logging
+Singleton `ErrorLogService` en `lib/data/services/error_log_service.dart`
+captura `FlutterError.onError` + `PlatformDispatcher.onError` + zone errors
+(via `runZonedGuarded` en `main.dart`). Persiste local en SharedPreferences
+(FIFO 200) y sube async a tabla `error_logs` (migración 0035). El viewer
+`/super/logs` solo lo alcanza super_admin — usa RPC `list_error_logs` que
+hace JOIN con `tenants` y `cobradores`. Pre-login (sin `auth.uid()`) los
+logs quedan solo locales porque la RLS exige `user_id = auth.uid()` y
+atribuir post-hoc sería incorrecto.
 
 ---
 
@@ -169,8 +180,61 @@ NO soporta multi-file via paste — `_shared/passwords.ts` no funcionaría. Por 
 
 Estos viven acá hasta que se ataquen explícitamente. NO re-flag en audits.
 
+- **GlobalKey duplicado en navegación shell admin (Geografía)**. El fix
+  parcial del sprint anterior (commit 57ae20c) disposeó el `TextEditingController`
+  del `_promptNombre` dialog, lo cual solucionó UNA causa del crash. Pero el
+  bug original (`/admin/geografia` → abrir dialog "Nuevo departamento" → otra
+  ruta del sidebar → volver) sigue tirando red screen con
+  `Assertion failed: element._lifecycleState == _ElementLifecycle.inactive`
+  + `Duplicate GlobalKey detected in widget tree`. El agent Explore confirmó
+  que no hay GlobalKey duplicados en código nuestro (6 GlobalKey, todos en
+  `State` o file-scope correctamente). Hipótesis: keys internas de Material
+  widgets (probablemente Form/Scaffold del setup wizard que flashea al
+  login del admin) colisionan al navegar. Diagnóstico requiere stack del
+  console capturado. Con el logger del sprint actual (`/super/logs`), el
+  cliente reproduce y vos ves el stack sin DevTools.
+- **Flash del setup wizard al loguearse como admin**. Cuando un admin de
+  tenant (no super_admin) se loguea, por ~1s aparece la pantalla de setup
+  inicial del tenant antes de redirigir al dashboard. Es un bug de
+  race/hydration: el guard del router (`empresaNombreProvider`) detecta
+  `null` hasta que PowerSync sincroniza la tabla `settings`, ahí flippa
+  a un valor concreto y rebota a `/admin`. Solo afecta UX (no funcional)
+  pero da impresión de que la app está rota. Posible mitigación: mostrar
+  SyncGateScreen también cuando el rol admin tenga `empresaNombreProvider`
+  en loading inicial (no solo `hasValue && value == null`).
 - **OfflineBanner false-positive** durante handshake inicial PowerSync (~2s "Sin conexión"
   antes de establecerse). Necesita debounce de ~3s.
+- **Error logging — follow-ups del sprint 0035**:
+    - **Paginación del viewer `/super/logs`**: hoy limit hard-coded a 100
+      con cap server-side a 500. Sin cursor ni filtro de rango fechas.
+      Cuando la tabla crezca, agregar `desde/hasta` + "Cargar más".
+    - **Retention policy**: tabla crece sin cota. Cron diario que purgue
+      logs > 90 días + RPC `purge_error_logs(p_before timestamptz)` con
+      guard super_admin para purga manual.
+    - **Rate limit**: un device en crash-loop puede meter cientos de rows/seg.
+      Bajo MVP el RLS `user_id = auth.uid()` evita spam anónimo, pero
+      no spam autenticado. Mitigación: rate limit en cliente (max 1 entry
+      / 5s por mensaje similar) o función `insert_error_log` con cooldown.
+    - **Índice por `error_type`**: hoy seq scan en el filtro de chips.
+      OK bajo 10k rows, escala mal.
+    - **Debounce en search del viewer**: hoy `onSubmitted` (sin debounce).
+      Consistente con `audit_admin` que también es onSubmitted, pero los
+      otros buscadores del repo usan ~400ms debounce.
+    - **`_currentRoute()` lee `Uri.base.path`**, no la ruta de GoRouter.
+      Con `pathUrlStrategy` ambas coinciden en web normalmente, pero si
+      en el futuro el path-vs-url diverge, queda stale. Inyectar
+      `GoRouterState` actual cuando se exponga vía un provider.
+    - **Botón "Borrar logs" en `/super/logs`**: super_admin no puede purgar
+      desde UI (solo `clearLocal()` que es local). Útil con la RPC de
+      retention.
+    - **Auth listener de `ErrorLogService.init()` nunca se cancela** —
+      mismo patrón del listener de `main.dart` ya anotado en backlog.
+      Cuando se ataque uno, atacar el otro.
+    - **`reported_at` vs `ts` redundantes en UI**: hoy el viewer solo
+      muestra `ts`. El delta (`reported_at - ts`) sería útil para detectar
+      crashes offline subidos tarde. Agregar como columna o detail.
+    - **User agent del browser**: el cliente lo deja null hoy (no usamos
+      `package:web`). Útil para diagnosticar bugs específicos de browser.
 - **Animación brusca login → shell** post-sync-gate. El spinner desaparece y aparece
   el shell sin transición. Recomendado: fade transition de 200-300ms.
 - **Edge Functions — `humanizeAuthError` duplicado en 5 funciones**. Cada Edge

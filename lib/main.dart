@@ -9,14 +9,34 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'app.dart';
 import 'config/env.dart';
+import 'data/models/error_log_entry.dart';
 import 'data/providers/auth_identity_provider.dart';
 import 'data/providers/foto_comprobante_provider.dart';
+import 'data/services/error_log_service.dart';
 import 'features/auth/auth_flow_provider.dart';
 import 'powersync/db.dart' as ps;
 
 const _kLastKnownUserIdKey = 'last_known_user_id';
 
 Future<void> main() async {
+  // Envolvemos todo en runZonedGuarded para capturar excepciones uncaught
+  // de código async (sin try/catch) que no son interceptadas por
+  // FlutterError.onError. El handler delega a ErrorLogService que persiste
+  // local + sube al backend cuando hay sesión.
+  //
+  // WidgetsFlutterBinding.ensureInitialized() corre DENTRO de la zona para
+  // que el binding y los runApp queden en la misma zona — sin esto
+  // Flutter emite "Zone mismatch" warnings.
+  await runZonedGuarded<Future<void>>(_bootstrap, (error, stack) {
+    ErrorLogService.instance.record(
+      error: error,
+      stack: stack,
+      type: ErrorLogType.zone,
+    );
+  });
+}
+
+Future<void> _bootstrap() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   // Path URL strategy en web: URLs limpias (`/admin` en vez de `/#/admin`).
@@ -48,6 +68,12 @@ Future<void> main() async {
     url: Env.supabaseUrl,
     anonKey: Env.supabaseAnonKey,
   );
+
+  // Inicializar el logger temprano (post-Supabase porque usa auth.client,
+  // pre-PowerSync porque la query a cobradores es tolerante a DB cerrada).
+  // Esto instala FlutterError.onError y PlatformDispatcher.onError, que
+  // junto con el runZonedGuarded de main() capturan los 3 tipos de errores.
+  await ErrorLogService.instance.init();
 
   await ps.openDatabase();
 
@@ -152,7 +178,13 @@ Future<void> main() async {
   final fotoService = container.read(fotoComprobanteServiceProvider);
   unawaited(fotoService.limpiarHuerfanos());
   ps.db.statusStream.listen((status) {
-    if (status.connected) unawaited(fotoService.sincronizarPendientes());
+    if (status.connected) {
+      unawaited(fotoService.sincronizarPendientes());
+      // Reintento de uploads de error_logs que quedaron pendientes
+      // durante offline (gap del listener de auth, que solo flushea
+      // en signedIn).
+      unawaited(ErrorLogService.instance.onConnectivityRestored());
+    }
   });
 
   runApp(UncontrolledProviderScope(

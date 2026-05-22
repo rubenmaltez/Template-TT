@@ -26,6 +26,7 @@ import '../features/auth/auth_flow_provider.dart';
 import '../features/auth/login_screen.dart';
 import '../features/auth/set_password_screen.dart';
 import '../features/shared/widgets/sync_gate_screen.dart';
+import '../features/super_admin/error_logs_screen.dart';
 import '../features/super_admin/miembro_detalle_screen.dart';
 import '../features/super_admin/super_shell.dart';
 import '../features/super_admin/tenant_modulos_screen.dart';
@@ -281,12 +282,14 @@ final routerProvider = Provider<GoRouter>((ref) {
       ShellRoute(
         builder: (_, state, child) {
           final loc = state.matchedLocation;
-          final titulo = loc.contains('/miembros/')
-              ? 'Detalle del miembro'
-              : (loc.startsWith('/super/tenants/') &&
-                      loc.length > '/super/tenants/'.length
-                  ? 'Configurar tenant'
-                  : 'Tenants');
+          final titulo = loc == '/super/logs'
+              ? 'Logs de errores'
+              : loc.contains('/miembros/')
+                  ? 'Detalle del miembro'
+                  : (loc.startsWith('/super/tenants/') &&
+                          loc.length > '/super/tenants/'.length
+                      ? 'Configurar tenant'
+                      : 'Tenants');
           return SuperShell(titulo: titulo, child: child);
         },
         routes: [
@@ -305,6 +308,10 @@ final routerProvider = Provider<GoRouter>((ref) {
               tenantId: s.pathParameters['tid']!,
               cobradorId: s.pathParameters['cid']!,
             ),
+          ),
+          GoRoute(
+            path: '/super/logs',
+            builder: (_, s) => const ErrorLogsScreen(),
           ),
         ],
       ),
