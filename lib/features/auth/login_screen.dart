@@ -107,17 +107,33 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   }
 
   /// Traduce excepciones del login/recovery a copy en español. Cubre:
+  ///   - Network errors (`ClientException`, `SocketException`,
+  ///     `TimeoutException`): el SDK los puede tirar crudos O wrappeados
+  ///     en un `AuthException` cuyo `message` incluye "ClientException:
+  ///     Failed to fetch, uri=https://...supabase.co/auth/v1/token...".
+  ///     Chequeamos PRIMERO para no exponer la URL del backend, sin
+  ///     importar el tipo del exception.
   ///   - `AuthException` con mensajes conocidos de Supabase Auth
   ///     (credenciales inválidas, email no confirmado, rate limit,
   ///     rate-limit-por-tiempo del recovery, formato de email, etc.).
-  ///   - Network errors (`ClientException`, `SocketException`,
-  ///     `TimeoutException`): el SDK devuelve "ClientException: Failed
-  ///     to fetch, uri=https://...supabase.co/auth/v1/token..." que
-  ///     expone el backend y string técnico. Lo reemplazamos por un
-  ///     mensaje genérico de "sin conexión".
   ///   - Fallback: toString tal cual (raro — los logs de developer.log
   ///     capturan el detalle si pasa).
   String _humanizarLoginError(Object e) {
+    // Network check primero. El AuthException de Supabase puede traer
+    // "ClientException: Failed to fetch, uri=..." en el `message` cuando
+    // el backend no respondió — si entráramos primero a la rama AuthException
+    // por type, caeríamos al fallback `return e.message;` y mostraríamos
+    // la URL del backend en el banner. Por eso evaluamos los marcadores de
+    // red en toString() antes de discriminar por tipo.
+    final str = e.toString();
+    if (str.contains('ClientException') ||
+        str.contains('Failed to fetch') ||
+        str.contains('SocketException') ||
+        str.contains('TimeoutException') ||
+        str.contains('Network is unreachable') ||
+        str.contains('XMLHttpRequest')) {
+      return 'Sin conexión. Verificá tu red e intentá de nuevo.';
+    }
     if (e is AuthException) {
       final m = e.message.toLowerCase();
       if (m.contains('invalid login') || m.contains('invalid credentials')) {
@@ -145,19 +161,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       }
       return e.message;
     }
-    // Detección de network errors por toString: agregar un dep de
-    // `http` solo para `is ClientException` es overhead. El package
-    // de Supabase los lanza con strings reconocibles.
-    final s = e.toString();
-    if (s.contains('ClientException') ||
-        s.contains('Failed to fetch') ||
-        s.contains('SocketException') ||
-        s.contains('TimeoutException') ||
-        s.contains('Network is unreachable') ||
-        s.contains('XMLHttpRequest')) {
-      return 'Sin conexión. Verificá tu red e intentá de nuevo.';
-    }
-    return s;
+    return str;
   }
 
   @override
