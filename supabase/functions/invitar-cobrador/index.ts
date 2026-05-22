@@ -306,7 +306,15 @@ serve(async (req) => {
   } catch (e) {
     // No echar el error crudo al cliente — puede leakear stack o data
     // sensible. Loggeamos server-side y devolvemos mensaje genérico.
-    console.error("invitar-cobrador unhandled error:", e);
+    //
+    // Importante: en el modo no-email tenemos la `generated` password
+    // en scope. Si el SDK alguna vez incluyera el request body en el
+    // Error (vía `cause` o similar), `e` completo podría contener la
+    // password — los logs del Dashboard son consultables por cualquier
+    // colaborador del proyecto. Solo logueamos `e.message`, no el
+    // objeto entero, para minimizar la superficie. Defense in depth.
+    const safeMessage = e instanceof Error ? e.message : String(e);
+    console.error("invitar-cobrador unhandled error:", safeMessage);
     return jsonError("Error interno — revisá los logs de la función", 500);
   }
 });
@@ -317,7 +325,9 @@ function humanizeAuthError(raw: string): string {
   const lower = raw.toLowerCase();
   if (
     /already.*(registered|exists)/.test(lower) ||
-    lower.includes("user already")
+    lower.includes("user already") ||
+    lower.includes("email_exists") ||
+    lower.includes("duplicate")
   ) {
     return "Ya existe un usuario con ese email — usá otro o, " +
       "si querés moverlo de tenant, contactá soporte.";

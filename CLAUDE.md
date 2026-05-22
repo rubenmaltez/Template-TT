@@ -232,6 +232,17 @@ Estos viven acá hasta que se ataquen explícitamente. NO re-flag en audits.
       Supabase rechaza el update pero el intent row del audit_log ya quedó
       escrito → timeline pollution con intents fallidos. Agregar `listUsers`
       filtro por email antes del update (mismo patrón que `crear-tenant`).
+    - `crear-tenant` y `reenviar-invitacion`: outer catch loguea `e`
+      completo (`console.error(... , e)`). Si el SDK alguna vez incluyera
+      el request body en el Error, la password generada o el email
+      podrían quedar en los logs del Dashboard. Propagar el scrub que
+      ya está en `invitar-cobrador` (`e instanceof Error ? e.message :
+      String(e)`). Defense in depth, bajo riesgo real.
+    - `invitar-cobrador`: ghost user si una excepción tira post-
+      `createUser` exitoso (path no-email). El user queda creado con
+      password aleatoria que nadie verá. Recuperable vía
+      `forzar-password-cobrador`. Replicar el patrón `userIdParcial`
+      outer-scope + cleanup de `crear-tenant` si vale el esfuerzo.
 - **Dashboard admin: overflow vertical en cards en narrow viewport** (~< 500px). El
   `childAspectRatio: 4` para 1 columna deja altura insuficiente; el contenido (icon +
   label + value + sub) tira "BOTTOM OVERFLOWED BY 18 PIXELS". Pre-existente, no de R10.
