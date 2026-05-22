@@ -11,19 +11,29 @@ import 'package:go_router/go_router.dart';
 /// el child, **pero NO desmonta los modales abiertos**. El user ve el
 /// dialog flotando sobre la nueva pantalla — UX confusa.
 ///
-/// **Cómo lo resuelve**: antes de navegar, popUntil cierra modales
-/// **descartables** (los que tienen `barrierDismissible: true`, el
-/// default). `DialogRoute` / `ModalBottomSheetRoute` son `PopupRoute`,
-/// no `PageRoute`, así que normalmente caen.
+/// **Cómo lo resuelve** (orden importante):
+///   1. Si hay un Drawer abierto, lo cierra. El Drawer del Scaffold NO
+///      es una `Route` propia — es un `LocalHistoryEntry` adjunto a la
+///      `PageRoute` del shell, así que `popUntil` no lo alcanza. Hay
+///      que cerrarlo con `Scaffold.closeDrawer()`.
+///   2. Pop los `PopupRoute`s descartables encima del stack (dialogs,
+///      bottom sheets con `barrierDismissible: true`, el default).
+///      Las `PageRoute`s (incluyendo las pushed con `context.push`) se
+///      conservan — pop solo lo que es `PopupRoute`.
 ///
 /// **Respeta `barrierDismissible: false`**: hay dialogs críticos en el
-/// repo (CredencialesDialog que muestra password generada UNA vez,
-/// dialogs de acciones destructivas como forzar-password / eliminar
+/// repo (`CredencialesDialog` que muestra password generada UNA vez,
+/// confirmaciones destructivas como forzar-password / eliminar
 /// cobrador) marcados explícitamente como no descartables. Si el helper
-/// los popeara, el user podría perder la password generada con un click
+/// los popeara, el user podría perder la password con un click
 /// accidental al sidebar — peor UX que el bug original. En ese caso, el
 /// helper NO navega y muestra un SnackBar pidiéndole al user que cierre
 /// el dialog primero explícitamente.
+///
+/// **Limitación**: `Navigator.of(this)` usa `rootNavigator: false`, el
+/// navigator del ShellRoute. No cubre dialogs pushed con
+/// `useRootNavigator: true` (ninguno en el repo hoy — verificar antes
+/// de meter uno nuevo).
 extension ShellNav on BuildContext {
   /// Navega a [path] cerrando primero cualquier dialog/sheet descartable
   /// que esté abierto. Si hay un dialog crítico (barrierDismissible:
@@ -47,23 +57,37 @@ extension ShellNav on BuildContext {
   }
 }
 
-/// popUntil cerrando solo modales descartables. Retorna `true` si el
-/// stack quedó limpio (puede navegar), `false` si encontró un modal
-/// crítico (barrierDismissible: false) y no debe pasar por arriba.
+/// Cierra modales descartables. Retorna `true` si el stack quedó limpio
+/// (se puede navegar), `false` si encontró un modal crítico
+/// (barrierDismissible: false) y se debe abortar.
 ///
-/// `PageRoute` siempre se conserva — esa es la ruta del shell route
-/// activa.
+/// **PageRoutes (incluso pushed) se conservan**: usar `r is! PopupRoute`
+/// en lugar de `r is PageRoute` evita el bug de "PageRoute pushed encima
+/// de la activa queda visible mientras la URL cambia". Solo popeamos
+/// PopupRoutes descartables.
+///
+/// **Drawer cerrado por separado**: el Drawer del Scaffold no es Route,
+/// es LocalHistoryEntry. Hay que invocar `closeDrawer()` explícito.
 bool _tryCloseDismissibleModals(BuildContext context) {
+  // 1. Drawer (no es Route, no lo alcanza popUntil).
+  final scaffold = Scaffold.maybeOf(context);
+  if (scaffold != null && scaffold.isDrawerOpen) {
+    scaffold.closeDrawer();
+  }
+
+  // 2. PopupRoutes descartables encima.
   var foundCritical = false;
   Navigator.of(context).popUntil((route) {
-    if (route is PageRoute) return true; // ruta del shell, conservar
-    if (route is PopupRoute && !route.barrierDismissible) {
-      // Dialog crítico explícito (CredencialesDialog, confirmaciones
-      // destructivas). NO popear — el user debe descartarlo a mano.
+    // Cualquier cosa que NO sea PopupRoute (PageRoute, MaterialPageRoute,
+    // CupertinoPageRoute, las pushed por context.push, etc.) se conserva.
+    if (route is! PopupRoute) return true;
+    // PopupRoute crítico → conservar y avisar al caller.
+    if (!route.barrierDismissible) {
       foundCritical = true;
       return true;
     }
-    return false; // popear modales descartables
+    // PopupRoute descartable → popear.
+    return false;
   });
   return !foundCritical;
 }
