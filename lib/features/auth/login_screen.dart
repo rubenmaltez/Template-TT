@@ -1,3 +1,5 @@
+import 'dart:developer' as developer;
+
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/semantics.dart' show SemanticsService;
@@ -91,12 +93,71 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
           break;
       }
     } on AuthException catch (e) {
-      setState(() => _error = e.message);
+      // Preservamos el Error en la consola del browser para debugging
+      // sin exponerlo al user. developer.log queda accesible vía
+      // DevTools incluso en release.
+      developer.log('Login AuthException', name: 'login', error: e);
+      setState(() => _error = _humanizarLoginError(e));
     } catch (e) {
-      setState(() => _error = e.toString());
+      developer.log('Login error', name: 'login', error: e);
+      setState(() => _error = _humanizarLoginError(e));
     } finally {
       if (mounted) setState(() => _busy = false);
     }
+  }
+
+  /// Traduce excepciones del login/recovery a copy en español. Cubre:
+  ///   - `AuthException` con mensajes conocidos de Supabase Auth
+  ///     (credenciales inválidas, email no confirmado, rate limit,
+  ///     rate-limit-por-tiempo del recovery, formato de email, etc.).
+  ///   - Network errors (`ClientException`, `SocketException`,
+  ///     `TimeoutException`): el SDK devuelve "ClientException: Failed
+  ///     to fetch, uri=https://...supabase.co/auth/v1/token..." que
+  ///     expone el backend y string técnico. Lo reemplazamos por un
+  ///     mensaje genérico de "sin conexión".
+  ///   - Fallback: toString tal cual (raro — los logs de developer.log
+  ///     capturan el detalle si pasa).
+  String _humanizarLoginError(Object e) {
+    if (e is AuthException) {
+      final m = e.message.toLowerCase();
+      if (m.contains('invalid login') || m.contains('invalid credentials')) {
+        return 'Credenciales inválidas. Verificá tu email y contraseña.';
+      }
+      if (m.contains('email not confirmed')) {
+        return 'Tu cuenta todavía no confirmó el email. Revisá tu '
+            'bandeja de entrada.';
+      }
+      if (m.contains('rate limit') || m.contains('too many requests')) {
+        return 'Demasiados intentos. Esperá un momento y volvé a probar.';
+      }
+      // Rate limit del flow de recovery: Supabase devuelve "For security
+      // purposes, you can only request this after X seconds".
+      if (m.contains('for security purposes') ||
+          m.contains('only request this after')) {
+        return 'Esperá unos segundos antes de pedir otro link.';
+      }
+      if (m.contains('unable to validate email') ||
+          m.contains('invalid format')) {
+        return 'El email no tiene un formato válido.';
+      }
+      if (m.contains('user not found')) {
+        return 'No encontramos ese email en el sistema.';
+      }
+      return e.message;
+    }
+    // Detección de network errors por toString: agregar un dep de
+    // `http` solo para `is ClientException` es overhead. El package
+    // de Supabase los lanza con strings reconocibles.
+    final s = e.toString();
+    if (s.contains('ClientException') ||
+        s.contains('Failed to fetch') ||
+        s.contains('SocketException') ||
+        s.contains('TimeoutException') ||
+        s.contains('Network is unreachable') ||
+        s.contains('XMLHttpRequest')) {
+      return 'Sin conexión. Verificá tu red e intentá de nuevo.';
+    }
+    return s;
   }
 
   @override

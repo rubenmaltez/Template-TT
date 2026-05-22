@@ -322,7 +322,15 @@ serve(async (req) => {
     // generar la password aleatoria (modo no-email), ésta podría
     // aparecer en el stack trace según cómo Deno formatee la
     // excepción. Loggeamos en server y devolvemos mensaje genérico.
-    console.error("reenviar-invitacion: unhandled error", e);
+    //
+    // Importante: scrub del Error completo a solo e.message — la
+    // password generada está en scope al momento del throw. Si el SDK
+    // alguna vez incluyera el request body en el Error (vía `cause`),
+    // `e` completo podría contener la password — los logs del
+    // Dashboard son consultables por cualquier colaborador del
+    // proyecto. Mismo patrón que invitar-cobrador y crear-tenant.
+    const safeMessage = e instanceof Error ? e.message : String(e);
+    console.error("reenviar-invitacion: unhandled error", safeMessage);
     return jsonError("Error interno — revisá los logs de la función", 500);
   }
 });

@@ -427,7 +427,15 @@ serve(async (req) => {
     // trace según cómo Deno formatee la excepción (depende de
     // --inspect / --log-level). Loggeamos en server para diagnosticar
     // y devolvemos un mensaje genérico al cliente.
-    console.error("crear-tenant unhandled error:", e);
+    //
+    // Importante: scrub del Error completo a solo e.message — `generated`
+    // (password) está en scope al momento del throw. Si el SDK alguna
+    // vez incluyera el request body en el Error (vía `cause` o similar),
+    // `e` completo podría contener la password — los logs del Dashboard
+    // son consultables por cualquier colaborador del proyecto. Mismo
+    // patrón que invitar-cobrador. Defense in depth.
+    const safeMessage = e instanceof Error ? e.message : String(e);
+    console.error("crear-tenant unhandled error:", safeMessage);
 
     // Cleanup de state parcial: si llegamos a crear user/tenant pero
     // una excepción rompió el flow antes del response, hay que limpiar
