@@ -111,7 +111,7 @@ class _GeografiaAdminScreenState extends State<GeografiaAdminScreen> {
 }
 
 class _DeptoTile extends StatefulWidget {
-  const _DeptoTile({required this.depto});
+  const _DeptoTile({super.key, required this.depto});
   final Map<String, dynamic> depto;
 
   @override
@@ -206,7 +206,7 @@ class _DeptoTileState extends State<_DeptoTile> {
 }
 
 class _MunicipioTile extends StatefulWidget {
-  const _MunicipioTile({required this.municipio});
+  const _MunicipioTile({super.key, required this.municipio});
   final Map<String, dynamic> municipio;
 
   @override
