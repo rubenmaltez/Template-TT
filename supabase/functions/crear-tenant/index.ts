@@ -427,7 +427,15 @@ serve(async (req) => {
     // trace según cómo Deno formatee la excepción (depende de
     // --inspect / --log-level). Loggeamos en server para diagnosticar
     // y devolvemos un mensaje genérico al cliente.
-    console.error("crear-tenant unhandled error:", e);
+    //
+    // Importante: scrub del Error completo a solo e.message — `generated`
+    // (password) está en scope al momento del throw. Si el SDK alguna
+    // vez incluyera el request body en el Error (vía `cause` o similar),
+    // `e` completo podría contener la password — los logs del Dashboard
+    // son consultables por cualquier colaborador del proyecto. Mismo
+    // patrón que invitar-cobrador. Defense in depth.
+    const safeMessage = e instanceof Error ? e.message : String(e);
+    console.error("crear-tenant unhandled error:", safeMessage);
 
     // Cleanup de state parcial: si llegamos a crear user/tenant pero
     // una excepción rompió el flow antes del response, hay que limpiar
@@ -450,9 +458,16 @@ serve(async (req) => {
             );
           }
         } catch (deleteUserThrow) {
+          // Scrub: misma justificación que el outer catch — `generated`
+          // (la password) sigue viva en este scope. Si el SDK alguna vez
+          // incluyera el request body en el Error, el message-only impide
+          // que aparezca en los logs.
+          const msg = deleteUserThrow instanceof Error
+            ? deleteUserThrow.message
+            : String(deleteUserThrow);
           console.error(
             `crear-tenant rollback deleteUser threw (user=${userIdParcial}):`,
-            deleteUserThrow,
+            msg,
           );
         }
       }
@@ -466,9 +481,12 @@ serve(async (req) => {
             );
           }
         } catch (deleteTenantThrow) {
+          const msg = deleteTenantThrow instanceof Error
+            ? deleteTenantThrow.message
+            : String(deleteTenantThrow);
           console.error(
             `crear-tenant rollback deleteTenant threw (tenant=${tenantId}). ORPHAN:`,
-            deleteTenantThrow,
+            msg,
           );
         }
       }
