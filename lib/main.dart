@@ -105,16 +105,39 @@ Future<void> _bootstrap() async {
   // IMPORTANTE: el listener se setea ANTES de exchangeCodeForSession para
   // que los eventos del exchange (signedIn en flows recovery/invite) sean
   // capturados — sino PowerSync queda desconectado pese a tener sesión.
+  //
+  // **Telemetría del sync flow** (debug del bug "sync gate stuck
+  // post-forzar-password"): logueamos cada paso del flow signedIn →
+  // connectPowerSync para que la próxima reproducción del bug aparezca
+  // en /super/logs con info útil. `connectPowerSync` envuelto en
+  // try/catch porque sino las excepciones del SDK quedan silenciadas
+  // dentro del listener async.
   Supabase.instance.client.auth.onAuthStateChange.listen((data) async {
     final session = data.session;
     switch (data.event) {
       case AuthChangeEvent.initialSession:
       case AuthChangeEvent.signedIn:
         if (session != null) {
+          debugPrint('[SYNC-DIAG] ${data.event.name} for user ${session.user.id}');
           container
               .read(authIdentityProvider.notifier)
               .onSignIn(session.user.id);
-          await ps.connectPowerSync();
+          try {
+            debugPrint('[SYNC-DIAG] connectPowerSync starting…');
+            await ps.connectPowerSync();
+            debugPrint('[SYNC-DIAG] connectPowerSync returned OK');
+          } catch (e, stack) {
+            debugPrint('[SYNC-DIAG] connectPowerSync THREW: $e');
+            // Captura al logger para que aparezca en /super/logs.
+            // Sin esto el error queda invisible y el sync gate queda
+            // colgado eterno (el user ve "Sincronizando datos…" sin
+            // saber que connect falló).
+            unawaited(ErrorLogService.instance.record(
+              error: 'connectPowerSync falló post-${data.event.name}: $e',
+              stack: stack,
+              type: ErrorLogType.zone,
+            ));
+          }
         }
         break;
       case AuthChangeEvent.signedOut:
@@ -122,8 +145,19 @@ Future<void> _bootstrap() async {
         // queda en SQLite por performance / offline. El sync gate (R7)
         // bloquea la UI hasta que PowerSync confirme un sync posterior
         // al signOut, así el próximo user no ve data del anterior.
+        debugPrint('[SYNC-DIAG] signedOut event');
         container.read(authIdentityProvider.notifier).onSignOut();
-        await ps.disconnectPowerSync();
+        try {
+          await ps.disconnectPowerSync();
+          debugPrint('[SYNC-DIAG] disconnectPowerSync returned OK');
+        } catch (e, stack) {
+          debugPrint('[SYNC-DIAG] disconnectPowerSync THREW: $e');
+          unawaited(ErrorLogService.instance.record(
+            error: 'disconnectPowerSync falló post-signOut: $e',
+            stack: stack,
+            type: ErrorLogType.zone,
+          ));
+        }
         break;
       default:
         break;
@@ -144,10 +178,25 @@ Future<void> _bootstrap() async {
   if (restoredSession != null) {
     final currentIdentity = container.read(authIdentityProvider);
     if (currentIdentity.userId != restoredSession.user.id) {
+      debugPrint('[SYNC-DIAG] Fallback manual connect for restored user '
+          '${restoredSession.user.id} (identity ≠ session)');
       container
           .read(authIdentityProvider.notifier)
           .onSignIn(restoredSession.user.id);
-      await ps.connectPowerSync();
+      try {
+        await ps.connectPowerSync();
+        debugPrint('[SYNC-DIAG] Fallback connect returned OK');
+      } catch (e, stack) {
+        debugPrint('[SYNC-DIAG] Fallback connect THREW: $e');
+        unawaited(ErrorLogService.instance.record(
+          error: 'connectPowerSync falló en fallback manual: $e',
+          stack: stack,
+          type: ErrorLogType.zone,
+        ));
+      }
+    } else {
+      debugPrint('[SYNC-DIAG] Fallback skip (identity already matches '
+          'restored session user)');
     }
   }
 
@@ -177,6 +226,9 @@ Future<void> _bootstrap() async {
   // GC de archivos huérfanos al arrancar (cobros cancelados, etc.).
   final fotoService = container.read(fotoComprobanteServiceProvider);
   unawaited(fotoService.limpiarHuerfanos());
+  // Tracking del último error reportado para no spammear logs si el
+  // status emite repetido con el mismo error en cada checkpoint.
+  Object? lastReportedSyncError;
   ps.db.statusStream.listen((status) {
     if (status.connected) {
       unawaited(fotoService.sincronizarPendientes());
@@ -184,6 +236,24 @@ Future<void> _bootstrap() async {
       // durante offline (gap del listener de auth, que solo flushea
       // en signedIn).
       unawaited(ErrorLogService.instance.onConnectivityRestored());
+    }
+    // Telemetría del sync flow: si PowerSync reporta un error
+    // (anyError, downloadError, uploadError), lo capturamos al
+    // logger. Eso nos da visibilidad del bug "sync gate stuck" si
+    // PowerSync está fallando silenciosamente sin emitir checkpoint.
+    final err = status.anyError;
+    if (err != null && err != lastReportedSyncError) {
+      lastReportedSyncError = err;
+      debugPrint('[SYNC-DIAG] PowerSync anyError: $err');
+      unawaited(ErrorLogService.instance.record(
+        error: 'PowerSync status.anyError: $err',
+        stack: StackTrace.current,
+        type: ErrorLogType.zone,
+      ));
+    } else if (err == null && lastReportedSyncError != null) {
+      // Reset el tracker cuando el error se resuelve, para capturar
+      // un error futuro distinto.
+      lastReportedSyncError = null;
     }
   });
 
