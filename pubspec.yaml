@@ -24,6 +24,9 @@ dependencies:
   # Storage / config
   shared_preferences: ^2.3.0
   path_provider: ^2.1.4
+  # Lee la versión de la app (pubspec version) para anexar al error log
+  # y poder correlacionar crashes con builds desplegados.
+  package_info_plus: ^8.0.2
 
   # UI
   cupertino_icons: ^1.0.8
