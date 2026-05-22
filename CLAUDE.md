@@ -180,19 +180,6 @@ NO soporta multi-file via paste — `_shared/passwords.ts` no funcionaría. Por 
 
 Estos viven acá hasta que se ataquen explícitamente. NO re-flag en audits.
 
-- **GlobalKey duplicado en navegación shell admin (Geografía)**. El fix
-  parcial del sprint anterior (commit 57ae20c) disposeó el `TextEditingController`
-  del `_promptNombre` dialog, lo cual solucionó UNA causa del crash. Pero el
-  bug original (`/admin/geografia` → abrir dialog "Nuevo departamento" → otra
-  ruta del sidebar → volver) sigue tirando red screen con
-  `Assertion failed: element._lifecycleState == _ElementLifecycle.inactive`
-  + `Duplicate GlobalKey detected in widget tree`. El agent Explore confirmó
-  que no hay GlobalKey duplicados en código nuestro (6 GlobalKey, todos en
-  `State` o file-scope correctamente). Hipótesis: keys internas de Material
-  widgets (probablemente Form/Scaffold del setup wizard que flashea al
-  login del admin) colisionan al navegar. Diagnóstico requiere stack del
-  console capturado. Con el logger del sprint actual (`/super/logs`), el
-  cliente reproduce y vos ves el stack sin DevTools.
 - **Flash del setup wizard al loguearse como admin**. Cuando un admin de
   tenant (no super_admin) se loguea, por ~1s aparece la pantalla de setup
   inicial del tenant antes de redirigir al dashboard. Es un bug de
