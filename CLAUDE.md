@@ -180,19 +180,6 @@ NO soporta multi-file via paste — `_shared/passwords.ts` no funcionaría. Por 
 
 Estos viven acá hasta que se ataquen explícitamente. NO re-flag en audits.
 
-- **Flash del setup wizard al loguearse como admin (sólo post-forzar-password)**.
-  Cuando un admin de tenant (no super_admin) se loguea POR PRIMERA VEZ
-  o tras un `forzar-password-cobrador` (que invalida la sesión vieja
-  con signOut global), por ~1s aparece la pantalla de setup inicial
-  antes de redirigir al dashboard. Es un bug de race/hydration: el
-  guard del router (`empresaNombreProvider`) detecta `null` hasta que
-  PowerSync sincroniza la tabla `settings` desde cero, ahí flippa a un
-  valor concreto y rebota a `/admin`. En logins subsecuentes con cache
-  local intacto NO aparece (el valor llega antes del primer build).
-  Solo afecta UX (no funcional) pero da impresión de que la app está
-  rota. Posible mitigación: mostrar SyncGateScreen también cuando el
-  rol admin tenga `empresaNombreProvider` en loading inicial (no solo
-  `hasValue && value == null`).
 - **OfflineBanner false-positive** durante handshake inicial PowerSync (~2s "Sin conexión"
   antes de establecerse). Necesita debounce de ~3s.
 - **Error logging — follow-ups del sprint 0035**:
