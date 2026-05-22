@@ -197,6 +197,13 @@ class _MunicipioTile extends StatelessWidget {
 }
 
 Future<String?> _promptNombre(BuildContext context, String titulo) {
+  // El controller vive sólo mientras el dialog está montado. Antes
+  // lo creábamos acá pero nunca lo disponíamos — quedaba retenido por
+  // la closure del builder con listeners apuntando a Elements ya
+  // desmontados. En la siguiente navegación de vuelta a Geografía,
+  // el rebuild del árbol pegaba contra
+  // `_elements.contains(element) is not true` (framework.dart:2168).
+  // whenComplete cubre happy AND error path del showDialog future.
   final ctrl = TextEditingController();
   return showDialog<String?>(
     context: context,
@@ -220,5 +227,5 @@ Future<String?> _promptNombre(BuildContext context, String titulo) {
         ),
       ],
     ),
-  );
+  ).whenComplete(ctrl.dispose);
 }

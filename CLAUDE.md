@@ -173,15 +173,6 @@ Estos viven acá hasta que se ataquen explícitamente. NO re-flag en audits.
   antes de establecerse). Necesita debounce de ~3s.
 - **Animación brusca login → shell** post-sync-gate. El spinner desaparece y aparece
   el shell sin transición. Recomendado: fade transition de 200-300ms.
-- **Crash en pantalla Geografía al navegar de vuelta**. Reproducible: ir a
-  `/admin/geografia` → tocar "Agregar nuevo" (departamento/municipio) → cambiar
-  a Settings vía sidebar → volver a Geografía. Red screen of death con
-  `Assertion failed: _elements.contains(element) is not true` desde
-  `framework.dart:2168`. Bug de lifecycle: probable `GlobalKey` reusado entre
-  builds o un controller que retiene referencia a Element desmontado.
-  Pre-existente, no del sprint. Fix: revisar uso de `GlobalKey` en
-  `geografia_admin_screen.dart` y dialogs hijos; considerar
-  `ValueKey`/`ObjectKey` con identifier estable o eliminar la key si no se usa.
 - **Edge Functions — `humanizeAuthError` duplicado en 5 funciones**. Cada Edge
   Function tiene su propia copia inline del helper (limitación del Dashboard
   que no soporta `_shared/`). Cuando migremos a CLI, consolidar en `_shared/`.
