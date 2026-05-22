@@ -14,6 +14,9 @@ class SuperShell extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
+    final loc = GoRouterState.of(context).matchedLocation;
+    final enLogs = loc == '/super/logs';
+    final enTenants = loc == '/super/tenants';
     return Scaffold(
       appBar: AppBar(
         backgroundColor: scheme.tertiaryContainer,
@@ -30,6 +33,20 @@ class SuperShell extends StatelessWidget {
             Text('Super Admin · $titulo'),
           ],
         ),
+        actions: [
+          if (!enTenants)
+            IconButton(
+              icon: const Icon(Icons.business),
+              tooltip: 'Tenants',
+              onPressed: () => context.go('/super/tenants'),
+            ),
+          if (!enLogs)
+            IconButton(
+              icon: const Icon(Icons.bug_report_outlined),
+              tooltip: 'Logs de errores',
+              onPressed: () => context.go('/super/logs'),
+            ),
+        ],
       ),
       body: child,
     );
