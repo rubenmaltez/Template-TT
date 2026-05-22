@@ -34,7 +34,123 @@ no en hardening por escenarios hipotéticos.
 
 ---
 
-## Stack
+## Mapa funcional de la app
+
+Visión panorámica de qué hay implementado y dónde vive. Mantener actualizado
+cuando se agregan/quitan features. **Leer esto antes de empezar cualquier
+task** — orienta rápido el área que va a tocar el cambio.
+
+### Misión del producto
+Resolver el **ciclo completo de cobranza de internet residencial** para ISPs
+chicos/medianos de Centroamérica:
+
+1. El admin del ISP carga su catálogo (planes, clientes, contratos).
+2. El sistema genera cuotas mensuales automáticamente desde el contrato.
+3. El cobrador sale a campo con la app móvil-first (offline-first), cobra
+   con foto del comprobante y geo del cobro, imprime recibo Bluetooth térmico.
+4. Vuelve la conexión → PowerSync sincroniza → super_admin y admin ven
+   reportes y auditoría.
+
+**Foco del trabajo**: cada sprint debe acercar al MVP de "un ISP real
+puede usar esto para reemplazar su Excel + WhatsApp de cobranza". No
+features experimentales, no abstracciones prematuras.
+
+### Rutas por rol
+
+**Super Admin** (`/super/*`, exclusivo de Rubén)
+- `/super/tenants` — lista de ISPs. Crear nuevo (con/sin email, default sin
+  email + password generada server-side para pasar por canal externo).
+- `/super/tenants/:id` — detalle del tenant: toggle de módulos
+  (Cobranza base + Inventario opcional), lista de miembros.
+- `/super/tenants/:tid/miembros/:cid` — detalle del miembro con acciones
+  cross-tenant: forzar contraseña, cambiar email, cambiar rol, activar/
+  desactivar, eliminar.
+- `/super/logs` — viewer de errores del cliente Flutter (logger del sprint
+  0035). Filtros tenant/tipo/búsqueda, stack expansible, copiar al portapapeles.
+
+**Admin del Tenant** (`/admin/*`)
+- `/admin` — dashboard con KPIs (hoy/semana/mes, clientes activos, cuotas
+  por cobrar, mora, top cobradores, distribución de cuotas).
+- `/admin/clientes` + `/admin/clientes/nuevo` + `/admin/clientes/:id/editar`
+  — CRUD de clientes (nombre, teléfono, dirección, geo).
+- `/admin/contratos` + nuevo + editar — contratos cliente↔plan (asigna
+  plan, día de pago, fecha alta).
+- `/admin/planes` — catálogo de planes de internet (solo admin, no
+  admin_cobranza).
+- `/admin/cobradores` — invita/gestiona cobradores del tenant (solo admin).
+- `/admin/cuotas` — todas las cuotas del tenant con filtros.
+- `/admin/pagos` — historial de pagos, ver comprobantes, anular.
+- `/admin/notificaciones` — gestión de mora (cron diario genera filas
+  en `notificaciones_mora`).
+- `/admin/mapa` — mapa con clientes geolocalizados (flutter_map + OSM).
+- `/admin/reportes` — reportes operativos.
+- `/admin/audit` — log de cambios sensibles del tenant (solo admin).
+- `/admin/geografia` — CRUD jerárquico depto → municipio → comunidad
+  (solo admin).
+- `/admin/settings` — config del tenant: empresa, cobranza, pagos, recibos
+  (solo admin).
+- `/admin/onboarding` — wizard inicial (cuando `empresa.nombre` vacío).
+
+**`admin_cobranza`** ve un subconjunto del admin: NO accede a planes,
+cobradores, audit, geografía, settings (guardia explícita en el router).
+
+**Cobrador** (`/*`, móvil-first)
+- `/` — pantalla inicio con resumen del día.
+- `/clientes` — lista de clientes asignados.
+- `/cuotas` — cuotas pendientes (ordenadas por mora descendente).
+- `/mapa` — clientes geolocalizados (planificada o libre según setting
+  `cobranza.modo_ruta`).
+- `/historial` — sus cobros anteriores.
+- `/perfil` — datos del cobrador, config impresora Bluetooth.
+- `/clientes/:id` — detalle de un cliente (push, fuera del shell).
+- `/cobro/:cuotaId` — flow de cobro: monto, método, foto del comprobante,
+  geo del cobro, imprimir recibo.
+- `/recibo/:reciboId` — preview del recibo.
+- `/perfil/impresora` — pairing Bluetooth con la impresora térmica.
+
+### Edge Functions (Deno, deployadas via Dashboard)
+- `crear-tenant` — alta de ISP nuevo + admin (con/sin email).
+- `invitar-cobrador` — admin invita cobrador a su tenant.
+- `reenviar-invitacion` — regenera invitación con password nueva.
+- `forzar-password-cobrador` — super_admin o admin fuerza nueva password
+  (signOut global del target).
+- `cambiar-email-cobrador` — cambia email preservando user_id.
+- `eliminar-cobrador` — soft delete con cascada.
+
+Todas usan `callerClient` (JWT sujeto a RLS) para DB y `service_role` solo
+para `auth.admin.*` y rollbacks.
+
+### Tablas principales (Postgres)
+- `tenants` — los ISPs (cada uno es un "cliente" del SaaS).
+- `cobradores` — todos los users del tenant (admins + cobradores).
+  Replica `auth.users.id`.
+- `clientes` + `contratos` + `planes` — catálogo del ISP.
+- `cuotas` — generadas mensualmente del contrato (estados:
+  `pendiente` / `parcial` / `pagada` / `en_gracia` / `vencida` / `anulada`).
+- `pagos` + `recibos` — registros de cobranza, con foto en Storage
+  `comprobantes-pago/{tenant}/comp/{pago_id}.{jpg|png|webp}`.
+- `cargos_extra` — descuentos/cargos sobre cuotas.
+- `notificaciones_mora` — generadas por cron diario.
+- `settings` — config per-tenant (`clave / valor JSONB`).
+- `audit_log` — trail append-only de cambios sensibles.
+- `modulos` + `tenant_modulos` — feature flags per-tenant.
+- `error_logs` — captura de crashes del cliente Flutter (migración 0035).
+
+### Principios arquitecturales a respetar SIEMPRE
+1. **Multi-tenant con RLS** — toda tabla operativa tiene `tenant_id` NOT
+   NULL. Las policies usan `current_tenant_id()`. Super_admin bypassa con
+   `is_super_admin()`. NUNCA crear una tabla sin RLS o sin tenant_id.
+2. **Offline-first** — el cobrador debe poder operar sin internet. Cualquier
+   feature nueva que requiera conexión sincrónica debe declararse
+   explícitamente (no es el default).
+3. **Server gana** — el cliente PowerSync sincroniza, pero las queries
+   críticas pasan por RPC o Edge Function. La fuente de verdad es Postgres.
+4. **Audit log append-only** — nunca borrar rows. Agregar rows nuevas para
+   "deshacer" (ej. patrón intent + success en forzar-password).
+5. **Workflow sin email del super_admin** — no dependemos de Resend para
+   onboarding de tenants. Cualquier feature que asuma "envía email" debe
+   tener fallback no-email con password generada server-side.
+
 
 | Capa | Tecnología |
 |---|---|
