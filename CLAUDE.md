@@ -413,22 +413,24 @@ Estos viven acá hasta que se ataquen explícitamente. NO re-flag en audits.
   Vale considerar extraer un widget compartido `PhoneTextField` o un
   helper `Validators.phoneInputFormatters()` para no duplicar el regex
   en 5 lugares.
-- **Sync gate (R7) sin feedback de progreso en syncs iniciales largos**. Caso
-  reproducido en testing manual: super_admin (que ve todos los tenants) se loguea
-  tras haber estado como admin de un tenant. PowerSync hace delete-and-replace
-  de TODOS los buckets locales — con varios tenants, el sync inicial tarda
-  varios MINUTOS, no segundos. El gate técnicamente funciona (espera al sync) pero:
-    1. Los timeouts del escape hatch (8s "tardando", 25s botón "Volver al login")
-       son arbitrarios y aparecen muy pronto, engañando al user que cree que
-       la app está colgada.
-    2. No hay feedback de progreso del download (PowerSync expone
-       `downloadProgress.downloaded / total` que podríamos mostrar).
-    3. El escape hatch no resuelve nada — si el user lo toca y vuelve a entrar,
-       el siguiente login será igual de lento.
-  Fix futuro: mostrar barra de progreso si `downloadProgress != null`, texto
-  explícito "Primera vez sincronizando, esto puede tardar varios minutos en
-  cuentas con mucha data", y subir el timeout del escape hatch a ~2 min con
-  un mensaje claro de "Reintentar conexión".
+- **Sync gate se cuelga indefinidamente post-forzar-password (F5 lo desbloquea)**.
+  Caso reproducido en smoke testing: tras `forzar-password-cobrador`, el
+  admin afectado logea y entra al sync gate. El gate aparece, muestra el
+  mensaje de 30s ("primer sync puede tardar varios minutos"), pero NO
+  avanza ni libera nunca. Sólo un refresh manual del browser (F5) lo
+  desbloquea — después de F5, el sync completa rápido y la app carga
+  normal. Esto sugiere que el `connectPowerSync()` que se dispara en el
+  `onAuthStateChange.signedIn` listener queda en algún estado limbo
+  (¿race con el sync gate? ¿`lastSyncedAt` no se emite tras el primer
+  checkpoint?). F5 reinicializa todo desde cero y funciona.
+  Importante: el sprint del logger ya capturó el caso similar — vale
+  revisar `/super/logs` después de reproducir para ver si hay errores
+  silenciados de PowerSync. La UX del gate (PR #6) ya está bien:
+  progress bar, mensajes honestos, retry button — solo que el sync NO
+  arranca a llegar al gate. Sprint propio diagnóstico: agregar logs
+  detallados en `main.dart` del flow `signedIn → connectPowerSync →
+  primer checkpoint`, y/o revisar si PowerSync emite `anyError` que
+  ahora podemos detectar via `status.anyError`.
 - **Switch "Enviar email de invitación" inconsistente entre dialogs**. El dialog
   "Crear nuevo ISP" (super_admin) tiene el switch para alternar entre modo email
   y modo no-email (password generada server-side). Pero los dialogs `InvitarAdminDialog`
