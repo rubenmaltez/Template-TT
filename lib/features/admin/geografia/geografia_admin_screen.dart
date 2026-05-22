@@ -163,6 +163,15 @@ class _DeptoTileState extends State<_DeptoTile> {
         leading: const Icon(Icons.map),
         title: Text(depto['nombre'] as String),
         subtitle: depto['codigo'] != null ? Text(depto['codigo'] as String) : null,
+        // maintainState: true para que el StreamBuilder interno NO se
+        // desmonte al colapsar el tile. Sin esto, al re-expandir el
+        // StreamBuilder se remontaba e intentaba `.listen()` otra vez
+        // al stream cacheado de PowerSync — tira `Bad state: Stream
+        // has already been listened to` aunque el listener anterior
+        // haya sido cancelado en dispose. Trade-off: usa algo de
+        // memoria mientras está colapsado (mantiene el Column de
+        // municipios en el tree), trivial en práctica.
+        maintainState: true,
         children: [
           StreamBuilder(
             stream: _municipios,
@@ -248,6 +257,9 @@ class _MunicipioTileState extends State<_MunicipioTile> {
         leading: const Icon(Icons.location_city),
         title: Text(municipio['nombre'] as String),
         childrenPadding: const EdgeInsets.only(left: 16),
+        // Idem _DeptoTile: mantener el StreamBuilder de comunidades
+        // montado para evitar el re-listen al re-expandir.
+        maintainState: true,
         children: [
           StreamBuilder(
             stream: _comunidades,
