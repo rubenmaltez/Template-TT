@@ -296,6 +296,19 @@ NO soporta multi-file via paste — `_shared/passwords.ts` no funcionaría. Por 
 
 Estos viven acá hasta que se ataquen explícitamente. NO re-flag en audits.
 
+- **Geografía — `Bad state: Stream has already been listened to` al
+  expandir un departamento creado**. Bug pre-existente descubierto en
+  testing manual post-merge del sprint del logger. En
+  `geografia_admin_screen.dart`, `_DeptoTile` ejecuta `ps.db.watch(...)`
+  dentro del `StreamBuilder` en cada `build()`. PowerSync cachea el
+  stream por (query+params), entonces el segundo intento de subscripción
+  al mismo stream falla con el assert. Mismo patrón en `_MunicipioTile`
+  (probable, no verificado).
+  Fix: convertir `_DeptoTile` y `_MunicipioTile` a `StatefulWidget`,
+  cachear el `Stream` como `late final` en el state, y usar `.asBroadcastStream()`
+  si vale o cachear el resultado de `watch` con un memoizer. Probable
+  que el patrón afecte a otras pantallas que usen `StreamBuilder`
+  anidado con `ps.db.watch` parametrizado.
 - **OfflineBanner follow-ups del sprint debounce**:
     - **Indicador de red inestable**: el debounce de 3s silencia flickers
       rápidos (`false → true → false` en <3s) — bueno para ocultar el
