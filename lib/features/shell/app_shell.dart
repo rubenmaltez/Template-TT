@@ -6,6 +6,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../config/router.dart';
 import '../../data/providers/cobrador_provider.dart';
 import '../../data/providers/sync_status_provider.dart';
+import '../shared/utils/shell_nav.dart';
 import '../shared/widgets/offline_banner.dart';
 
 /// Scaffold con drawer compartido por todas las pantallas raíz (las
@@ -120,10 +121,10 @@ class _AppDrawer extends ConsumerWidget {
             ListTile(
               leading: const Icon(Icons.logout),
               title: const Text('Cerrar sesión'),
-              onTap: () async {
-                Navigator.of(context).pop();
-                await Supabase.instance.client.auth.signOut();
-              },
+              // Cierra el drawer + dialogs antes del signOut para que
+              // ningún modal flote sobre /login tras el redirect.
+              onTap: () => context.closeModalsThenRun(
+                  () => Supabase.instance.client.auth.signOut()),
             ),
           ],
         ),
@@ -135,10 +136,11 @@ class _AppDrawer extends ConsumerWidget {
     return ListTile(
       leading: Icon(icon),
       title: Text(label),
-      onTap: () {
-        Navigator.of(context).pop();
-        context.go(path);
-      },
+      // closeModalsAndGo cierra el drawer + cualquier dialog que el user
+      // haya dejado abierto antes de navegar. Sin esto, en algunas rutas
+      // un dialog imperativo (showDialog) queda flotando sobre la nueva
+      // ruta porque go_router no desmonta PopupRoutes al cambiar shell child.
+      onTap: () => context.closeModalsAndGo(path),
     );
   }
 
