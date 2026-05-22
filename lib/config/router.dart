@@ -58,6 +58,33 @@ final _rolUsuarioProvider = StreamProvider<String?>((ref) async* {
       .map((rows) => rows.isEmpty ? null : rows.first['rol'] as String?);
 });
 
+/// True si la row específica de `empresa.nombre` existe en el SQLite
+/// local. Sirve para distinguir "row aún no sincronizada" (sync en
+/// curso) vs "row sincronizada con valor vacío" (necesita onboarding).
+///
+/// **Por qué la row específica y no `COUNT(*) > 0`**: PowerSync puede
+/// materializar OTRAS rows de `settings` antes que `empresa.nombre`
+/// específicamente (ej. `cobranza.dias_gracia`). Un check de
+/// "al menos una row" flipparía a true antes de que llegue el valor
+/// real de `empresa.nombre` → `empresaNombreProvider` seguiría emitiendo
+/// `null` (rows.isEmpty=true para esa key) y el guard del router
+/// redirigiría a `/admin/onboarding` por ~50ms. Flash más cortito pero
+/// no eliminado. Gateando sobre la row específica el bug desaparece
+/// completamente.
+///
+/// **Por qué existe el bug originalmente**: durante el sync inicial
+/// post-cambio de identidad (típico tras `forzar-password-cobrador` que
+/// invalida la sesión vieja con signOut global), la tabla `settings`
+/// local arranca vacía. `empresaNombreProvider` emite `null`, el guard
+/// lo interpreta como "necesita onboarding" y redirige al wizard por
+/// ~1s antes de que llegue la row del seed (migración 0010).
+final empresaNombreRowExistsProvider = StreamProvider<bool>((ref) async* {
+  yield* ps.db
+      .watch(
+          "SELECT 1 FROM settings WHERE clave = 'empresa.nombre' LIMIT 1")
+      .map((rows) => rows.isNotEmpty);
+});
+
 /// Stream de `empresa.nombre` para detectar si falta onboarding del tenant.
 /// Si está vacío, redirigimos al wizard.
 ///
@@ -98,6 +125,7 @@ final routerProvider = Provider<GoRouter>((ref) {
   final authSub = auth.onAuthStateChange.listen((_) {
     ref.invalidate(_rolUsuarioProvider);
     ref.invalidate(empresaNombreProvider);
+    ref.invalidate(empresaNombreRowExistsProvider);
     ref.invalidate(cobradorActualProvider);
   });
   ref.onDispose(authSub.cancel);
@@ -108,6 +136,10 @@ final routerProvider = Provider<GoRouter>((ref) {
   ref.listen(_rolUsuarioProvider, (_, __) => refresh.poke());
   // Idem para detectar setup completo del tenant.
   ref.listen(empresaNombreProvider, (_, __) => refresh.poke());
+  // empresaNombreRowExistsProvider participa del guard `needsOnboarding`
+  // — cuando flippa de false a true (la row de empresa.nombre llegó
+  // del sync), tenemos que reevaluar el redirect.
+  ref.listen(empresaNombreRowExistsProvider, (_, __) => refresh.poke());
   // Y para que SetPasswordScreen pueda limpiar el flow y desencadenar
   // una re-evaluación del redirect (sino quedaría atrapado en
   // /set-password después de actualizar la contraseña).
@@ -171,10 +203,22 @@ final routerProvider = Provider<GoRouter>((ref) {
       // Onboarding: si rol=admin y `empresa.nombre` está vacío, llevar al
       // wizard. NO aplica a super_admin (vive en el tenant System, no
       // necesita onboarding del producto).
+      //
+      // empresaNombreRowExistsProvider gate: si la row específica de
+      // `empresa.nombre` aún no llegó del sync, `empresaState.value`
+      // será null por defecto (rows.isEmpty=true para esa key). Sin
+      // este guard, el redirect caería en /admin/onboarding tentativo
+      // hasta que llegue la row real. Esperamos a confirmar que la
+      // row existe localmente — recién ahí confiamos en que
+      // `empresa.nombre = null` (mapeado a null) es "vacío" real, no
+      // un artefacto del sync inicial.
       if (rol == 'admin') {
         final empresaState = ref.read(empresaNombreProvider);
-        final needsOnboarding =
-            empresaState.hasValue && empresaState.value == null;
+        final empresaRowExiste =
+            ref.read(empresaNombreRowExistsProvider).valueOrNull ?? false;
+        final needsOnboarding = empresaRowExiste &&
+            empresaState.hasValue &&
+            empresaState.value == null;
         if (needsOnboarding && loc != '/admin/onboarding') {
           return '/admin/onboarding';
         }
