@@ -180,28 +180,35 @@ NO soporta multi-file via paste — `_shared/passwords.ts` no funcionaría. Por 
 
 Estos viven acá hasta que se ataquen explícitamente. NO re-flag en audits.
 
-- **GlobalKey duplicado en navegación shell admin (Geografía)**. El fix
-  parcial del sprint anterior (commit 57ae20c) disposeó el `TextEditingController`
-  del `_promptNombre` dialog, lo cual solucionó UNA causa del crash. Pero el
-  bug original (`/admin/geografia` → abrir dialog "Nuevo departamento" → otra
-  ruta del sidebar → volver) sigue tirando red screen con
-  `Assertion failed: element._lifecycleState == _ElementLifecycle.inactive`
-  + `Duplicate GlobalKey detected in widget tree`. El agent Explore confirmó
-  que no hay GlobalKey duplicados en código nuestro (6 GlobalKey, todos en
-  `State` o file-scope correctamente). Hipótesis: keys internas de Material
-  widgets (probablemente Form/Scaffold del setup wizard que flashea al
-  login del admin) colisionan al navegar. Diagnóstico requiere stack del
-  console capturado. Con el logger del sprint actual (`/super/logs`), el
-  cliente reproduce y vos ves el stack sin DevTools.
-- **Flash del setup wizard al loguearse como admin**. Cuando un admin de
-  tenant (no super_admin) se loguea, por ~1s aparece la pantalla de setup
-  inicial del tenant antes de redirigir al dashboard. Es un bug de
-  race/hydration: el guard del router (`empresaNombreProvider`) detecta
-  `null` hasta que PowerSync sincroniza la tabla `settings`, ahí flippa
-  a un valor concreto y rebota a `/admin`. Solo afecta UX (no funcional)
-  pero da impresión de que la app está rota. Posible mitigación: mostrar
-  SyncGateScreen también cuando el rol admin tenga `empresaNombreProvider`
-  en loading inicial (no solo `hasValue && value == null`).
+- **Dialogs persisten al navegar por el sidebar del shell**. Si un user
+  abre un dialog imperativo (showDialog) y luego toca otra ruta del
+  sidebar SIN cerrar el dialog primero, el dialog queda flotando
+  superpuesto sobre la nueva ruta. Causa: showDialog pushea al Navigator
+  del ShellRoute, y go_router cambia la ruta dentro del shell sin pop
+  de modales abiertos. Afecta a TODOS los dialogs del repo (descubierto
+  con `_promptNombre` de Geografía, pero también
+  `CredencialesDialog`, `CambiarPasswordDialog`, `AplicarCargoDialog`,
+  etc.). El user puede cerrar el dialog con Cancelar y todo sigue
+  funcionando — no crashea — pero la UX es confusa. Posibles fixes:
+  (a) listener en cada shell (`AdminShell` / `AppShell` / `SuperShell`)
+  que detecte cambio de `GoRouterState.matchedLocation` y haga
+  `Navigator.popUntil((route) => route.isFirst)` antes de navegar;
+  (b) `useRootNavigator: true` en todos los showDialog + ajuste de los
+  Navigator.pop para usar el rootNavigator también. La (a) es más
+  invasiva pero más correcta.
+- **Flash del setup wizard al loguearse como admin (sólo post-forzar-password)**.
+  Cuando un admin de tenant (no super_admin) se loguea POR PRIMERA VEZ
+  o tras un `forzar-password-cobrador` (que invalida la sesión vieja
+  con signOut global), por ~1s aparece la pantalla de setup inicial
+  antes de redirigir al dashboard. Es un bug de race/hydration: el
+  guard del router (`empresaNombreProvider`) detecta `null` hasta que
+  PowerSync sincroniza la tabla `settings` desde cero, ahí flippa a un
+  valor concreto y rebota a `/admin`. En logins subsecuentes con cache
+  local intacto NO aparece (el valor llega antes del primer build).
+  Solo afecta UX (no funcional) pero da impresión de que la app está
+  rota. Posible mitigación: mostrar SyncGateScreen también cuando el
+  rol admin tenga `empresaNombreProvider` en loading inicial (no solo
+  `hasValue && value == null`).
 - **OfflineBanner false-positive** durante handshake inicial PowerSync (~2s "Sin conexión"
   antes de establecerse). Necesita debounce de ~3s.
 - **Error logging — follow-ups del sprint 0035**:
