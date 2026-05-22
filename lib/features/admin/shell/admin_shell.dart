@@ -290,10 +290,10 @@ class _AdminDrawer extends ConsumerWidget {
                           leading: Icon(item.icon),
                           title: Text(item.label),
                           selected: currentPath == item.path,
-                          // closeModalsAndGo cierra el drawer + cualquier
-                          // modal extra que estuviera abierto antes de
-                          // navegar. El drawer en sí también es un
-                          // PopupRoute, así que cae bajo el popUntil.
+                          // closeModalsAndGo cierra el drawer
+                          // (Scaffold.closeDrawer) + cualquier modal
+                          // descartable que estuviera abierto antes
+                          // de navegar.
                           onTap: () => context.closeModalsAndGo(item.path),
                         ))
                     .toList(),
@@ -304,8 +304,9 @@ class _AdminDrawer extends ConsumerWidget {
               title: const Text('Cambiar contraseña'),
               // Cerrar el drawer ANTES del dialog para que no quede de
               // fondo: en mobile el drawer ocupa ancho completo y el
-              // dialog quedaría detrás. closeModalsThenRun pop el
-              // drawer (PopupRoute) y abre el dialog limpio.
+              // dialog quedaría detrás. closeModalsThenRun invoca
+              // Scaffold.closeDrawer (el drawer es LocalHistoryEntry,
+              // no Route) y popea modales sueltos antes del dialog.
               onTap: () => context
                   .closeModalsThenRun(() => mostrarCambiarPasswordDialog(context)),
             ),
