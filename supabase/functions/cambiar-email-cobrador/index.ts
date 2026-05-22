@@ -148,6 +148,36 @@ serve(async (req) => {
       );
     }
 
+    // Pre-flight: chequear que el nuevo email no esté ya tomado por
+    // OTRO usuario distinto al target. Sin este check, el update
+    // fallaba con el error humanizado pero el intent row del audit_log
+    // ya quedaba escrito → pollution del timeline con intents fallidos.
+    // Mismo patrón que crear-tenant e invitar-cobrador.
+    //
+    // TODO escalado: listUsers con perPage:1000 cubre hasta 1000
+    // users totales. Cuando crezca, migrar a un RPC SECURITY DEFINER.
+    const { data: existingUsers, error: lookupErr } = await admin
+      .auth.admin.listUsers({ page: 1, perPage: 1000 });
+    if (lookupErr) {
+      console.error("cambiar-email: listUsers falló", lookupErr);
+      return jsonError("Error interno", 500);
+    }
+    // Filtramos excluyendo al target — su email actual es distinto al
+    // nuevo (pasamos el check de idempotencia arriba) así que si
+    // aparece en la lista con el email nuevo, es OTRO usuario.
+    const yaTomado = (existingUsers?.users ?? []).some(
+      (u) =>
+        (u.email ?? "").toLowerCase() === nuevoEmail &&
+        u.id !== body.cobrador_id,
+    );
+    if (yaTomado) {
+      return jsonError(
+        "Ese email ya está registrado en otro usuario. Elegí otro o, " +
+          "si es del mismo usuario, contactá soporte.",
+        400,
+      );
+    }
+
     // Intent/success split. Ver justificación en forzar-password-cobrador.
     //
     // Para email, el intent row usa valor_nuevo Map con action y
@@ -236,7 +266,11 @@ serve(async (req) => {
       },
     );
   } catch (e) {
-    console.error("cambiar-email-cobrador: unhandled", e);
+    // Scrub por consistencia con crear-tenant / reenviar-invitacion /
+    // invitar-cobrador. Acá no hay password generada en scope, pero
+    // `nuevoEmail` (PII) sí, y los logs del Dashboard son consultables.
+    const safeMessage = e instanceof Error ? e.message : String(e);
+    console.error("cambiar-email-cobrador: unhandled", safeMessage);
     return jsonError("Error interno", 500);
   }
 });

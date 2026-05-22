@@ -1,3 +1,5 @@
+import 'dart:developer' as developer;
+
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/semantics.dart' show SemanticsService;
@@ -61,13 +63,26 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   }
 
   Future<void> _ejecutar() async {
+    // Guards client-side antes de pegarle al backend. Sin esto, un submit
+    // con campos vacíos se cuenta contra el rate-limit del IP/email y
+    // gasta un round-trip al pedo. Además el error humanizado de
+    // "credenciales inválidas" sería técnicamente correcto pero misleading
+    // (el problema real es que no completaste el form).
+    final email = _email.text.trim();
+    if (email.isEmpty) {
+      setState(() => _error = 'Ingresá tu email.');
+      return;
+    }
+    if (_modo == _Modo.login && _pass.text.isEmpty) {
+      setState(() => _error = 'Ingresá tu contraseña.');
+      return;
+    }
     setState(() {
       _busy = true;
       _error = null;
       _info = null;
     });
     try {
-      final email = _email.text.trim();
       switch (_modo) {
         case _Modo.login:
           await Supabase.instance.client.auth.signInWithPassword(
@@ -91,12 +106,92 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
           break;
       }
     } on AuthException catch (e) {
-      setState(() => _error = e.message);
+      // Preservamos el Error en la consola del browser para debugging
+      // sin exponerlo al user. developer.log queda accesible vía
+      // DevTools incluso en release.
+      developer.log('Login AuthException', name: 'login', error: e);
+      setState(() => _error = _humanizarLoginError(e));
     } catch (e) {
-      setState(() => _error = e.toString());
+      developer.log('Login error', name: 'login', error: e);
+      setState(() => _error = _humanizarLoginError(e));
     } finally {
       if (mounted) setState(() => _busy = false);
     }
+  }
+
+  /// Traduce excepciones del login/recovery a copy en español. Cubre:
+  ///   - Network errors (`ClientException`, `SocketException`,
+  ///     `TimeoutException`): el SDK los puede tirar crudos O wrappeados
+  ///     en un `AuthException` cuyo `message` incluye "ClientException:
+  ///     Failed to fetch, uri=https://...supabase.co/auth/v1/token...".
+  ///     Chequeamos PRIMERO para no exponer la URL del backend, sin
+  ///     importar el tipo del exception.
+  ///   - `AuthException` con mensajes conocidos de Supabase Auth
+  ///     (credenciales inválidas, email no confirmado, rate limit,
+  ///     rate-limit-por-tiempo del recovery, formato de email, link
+  ///     expirado, etc.).
+  ///   - Fallback en español (no `e.message` crudo): los mensajes raros
+  ///     de Supabase Auth en inglés ya no llegan al UI; el detalle queda
+  ///     en `developer.log` para debugging en DevTools.
+  String _humanizarLoginError(Object e) {
+    // Network check primero. El AuthException de Supabase puede traer
+    // "ClientException: Failed to fetch, uri=..." en el `message` cuando
+    // el backend no respondió — si entráramos primero a la rama AuthException
+    // por type, caeríamos al fallback `return e.message;` y mostraríamos
+    // la URL del backend en el banner. Por eso evaluamos los marcadores de
+    // red en toString() antes de discriminar por tipo.
+    final str = e.toString();
+    if (str.contains('ClientException') ||
+        str.contains('Failed to fetch') ||
+        str.contains('SocketException') ||
+        str.contains('TimeoutException') ||
+        str.contains('Network is unreachable') ||
+        str.contains('XMLHttpRequest')) {
+      return 'Sin conexión. Verificá tu red e intentá de nuevo.';
+    }
+    if (e is AuthException) {
+      final m = e.message.toLowerCase();
+      if (m.contains('invalid login') || m.contains('invalid credentials')) {
+        return 'Credenciales inválidas. Verificá tu email y contraseña.';
+      }
+      if (m.contains('email not confirmed')) {
+        return 'Tu cuenta todavía no confirmó el email. Revisá tu '
+            'bandeja de entrada.';
+      }
+      if (m.contains('rate limit') || m.contains('too many requests')) {
+        return 'Demasiados intentos. Esperá un momento y volvé a probar.';
+      }
+      // Rate limit del flow de recovery: Supabase devuelve "For security
+      // purposes, you can only request this after X seconds".
+      if (m.contains('for security purposes') ||
+          m.contains('only request this after')) {
+        return 'Esperá unos segundos antes de pedir otro link.';
+      }
+      if (m.contains('unable to validate email') ||
+          m.contains('invalid format')) {
+        return 'El email no tiene un formato válido.';
+      }
+      if (m.contains('user not found')) {
+        return 'No encontramos ese email en el sistema.';
+      }
+      // Link de recovery expirado / ya usado. Mismo wording que el
+      // banner del boot (_humanizeAuthError) — si en el futuro
+      // consolidamos los dos helpers en uno (ver backlog CLAUDE.md),
+      // este copy queda single-source.
+      if (m.contains('invalid or has expired') ||
+          m.contains('otp_expired')) {
+        return 'El link expiró o ya fue usado. Pedí un nuevo email de '
+            'recuperación.';
+      }
+      // Fallback en español. Antes devolvíamos e.message crudo —
+      // re-exponía strings técnicos en inglés del SDK (ej:
+      // "Database error querying schema", "Signup not allowed"). El
+      // detalle queda en developer.log para debugging.
+      return 'No pudimos completar la operación. Probá de nuevo en unos '
+          'segundos.';
+    }
+    return 'No pudimos completar la operación. Probá de nuevo en unos '
+        'segundos.';
   }
 
   @override
