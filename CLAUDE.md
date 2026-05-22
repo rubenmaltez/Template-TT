@@ -399,11 +399,6 @@ Estos viven acá hasta que se ataquen explícitamente. NO re-flag en audits.
       password aleatoria que nadie verá. Recuperable vía
       `forzar-password-cobrador`. Replicar el patrón `userIdParcial`
       outer-scope + cleanup de `crear-tenant` si vale el esfuerzo.
-- **Dashboard admin: overflow vertical en cards en narrow viewport** (~< 500px). El
-  `childAspectRatio: 4` para 1 columna deja altura insuficiente; el contenido (icon +
-  label + value + sub) tira "BOTTOM OVERFLOWED BY 18 PIXELS". Pre-existente, no de R10.
-  Fix: bajar el ratio a `3.2` o agregar `mainAxisSize: MainAxisSize.min` con padding
-  reducido.
 - **Búsqueda por teléfono LIKE no normaliza el query**. Tras el fix del
   validator de cliente, los nuevos teléfonos se guardan sin espacios ni
   guiones (`"+50588888888"`). Pero el search en `clientes_admin_screen.dart:390`

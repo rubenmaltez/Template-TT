@@ -122,7 +122,11 @@ class _Kpis extends StatelessWidget {
         crossAxisSpacing: 16,
         shrinkWrap: true,
         physics: const NeverScrollableScrollPhysics(),
-        childAspectRatio: cols == 1 ? 4 : 2.2,
+        // Mobile (1 col): ratio 3.0 — el 4 anterior dejaba altura
+        // insuficiente para el contenido (icon + label + value + sub)
+        // y tiraba "BOTTOM OVERFLOWED BY 18 PIXELS" en viewports <500px.
+        // 2 / 3 columnas mantienen 2.2 (testeado OK).
+        childAspectRatio: cols == 1 ? 3.0 : 2.2,
         children: items.map((k) => _KpiCard(data: k)).toList(),
       );
     });
