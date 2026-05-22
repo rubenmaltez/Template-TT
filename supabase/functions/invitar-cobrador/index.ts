@@ -8,9 +8,19 @@
 //                          `tenant_id` en el body. No puede invitar al
 //                          tenant System.
 //
-// Cuando el invitado abre el email y crea su contraseña, el trigger
-// `handle_new_user` (migración 0024) crea su fila en `cobradores` con el
-// metadata que pasamos acá (tenant_id, rol, nombre, etc.).
+// Dos modos según `enviar_email`:
+//   - true (default) → inviteUserByEmail (manda email automático con
+//                      link de set-password).
+//   - false          → createUser con password aleatoria + email_confirm
+//                      (no manda email; devuelve `nueva_password` para
+//                      que el caller la comparta por canal seguro).
+//                      Workaround para SMTP en sandbox o destinatarios
+//                      sin email automatizado. Mismo patrón que
+//                      crear-tenant + reenviar-invitacion.
+//
+// Cuando el invitado abre el email (o se loguea directo con la password
+// generada), el trigger `handle_new_user` (migración 0024) crea su fila
+// en `cobradores` con el metadata que pasamos acá.
 //
 // Despliegue:
 //   supabase functions deploy invitar-cobrador
@@ -26,8 +36,15 @@
 //     "rol": "admin" | "admin_cobranza" | "cobrador",
 //     "telefono": "+50588000000",     // opcional
 //     "prefijo_recibo": "COB-01",     // opcional, solo para rol cobrador
-//     "tenant_id": "<uuid>"           // REQUERIDO sólo si caller es super_admin
+//     "tenant_id": "<uuid>",          // REQUERIDO sólo si caller es super_admin
+//     "enviar_email": true            // opcional, default true
 //   }
+//
+// Respuesta éxito:
+//   { ok: true, user_id, tenant_id, nueva_password?, message }
+//   nueva_password sólo viene cuando enviar_email=false — es la
+//   contraseña generada para el invitado, que el caller tiene que
+//   compartir por canal seguro (no queda guardada en ningún lado).
 
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
@@ -43,6 +60,12 @@ interface InvitarRequest {
   // verificar el invite. Debe incluir `?flow=invite` o equivalente
   // para que la app pueda routear a /set-password (ver auth_flow_provider).
   redirect_to?: string;
+  // Si false, no manda email — crea al user con una password aleatoria
+  // (email_confirm=true para skipear el email de verificación) y la
+  // devuelve en `nueva_password`. El caller la comparte por otro canal
+  // y el invitado se loguea normal con email+password. Workaround del
+  // problema PKCE+cross-browser de los magic-links generados a mano.
+  enviar_email?: boolean;
 }
 
 const SYSTEM_TENANT = "00000000-0000-0000-0000-000000000000";
@@ -104,6 +127,10 @@ serve(async (req) => {
     const nombre = (body.nombre ?? "").trim();
     const telefono = (body.telefono ?? "").trim();
     const CONTROL = /[\x00-\x1F\x7F-\x9F]/;
+    // Default true: el caller tiene que pedir explícitamente "no email"
+    // para activar el flow de createUser+password. Falsey check tolera
+    // null/undefined además de false.
+    const enviarEmail = body.enviar_email !== false;
 
     if (!email || !nombre || !body.rol) {
       return jsonError("email, nombre y rol son requeridos", 400);
@@ -171,36 +198,105 @@ serve(async (req) => {
       targetTenantId = body.tenant_id;
     }
 
-    // Invitar: manda email + crea auth.users row. El trigger
-    // handle_new_user creará la fila en `cobradores` con este metadata.
-    // redirect_to: si lo manda el cliente, lo respetamos (debería tener
-    //   `?flow=invite` para que el app route a /set-password). Si no,
-    //   Supabase usa el Site URL configurado.
-    const { data: invite, error: invErr } = await admin.auth.admin
-      .inviteUserByEmail(email, {
-        data: {
-          tenant_id: targetTenantId,
-          rol: body.rol,
-          nombre: nombre,
-          telefono: telefono === "" ? null : telefono,
-          prefijo_recibo: body.rol === "cobrador"
-            ? (body.prefijo_recibo ?? null)
-            : null,
-        },
-        redirectTo: body.redirect_to,
-      });
-
-    if (invErr) {
-      return jsonError(humanizeAuthError(invErr.message), 400);
+    // Pre-flight: chequear que el email no exista en auth.users.
+    // - inviteUserByEmail falla nativamente si existe (path email).
+    // - createUser también falla con "user already exists" (path no-email).
+    // El check anticipado evita un round-trip al auth provider y
+    // devuelve el error en español de una. Mismo patrón que crear-tenant.
+    //
+    // TODO escalado: listUsers con perPage:1000 cubre hasta 1000
+    // users totales en el sistema. Cuando crezca, migrar a un RPC
+    // SECURITY DEFINER que consulte `auth.users` con un WHERE email=…
+    // (auth.users no está expuesto vía PostgREST).
+    const { data: existingUsers, error: lookupErr } = await admin
+      .auth.admin.listUsers({ page: 1, perPage: 1000 });
+    if (lookupErr) {
+      return jsonError(
+        `No pude verificar el email: ${lookupErr.message}`,
+        500,
+      );
     }
-    if (!invite.user) return jsonError("No se creó el usuario", 500);
+    const yaExiste = (existingUsers?.users ?? []).some(
+      (u) => (u.email ?? "").toLowerCase() === email,
+    );
+    if (yaExiste) {
+      return jsonError(
+        "Ya existe un usuario con ese email — usá otro o, " +
+          "si querés moverlo de tenant, contactá soporte.",
+        400,
+      );
+    }
+
+    // Metadata compartida entre los 2 paths. El trigger handle_new_user
+    // la lee para crear la fila en `cobradores` cuando se crea el row
+    // en auth.users (sea por inviteUserByEmail o createUser).
+    const metadata = {
+      tenant_id: targetTenantId,
+      rol: body.rol,
+      nombre: nombre,
+      telefono: telefono === "" ? null : telefono,
+      prefijo_recibo: body.rol === "cobrador"
+        ? (body.prefijo_recibo ?? null)
+        : null,
+    };
+
+    let nuevoUserId: string | null = null;
+    let nuevaPassword: string | null = null;
+
+    if (enviarEmail) {
+      // Path email: Supabase manda invite con link de set-password.
+      // redirect_to: si lo manda el cliente, lo respetamos (debería
+      // tener `?flow=invite` para que el app route a /set-password).
+      // Si no, Supabase usa el Site URL configurado.
+      const { data: invite, error: invErr } = await admin.auth.admin
+        .inviteUserByEmail(email, {
+          data: metadata,
+          redirectTo: body.redirect_to,
+        });
+
+      if (invErr) {
+        return jsonError(humanizeAuthError(invErr.message), 400);
+      }
+      if (!invite.user) return jsonError("No se creó el usuario", 500);
+      nuevoUserId = invite.user.id;
+    } else {
+      // Path no-email: generamos la password ANTES de createUser. Si la
+      // genera el server, no la conoce nadie más — la response es la
+      // única oportunidad del caller de verla. email_confirm=true
+      // skipea el email de verificación: el user queda confirmado y
+      // puede loguearse ya mismo. Modelo de confianza: el caller
+      // verifica la propiedad del email out-of-band (llamada/whatsapp);
+      // misma postura que crear-tenant y forzar-password-cobrador.
+      const generated = generarPasswordSegura();
+      const { data: created, error: createErr } = await admin.auth.admin
+        .createUser({
+          email,
+          password: generated,
+          user_metadata: metadata,
+          email_confirm: true,
+        });
+
+      if (createErr) {
+        return jsonError(humanizeAuthError(createErr.message), 400);
+      }
+      if (!created.user) return jsonError("No se creó el usuario", 500);
+      nuevoUserId = created.user.id;
+      nuevaPassword = generated;
+    }
 
     return new Response(
       JSON.stringify({
         ok: true,
-        user_id: invite.user.id,
+        user_id: nuevoUserId,
         tenant_id: targetTenantId,
-        message: "Invitación enviada por email",
+        // nueva_password sólo viene cuando enviar_email=false. Es la
+        // única oportunidad del caller de verla — no queda guardada
+        // en ningún lado, y si la pierde tiene que ir a 'Forzar
+        // contraseña' desde el detalle del miembro.
+        nueva_password: nuevaPassword,
+        message: enviarEmail
+          ? "Invitación enviada por email"
+          : "Usuario creado — compartí las credenciales por canal seguro",
       }),
       {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -250,3 +346,28 @@ function jsonError(message: string, status: number): Response {
     },
   );
 }
+
+/// Genera una password aleatoria de 16 chars usando crypto.getRandomValues.
+///
+/// NOTA: Esta función está duplicada en crear-tenant, reenviar-invitacion
+/// e invitar-cobrador porque el Dashboard de Supabase deploya un único
+/// archivo por función — no soporta importar `../_shared/...` cuando subís
+/// el código vía paste. Si en el futuro se migra a Supabase CLI (`supabase
+/// functions deploy`), mover esta función a
+/// `supabase/functions/_shared/passwords.ts` y reemplazar los cuerpos por
+/// un import. Sincronizar el alphabet con _ForzarPasswordDialog del cliente.
+function generarPasswordSegura(): string {
+  const chars =
+    "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789!@#%*-+";
+  const bytes = new Uint8Array(16);
+  crypto.getRandomValues(bytes);
+  let out = "";
+  for (let i = 0; i < 16; i++) {
+    // Sesgo del módulo: 256 mod 63 = 4, así que 4 buckets reciben 5
+    // muestras vs 4 — pérdida total ~0.4 bits sobre 16 chars
+    // (95.27 vs 95.64 bits). Irrelevante para una password rotable.
+    out += chars[bytes[i] % chars.length];
+  }
+  return out;
+}
+
