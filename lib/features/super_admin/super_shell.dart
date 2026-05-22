@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
+import '../shared/utils/shell_nav.dart';
+
 /// Shell del panel Super Admin (gestión cross-tenant del SaaS).
 /// Visualmente separado del AdminShell para dejar claro que estás "afuera"
 /// del tenant — con un AppBar que indica "Super Admin" y un botón para
@@ -24,7 +26,11 @@ class SuperShell extends StatelessWidget {
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
           tooltip: 'Volver al panel',
-          onPressed: () => context.go('/admin'),
+          // closeModalsAndGo cierra dialogs/sheets abiertos sobre la
+          // ruta actual antes de navegar (ej. CredencialesDialog en
+          // /super/tenants después de crear un ISP, que queda flotando
+          // si el user toca volver sin cerrarlo).
+          onPressed: () => context.closeModalsAndGo('/admin'),
         ),
         title: Row(
           children: [
@@ -38,13 +44,13 @@ class SuperShell extends StatelessWidget {
             IconButton(
               icon: const Icon(Icons.business),
               tooltip: 'Tenants',
-              onPressed: () => context.go('/super/tenants'),
+              onPressed: () => context.closeModalsAndGo('/super/tenants'),
             ),
           if (!enLogs)
             IconButton(
               icon: const Icon(Icons.bug_report_outlined),
               tooltip: 'Logs de errores',
-              onPressed: () => context.go('/super/logs'),
+              onPressed: () => context.closeModalsAndGo('/super/logs'),
             ),
         ],
       ),

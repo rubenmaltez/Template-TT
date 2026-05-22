@@ -180,22 +180,6 @@ NO soporta multi-file via paste — `_shared/passwords.ts` no funcionaría. Por 
 
 Estos viven acá hasta que se ataquen explícitamente. NO re-flag en audits.
 
-- **Dialogs persisten al navegar por el sidebar del shell**. Si un user
-  abre un dialog imperativo (showDialog) y luego toca otra ruta del
-  sidebar SIN cerrar el dialog primero, el dialog queda flotando
-  superpuesto sobre la nueva ruta. Causa: showDialog pushea al Navigator
-  del ShellRoute, y go_router cambia la ruta dentro del shell sin pop
-  de modales abiertos. Afecta a TODOS los dialogs del repo (descubierto
-  con `_promptNombre` de Geografía, pero también
-  `CredencialesDialog`, `CambiarPasswordDialog`, `AplicarCargoDialog`,
-  etc.). El user puede cerrar el dialog con Cancelar y todo sigue
-  funcionando — no crashea — pero la UX es confusa. Posibles fixes:
-  (a) listener en cada shell (`AdminShell` / `AppShell` / `SuperShell`)
-  que detecte cambio de `GoRouterState.matchedLocation` y haga
-  `Navigator.popUntil((route) => route.isFirst)` antes de navegar;
-  (b) `useRootNavigator: true` en todos los showDialog + ajuste de los
-  Navigator.pop para usar el rootNavigator también. La (a) es más
-  invasiva pero más correcta.
 - **Flash del setup wizard al loguearse como admin (sólo post-forzar-password)**.
   Cuando un admin de tenant (no super_admin) se loguea POR PRIMERA VEZ
   o tras un `forzar-password-cobrador` (que invalida la sesión vieja
