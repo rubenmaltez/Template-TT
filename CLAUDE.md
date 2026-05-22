@@ -173,14 +173,6 @@ Estos viven acá hasta que se ataquen explícitamente. NO re-flag en audits.
   antes de establecerse). Necesita debounce de ~3s.
 - **Animación brusca login → shell** post-sync-gate. El spinner desaparece y aparece
   el shell sin transición. Recomendado: fade transition de 200-300ms.
-- **Mensaje de error técnico expuesto en login offline**. Si el user intenta loguearse
-  sin red, ve `ClientException: Failed to fetch, uri=https://...supabase.co/auth/v1/token...`.
-  Expone URL del backend y string técnico. Fix: catch `ClientException` en login_screen
-  y mostrar "Sin conexión. Verificá tu red e intentá de nuevo."
-- **Error de credenciales en login NO localizado**. Cuando el password es incorrecto
-  o el campo está vacío, Supabase Auth devuelve "Invalid login credentials" en inglés
-  y el login_screen lo muestra tal cual. Inconsistente con el resto del UI 100%
-  español. Fix: humanizar (`AuthException` → "Credenciales inválidas").
 - **Crash en pantalla Geografía al navegar de vuelta**. Reproducible: ir a
   `/admin/geografia` → tocar "Agregar nuevo" (departamento/municipio) → cambiar
   a Settings vía sidebar → volver a Geografía. Red screen of death con
@@ -217,10 +209,6 @@ Estos viven acá hasta que se ataquen explícitamente. NO re-flag en audits.
   super rápido entre 2 tenants y el `read(.future)` del provider autoDispose
   sigue en vuelo, puede tirar `ProviderDisposedException` o devolver datos
   del tenant equivocado. Edge case, no reproducible en flujo normal.
-- **`cambiar-email-cobrador` sin pre-flight de email duplicado**. Supabase
-  rechaza el update con el mensaje humanizado (con el fix de B2), pero el
-  intent row del audit_log ya quedó escrito → pollution con intents fallidos.
-  Agregar `listUsers` filtro por email antes del update.
 - **Edge Functions — hardening incremental (security audit MEDIUM)**:
     - `forzar-password-cobrador`: si `auth.admin.signOut(uid, "global")` falla
       post-éxito, el target sigue con JWT viejo hasta ~1h. Hoy solo se loguea.
@@ -228,16 +216,10 @@ Estos viven acá hasta que se ataquen explícitamente. NO re-flag en audits.
     - `reenviar-invitacion`: ventana entre `deleteUser` y `createUser` sin
       lock — explotable solo con super_admins concurrentes (Rubén es 1 en
       producción, marcado como hardening defensivo).
-    - `cambiar-email-cobrador`: sin pre-flight check de email duplicado.
-      Supabase rechaza el update pero el intent row del audit_log ya quedó
-      escrito → timeline pollution con intents fallidos. Agregar `listUsers`
-      filtro por email antes del update (mismo patrón que `crear-tenant`).
-    - `crear-tenant` y `reenviar-invitacion`: outer catch loguea `e`
-      completo (`console.error(... , e)`). Si el SDK alguna vez incluyera
-      el request body en el Error, la password generada o el email
-      podrían quedar en los logs del Dashboard. Propagar el scrub que
-      ya está en `invitar-cobrador` (`e instanceof Error ? e.message :
-      String(e)`). Defense in depth, bajo riesgo real.
+    - `cambiar-email-cobrador` pre-flight cap a 1000 users: `listUsers` con
+      `perPage:1000` cubre hasta 1000 totales. Si el sistema crece más allá,
+      el pre-flight da falsos negativos silenciosos → vuelve la polución
+      del audit. Migrar a RPC SECURITY DEFINER cuando importe.
     - `invitar-cobrador`: ghost user si una excepción tira post-
       `createUser` exitoso (path no-email). El user queda creado con
       password aleatoria que nadie verá. Recuperable vía
