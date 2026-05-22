@@ -7,9 +7,16 @@ import '../../data/models/tenant_admin.dart';
 import '../../data/repositories/super_admin_repo.dart';
 import '../../data/utils/edge_functions.dart';
 import '../../data/utils/validators.dart';
+import '../shared/widgets/credenciales_dialog.dart';
 
 /// Dialog para que el super_admin invite el primer/otro admin de un tenant.
 /// Llama a la Edge Function `invitar-cobrador` con tenant_id explícito.
+///
+/// Dos modos según el switch "Enviar email de invitación":
+///   - ON (default): manda email automático con link de set-password.
+///   - OFF: el server genera una password aleatoria y la devuelve para
+///     que el super_admin la comparta por canal seguro. Misma UX que
+///     `_CrearTenantDialog` (modo no-email) y `_ReenviarInvitacionDialog`.
 class InvitarAdminDialog extends ConsumerStatefulWidget {
   const InvitarAdminDialog({super.key, required this.tenant});
   final TenantAdmin tenant;
@@ -24,6 +31,7 @@ class _InvitarAdminDialogState extends ConsumerState<InvitarAdminDialog> {
   final _nombre = TextEditingController();
   final _telefono = TextEditingController();
   bool _enviando = false;
+  bool _enviarEmail = true;
   String? _error;
 
   @override
@@ -47,13 +55,22 @@ class _InvitarAdminDialogState extends ConsumerState<InvitarAdminDialog> {
       return;
     }
 
+    // Capturamos refs al Navigator y ScaffoldMessenger ANTES del await
+    // para no usar el context del State (que puede estar desmontado
+    // tras el primer pop, especialmente si hay browser back rápido).
+    // Patrón estándar Flutter: el lint use_build_context_synchronously
+    // flaggea el caso original.
+    final navigator = Navigator.of(context);
+    final messenger = ScaffoldMessenger.of(context);
+    final rootContext = Navigator.of(context, rootNavigator: true).context;
+
     setState(() {
       _enviando = true;
       _error = null;
     });
 
     try {
-      await invokeEdgeFunction(
+      final data = await invokeEdgeFunction(
         Supabase.instance.client,
         'invitar-cobrador',
         body: {
@@ -63,32 +80,71 @@ class _InvitarAdminDialogState extends ConsumerState<InvitarAdminDialog> {
           'tenant_id': widget.tenant.id,
           if (_telefono.text.trim().isNotEmpty)
             'telefono': _telefono.text.trim(),
-          // ?flow=invite: para que cuando el invitado clickee el link
-          // del email, el app lo route a /set-password en vez del
-          // dashboard sin password. Ver _extractAuthFlow en main.dart.
-          if (kIsWeb) 'redirect_to': '${Uri.base.origin}/?flow=invite',
+          // Explícito para que el server no asuma default si en el
+          // futuro cambia (mismo patrón que crear-tenant).
+          'enviar_email': _enviarEmail,
+          // ?flow=invite: cuando el invitado clickea el link del email,
+          // el app lo route a /set-password en vez del dashboard sin
+          // password. Sólo aplica al path email. Ver _extractAuthFlow
+          // en main.dart.
+          if (kIsWeb && _enviarEmail)
+            'redirect_to': '${Uri.base.origin}/?flow=invite',
         },
       );
+
       // Refrescar lista de tenants (cobradores_count) y lista de miembros
-      // para que aparezca el nuevo invitado con estado "pendiente".
+      // para que aparezca el nuevo invitado.
       ref.invalidate(tenantsAdminProvider);
       ref.invalidate(cobradoresTenantProvider(widget.tenant.id));
-      if (!mounted) return;
-      Navigator.of(context).pop();
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text('Invitación enviada a $email'),
-        duration: const Duration(seconds: 3),
-      ));
+
+      final nuevaPassword = data['nueva_password'] as String?;
+      if (nuevaPassword != null && nuevaPassword.isNotEmpty) {
+        // Path no-email: cerramos este dialog y abrimos el de
+        // credenciales — el super_admin tiene UNA oportunidad de copiar
+        // la password antes de que se pierda. Si cierra sin copiar
+        // tiene que ir a "Forzar contraseña" en la fila del miembro.
+        navigator.pop();
+        await showDialog<bool>(
+          context: rootContext,
+          barrierDismissible: false,
+          builder: (_) => CredencialesDialog(
+            title: 'Credenciales de $nombre',
+            email: email,
+            password: nuevaPassword,
+            intro:
+                'Admin creado en ${widget.tenant.nombre}. Pasale email + '
+                'contraseña por canal seguro — esta es la única vez que '
+                'la contraseña queda visible.',
+          ),
+        );
+      } else {
+        // Path email: snackbar tradicional + pop.
+        navigator.pop();
+        messenger.showSnackBar(SnackBar(
+          content: Text('Invitación enviada a $email'),
+          duration: const Duration(seconds: 3),
+        ));
+      }
     } catch (e) {
       // Helper invokeEdgeFunction lanza Exception(msg); pelamos el
       // prefijo "Exception: " — alineado con los hermanos de este
       // archivo y la convención del codebase. Si por algún motivo el
       // helper no procesó y llega un FunctionException raw, extraemos
       // el campo `error` del toString para no exponer el wrapper.
-      setState(() {
-        _error = _humanizarError(e);
-        _enviando = false;
-      });
+      if (mounted) {
+        setState(() {
+          _error = _humanizarError(e);
+          _enviando = false;
+        });
+      }
+    } finally {
+      // Defensive: si el happy path tira algo entre pop y showDialog
+      // (browser back race), el _enviando queda colgado en "Procesando…"
+      // sin recuperación. Lo reseteamos siempre que el State siga
+      // mounted.
+      if (mounted && _enviando) {
+        setState(() => _enviando = false);
+      }
     }
   }
 
@@ -107,17 +163,49 @@ class _InvitarAdminDialogState extends ConsumerState<InvitarAdminDialog> {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
+    // Width responsive (mismo patrón que _CrearTenantDialog): 400 en
+    // desktop, 90% del viewport en mobile chico para evitar overflow
+    // del subtitle del switch.
+    final screenW = MediaQuery.sizeOf(context).width;
+    final dialogW = screenW < 460 ? screenW * 0.9 : 400.0;
     return AlertDialog(
       title: Text('Invitar admin a ${widget.tenant.nombre}'),
       content: SizedBox(
-        width: 400,
+        width: dialogW,
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            // Switch arriba — es el selector de modo del flow, todo lo
+            // de abajo (body, warning, botones) depende de él. Sin esto
+            // el user leía la explicación antes de saber qué modo
+            // estaba eligiendo. Mismo patrón que _CrearTenantDialog y
+            // _ReenviarInvitacionDialog.
+            SwitchListTile(
+              value: _enviarEmail,
+              onChanged: _enviando
+                  ? null
+                  : (v) => setState(() => _enviarEmail = v),
+              title: const Text('Enviar email de invitación'),
+              subtitle: Text(
+                _enviarEmail
+                    ? 'El usuario recibe el link en su correo.'
+                    : 'No se envía email. Te generamos una contraseña '
+                        'para compartir manualmente.',
+                style: const TextStyle(fontSize: 11),
+              ),
+              contentPadding: EdgeInsets.zero,
+              dense: true,
+              visualDensity: VisualDensity.compact,
+            ),
+            const SizedBox(height: 8),
             Text(
-              'El invitado recibirá un email para crear su contraseña. '
-              'Una vez logueado, será admin de este tenant.',
+              _enviarEmail
+                  ? 'El invitado recibirá un email para crear su contraseña. '
+                      'Una vez logueado, será admin de este tenant.'
+                  : 'Se creará el admin con una contraseña aleatoria '
+                      '(no se manda email — la vas a copiar y compartir '
+                      'vos). Será admin de este tenant.',
               style: TextStyle(color: scheme.outline, fontSize: 13),
             ),
             const SizedBox(height: 16),
@@ -125,6 +213,7 @@ class _InvitarAdminDialogState extends ConsumerState<InvitarAdminDialog> {
               controller: _email,
               keyboardType: TextInputType.emailAddress,
               autofocus: true,
+              enabled: !_enviando,
               decoration: const InputDecoration(
                 labelText: 'Email',
                 hintText: 'admin@empresa.com',
@@ -133,6 +222,7 @@ class _InvitarAdminDialogState extends ConsumerState<InvitarAdminDialog> {
             const SizedBox(height: 12),
             TextField(
               controller: _nombre,
+              enabled: !_enviando,
               decoration: const InputDecoration(
                 labelText: 'Nombre completo',
               ),
@@ -141,6 +231,7 @@ class _InvitarAdminDialogState extends ConsumerState<InvitarAdminDialog> {
             TextField(
               controller: _telefono,
               keyboardType: TextInputType.phone,
+              enabled: !_enviando,
               decoration: const InputDecoration(
                 labelText: 'Teléfono (opcional)',
               ),
@@ -165,6 +256,9 @@ class _InvitarAdminDialogState extends ConsumerState<InvitarAdminDialog> {
           onPressed: _enviando ? null : () => Navigator.of(context).pop(),
           child: const Text('Cancelar'),
         ),
+        // Label e icono cambian según modo. Paralelo a
+        // _ReenviarInvitacionDialog: ambos describen el artifact
+        // resultante, no el canal.
         FilledButton.icon(
           icon: _enviando
               ? const SizedBox(
@@ -172,8 +266,12 @@ class _InvitarAdminDialogState extends ConsumerState<InvitarAdminDialog> {
                   height: 16,
                   child: CircularProgressIndicator(strokeWidth: 2),
                 )
-              : const Icon(Icons.send),
-          label: const Text('Enviar invitación'),
+              : Icon(_enviarEmail ? Icons.send : Icons.lock_reset),
+          label: Text(_enviando
+              ? 'Procesando…'
+              : _enviarEmail
+                  ? 'Enviar invitación'
+                  : 'Generar contraseña'),
           onPressed: _enviando ? null : _invitar,
         ),
       ],

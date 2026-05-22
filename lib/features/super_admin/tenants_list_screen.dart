@@ -647,7 +647,7 @@ class _CrearTenantDialogState extends ConsumerState<_CrearTenantDialog> {
                     height: 16,
                     child: CircularProgressIndicator(strokeWidth: 2),
                   )
-                : Icon(_enviarEmail ? Icons.send : Icons.key),
+                : Icon(_enviarEmail ? Icons.send : Icons.lock_reset),
             label: Text(
               _busy
                   ? 'Creando…'
