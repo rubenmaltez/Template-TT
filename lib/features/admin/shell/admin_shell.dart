@@ -7,6 +7,7 @@ import '../../../config/router.dart';
 import '../../../data/providers/cobrador_provider.dart';
 import '../../../data/providers/sync_status_provider.dart';
 import '../../auth/cambiar_password_dialog.dart';
+import '../../shared/utils/shell_nav.dart';
 import '../../shared/widgets/offline_banner.dart';
 
 /// Shell del admin/admin_cobranza. Layout adaptativo:
@@ -228,7 +229,12 @@ class _AdminRail extends ConsumerWidget {
                     selected: selected,
                     selectedTileColor:
                         Theme.of(context).colorScheme.primaryContainer,
-                    onTap: () => context.go(item.path),
+                    // closeModalsAndGo cierra cualquier dialog/sheet que
+                    // el user haya dejado abierto sobre la ruta actual
+                    // antes de navegar. En desktop con NavigationRail
+                    // (este branch del shell) el rail vive fuera del
+                    // body y permite tap mientras un modal está abierto.
+                    onTap: () => context.closeModalsAndGo(item.path),
                   );
                 },
               ),
@@ -237,12 +243,17 @@ class _AdminRail extends ConsumerWidget {
             ListTile(
               leading: const Icon(Icons.lock_outline),
               title: const Text('Cambiar contraseña'),
-              onTap: () => mostrarCambiarPasswordDialog(context),
+              onTap: () => context
+                  .closeModalsThenRun(() => mostrarCambiarPasswordDialog(context)),
             ),
             ListTile(
               leading: const Icon(Icons.logout),
               title: const Text('Cerrar sesión'),
-              onTap: () => Supabase.instance.client.auth.signOut(),
+              // closeModalsThenRun cierra dialogs abiertos antes del
+              // signOut. Sin esto, un dialog flotaba sobre /login tras
+              // el redirect — mismo bug de fondo que el resto del sprint.
+              onTap: () => context.closeModalsThenRun(
+                  () => Supabase.instance.client.auth.signOut()),
             ),
             const SizedBox(height: 8),
           ],
@@ -279,10 +290,11 @@ class _AdminDrawer extends ConsumerWidget {
                           leading: Icon(item.icon),
                           title: Text(item.label),
                           selected: currentPath == item.path,
-                          onTap: () {
-                            Navigator.of(context).pop();
-                            context.go(item.path);
-                          },
+                          // closeModalsAndGo cierra el drawer
+                          // (Scaffold.closeDrawer) + cualquier modal
+                          // descartable que estuviera abierto antes
+                          // de navegar.
+                          onTap: () => context.closeModalsAndGo(item.path),
                         ))
                     .toList(),
               ),
@@ -290,21 +302,22 @@ class _AdminDrawer extends ConsumerWidget {
             ListTile(
               leading: const Icon(Icons.lock_outline),
               title: const Text('Cambiar contraseña'),
-              onTap: () {
-                // Cerrar el drawer ANTES del dialog para que no quede
-                // de fondo: en mobile el drawer ocupa ancho completo
-                // y el dialog quedaría detrás.
-                Navigator.of(context).pop();
-                mostrarCambiarPasswordDialog(context);
-              },
+              // Cerrar el drawer ANTES del dialog para que no quede de
+              // fondo: en mobile el drawer ocupa ancho completo y el
+              // dialog quedaría detrás. closeModalsThenRun invoca
+              // Scaffold.closeDrawer (el drawer es LocalHistoryEntry,
+              // no Route) y popea modales sueltos antes del dialog.
+              onTap: () => context
+                  .closeModalsThenRun(() => mostrarCambiarPasswordDialog(context)),
             ),
             ListTile(
               leading: const Icon(Icons.logout),
               title: const Text('Cerrar sesión'),
-              onTap: () async {
-                Navigator.of(context).pop();
-                await Supabase.instance.client.auth.signOut();
-              },
+              // closeModalsThenRun cierra el drawer + dialogs abiertos
+              // antes del signOut. Sin esto, un dialog podía flotar
+              // sobre /login tras el redirect del router.
+              onTap: () => context.closeModalsThenRun(
+                  () => Supabase.instance.client.auth.signOut()),
             ),
           ],
         ),
