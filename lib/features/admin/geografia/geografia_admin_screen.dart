@@ -204,25 +204,38 @@ Future<String?> _promptNombre(BuildContext context, String titulo) {
   // el rebuild del árbol pegaba contra
   // `_elements.contains(element) is not true` (framework.dart:2168).
   // whenComplete cubre happy AND error path del showDialog future.
+  //
+  // CRÍTICO: el builder recibe `dialogContext` (no `_`). Los Navigator.pop
+  // de adentro DEBEN usar ese context, no el del screen capturado por
+  // closure. Razón: el screen vive bajo ShellRoute de go_router; su
+  // Navigator más cercano es el que go_router maneja con Page-based
+  // navigation. Si pop usa el context del screen, go_router intercepta
+  // el pop como si fuera Page, choca con `currentConfiguration.isNotEmpty`
+  // (delegate.dart:162), y aunque el dialog cierre visualmente, el
+  // Navigator queda en estado inconsistente. La siguiente navegación
+  // por el sidebar cascadea: lifecycle inactive (framework.dart:4735) →
+  // Duplicate GlobalKey → `_elements.contains` (framework.dart:2168) →
+  // red screen. Diagnosticado vía /super/logs (sprint 0035).
   final ctrl = TextEditingController();
   return showDialog<String?>(
     context: context,
-    builder: (_) => AlertDialog(
+    builder: (dialogContext) => AlertDialog(
       title: Text(titulo),
       content: TextField(
         controller: ctrl,
         autofocus: true,
         decoration: const InputDecoration(labelText: 'Nombre'),
-        onSubmitted: (v) => Navigator.pop(context, v.trim().isEmpty ? null : v.trim()),
+        onSubmitted: (v) => Navigator.pop(
+            dialogContext, v.trim().isEmpty ? null : v.trim()),
       ),
       actions: [
         TextButton(
-          onPressed: () => Navigator.pop(context),
+          onPressed: () => Navigator.pop(dialogContext),
           child: const Text('Cancelar'),
         ),
         FilledButton(
           onPressed: () => Navigator.pop(
-              context, ctrl.text.trim().isEmpty ? null : ctrl.text.trim()),
+              dialogContext, ctrl.text.trim().isEmpty ? null : ctrl.text.trim()),
           child: const Text('Agregar'),
         ),
       ],
