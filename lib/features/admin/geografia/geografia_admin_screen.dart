@@ -7,8 +7,32 @@ import '../../shared/widgets/empty_state.dart';
 /// CRUD del catálogo geográfico (departamento → municipio → comunidad).
 /// Usa ExpansionTile anidado: tocar un departamento revela sus municipios,
 /// tocar un municipio revela sus comunidades.
-class GeografiaAdminScreen extends StatelessWidget {
+///
+/// **StatefulWidget** (no Stateless) para cachear el stream de PowerSync
+/// en `late _departamentos` inicializado en `initState`. Sin este cache,
+/// cada `build()` del padre re-ejecuta `ps.db.watch(...)` retornando un
+/// stream single-subscription; el `StreamBuilder` intenta resubscribirse
+/// y choca con `Bad state: Stream has already been listened to`. Mismo
+/// patrón que el fix aplicado a `_DeptoTile` / `_MunicipioTile`. Hoy
+/// no se reproduce porque el padre no recibe triggers de rebuild
+/// externos, pero sería bomba de tiempo ante cualquier cambio futuro
+/// (provider watched arriba, resize de window en Web, theme switch).
+class GeografiaAdminScreen extends StatefulWidget {
   const GeografiaAdminScreen({super.key});
+
+  @override
+  State<GeografiaAdminScreen> createState() => _GeografiaAdminScreenState();
+}
+
+class _GeografiaAdminScreenState extends State<GeografiaAdminScreen> {
+  late final Stream<List<Map<String, dynamic>>> _departamentos;
+
+  @override
+  void initState() {
+    super.initState();
+    _departamentos =
+        ps.db.watch('SELECT * FROM departamentos ORDER BY nombre');
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -36,8 +60,7 @@ class GeografiaAdminScreen extends StatelessWidget {
         ),
         Expanded(
           child: StreamBuilder(
-            stream: ps.db
-                .watch('SELECT * FROM departamentos ORDER BY nombre'),
+            stream: _departamentos,
             builder: (context, snap) {
               if (!snap.hasData) {
                 return const Center(child: CircularProgressIndicator());
@@ -56,7 +79,12 @@ class GeografiaAdminScreen extends StatelessWidget {
               }
               return ListView(
                 padding: const EdgeInsets.symmetric(horizontal: 16),
-                children: deptos.map((d) => _DeptoTile(depto: d)).toList(),
+                children: deptos
+                    .map((d) => _DeptoTile(
+                          key: ValueKey(d['id']?.toString() ?? ''),
+                          depto: d,
+                        ))
+                    .toList(),
               );
             },
           ),
@@ -82,12 +110,52 @@ class GeografiaAdminScreen extends StatelessWidget {
   }
 }
 
-class _DeptoTile extends StatelessWidget {
+class _DeptoTile extends StatefulWidget {
   const _DeptoTile({required this.depto});
   final Map<String, dynamic> depto;
 
   @override
+  State<_DeptoTile> createState() => _DeptoTileState();
+}
+
+class _DeptoTileState extends State<_DeptoTile> {
+  // Stream cacheado en el state. Antes el `StreamBuilder` ejecutaba
+  // `ps.db.watch(...)` dentro del `build()` — PowerSync cachea el stream
+  // por (query+params), así que en el segundo build el `StreamBuilder`
+  // intentaba resubscribirse al MISMO stream y fallaba con
+  // `Bad state: Stream has already been listened to`. Capturado en
+  // /super/logs durante smoke testing del sprint del logger.
+  // Cacheando en `late` se crea una vez en initState y se reusa.
+  late Stream<List<Map<String, dynamic>>> _municipios;
+
+  @override
+  void initState() {
+    super.initState();
+    _municipios = _watchMunicipios(widget.depto['id'] as String);
+  }
+
+  @override
+  void didUpdateWidget(_DeptoTile old) {
+    super.didUpdateWidget(old);
+    // Si el padre rebuilda y nos pasa OTRO depto (mismo widget reusado
+    // por posición en la lista, sin Key), recreamos el stream para que
+    // apunte al departamento correcto. Sin esto, el tile mostraría
+    // municipios del depto anterior.
+    if (old.depto['id'] != widget.depto['id']) {
+      _municipios = _watchMunicipios(widget.depto['id'] as String);
+    }
+  }
+
+  Stream<List<Map<String, dynamic>>> _watchMunicipios(String deptoId) {
+    return ps.db.watch(
+      'SELECT * FROM municipios WHERE departamento_id = ? ORDER BY nombre',
+      parameters: [deptoId],
+    );
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final depto = widget.depto;
     return Card(
       margin: const EdgeInsets.only(bottom: 8),
       clipBehavior: Clip.antiAlias,
@@ -97,15 +165,15 @@ class _DeptoTile extends StatelessWidget {
         subtitle: depto['codigo'] != null ? Text(depto['codigo'] as String) : null,
         children: [
           StreamBuilder(
-            stream: ps.db.watch(
-              'SELECT * FROM municipios WHERE departamento_id = ? ORDER BY nombre',
-              parameters: [depto['id']],
-            ),
+            stream: _municipios,
             builder: (context, snap) {
               final municipios = snap.data ?? const [];
               return Column(
                 children: [
-                  ...municipios.map((m) => _MunicipioTile(municipio: m)),
+                  ...municipios.map((m) => _MunicipioTile(
+                        key: ValueKey(m['id']?.toString() ?? ''),
+                        municipio: m,
+                      )),
                   ListTile(
                     leading: const Icon(Icons.add, size: 18),
                     title: const Text('Agregar municipio'),
@@ -137,12 +205,43 @@ class _DeptoTile extends StatelessWidget {
   }
 }
 
-class _MunicipioTile extends StatelessWidget {
+class _MunicipioTile extends StatefulWidget {
   const _MunicipioTile({required this.municipio});
   final Map<String, dynamic> municipio;
 
   @override
+  State<_MunicipioTile> createState() => _MunicipioTileState();
+}
+
+class _MunicipioTileState extends State<_MunicipioTile> {
+  // Mismo patrón que _DeptoTileState — stream cacheado para evitar
+  // `Bad state: Stream has already been listened to` en rebuilds.
+  late Stream<List<Map<String, dynamic>>> _comunidades;
+
+  @override
+  void initState() {
+    super.initState();
+    _comunidades = _watchComunidades(widget.municipio['id'] as String);
+  }
+
+  @override
+  void didUpdateWidget(_MunicipioTile old) {
+    super.didUpdateWidget(old);
+    if (old.municipio['id'] != widget.municipio['id']) {
+      _comunidades = _watchComunidades(widget.municipio['id'] as String);
+    }
+  }
+
+  Stream<List<Map<String, dynamic>>> _watchComunidades(String municipioId) {
+    return ps.db.watch(
+      'SELECT * FROM comunidades WHERE municipio_id = ? ORDER BY nombre',
+      parameters: [municipioId],
+    );
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final municipio = widget.municipio;
     return Padding(
       padding: const EdgeInsets.only(left: 16),
       child: ExpansionTile(
@@ -151,10 +250,7 @@ class _MunicipioTile extends StatelessWidget {
         childrenPadding: const EdgeInsets.only(left: 16),
         children: [
           StreamBuilder(
-            stream: ps.db.watch(
-              'SELECT * FROM comunidades WHERE municipio_id = ? ORDER BY nombre',
-              parameters: [municipio['id']],
-            ),
+            stream: _comunidades,
             builder: (context, snap) {
               final comunidades = snap.data ?? const [];
               return Column(

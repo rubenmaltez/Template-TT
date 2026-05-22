@@ -296,19 +296,17 @@ NO soporta multi-file via paste — `_shared/passwords.ts` no funcionaría. Por 
 
 Estos viven acá hasta que se ataquen explícitamente. NO re-flag en audits.
 
-- **Geografía — `Bad state: Stream has already been listened to` al
-  expandir un departamento creado**. Bug pre-existente descubierto en
-  testing manual post-merge del sprint del logger. En
-  `geografia_admin_screen.dart`, `_DeptoTile` ejecuta `ps.db.watch(...)`
-  dentro del `StreamBuilder` en cada `build()`. PowerSync cachea el
-  stream por (query+params), entonces el segundo intento de subscripción
-  al mismo stream falla con el assert. Mismo patrón en `_MunicipioTile`
-  (probable, no verificado).
-  Fix: convertir `_DeptoTile` y `_MunicipioTile` a `StatefulWidget`,
-  cachear el `Stream` como `late final` en el state, y usar `.asBroadcastStream()`
-  si vale o cachear el resultado de `watch` con un memoizer. Probable
-  que el patrón afecte a otras pantallas que usen `StreamBuilder`
-  anidado con `ps.db.watch` parametrizado.
+- **`ps.db.watch` inline en `build()` — anti-patrón a barrer del repo**.
+  Resuelto en `geografia_admin_screen.dart` (Screen + tiles convertidos
+  a StatefulWidget con stream `late final` en initState). Quedan
+  ~25 callsites más con el mismo anti-patrón: clientes, contratos,
+  planes, cuotas, pagos, audit, recibo, historial, perfil, geo_picker,
+  reportes, etc. Hoy no crashean porque sus widgets parent no reciben
+  triggers de rebuild externos, pero replican el bug latente. Sprint
+  propio de hardening cuando aparezca el primer crash o cuando se
+  toque alguna de esas pantallas por otra razón. Patrón fix:
+  StatefulWidget + `late final Stream` en `initState`, `didUpdateWidget`
+  defensivo si los params del query dependen del widget.
 - **OfflineBanner follow-ups del sprint debounce**:
     - **Indicador de red inestable**: el debounce de 3s silencia flickers
       rápidos (`false → true → false` en <3s) — bueno para ocultar el
