@@ -8,6 +8,7 @@ import '../../../data/utils/edge_functions.dart';
 import '../../../data/utils/formatters.dart';
 import '../../../data/utils/validators.dart';
 import '../../../powersync/db.dart' as ps;
+import '../../shared/widgets/credenciales_dialog.dart';
 import '../../shared/widgets/empty_state.dart';
 
 /// Gestión de cobradores: ver lista, asignar prefijo de recibo, cambiar
@@ -100,6 +101,11 @@ class _InvitarDialogState extends State<_InvitarDialog> {
   final _prefijo = TextEditingController();
   String _rol = 'cobrador';
   bool _enviando = false;
+  // Mismo patrón que _CrearTenantDialog e InvitarAdminDialog: default ON
+  // pero el admin puede elegir generar password sin mandar email.
+  // Workaround principal cuando el SMTP está en sandbox o el destinatario
+  // no tiene email funcional.
+  bool _enviarEmail = true;
   String? _error;
 
   @override
@@ -129,13 +135,21 @@ class _InvitarDialogState extends State<_InvitarDialog> {
       return;
     }
 
+    // Capturamos refs al Navigator y ScaffoldMessenger ANTES del await
+    // para no usar el context del State (que queda desmontado tras el
+    // primer pop). Sin esto el lint use_build_context_synchronously
+    // flaggea legítimo y en runtime el showDialog puede no aparecer.
+    final navigator = Navigator.of(context);
+    final messenger = ScaffoldMessenger.of(context);
+    final rootContext = Navigator.of(context, rootNavigator: true).context;
+
     setState(() {
       _enviando = true;
       _error = null;
     });
 
     try {
-      await invokeEdgeFunction(
+      final data = await invokeEdgeFunction(
         Supabase.instance.client,
         'invitar-cobrador',
         body: {
@@ -146,14 +160,40 @@ class _InvitarDialogState extends State<_InvitarDialog> {
             'telefono': _telefono.text.trim(),
           if (_rol == 'cobrador' && prefijo.isNotEmpty)
             'prefijo_recibo': prefijo,
+          // Explícito para que el server no asuma default si en el
+          // futuro cambia (mismo patrón que crear-tenant).
+          'enviar_email': _enviarEmail,
           // ?flow=invite: routea al invitado a /set-password tras
-          // clickear el link del email (ver _extractAuthFlow en main).
-          if (kIsWeb) 'redirect_to': '${Uri.base.origin}/?flow=invite',
+          // clickear el link del email. Sólo aplica al path email
+          // (ver _extractAuthFlow en main).
+          if (kIsWeb && _enviarEmail)
+            'redirect_to': '${Uri.base.origin}/?flow=invite',
         },
       );
-      if (mounted) {
-        Navigator.pop(context);
-        ScaffoldMessenger.of(context).showSnackBar(
+      final nuevaPassword = data['nueva_password'] as String?;
+      if (nuevaPassword != null && nuevaPassword.isNotEmpty) {
+        // Path no-email: cerramos este dialog y abrimos el de
+        // credenciales — el admin tiene UNA oportunidad de copiar la
+        // password antes de que se pierda. Si cierra sin copiar tiene
+        // que ir a "Forzar contraseña" en la fila del cobrador.
+        navigator.pop();
+        await showDialog<bool>(
+          context: rootContext,
+          barrierDismissible: false,
+          builder: (_) => CredencialesDialog(
+            title: 'Credenciales de $nombre',
+            email: email,
+            password: nuevaPassword,
+            intro:
+                'Usuario creado. Pasale email + contraseña por canal '
+                'seguro — esta es la única vez que la contraseña queda '
+                'visible.',
+          ),
+        );
+      } else {
+        // Path email: snackbar tradicional + pop.
+        navigator.pop();
+        messenger.showSnackBar(
           SnackBar(content: Text('Invitación enviada a $email')),
         );
       }
@@ -191,17 +231,49 @@ class _InvitarDialogState extends State<_InvitarDialog> {
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    // Width responsive: 400 en desktop/tablet, 90% del viewport en
+    // mobile chico (iPhone SE = 375, no entra el 400 fijo + el switch
+    // wrappea feo). Mismo patrón que _CrearTenantDialog.
+    final screenW = MediaQuery.sizeOf(context).width;
+    final dialogW = screenW < 460 ? screenW * 0.9 : 400.0;
     return AlertDialog(
       title: const Text('Invitar cobrador'),
       content: SizedBox(
-        width: 400,
+        width: dialogW,
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Text(
-              'Recibirá un email con link para definir su contraseña. '
-              'Una vez logueado, podrá usar la app.',
-              style: TextStyle(fontSize: 12),
+            // Switch arriba — el modo afecta UX, copy y botones. Mismo
+            // patrón que _CrearTenantDialog, InvitarAdminDialog y
+            // _ReenviarInvitacionDialog para mantener consistencia
+            // en los 4 flows de invitación del producto.
+            SwitchListTile(
+              value: _enviarEmail,
+              onChanged: _enviando
+                  ? null
+                  : (v) => setState(() => _enviarEmail = v),
+              title: const Text('Enviar email de invitación'),
+              subtitle: Text(
+                _enviarEmail
+                    ? 'El usuario recibe el link en su correo.'
+                    : 'No se envía email. Te generamos una contraseña '
+                        'para compartir manualmente.',
+                style: const TextStyle(fontSize: 11),
+              ),
+              contentPadding: EdgeInsets.zero,
+              dense: true,
+              visualDensity: VisualDensity.compact,
+            ),
+            const SizedBox(height: 8),
+            Text(
+              _enviarEmail
+                  ? 'Recibirá un email con link para definir su '
+                      'contraseña. Una vez logueado, podrá usar la app.'
+                  : 'Se creará el usuario con una contraseña aleatoria '
+                      '(no se manda email — la vas a copiar y compartir '
+                      'vos).',
+              style: TextStyle(color: scheme.outline, fontSize: 13),
             ),
             const SizedBox(height: 16),
             TextField(
@@ -209,15 +281,18 @@ class _InvitarDialogState extends State<_InvitarDialog> {
               decoration: const InputDecoration(labelText: 'Email *'),
               keyboardType: TextInputType.emailAddress,
               autofillHints: const [AutofillHints.email],
+              enabled: !_enviando,
             ),
             const SizedBox(height: 12),
             TextField(
               controller: _nombre,
+              enabled: !_enviando,
               decoration: const InputDecoration(labelText: 'Nombre completo *'),
             ),
             const SizedBox(height: 12),
             TextField(
               controller: _telefono,
+              enabled: !_enviando,
               decoration: const InputDecoration(labelText: 'Teléfono'),
               keyboardType: TextInputType.phone,
             ),
@@ -230,12 +305,15 @@ class _InvitarDialogState extends State<_InvitarDialog> {
                 DropdownMenuItem(value: 'admin_cobranza', child: Text('Admin de cobranza')),
                 DropdownMenuItem(value: 'admin', child: Text('Administrador')),
               ],
-              onChanged: (v) => setState(() => _rol = v ?? _rol),
+              onChanged: _enviando
+                  ? null
+                  : (v) => setState(() => _rol = v ?? _rol),
             ),
             if (_rol == 'cobrador') ...[
               const SizedBox(height: 12),
               TextField(
                 controller: _prefijo,
+                enabled: !_enviando,
                 decoration: const InputDecoration(
                   labelText: 'Prefijo de recibo',
                   hintText: 'COB-01',
@@ -249,8 +327,7 @@ class _InvitarDialogState extends State<_InvitarDialog> {
             ],
             if (_error != null) ...[
               const SizedBox(height: 8),
-              Text(_error!,
-                  style: TextStyle(color: Theme.of(context).colorScheme.error)),
+              Text(_error!, style: TextStyle(color: scheme.error)),
             ],
           ],
         ),
@@ -260,9 +337,23 @@ class _InvitarDialogState extends State<_InvitarDialog> {
           onPressed: _enviando ? null : () => Navigator.pop(context),
           child: const Text('Cancelar'),
         ),
-        FilledButton(
+        // Label e icono cambian según modo — paralelo a
+        // _ReenviarInvitacionDialog: ambos describen el artifact
+        // resultante, no el canal de entrega.
+        FilledButton.icon(
           onPressed: _enviando ? null : _invitar,
-          child: Text(_enviando ? 'Enviando...' : 'Enviar invitación'),
+          icon: _enviando
+              ? const SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : Icon(_enviarEmail ? Icons.send : Icons.lock_reset),
+          label: Text(_enviando
+              ? 'Procesando…'
+              : _enviarEmail
+                  ? 'Enviar invitación'
+                  : 'Generar contraseña'),
         ),
       ],
     );
