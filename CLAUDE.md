@@ -434,14 +434,26 @@ Estos viven acá hasta que se ataquen explícitamente. NO re-flag en audits.
   `onAuthStateChange.signedIn` listener queda en algún estado limbo
   (¿race con el sync gate? ¿`lastSyncedAt` no se emite tras el primer
   checkpoint?). F5 reinicializa todo desde cero y funciona.
-  Importante: el sprint del logger ya capturó el caso similar — vale
-  revisar `/super/logs` después de reproducir para ver si hay errores
-  silenciados de PowerSync. La UX del gate (PR #6) ya está bien:
-  progress bar, mensajes honestos, retry button — solo que el sync NO
-  arranca a llegar al gate. Sprint propio diagnóstico: agregar logs
-  detallados en `main.dart` del flow `signedIn → connectPowerSync →
-  primer checkpoint`, y/o revisar si PowerSync emite `anyError` que
-  ahora podemos detectar via `status.anyError`.
+  **Estado actual**: PR #17 deployó telemetría con prefix `[SYNC-DIAG]`
+  en consola + captura al `ErrorLogService` de excepciones que antes
+  quedaban silenciadas en los `await` async del listener
+  (`connectPowerSync` post-signedIn, fallback manual, `status.anyError`).
+  La próxima reproducción del bug aparecerá en `/super/logs` con info
+  concreta. Hipótesis a confirmar con los logs: PowerSync entra en
+  estado de error post-signOut global sin emitir checkpoint, o el
+  `connectPowerSync` tira excepción que estaba siendo tragada.
+- **Flash del setup wizard al loguearse — fix incompleto del PR #8**.
+  El PR #8 resolvió el caso post-forzar-password (signOut global resetea
+  cache → settings vacío al primer build → guard redirigía a onboarding).
+  Pero el flash persiste en flows secundarios: hot restart de Flutter
+  durante dev, posiblemente otros casos de race entre los providers
+  `empresaNombreProvider` y `empresaNombreRowExistsProvider` cuando los
+  streams de PowerSync emiten en orden distinto. UX menor — el user
+  termina en `/admin` correctamente, solo ve un destello del wizard
+  durante <500ms. Decidimos atacarlo cuando enfoquemos sprint de UI/UX
+  multi-plataforma (web + Android + Windows installer) — ahí podemos
+  agregar animaciones de transición que enmascaren el flash y/o
+  refactorear el guard del router para ser más estable.
 - **Switch "Enviar email de invitación" inconsistente entre dialogs**. El dialog
   "Crear nuevo ISP" (super_admin) tiene el switch para alternar entre modo email
   y modo no-email (password generada server-side). Pero los dialogs `InvitarAdminDialog`
