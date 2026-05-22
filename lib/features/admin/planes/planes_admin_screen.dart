@@ -1,0 +1,317 @@
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:uuid/uuid.dart';
+
+import '../../../data/providers/cobrador_provider.dart';
+import '../../../data/utils/formatters.dart';
+import '../../../powersync/db.dart' as ps;
+import '../../shared/widgets/empty_state.dart';
+
+/// CRUD de planes del tenant. Sin planes no se pueden crear contratos.
+class PlanesAdminScreen extends ConsumerWidget {
+  const PlanesAdminScreen({super.key});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+          child: Row(
+            children: [
+              Expanded(
+                child: Text(
+                  'Planes del tenant. Cada plan se asigna al crear un contrato.',
+                  style: TextStyle(color: Theme.of(context).colorScheme.outline),
+                ),
+              ),
+              const SizedBox(width: 12),
+              FilledButton.icon(
+                icon: const Icon(Icons.add),
+                label: const Text('Nuevo plan'),
+                onPressed: () => _abrirForm(context, ref, null),
+              ),
+            ],
+          ),
+        ),
+        Expanded(
+          child: StreamBuilder(
+            stream: ps.db.watch(
+              '''
+              SELECT p.*,
+                     (SELECT COUNT(*) FROM contratos
+                       WHERE plan_id = p.id AND activo = 1) AS contratos_activos
+                FROM planes p
+               ORDER BY p.activo DESC, p.precio_mensual
+              ''',
+            ),
+            builder: (context, snap) {
+              if (!snap.hasData) {
+                return const Center(child: CircularProgressIndicator());
+              }
+              final rows = snap.data!;
+              if (rows.isEmpty) {
+                return EmptyState(
+                  icon: Icons.wifi,
+                  titulo: 'No hay planes',
+                  descripcion:
+                      'Tenés que crear al menos un plan para poder asignar contratos.',
+                  accion: FilledButton.icon(
+                    icon: const Icon(Icons.add),
+                    label: const Text('Crear primer plan'),
+                    onPressed: () => _abrirForm(context, ref, null),
+                  ),
+                );
+              }
+              return ListView.separated(
+                padding: const EdgeInsets.all(16),
+                itemCount: rows.length,
+                separatorBuilder: (_, __) => const SizedBox(height: 8),
+                itemBuilder: (_, i) => _PlanCard(
+                  row: rows[i],
+                  onEdit: () => _abrirForm(context, ref, rows[i]),
+                ),
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+
+  Future<void> _abrirForm(
+    BuildContext context,
+    WidgetRef ref,
+    Map<String, dynamic>? row,
+  ) async {
+    await showDialog<void>(
+      context: context,
+      builder: (_) => _PlanFormDialog(plan: row),
+    );
+  }
+}
+
+class _PlanCard extends StatelessWidget {
+  const _PlanCard({required this.row, required this.onEdit});
+  final Map<String, dynamic> row;
+  final VoidCallback onEdit;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final activo = (row['activo'] as int? ?? 1) == 1;
+    final tipo = row['tipo'] as String;
+    final contratos = row['contratos_activos'] as int? ?? 0;
+
+    return Card(
+      child: ListTile(
+        leading: CircleAvatar(
+          backgroundColor: activo
+              ? scheme.primaryContainer
+              : scheme.surfaceContainerHighest,
+          child: Icon(_icon(tipo),
+              color: activo ? scheme.primary : scheme.outline),
+        ),
+        title: Text(row['nombre'] as String,
+            style: TextStyle(
+              decoration: activo ? null : TextDecoration.lineThrough,
+            )),
+        subtitle: Text(
+          '$tipo · $contratos contrato(s) activo(s)',
+          style: TextStyle(color: scheme.outline, fontSize: 12),
+        ),
+        trailing: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              Fmt.cordobas(row['precio_mensual'] as num),
+              style: const TextStyle(fontWeight: FontWeight.bold),
+            ),
+            IconButton(icon: const Icon(Icons.edit), onPressed: onEdit),
+          ],
+        ),
+      ),
+    );
+  }
+
+  IconData _icon(String tipo) => switch (tipo) {
+        'internet' => Icons.wifi,
+        'tv' => Icons.tv,
+        'combo' => Icons.tv_outlined,
+        _ => Icons.subscriptions,
+      };
+}
+
+class _PlanFormDialog extends ConsumerStatefulWidget {
+  const _PlanFormDialog({this.plan});
+  final Map<String, dynamic>? plan;
+
+  @override
+  ConsumerState<_PlanFormDialog> createState() => _PlanFormDialogState();
+}
+
+class _PlanFormDialogState extends ConsumerState<_PlanFormDialog> {
+  late TextEditingController _nombre;
+  late TextEditingController _precio;
+  late String _tipo;
+  late bool _activo;
+  bool _guardando = false;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _nombre = TextEditingController(text: widget.plan?['nombre'] as String? ?? '');
+    _precio = TextEditingController(
+      text: (widget.plan?['precio_mensual'] as num?)?.toString() ?? '',
+    );
+    _tipo = widget.plan?['tipo'] as String? ?? 'internet';
+    _activo = (widget.plan?['activo'] as int? ?? 1) == 1;
+  }
+
+  @override
+  void dispose() {
+    _nombre.dispose();
+    _precio.dispose();
+    super.dispose();
+  }
+
+  Future<void> _guardar() async {
+    if (_nombre.text.trim().isEmpty) {
+      setState(() => _error = 'Nombre requerido');
+      return;
+    }
+    final precio = double.tryParse(_precio.text);
+    if (precio == null || precio <= 0) {
+      setState(() => _error = 'Precio inválido');
+      return;
+    }
+    final tenantId = ref.read(tenantIdProvider);
+    if (tenantId == null) {
+      setState(() => _error = 'Sin tenant');
+      return;
+    }
+
+    setState(() {
+      _guardando = true;
+      _error = null;
+    });
+
+    try {
+      if (widget.plan == null) {
+        await ps.db.execute(
+          '''
+          INSERT INTO planes (id, tenant_id, nombre, tipo, precio_mensual,
+                              activo, created_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?)
+          ''',
+          [
+            const Uuid().v4(),
+            tenantId,
+            _nombre.text.trim(),
+            _tipo,
+            precio,
+            _activo ? 1 : 0,
+            DateTime.now().toIso8601String(),
+          ],
+        );
+      } else {
+        await ps.db.execute(
+          '''
+          UPDATE planes
+             SET nombre = ?, tipo = ?, precio_mensual = ?, activo = ?
+           WHERE id = ?
+          ''',
+          [
+            _nombre.text.trim(),
+            _tipo,
+            precio,
+            _activo ? 1 : 0,
+            widget.plan!['id'],
+          ],
+        );
+      }
+      if (mounted) Navigator.pop(context);
+    } catch (e) {
+      if (mounted) setState(() => _error = e.toString());
+    } finally {
+      if (mounted) setState(() => _guardando = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: Text(widget.plan == null ? 'Nuevo plan' : 'Editar plan'),
+      content: SizedBox(
+        width: 400,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: _nombre,
+              decoration: const InputDecoration(
+                labelText: 'Nombre *',
+                hintText: 'Ej. Internet 10MB',
+              ),
+              textInputAction: TextInputAction.next,
+            ),
+            const SizedBox(height: 12),
+            DropdownButtonFormField<String>(
+              value: _tipo,
+              decoration: const InputDecoration(labelText: 'Tipo'),
+              items: const [
+                DropdownMenuItem(value: 'internet', child: Text('Internet')),
+                DropdownMenuItem(value: 'tv', child: Text('TV')),
+                DropdownMenuItem(value: 'combo', child: Text('Combo')),
+              ],
+              onChanged: (v) => setState(() => _tipo = v ?? _tipo),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _precio,
+              decoration: const InputDecoration(
+                labelText: 'Precio mensual (C\$) *',
+              ),
+              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              inputFormatters: [
+                FilteringTextInputFormatter.allow(RegExp(r'[0-9.]')),
+              ],
+            ),
+            const SizedBox(height: 12),
+            SwitchListTile(
+              value: _activo,
+              onChanged: (v) => setState(() => _activo = v),
+              title: Text(_activo ? 'Activo' : 'Inactivo'),
+              subtitle: !_activo
+                  ? const Text(
+                      'No aparecerá al crear nuevos contratos',
+                      style: TextStyle(fontSize: 12),
+                    )
+                  : null,
+              contentPadding: EdgeInsets.zero,
+            ),
+            if (_error != null) ...[
+              const SizedBox(height: 8),
+              Text(
+                _error!,
+                style: TextStyle(color: Theme.of(context).colorScheme.error),
+              ),
+            ],
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: _guardando ? null : () => Navigator.pop(context),
+          child: const Text('Cancelar'),
+        ),
+        FilledButton(
+          onPressed: _guardando ? null : _guardar,
+          child: Text(_guardando ? 'Guardando...' : 'Guardar'),
+        ),
+      ],
+    );
+  }
+}

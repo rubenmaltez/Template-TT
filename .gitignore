@@ -16,6 +16,7 @@ build/
 .env
 .env.local
 .env.*.local
+.env.json
 *.pem
 *.key
 
@@ -45,3 +46,13 @@ macos/flutter/ephemeral/
 # OS
 .DS_Store
 Thumbs.db
+
+# Archivos WASM regenerados por 'dart run powersync:setup_web'
+web/sqlite3.wasm
+web/powersync_db.worker.js
+web/powersync_sync.worker.js
+
+# Archivos WASM regenerados por 'dart run powersync:setup_web'
+web/sqlite3.wasm
+web/powersync_db.worker.js
+web/powersync_sync.worker.js

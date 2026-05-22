@@ -7,29 +7,48 @@
 #   - Cada query de `data:` debe usar TODOS los parámetros del bucket
 #   - `IN` sólo con listas literales: `WHERE estado IN ('pendiente','pagada')`
 #
-# Por eso `contratos` y `cuotas` tienen `cobrador_id` denormalizado
-# (ver migración 0002).
+# Por eso `contratos`, `cuotas`, `pagos`, `recibos`, `cargos_extra` y
+# `notificaciones_mora` tienen `cobrador_id` denormalizado.
 
 bucket_definitions:
 
-  # ── Catálogo global del tenant (planes) ───────────────────────────────
-  # Todos los empleados del ISP lo necesitan offline.
+  # ── Catálogos geo globales (compartidos entre tenants) ─────────────────
+  # Bucket sin `parameters:` = global. Cualquier usuario autenticado lo baja.
+  # Las tablas geo no tienen tenant_id (son catálogos compartidos —
+  # Nicaragua es Nicaragua para todos los tenants).
+  geografia:
+    data:
+      - SELECT * FROM departamentos
+      - SELECT * FROM municipios
+      - SELECT * FROM comunidades
+
+  # ── Catálogo del tenant (planes + settings) ───────────────────────────
+  # Todos los empleados del ISP los necesitan offline.
+  # Nota: `modulos` / `tenant_modulos` / `tenants` se consultan vía REST
+  # desde el panel Super Admin (Sprint A2), no se sincronizan localmente.
   catalogo_tenant:
     parameters: |
       SELECT tenant_id
       FROM cobradores
       WHERE id = request.user_id()
     data:
-      - SELECT * FROM planes WHERE tenant_id = bucket.tenant_id
+      - SELECT * FROM planes   WHERE tenant_id = bucket.tenant_id
+      - SELECT * FROM settings WHERE tenant_id = bucket.tenant_id
 
   # ── Datos operativos del cobrador ─────────────────────────────────────
-  # Cada cobrador baja SÓLO sus clientes asignados + sus contratos/cuotas/pagos.
+  # Cada cobrador baja SÓLO sus clientes asignados + relacionados.
+  # También baja SU PROPIA fila de cobradores (necesita prefijo_recibo para
+  # imprimir y rol para validaciones locales).
   por_cobrador:
     parameters: |
       SELECT id AS cobrador_id, tenant_id
       FROM cobradores
       WHERE id = request.user_id() AND rol = 'cobrador'
     data:
+      - SELECT id, tenant_id, nombre, telefono, rol, prefijo_recibo, activo
+        FROM cobradores
+        WHERE tenant_id = bucket.tenant_id AND id = bucket.cobrador_id
+
       - SELECT * FROM clientes
         WHERE tenant_id = bucket.tenant_id AND cobrador_id = bucket.cobrador_id
 
@@ -39,22 +58,76 @@ bucket_definitions:
       - SELECT * FROM cuotas
         WHERE tenant_id = bucket.tenant_id AND cobrador_id = bucket.cobrador_id
 
+      # Cobrador no necesita pagos/recibos anulados — el saldo de la cuota
+      # ya se recalcula via trigger server-side. Filtramos para reducir
+      # ruido visual. Admins SÍ los ven (auditoría).
       - SELECT * FROM pagos
         WHERE tenant_id = bucket.tenant_id AND cobrador_id = bucket.cobrador_id
+          AND anulado = false
 
-  # ── Vista global para admins (PC Windows en oficina) ──────────────────
-  # Los admins bajan todo el tenant. Es seguro porque el rol es asignado por
-  # el dueño del ISP y filtrado por RLS en Postgres.
+      - SELECT * FROM recibos
+        WHERE tenant_id = bucket.tenant_id AND cobrador_id = bucket.cobrador_id
+          AND anulado = false
+
+      - SELECT * FROM cargos_extra
+        WHERE tenant_id = bucket.tenant_id AND cobrador_id = bucket.cobrador_id
+
+      - SELECT * FROM notificaciones_mora
+        WHERE tenant_id = bucket.tenant_id AND cobrador_id = bucket.cobrador_id
+
+  # ── Vista global para admin (panel web con sync opcional) ──────────────
   todo_tenant_admin:
     parameters: |
       SELECT tenant_id
       FROM cobradores
       WHERE id = request.user_id() AND rol = 'admin'
     data:
-      - SELECT * FROM clientes   WHERE tenant_id = bucket.tenant_id
-      - SELECT * FROM contratos  WHERE tenant_id = bucket.tenant_id
-      - SELECT * FROM cuotas     WHERE tenant_id = bucket.tenant_id
-      - SELECT * FROM pagos      WHERE tenant_id = bucket.tenant_id
-      - SELECT id, tenant_id, nombre, rol, activo
+      - SELECT * FROM clientes             WHERE tenant_id = bucket.tenant_id
+      - SELECT * FROM contratos            WHERE tenant_id = bucket.tenant_id
+      - SELECT * FROM cuotas               WHERE tenant_id = bucket.tenant_id
+      - SELECT * FROM pagos                WHERE tenant_id = bucket.tenant_id
+      - SELECT * FROM recibos              WHERE tenant_id = bucket.tenant_id
+      - SELECT * FROM cargos_extra         WHERE tenant_id = bucket.tenant_id
+      - SELECT * FROM notificaciones_mora  WHERE tenant_id = bucket.tenant_id
+      - SELECT id, tenant_id, nombre, telefono, rol, prefijo_recibo, activo
         FROM cobradores
         WHERE tenant_id = bucket.tenant_id
+
+      - SELECT * FROM audit_log         WHERE tenant_id = bucket.tenant_id
+
+  # ── Vista global para admin_cobranza (mismo dataset que admin) ─────────
+  # admin_cobranza ve todo pero sus permisos de escritura los limita RLS.
+  todo_tenant_admin_cobranza:
+    parameters: |
+      SELECT tenant_id
+      FROM cobradores
+      WHERE id = request.user_id() AND rol = 'admin_cobranza'
+    data:
+      - SELECT * FROM clientes             WHERE tenant_id = bucket.tenant_id
+      - SELECT * FROM contratos            WHERE tenant_id = bucket.tenant_id
+      - SELECT * FROM cuotas               WHERE tenant_id = bucket.tenant_id
+      - SELECT * FROM pagos                WHERE tenant_id = bucket.tenant_id
+      - SELECT * FROM recibos              WHERE tenant_id = bucket.tenant_id
+      - SELECT * FROM cargos_extra         WHERE tenant_id = bucket.tenant_id
+      - SELECT * FROM notificaciones_mora  WHERE tenant_id = bucket.tenant_id
+      - SELECT id, tenant_id, nombre, telefono, rol, prefijo_recibo, activo
+        FROM cobradores
+        WHERE tenant_id = bucket.tenant_id
+
+      - SELECT * FROM audit_log         WHERE tenant_id = bucket.tenant_id
+
+  # ── Super admin: su propia fila para que la app reconozca el rol ──────
+  # El super_admin vive en el tenant 'System' (00000000-...). No tiene
+  # datos operativos propios — sólo necesita su fila de cobradores para
+  # que el cliente sepa que tiene rol 'super_admin' y muestre el menú
+  # admin. El acceso cross-tenant (gestión de tenants/módulos) se hará
+  # vía RPCs o vista server-side en Sprint A2, no por sync local.
+  super_admin_self:
+    parameters: |
+      SELECT id AS user_id
+      FROM cobradores
+      WHERE id = request.user_id() AND rol = 'super_admin'
+    data:
+      - SELECT id, tenant_id, nombre, telefono, rol, prefijo_recibo, activo
+        FROM cobradores
+        WHERE id = bucket.user_id

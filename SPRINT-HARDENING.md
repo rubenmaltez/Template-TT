@@ -1,0 +1,460 @@
+# Sprint Hardening (pre-producción)
+
+> Archivo **temporal**. Borrar cuando el sprint cierre (después del Día 3 + merge a `main`).
+> Para contexto permanente del proyecto, ver `CLAUDE.md`.
+
+---
+
+## Origen
+
+4 audits paralelos sobre `claude/powersync-sdk-setup-KZF1R` antes de
+mergear a `main`:
+
+1. **Security** (auth, RLS, edge functions, JWT, signOut global).
+2. **Database** (RLS policies, índices, audit_log, integridad referencial).
+3. **Edge Functions** (idempotencia, atomicidad, rollback, error
+   handling, scrubbing de mensajes internos).
+4. **Architecture** (Riverpod patterns, go_router, sync, PowerSync
+   buckets, navegación, dispose).
+
+Resultado: 22 findings (R1–R22) — clasificados así:
+
+| Categoría | IDs | Acción |
+|---|---|---|
+| OUT OF SCOPE (workflow choice) | R3, R4, R5, R6 | No tocar. Signup disabled, no Resend domain, no email path. El usuario asume el trade-off. |
+| Día 1 — DB integrity | R2, R16, R17, R18, R19, R20 | ✅ Cerrado (migration 0034). |
+| Día 1 — descartado | R1 | RLS de pagos cross-cobrador, ya documentado en 0025 como decisión de producto. |
+| Día 2 — Edge Functions resilience | R22 (audit-first), control chars, length caps, scrub mensajes, intent/success split, snapshot pre-recreate | ✅ Cerrado. |
+| Día 3 — Frontend bugs + tech debt | R7 ✅, R8 ✅, R9 ✅, R10 ✅, R11 ✅, R12 ✅, R13 ✅, R14 ✅, R21 ✅, R15 deferido | ✅ Cerrado. Testing manual completo. |
+
+---
+
+## Día 1 — DB Integrity (CERRADO)
+
+Migration: `supabase/migrations/0034_db_integrity_hardening.sql`.
+
+| ID | Fix | Detalle |
+|---|---|---|
+| R2 | Storage path regex jpg/jpeg/png/webp | Limita uploads a esos formatos a nivel de policy. |
+| R16 | `propagar_cambio_monto_a_cuotas_pendientes` | Sólo toca cuotas con estado `pendiente` o `parcial` — no rescribe cuotas pagadas. |
+| R17 | `actualizar_notificaciones_mora` con `SET LOCAL row_security = off` | El cron job ya no se filtra por RLS. |
+| R18 | Índice parcial `cuotas_cron_mora_idx` | Acelera el sweep mensual. |
+| R19 | `client_local_id` UNIQUE por tenant | DO block con `pg_constraint` para idempotencia + pre-flight de duplicados. Bloqueante encontrado en review, fixed. |
+| R20 | `set_tenant_modulo` escribe en `audit_log` | Cambios de toggles ahora trazables. |
+
+**Decisión explícita — R1 (descartado)**: `pagos_insert_propio` permite a
+un cobrador insertar pagos como otro cobrador del mismo tenant.
+Documentado como trade-off de producto en migration 0025 — los dueños de
+ISPs chicos quieren poder marcar pagos a nombre del cobrador que cobró
+fuera de la app. No se modifica.
+
+**Commits**: `ce4b856` (WIP) → `0ba6fee` (fixes de los 3 agents).
+
+---
+
+## Día 2 — Edge Functions Resilience (CERRADO)
+
+Tres parches en paralelo: input hygiene, audit append-only con
+intent/success split, y rollback atómico para multi-paso.
+
+### Funciones modificadas
+1. `invitar-cobrador`
+2. `forzar-password-cobrador`
+3. `cambiar-email-cobrador`
+4. `reenviar-invitacion`
+5. `crear-tenant`
+
+### Patrones aplicados a todas
+
+**Input hygiene (de validation a sanitización)**:
+- Email regex: `/^[^@\s]+@[^@\s]+\.[^@\s]+$/`
+- Strip de control chars: `/[\x00-\x1F\x7F-\x9F]/`
+- Length caps: nombre 120, telefono 32 (trim antes de chequear)
+- Normalización a lowercase para emails
+
+**Audit-first con intent/success split** (R22):
+- ANTES del side effect → insert `valor_nuevo: { action: '*_intent' }`.
+  Si falla → abort sin aplicar el cambio.
+- DESPUÉS del side effect exitoso → insert `valor_nuevo: { action: '*_success' }`
+  o strings (para que `_resumenCambio` muestre el diff genérico).
+- Si el side effect falla post-intent → intent queda como evidencia
+  del intento, response devuelve el error de Auth.
+- Si el success-insert falla → `console.error` loud, el cambio queda
+  aplicado y el operador investiga por server logs.
+
+**Mensajes scrubbed**:
+- Outer catches devuelven "Error interno" genérico — no filtran el
+  string del DB al cliente.
+- `humanizeAuthError` local en cada función traduce los errores
+  conocidos de Supabase Auth a copy en español.
+
+### Específico por función
+
+**`forzar-password-cobrador`**: intent + success ambos con action map,
+nunca se persiste la password en audit_log.
+
+**`cambiar-email-cobrador`**: intent guarda `{ action: 'email_change_intent', intent: nuevoEmail }`,
+success guarda `valor_anterior: emailViejo, valor_nuevo: nuevoEmail`
+como strings — el timeline lo renderea como diff genérico
+"email: viejo → nuevo". signOut global post-cambio para invalidar JWT
+con el email viejo (~1h de drift sino).
+
+**`reenviar-invitacion`** (modo no-email):
+- Snapshot del cobrador en audit_log con `action: 'snapshot_before_resend'`
+  ANTES del delete del user viejo.
+- Re-creación con `createUser + email_confirm: true`.
+- Audit row post-creación incluye `snapshot: snapshot` inline en
+  `valor_anterior` para que el timeline del nuevo user muestre el
+  histórico previo a la re-invitación.
+
+**`crear-tenant`** (atomicidad multi-paso):
+- Variables outer-scope: `tenantId`, `userIdParcial`, `adminForRollback`,
+  `success`.
+- `success = true` se setea justo antes del Response final.
+- Outer catch wrappea cada delete en su propio try/catch con
+  `deleteUserThrow` / `deleteTenantThrow` para que un delete que tira
+  no rompa el rollback del otro.
+- Inner rollback nullifica las vars para evitar double-rollback noise
+  desde el outer catch.
+- **Security HIGH** fixed: outer catch antes podía dejar tenant huérfano
+  si el delete tiraba sincrónicamente.
+
+### UI side
+`lib/features/super_admin/miembro_detalle_screen.dart` — `_accionLabel`
+con labels nuevos:
+```dart
+'force_password_reset_intent' => 'Intento de reset de contraseña',
+'force_password_reset_success' => 'Contraseña reseteada por super_admin',
+'email_change_intent'          => 'Intento de cambio de email',
+'snapshot_before_resend'       => 'Snapshot previo al reenvío',
+'force_password_reset'         => 'Contraseña reseteada por super_admin', // legacy
+```
+
+**Commits**: `c256593` (WIP) → `104de49` (snapshot_before_resend label)
+→ `62748bf` (fixes de los 3 agents).
+
+**Fixes incidentales del review**:
+- Control char regex que el Edit tool escribió como literal bytes —
+  re-escrito vía script Python con `re.sub` + lambda repl.
+- Telefono length check movido después del trim.
+- `_accionLabel` faltaba `snapshot_before_resend`.
+
+---
+
+## Día 3 — Frontend bugs + tech debt (EN CURSO)
+
+### R7 — Smart sync gate ✅ CERRADO
+
+**Constraint del usuario** (verbatim):
+> "no quiero que este mandando peticiones con data que puede mantener
+> local, en todo caso si se cierra la ventana se debe de loguear
+> nuevamente y no necesariamente borrar la base de dato local y
+> rehacer el llamado"
+
+**Implementado** en commit `79af46f`:
+- `authIdentityProvider` (StateNotifier) trackea `(userId, changedAt)`.
+- `syncReadyProvider` (Provider derivado) = `lastSyncedAt > changedAt`.
+- Persistencia cross-session via `SharedPreferences`
+  (`last_known_user_id`) para detectar switch aunque el browser cierre
+  entre signOut y signIn.
+- `SyncGateScreen` con offline UX (8s slow hint, 25s escape hatch).
+- Redirect en `/sync-gate` después del set-password gate.
+- Container pre-creado en main.dart con `UncontrolledProviderScope`
+  para que el auth listener pueda mutar providers antes de runApp.
+- Guard contra double-connect del initial restore fallback.
+
+**Follow-ups (no bloqueantes, ya en CLAUDE.md backlog)**:
+- Verificar semantics de `PowerSync.lastSyncedAt` vs aplicación de
+  DELETEs de buckets descartados (¿el checkpoint signal puede llegar
+  antes de los deletes locales?). Si sí, queda una ventana de race
+  de algunos ms.
+- PKCE recovery + user-switch (edge case raro): gate post-set-password
+  con cache de otro user — UX inesperada pero correcta.
+- Listener de auth en main.dart nunca se cancela — dev noise en
+  hot-restart.
+- Bug pre-existente: super_admin landing post-login va a `/` no a
+  `/super/tenants`.
+
+### R8 — Upload error surface ✅ CERRADO
+
+**Implementado** en commit `ce787ca`:
+- `UploadResult` class + `StreamController.broadcast()` en
+  `foto_comprobante_service`.
+- `_sincronizarImpl` cuenta succeeded/failed por corrida y emite el
+  summary si hubo intento real de upload (no spam cuando no hay
+  pendientes).
+- Throttle interno de 2 min entre emisiones de error (evita spam en
+  redes intermitentes con error estructural).
+- `uploadResultsProvider` (StreamProvider) bridge a Riverpod.
+- `rootScaffoldMessengerKey` global + `ref.listen` en `app.dart`.
+  SnackBar floating con action "Ver detalles" → /perfil. Gate por
+  `currentSession` (no mostrar errores del user anterior en /login).
+- `main.dart` consume el service via `container.read(...)` (sino dos
+  instancias = dos streams separados).
+- Botón "Intentar ahora" en perfil ya no muestra snack de error (lo
+  cubre el global).
+
+**Follow-ups (al backlog persistente, no bloqueantes)**:
+- Persistencia del último error para sobrevivir F5/reload (broadcast
+  stream no replaya).
+- Indicador opcional en el shell "X fotos con error reciente".
+- `lastErrorMessage` no se surfacea hoy — disponible en el stream
+  para diagnóstico futuro.
+
+### R9 — `context.push` refactor ✅ CERRADO
+
+**Implementado** en commit `04e984e`. 10 cambios en 6 archivos.
+
+**Convención adoptada**:
+- `push` para entries a sub-rutas (tap fila → editar, botón "Nuevo" → form).
+- `pop` (con fallback `go(lista)` para deep-link sin stack) para exits
+  (post-save, botón Cancelar).
+- `go` se preserva para tabs, redirects de auth, post-submit de creación
+  de tenants (donde queremos reemplazar el form en la stack).
+
+**Cambios**:
+- `admin/clientes/`: `clientes_admin_screen.dart` (botón Nuevo + tap fila),
+  `cliente_form_screen.dart` (post-save + Cancelar).
+- `admin/contratos/`: idem patrón.
+- `super_admin/tenants_list_screen.dart:216` (tap fila tenant) y
+  `tenant_modulos_screen.dart:1036` (tap miembro) — mismo bug, mismo fix.
+
+**NO tocado**:
+- `recibo_screen.dart:29` — IconButton(Icons.home) es "ir a home", no back.
+- Líneas 61/78 de `tenants_list` — post-submit son correctos con `go`.
+
+**Follow-ups al backlog**:
+- PopScope guard en forms con cambios sin guardar.
+- AppBar back arrow condicional en AdminShell cuando estás en sub-rutas
+  (hoy siempre muestra hamburger porque hay drawer, así que el affordance
+  visual no mejoró — solo el behavior del browser back y el botón
+  Cancelar).
+
+### R10 — Dashboard recompute ✅ CERRADO
+
+**Implementado** en commit `4165866`. El backlog original decía
+"StreamProviders recomputan" pero en realidad NO había providers —
+los KPIs vivían en `StreamBuilder` directos con `ps.db.watch(...)` que
+retorna nueva instancia de Stream en cada rebuild, causando
+re-subscripciones costosas + flash de loading.
+
+**Cambios**:
+- Nuevo `lib/data/providers/dashboard_providers.dart` con 4
+  StreamProviders (`cobrosKpisProvider`, `operativoKpisProvider`,
+  `topCobradoresProvider`, `distribucionCuotasProvider`) y 4 data
+  classes tipadas. Riverpod cachea por identidad → stream se subscribe
+  una sola vez por sesión.
+- `appSettingsProvider.select((s) => s.diasGracia)` en los 2 providers
+  que dependen de ese campo — el dashboard ya no rebuildea cuando
+  cambia otro setting (nombre empresa, etc.).
+- Cards refactoreadas a `ConsumerWidget` con `AsyncValue.when`.
+- `_AccesosRapidos`: `Nuevo cliente`/`Nuevo contrato` usan `push`
+  (consistencia con R9), `Ver mora`/`Configuración` mantienen `go`
+  (tabs del shell).
+
+**Trade-offs documentados en el código**:
+- Providers no son `autoDispose` (cache-hit instantáneo al volver al
+  dashboard).
+- Fechas se computan dentro del factory; cambio de día sin reload
+  manual deja stats un día atrás. Edge case aceptado.
+
+### R11 — `autoDispose` ✅ CERRADO
+
+**Implementado** en commit `98ecfad`. Auditados los 35 providers
+del repo. Encontré 4 `.family()` con memory leak real + 2 `.family()`
+que eran código muerto.
+
+**Cambios**:
+- `clienteByIdProvider` → `.autoDispose.family`.
+- `cobradoresTenantProvider`, `cobradorStatsProvider`,
+  `auditCobradorProvider` → `.autoDispose.family`.
+- Eliminados `cuotasPorClienteProvider`, `cuotaByIdProvider` y los
+  métodos huérfanos `CuotasRepo.watchPorCliente` y `watchById` —
+  cero consumers en `lib/`.
+
+**Resto del inventario**:
+- 26 providers globales (services singletons, sync status, auth
+  identity, settings, KPIs del dashboard R10, etc.) — correctamente
+  SIN autoDispose. Su lifetime es deliberado: cache cross-navigation,
+  router los watchea continuamente, o son service stateless.
+
+**Trade-offs**:
+- `cobradoresTenantProvider` se invalida + lee via `.future` desde
+  varios handlers de `tenant_modulos_screen`. La pantalla mantiene
+  watcher activo durante esos handlers → autoDispose no dispone
+  prematuramente.
+- `auditCobradorProvider` y `cobradorStatsProvider` ahora re-fetch
+  al volver al mismo miembro (antes cache stale). UX: leve flash
+  de loading vs datos siempre frescos — preferible para audit logs.
+
+### R12 — Modelos `==`/`hashCode` ✅ CERRADO
+
+**Implementado** en commit `c58d193`. 10 modelos parchados con `==`
+y `hashCode` manuales usando `Object.hash` (sin agregar dep nueva).
+
+**Singletons emitidos por providers**: `Cliente`, `Cobrador`,
+`CobrosKpis`, `OperativoKpis`, `DistribucionCuotas` — beneficio
+directo de dedup en Riverpod.
+
+**Items de `List<T>`**: `Cuota`, `CobradorAdmin`, `TenantAdmin`,
+`TopCobrador`, `AuditEntry` — beneficio indirecto (ver alcance).
+
+**Casos especiales**:
+- `AuditEntry`: id-only equality (audit_log es append-only, dos rows
+  con mismo id son idénticas por construcción; evita deep-eq de
+  los jsonb dynamic).
+- `TenantAdmin.modulosHabilitados` (List<String>): `listEquals` de
+  `foundation.dart` + `Object.hashAll` para el hash.
+
+**Alcance real (auditado)**:
+- ✅ Dedup de singletons funciona — providers que emiten `T?` o `T`
+  individual (KPIs del dashboard, `clienteByIdProvider`,
+  `cobradorActualProvider`) ahora suprimen rebuilds redundantes.
+- ⚠️ Dedup de `List<T>` top-level NO funciona porque `List.==` es
+  identity equality default en Dart. Cada `rows.map(...).toList()`
+  crea instancia nueva → Riverpod siempre propaga. Para extraer
+  ese beneficio, los watchers tendrían que hacer
+  `.select((list) => slice)` o usar collección con value equality.
+  Queda al backlog.
+
+**No tocados**: `Pago`, `Setting`, `Modulo`, `Contrato`,
+`CobradorStats` (bajo impacto — no aparecen en streams hot).
+
+### R13 — Validators centralizados ✅ CERRADO
+
+**Implementado** en commit `ab5360e`. Nuevo módulo
+`lib/data/utils/validators.dart`:
+- `Validators.email`, `requiredField` (con `label` parametrizable),
+  `minLength`, `maxLength`.
+- Top-level `sanitizePhone` y `sanitizePhoneForWhatsApp` (no son
+  validators per se, son sanitizers).
+
+**Callsites refactoreados** (7 archivos): `external_actions`,
+`cliente_form_screen`, `cobradores_admin_screen`,
+`cambiar_password_dialog`, `tenant_modulos_screen` (3 callsites),
+`tenants_list_screen` (3 callsites).
+
+**NO tocado**: `set_password_screen.dart:48` — mensaje
+"La contraseña debe tener al menos 8 caracteres" es más explicativo
+para flow primera-vez. Decisión consciente.
+
+**Mejoras de UX colaterales**: los `"Requerido"` genéricos ahora
+muestran etiqueta específica: `"Nombre requerido"`,
+`"Email requerido"`, `"Contraseña requerida"`.
+
+**Nota sobre alcance**: control char strip (mencionado en el
+backlog original) NO se centralizó porque vive en Edge Functions
+(TypeScript), no en UI Dart.
+
+### R14 — Helper centralizado de Edge Functions ✅ CERRADO
+
+**Implementado** en commit `630f6d6`. Nuevo módulo
+`lib/data/utils/edge_functions.dart` con
+`invokeEdgeFunction(client, name, body)` top-level reusable.
+
+**Cambios**:
+- `SuperAdminRepo._invokeFn` (privado) → eliminado. Los 5 callsites
+  internos usan el helper top-level.
+- `_InvitarDialog` (cobradores_admin_screen, admin invitando cobrador
+  dentro del tenant) y `_InvitarAdminDialog` (tenant_modulos_screen,
+  super_admin invitando admin a un tenant) refactoreados — ya no
+  hacen `supabase.functions.invoke` directo ni unwrap manual de
+  `res.data['ok']`.
+- Catches pelan el prefijo `"Exception: "` técnico (alineado con la
+  convención ya usada en 7 hermanos del super_admin screen).
+
+**Follow-ups al backlog** (no críticos):
+- Naming `invokeEdgeFunction` (vs el inicial `invokeEdgeFn`):
+  resuelto en este commit.
+- Mensaje fallback genérico `'Error ${e.status}'` sin nombre del
+  endpoint — ayudaría a debug agregar `name`.
+- Tipo retorno `Map<String, dynamic>` obliga a casts en cada
+  caller — refactor futuro con genéricos `<T>(parse: T Function(Map))`
+  sale del scope.
+
+### R21 — Split `tenant_modulos_screen.dart` ✅ CERRADO
+
+**Implementado** en commits `97c7794` (split) + `5a6b2d3` (comentarios
+stale). Archivo monolítico de 2354 LOC dividido en 4 partes por
+dominio:
+
+- `tenant_modulos_screen.dart` (340 LOC): orquestador.
+  `TenantModulosScreen`, `_Header`, `_ModuloTile`, `_MiembrosList`.
+- `tenant_dialogs_invitar.dart` (168): `InvitarAdminDialog`.
+- `tenant_dialogs_miembro.dart` (935): `WarningBox`,
+  `warningClientesHuerfanos`, y los 6 dialogs de gestión de miembros.
+- `tenant_miembro_card.dart` (939): `MiembroCard` con todos los
+  handlers + enum `_AccionMiembro` privado.
+
+**Cambios de privacidad**: clases referenciadas cross-file pasaron de
+`_X` a `X`. Los `_FooState` siguen privados, igual que el enum
+`_AccionMiembro`. Sin cambios de lógica.
+
+### R15 — Paginación (DEFERIDO)
+
+El backlog original decía "explota a 10k+ rows" pero auditando el
+problema con cabeza fría:
+- Flutter `ListView.builder` ya virtualiza renderizado.
+- Los cobradores típicos manejan 200-500 clientes (no 10k).
+- El problema real probablemente es búsqueda/filtrado inline sobre
+  la lista entera, NO el rendering — paginar sin entender eso podría
+  empeorar UX.
+
+Approach correcto requiere análisis previo (paginación vs filtros SQL
+vs cursor). Lo dejamos al backlog persistente (CLAUDE.md) para
+abordar post-merge si tenants reales lo justifican.
+
+---
+
+## Cierre del sprint
+
+Días 1, 2 y 3 cerrados. R15 deferido al backlog. **Testing manual
+completo** (todas las secciones del plan ejecutadas).
+
+### Testing manual — bugs encontrados y RESUELTOS in-sprint
+
+- **FunctionException raw expuesto al user** — el helper
+  `invokeEdgeFunction` debería procesarlo pero el `on FunctionException
+  catch` no matcheaba (probable type mismatch entre versiones del SDK).
+  Workaround: `_humanizarError` inline en los 2 dialogs de invitación
+  hace parse del toString si empieza con `FunctionException`. Commit
+  `28b92dd`.
+- **Compile errors post-pull en working directory local** — el
+  Flutter SDK del owner había sido actualizado y el pubspec/imports
+  no estaban sincronizados:
+    - `intl: ^0.19.0` → `^0.20.2` (commit `d1e9f4e`).
+    - `external_actions.dart` importaba `widgets.dart` para
+      `ScaffoldMessenger`/`SnackBar` — cambiado a `material.dart`
+      (commit `a129c81`).
+    - `app.dart` importaba sólo el provider, no el service donde
+      vive `UploadResult` — agregado import.
+    - `cobro_screen.dart:231` `clamp(0, double.infinity)` infería
+      `num`, no `double` — cambiado a `clamp(0.0, ...)`.
+
+### Backlog acumulado del testing (todo en CLAUDE.md)
+
+Priorizado para post-merge:
+
+1. **Switch email inconsistente entre dialogs** —
+   `InvitarAdminDialog` y `_InvitarDialog` no tienen el switch
+   "Enviar email de invitación" como sí tiene `_CrearTenantDialog`.
+   Confunde al workflow no-email del owner.
+2. **Crash en pantalla Geografía** — assertion failure de
+   `_elements.contains(element)` al navegar back. Bug de lifecycle.
+3. **Sync gate sin progreso visible** — el primer login del
+   super_admin tras user switch tarda varios minutos sin feedback.
+4. **Error de login NO localizado** — "Invalid login credentials"
+   en inglés.
+5. **Mensaje técnico expuesto en login offline** —
+   `ClientException: Failed to fetch...`.
+
+### Siguientes pasos
+
+1. ✅ **Testing manual** del feature set completo en la app.
+2. **PR `claude/powersync-sdk-setup-KZF1R` → `main`** (en curso).
+3. 3 audits (Code Audit + QA + Security) sobre el diff completo
+   del sprint corriendo en paralelo.
+4. Resolver findings críticos.
+5. Merge.
+6. **Borrar este archivo** (`SPRINT-HARDENING.md`).
+7. Backlog que sobreviva → `CLAUDE.md` sección "Backlog persistente".
