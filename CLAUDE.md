@@ -429,13 +429,6 @@ Estos viven acá hasta que se ataquen explícitamente. NO re-flag en audits.
   multi-plataforma (web + Android + Windows installer) — ahí podemos
   agregar animaciones de transición que enmascaren el flash y/o
   refactorear el guard del router para ser más estable.
-- **AppBar back arrow ausente en sub-rutas** — el AdminShell y SuperShell tienen
-  `drawer:` así que el leading auto-implícito es el hamburger menu, no el back
-  arrow, incluso después de un `push` que sí permitiría `canPop()`. Material no
-  overridea hamburger por back arrow. R9 mejoró el behavior del browser back y
-  el botón Cancelar, pero el affordance visual sigue siendo hamburger. Fix
-  futuro: leading condicional en el shell que muestre IconButton(arrow_back)
-  cuando `GoRouterState.of(context).matchedLocation` es una sub-ruta CRUD.
 - **PopScope guard en forms con cambios sin guardar** — hoy un tap accidental
   en Cancelar, browser back o cambio de tab descarta cambios silenciosamente.
   Usar `PopScope(canPop: !_dirty, onPopInvokedWithResult: …)` cuando se

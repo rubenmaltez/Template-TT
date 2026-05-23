@@ -19,18 +19,27 @@ class SuperShell extends StatelessWidget {
     final loc = GoRouterState.of(context).matchedLocation;
     final enLogs = loc == '/super/logs';
     final enTenants = loc == '/super/tenants';
+    // Back arrow context-aware:
+    //   - /super/tenants/:tid/miembros/:cid → back a /super/tenants/:tid
+    //   - /super/tenants/:id                → back a /super/tenants
+    //   - /super/tenants y /super/logs (raíz) → back a /admin
+    // Sin esto el back siempre iba a /admin desde cualquier profundidad,
+    // perdiendo navegación natural entre sub-rutas del panel super.
+    final backTarget = _backTargetFor(loc);
+    final backTooltip =
+        backTarget == '/admin' ? 'Volver al panel' : 'Volver';
     return Scaffold(
       appBar: AppBar(
         backgroundColor: scheme.tertiaryContainer,
         foregroundColor: scheme.onTertiaryContainer,
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
-          tooltip: 'Volver al panel',
+          tooltip: backTooltip,
           // closeModalsAndGo cierra dialogs/sheets abiertos sobre la
           // ruta actual antes de navegar (ej. CredencialesDialog en
           // /super/tenants después de crear un ISP, que queda flotando
           // si el user toca volver sin cerrarlo).
-          onPressed: () => context.closeModalsAndGo('/admin'),
+          onPressed: () => context.closeModalsAndGo(backTarget),
         ),
         title: Row(
           children: [
@@ -57,4 +66,23 @@ class SuperShell extends StatelessWidget {
       body: child,
     );
   }
+}
+
+/// Determina la ruta del back arrow según la profundidad actual.
+///
+/// - `/super/tenants/:tid/miembros/:cid` → `/super/tenants/:tid`
+///   (detalle miembro → volver al detalle del tenant).
+/// - `/super/tenants/:id` → `/super/tenants` (detalle → lista).
+/// - Raíces (`/super/tenants`, `/super/logs`) → `/admin` (salida del
+///   panel super, volver al admin del tenant System).
+String _backTargetFor(String loc) {
+  // Más específica primero — el matcher de :tid/miembros debe checkearse
+  // antes que el de tenants/:id porque el path es más largo.
+  final miembroMatch =
+      RegExp(r'^(/super/tenants/[^/]+)/miembros/[^/]+$').firstMatch(loc);
+  if (miembroMatch != null) return miembroMatch.group(1)!;
+  final tenantMatch = RegExp(r'^/super/tenants/[^/]+$').firstMatch(loc);
+  if (tenantMatch != null) return '/super/tenants';
+  // Default: raíces de super → salir al panel admin.
+  return '/admin';
 }

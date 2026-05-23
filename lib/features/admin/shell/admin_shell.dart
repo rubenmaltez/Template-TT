@@ -71,7 +71,11 @@ class AdminShell extends ConsumerWidget {
             Expanded(
               child: Column(
                 children: [
-                  _TopBar(titulo: titulo, showMenu: false),
+                  _TopBar(
+                    titulo: titulo,
+                    showMenu: false,
+                    parentRoute: _parentRouteFor(location),
+                  ),
                   Expanded(child: bodyContent),
                 ],
               ),
@@ -81,9 +85,21 @@ class AdminShell extends ConsumerWidget {
       );
     }
 
+    final parentRoute = _parentRouteFor(location);
     return Scaffold(
       drawer: _AdminDrawer(currentPath: location),
       appBar: AppBar(
+        // Si la ruta actual es una sub-ruta (ej. /admin/clientes/:id/editar),
+        // override el leading para mostrar back arrow en vez del hamburger
+        // implícito. Sin esto, en sub-rutas el user no tiene una flecha
+        // "atrás" obvia — afford UX de web/mobile standard.
+        leading: parentRoute != null
+            ? IconButton(
+                icon: const Icon(Icons.arrow_back),
+                tooltip: 'Volver',
+                onPressed: () => context.closeModalsAndGo(parentRoute),
+              )
+            : null,
         title: Text(titulo),
         actions: const [_SyncIndicator(), SizedBox(width: 8)],
       ),
@@ -92,11 +108,35 @@ class AdminShell extends ConsumerWidget {
   }
 }
 
-/// Top bar para layout desktop (sin hamburger).
+/// Si [loc] es una sub-ruta dentro del AdminShell (con sufijo /nuevo,
+/// /:id/editar, etc.), retorna la ruta del listado padre para que el
+/// back arrow del AppBar navegue allí. Si es una ruta "raíz" del menú
+/// (ej. /admin, /admin/clientes), retorna null — auto-leading
+/// (hamburger en mobile, sin leading en desktop).
+String? _parentRouteFor(String loc) {
+  // Maps de "/admin/X/sub-cosa" → "/admin/X". Mantener sincronizado
+  // con las routes declaradas en router.dart.
+  const subRouteParents = <String, String>{
+    '/admin/clientes/': '/admin/clientes',
+    '/admin/contratos/': '/admin/contratos',
+  };
+  for (final entry in subRouteParents.entries) {
+    if (loc.startsWith(entry.key)) return entry.value;
+  }
+  return null;
+}
+
+/// Top bar para layout desktop (sin hamburger). En sub-rutas (cuando
+/// `parentRoute != null`) muestra un back button al inicio.
 class _TopBar extends StatelessWidget {
-  const _TopBar({required this.titulo, required this.showMenu});
+  const _TopBar({
+    required this.titulo,
+    required this.showMenu,
+    this.parentRoute,
+  });
   final String titulo;
   final bool showMenu;
+  final String? parentRoute;
 
   @override
   Widget build(BuildContext context) {
@@ -113,6 +153,14 @@ class _TopBar extends StatelessWidget {
         ),
         child: Row(
           children: [
+            if (parentRoute != null) ...[
+              IconButton(
+                icon: const Icon(Icons.arrow_back),
+                tooltip: 'Volver',
+                onPressed: () => context.closeModalsAndGo(parentRoute!),
+              ),
+              const SizedBox(width: 8),
+            ],
             Text(titulo, style: Theme.of(context).textTheme.titleLarge),
             const Spacer(),
             const _SyncIndicator(),
