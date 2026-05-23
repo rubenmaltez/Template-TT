@@ -18,6 +18,12 @@ class ClientesAdminScreen extends ConsumerStatefulWidget {
       _ClientesAdminScreenState();
 }
 
+/// Página inicial de la lista. Sube en increments del mismo tamaño
+/// al tocar "Cargar más". Suficiente para tenants con 10k+ clientes:
+/// el primer pintado carga 50, el user filtra/busca para reducir y
+/// no necesita paginar hasta el fondo en uso normal.
+const int _kPageSize = 50;
+
 class _ClientesAdminScreenState extends ConsumerState<ClientesAdminScreen> {
   final _searchCtrl = TextEditingController();
   String _query = '';
@@ -27,6 +33,10 @@ class _ClientesAdminScreenState extends ConsumerState<ClientesAdminScreen> {
   bool _soloSinCobrador = false;
   final Set<String> _seleccionados = {};
   Timer? _debounce;
+  // Tamaño actual de la página. Se incrementa al tocar "Cargar más"
+  // y se resetea a _kPageSize cuando cambia query/filtros (para que
+  // el primer render del nuevo filtro no traiga 500 rows al pedo).
+  int _pageSize = _kPageSize;
 
   @override
   void dispose() {
@@ -35,10 +45,19 @@ class _ClientesAdminScreenState extends ConsumerState<ClientesAdminScreen> {
     super.dispose();
   }
 
+  void _resetPagination() {
+    _pageSize = _kPageSize;
+  }
+
   void _onSearch(String v) {
     _debounce?.cancel();
     _debounce = Timer(const Duration(milliseconds: 250), () {
-      if (mounted) setState(() => _query = v.trim().toLowerCase());
+      if (mounted) {
+        setState(() {
+          _query = v.trim().toLowerCase();
+          _resetPagination();
+        });
+      }
     });
   }
 
@@ -64,7 +83,10 @@ class _ClientesAdminScreenState extends ConsumerState<ClientesAdminScreen> {
                             icon: const Icon(Icons.close),
                             onPressed: () {
                               _searchCtrl.clear();
-                              setState(() => _query = '');
+                              setState(() {
+                                _query = '';
+                                _resetPagination();
+                              });
                             },
                           ),
                   ),
@@ -84,10 +106,22 @@ class _ClientesAdminScreenState extends ConsumerState<ClientesAdminScreen> {
           comunidadActual: _comunidadFilter,
           soloMora: _soloMora,
           soloSinCobrador: _soloSinCobrador,
-          onCobrador: (v) => setState(() => _cobradorFilter = v),
-          onComunidad: (v) => setState(() => _comunidadFilter = v),
-          onSoloMora: (v) => setState(() => _soloMora = v),
-          onSoloSinCobrador: (v) => setState(() => _soloSinCobrador = v),
+          onCobrador: (v) => setState(() {
+            _cobradorFilter = v;
+            _resetPagination();
+          }),
+          onComunidad: (v) => setState(() {
+            _comunidadFilter = v;
+            _resetPagination();
+          }),
+          onSoloMora: (v) => setState(() {
+            _soloMora = v;
+            _resetPagination();
+          }),
+          onSoloSinCobrador: (v) => setState(() {
+            _soloSinCobrador = v;
+            _resetPagination();
+          }),
         ),
         if (_seleccionados.isNotEmpty)
           _BulkBar(
@@ -103,10 +137,12 @@ class _ClientesAdminScreenState extends ConsumerState<ClientesAdminScreen> {
             soloMora: _soloMora,
             soloSinCobrador: _soloSinCobrador,
             diasGracia: diasGracia,
+            pageSize: _pageSize,
             seleccionados: _seleccionados,
             onToggle: (id) => setState(() {
               if (!_seleccionados.add(id)) _seleccionados.remove(id);
             }),
+            onLoadMore: () => setState(() => _pageSize += _kPageSize),
           ),
         ),
       ],
@@ -368,8 +404,10 @@ class _Lista extends StatelessWidget {
     required this.soloMora,
     required this.soloSinCobrador,
     required this.diasGracia,
+    required this.pageSize,
     required this.seleccionados,
     required this.onToggle,
+    required this.onLoadMore,
   });
 
   final String query;
@@ -378,8 +416,10 @@ class _Lista extends StatelessWidget {
   final bool soloMora;
   final bool soloSinCobrador;
   final int diasGracia;
+  final int pageSize;
   final Set<String> seleccionados;
   final ValueChanged<String> onToggle;
+  final VoidCallback onLoadMore;
 
   @override
   Widget build(BuildContext context) {
@@ -414,6 +454,10 @@ class _Lista extends StatelessWidget {
 
     final having = soloMora ? 'HAVING vencidas > 0' : '';
 
+    // LIMIT al final de los params para que el binding sea posicional
+    // correcto. SQLite no soporta named params en bindings de Dart.
+    params.add(pageSize);
+
     final sql = '''
       SELECT c.id, c.nombre, c.telefono, c.direccion_referencia,
              c.cobrador_id,
@@ -436,6 +480,7 @@ class _Lista extends StatelessWidget {
                 c.cobrador_id, co.nombre, cm.nombre, m.nombre
        $having
        ORDER BY c.nombre
+       LIMIT ?
     ''';
 
     return StreamBuilder(
@@ -452,11 +497,19 @@ class _Lista extends StatelessWidget {
             descripcion: 'Ajustá filtros o creá uno nuevo.',
           );
         }
+        // Cargar más cuando trajimos exactamente pageSize rows — heurística
+        // de "probablemente hay más". Si el total fuese múltiplo exacto del
+        // page size, el último tap traerá 0 nuevos y desaparecerá el botón.
+        // No queremos un COUNT(*) extra al server: caro y poco valor.
+        final hayMas = rows.length >= pageSize;
         return ListView.separated(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-          itemCount: rows.length,
+          itemCount: rows.length + (hayMas ? 1 : 0),
           separatorBuilder: (_, __) => const SizedBox(height: 8),
           itemBuilder: (_, i) {
+            if (i == rows.length) {
+              return _CargarMasButton(onPressed: onLoadMore);
+            }
             final r = rows[i];
             final selected = seleccionados.contains(r['id']);
             return _ClienteCard(
@@ -467,6 +520,25 @@ class _Lista extends StatelessWidget {
           },
         );
       },
+    );
+  }
+}
+
+class _CargarMasButton extends StatelessWidget {
+  const _CargarMasButton({required this.onPressed});
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: Center(
+        child: OutlinedButton.icon(
+          icon: const Icon(Icons.expand_more),
+          label: const Text('Cargar más'),
+          onPressed: onPressed,
+        ),
+      ),
     );
   }
 }
