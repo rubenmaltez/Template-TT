@@ -185,11 +185,27 @@ serve(async (req) => {
       "global",
     );
     if (signOutErr) {
-      // No bloqueamos — la password ya cambió.
+      // No bloqueamos — la password ya cambió. Pero el target mantiene
+      // su JWT viejo válido hasta ~1h (expiración natural). Registramos
+      // en audit_log para trazabilidad: el super_admin puede ver que la
+      // invalidación de sesión falló y decidir si re-intentar.
       console.error(
         "forzar-password: global signOut failed",
         signOutErr,
       );
+      await admin.from("audit_log").insert({
+        tenant_id: target.tenant_id,
+        tabla: "auth.users",
+        registro_id: body.cobrador_id,
+        campo: "session_invalidation",
+        valor_anterior: null,
+        valor_nuevo: {
+          action: "force_password_reset_signout_failed",
+          error: signOutErr.message,
+        },
+        user_id: user.id,
+        user_rol: "super_admin",
+      });
     }
 
     return new Response(
