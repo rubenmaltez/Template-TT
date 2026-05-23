@@ -3,6 +3,7 @@ import 'package:uuid/uuid.dart';
 
 import '../../powersync/db.dart' as ps;
 import '../models/pago.dart';
+import '../utils/cuota_estado.dart';
 
 /// Resultado de un cobro exitoso. La UI navega a /recibo/[reciboId].
 class CobroResultado {
@@ -130,7 +131,7 @@ class PagosRepo {
         final estadoActual = cuotaRows.first['estado'] as String;
         final pagadoNuevo = pagadoViejo + montoCordobas;
         final delta = await _deltaCargosExtra(tx, cuotaId);
-        final nuevoEstado = _calcularEstado(
+        final nuevoEstado = calcularEstadoCuota(
           estadoActual: estadoActual,
           montoCuota: montoCuota,
           pagadoNuevo: pagadoNuevo,
@@ -195,7 +196,7 @@ class PagosRepo {
         final estadoActual = cuotaRows.first['estado'] as String;
         final pagadoNuevo = (pagadoViejo - monto).clamp(0.0, double.infinity);
         final delta = await _deltaCargosExtra(tx, cuotaId);
-        final nuevoEstado = _calcularEstado(
+        final nuevoEstado = calcularEstadoCuota(
           estadoActual: estadoActual,
           montoCuota: montoCuota,
           pagadoNuevo: pagadoNuevo.toDouble(),
@@ -226,23 +227,6 @@ class PagosRepo {
     final sumar = (rows.first['sumar'] as num).toDouble();
     final restar = (rows.first['restar'] as num).toDouble();
     return sumar - restar;
-  }
-
-  /// Calcula el estado de una cuota en base al total real:
-  ///   total_real = monto_cuota + deltaCargosExtra
-  /// Espeja exactamente `recalcular_cuota_desde_pagos` del server.
-  String _calcularEstado({
-    required String estadoActual,
-    required double montoCuota,
-    required double pagadoNuevo,
-    required double deltaCargosExtra,
-  }) {
-    if (estadoActual == 'anulada') return 'anulada';
-    final totalReal =
-        (montoCuota + deltaCargosExtra).clamp(0.0, double.infinity).toDouble();
-    if (pagadoNuevo <= 0) return 'pendiente';
-    if (pagadoNuevo >= totalReal) return 'pagada';
-    return 'parcial';
   }
 }
 
