@@ -78,6 +78,13 @@ serve(async (req) => {
     return new Response("ok", { headers: corsHeaders });
   }
 
+  // Outer scope para cleanup: si createUser/inviteUser éxito pero algo
+  // tira después (excepción no anticipada), el user queda en auth.users
+  // con password que nadie conoce (ghost user). Con el id capturado en
+  // el outer scope, el catch puede borrar el ghost.
+  let userIdParcial: string | null = null;
+  let adminForCleanup: ReturnType<typeof createClient> | null = null;
+
   try {
     const authHeader = req.headers.get("Authorization");
     if (!authHeader) {
@@ -158,6 +165,7 @@ serve(async (req) => {
     const admin = createClient(supabaseUrl, serviceKey, {
       auth: { autoRefreshToken: false, persistSession: false },
     });
+    adminForCleanup = admin;
 
     // Resolver el tenant_id objetivo según el rol del caller.
     let targetTenantId: string;
@@ -195,27 +203,20 @@ serve(async (req) => {
     }
 
     // Pre-flight: chequear que el email no exista en auth.users.
-    // - inviteUserByEmail falla nativamente si existe (path email).
-    // - createUser también falla con "user already exists" (path no-email).
-    // El check anticipado evita un round-trip al auth provider y
-    // devuelve el error en español de una. Mismo patrón que crear-tenant.
-    //
-    // TODO escalado: listUsers con perPage:1000 cubre hasta 1000
-    // users totales en el sistema. Cuando crezca, migrar a un RPC
-    // SECURITY DEFINER que consulte `auth.users` con un WHERE email=…
-    // (auth.users no está expuesto vía PostgREST).
-    const { data: existingUsers, error: lookupErr } = await admin
-      .auth.admin.listUsers({ page: 1, perPage: 1000 });
+    // Usa RPC SECURITY DEFINER que consulta auth.users directamente.
+    // Reemplaza el viejo listUsers({ perPage: 1000 }) que tenía tope
+    // y daba falsos negativos con más de 1000 users.
+    const { data: emailExists, error: lookupErr } = await admin.rpc(
+      "check_email_exists_in_auth",
+      { p_email: email },
+    );
     if (lookupErr) {
       return jsonError(
         `No pude verificar el email: ${lookupErr.message}`,
         500,
       );
     }
-    const yaExiste = (existingUsers?.users ?? []).some(
-      (u) => (u.email ?? "").toLowerCase() === email,
-    );
-    if (yaExiste) {
+    if (emailExists) {
       return jsonError(
         "Ya existe un usuario con ese email — usá otro o, " +
           "si querés moverlo de tenant, contactá soporte.",
@@ -255,6 +256,7 @@ serve(async (req) => {
       }
       if (!invite.user) return jsonError("No se creó el usuario", 500);
       nuevoUserId = invite.user.id;
+      userIdParcial = nuevoUserId;
     } else {
       // Path no-email: generamos la password ANTES de createUser. Si la
       // genera el server, no la conoce nadie más — la response es la
@@ -277,6 +279,7 @@ serve(async (req) => {
       }
       if (!created.user) return jsonError("No se creó el usuario", 500);
       nuevoUserId = created.user.id;
+      userIdParcial = nuevoUserId;
       nuevaPassword = generated;
     }
 
@@ -300,15 +303,22 @@ serve(async (req) => {
       },
     );
   } catch (e) {
-    // No echar el error crudo al cliente — puede leakear stack o data
-    // sensible. Loggeamos server-side y devolvemos mensaje genérico.
-    //
-    // Importante: en el modo no-email tenemos la `generated` password
-    // en scope. Si el SDK alguna vez incluyera el request body en el
-    // Error (vía `cause` o similar), `e` completo podría contener la
-    // password — los logs del Dashboard son consultables por cualquier
-    // colaborador del proyecto. Solo logueamos `e.message`, no el
-    // objeto entero, para minimizar la superficie. Defense in depth.
+    // Cleanup ghost user: si createUser/inviteUser éxito y luego algo
+    // tira, el user queda en auth.users con password que nadie conoce.
+    // Recuperable vía forzar-password, pero mejor limpiar automático.
+    if (userIdParcial && adminForCleanup) {
+      try {
+        await adminForCleanup.auth.admin.deleteUser(userIdParcial);
+        console.error(
+          `invitar-cobrador: ghost user ${userIdParcial} limpiado tras excepción`,
+        );
+      } catch (cleanupErr) {
+        console.error(
+          `invitar-cobrador: no se pudo limpiar ghost user ${userIdParcial}`,
+          cleanupErr,
+        );
+      }
+    }
     const safeMessage = e instanceof Error ? e.message : String(e);
     console.error("invitar-cobrador unhandled error:", safeMessage);
     return jsonError("Error interno — revisá los logs de la función", 500);
