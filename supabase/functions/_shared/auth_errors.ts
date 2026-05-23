@@ -32,5 +32,8 @@ export function humanizeAuthError(raw: string): string {
   if (lower.includes("rate limit")) {
     return "Rate limit del proveedor alcanzado — esperá un rato y reintentá.";
   }
-  return raw;
+  // No devolver el error raw al cliente — puede leakear nombres internos
+  // de enums del SDK. Log server-side y mensaje genérico afuera.
+  console.error("humanizeAuthError: unmatched error:", raw);
+  return "Error de autenticación — contactá soporte.";
 }
