@@ -8,6 +8,7 @@ import '../../data/repositories/settings_repo.dart';
 import '../../data/utils/formatters.dart';
 import '../../data/utils/validators.dart';
 import '../../powersync/db.dart' as ps;
+import '../shared/widgets/cargar_mas_button.dart';
 import '../shared/widgets/empty_state.dart';
 
 class ClientesListScreen extends ConsumerStatefulWidget {
@@ -17,24 +18,68 @@ class ClientesListScreen extends ConsumerStatefulWidget {
   ConsumerState<ClientesListScreen> createState() => _ClientesListScreenState();
 }
 
+/// Página inicial sin búsqueda activa. Increments del mismo tamaño
+/// al tocar "Cargar más". El cobrador típico tiene <500 clientes
+/// asignados — 50 cubre el primer screen sin paginar en uso normal.
+const int _kPageSize = 50;
+
+/// Página inicial con búsqueda activa. El WHERE LIKE ya reduce el
+/// set y queremos retornar todos los matches realistas sin obligar
+/// al cobrador a paginar dentro de su búsqueda.
+const int _kSearchPageSize = 200;
+
 class _ClientesListScreenState extends ConsumerState<ClientesListScreen> {
   final _searchCtrl = TextEditingController();
   String _query = '';
   String? _comunidadFilter; // null = todas
   bool _soloConMora = false;
   Timer? _debounce;
+  // Tamaño actual de la página. Se incrementa al tocar "Cargar más"
+  // y se resetea a _kPageSize cuando cambia query/filtros.
+  int _pageSize = _kPageSize;
+  // True desde el tap "Cargar más" hasta que pase un debounce corto.
+  // Anti-doble-tap; el SQLite local emite el snapshot nuevo en pocos
+  // ms y el debounce de 400ms cubre el feedback visual del botón.
+  bool _loadingMore = false;
+  Timer? _loadingMoreTimer;
 
   @override
   void dispose() {
     _searchCtrl.dispose();
     _debounce?.cancel();
+    _loadingMoreTimer?.cancel();
     super.dispose();
+  }
+
+  // Tamaño base según haya búsqueda o no. Cuando hay search, el
+  // primer pintado y cada tap traen 200 — el cobrador no tiene que
+  // paginar adentro de su búsqueda salvo casos muy genéricos.
+  int get _baseSize => _query.isEmpty ? _kPageSize : _kSearchPageSize;
+
+  void _onLoadMore() {
+    setState(() {
+      _pageSize += _baseSize;
+      _loadingMore = true;
+    });
+    _loadingMoreTimer?.cancel();
+    _loadingMoreTimer = Timer(const Duration(milliseconds: 400), () {
+      if (mounted) setState(() => _loadingMore = false);
+    });
+  }
+
+  void _resetPagination() {
+    _pageSize = _baseSize;
   }
 
   void _onSearchChanged(String value) {
     _debounce?.cancel();
     _debounce = Timer(const Duration(milliseconds: 250), () {
-      if (mounted) setState(() => _query = value.trim().toLowerCase());
+      if (mounted) {
+        setState(() {
+          _query = value.trim().toLowerCase();
+          _resetPagination();
+        });
+      }
     });
   }
 
@@ -58,7 +103,10 @@ class _ClientesListScreenState extends ConsumerState<ClientesListScreen> {
                       icon: const Icon(Icons.close),
                       onPressed: () {
                         _searchCtrl.clear();
-                        setState(() => _query = '');
+                        setState(() {
+                          _query = '';
+                          _resetPagination();
+                        });
                       },
                     ),
             ),
@@ -67,8 +115,14 @@ class _ClientesListScreenState extends ConsumerState<ClientesListScreen> {
         _FiltersRow(
           comunidadActual: _comunidadFilter,
           soloConMora: _soloConMora,
-          onComunidad: (v) => setState(() => _comunidadFilter = v),
-          onSoloMora: (v) => setState(() => _soloConMora = v),
+          onComunidad: (v) => setState(() {
+            _comunidadFilter = v;
+            _resetPagination();
+          }),
+          onSoloMora: (v) => setState(() {
+            _soloConMora = v;
+            _resetPagination();
+          }),
         ),
         Expanded(
           child: _ClientesList(
@@ -76,6 +130,9 @@ class _ClientesListScreenState extends ConsumerState<ClientesListScreen> {
             comunidadId: _comunidadFilter,
             soloConMora: _soloConMora,
             diasGracia: diasGracia,
+            pageSize: _pageSize,
+            loadingMore: _loadingMore,
+            onLoadMore: _onLoadMore,
           ),
         ),
       ],
@@ -188,12 +245,18 @@ class _ClientesList extends StatelessWidget {
     required this.comunidadId,
     required this.soloConMora,
     required this.diasGracia,
+    required this.pageSize,
+    required this.loadingMore,
+    required this.onLoadMore,
   });
 
   final String query;
   final String? comunidadId;
   final bool soloConMora;
   final int diasGracia;
+  final int pageSize;
+  final bool loadingMore;
+  final VoidCallback onLoadMore;
 
   @override
   Widget build(BuildContext context) {
@@ -220,6 +283,9 @@ class _ClientesList extends StatelessWidget {
 
     final having = soloConMora ? 'HAVING cuotas_vencidas > 0' : '';
 
+    // LIMIT al final de los params para binding posicional.
+    params.add(pageSize);
+
     final sql = '''
       SELECT
         c.id, c.nombre, c.telefono, c.direccion_referencia,
@@ -243,6 +309,7 @@ class _ClientesList extends StatelessWidget {
                 co.nombre, m.nombre, c.latitud, c.longitud
        $having
        ORDER BY cuotas_vencidas DESC, cuotas_pendientes DESC, c.nombre
+       LIMIT ?
     ''';
 
     return StreamBuilder(
@@ -261,10 +328,21 @@ class _ClientesList extends StatelessWidget {
             descripcion: 'Probá ajustar los filtros.',
           );
         }
+        // "Probablemente hay más" si trajimos exactamente pageSize rows.
+        // En el último tap puede traer 0 nuevos y desaparece el botón.
+        final hayMas = rows.length >= pageSize;
         return ListView.builder(
-          itemCount: rows.length,
+          itemCount: rows.length + (hayMas ? 1 : 0),
           padding: const EdgeInsets.only(bottom: 80),
-          itemBuilder: (_, i) => _ClienteCard(row: rows[i]),
+          itemBuilder: (_, i) {
+            if (i == rows.length) {
+              return CargarMasButton(
+                loading: loadingMore,
+                onPressed: onLoadMore,
+              );
+            }
+            return _ClienteCard(row: rows[i]);
+          },
         );
       },
     );
