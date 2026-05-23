@@ -5,8 +5,10 @@ import 'package:go_router/go_router.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../../data/providers/cobrador_provider.dart';
+import '../../../data/providers/form_dirty_provider.dart';
 import '../../../data/repositories/settings_repo.dart';
 import '../../../powersync/db.dart' as ps;
+import '../../shared/widgets/confirm_discard_dialog.dart';
 import '../../shared/widgets/phone_text_field.dart';
 
 /// Wizard de onboarding del tenant: el admin completa configuración mínima
@@ -33,8 +35,34 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
   bool _guardando = false;
   String? _error;
 
+  /// Se vuelve true cuando el user modifica cualquier campo del wizard.
+  /// Usado por PopScope (browser back / hardware back) y por el shell
+  /// vía formDirtyProvider (sidebar / back arrow que usan context.go).
+  bool _dirty = false;
+
+  @override
+  void initState() {
+    super.initState();
+    // Listener en todos los controllers para marcar dirty al primer cambio.
+    final controllers = [
+      _empresaNombre, _empresaDireccion, _empresaTelefono, _empresaRuc,
+      _tasaUsd, _diasGracia, _primerPlanNombre, _primerPlanPrecio,
+    ];
+    for (final c in controllers) {
+      c.addListener(_markDirty);
+    }
+  }
+
+  void _markDirty() {
+    if (!_dirty) setState(() => _dirty = true);
+  }
+
   @override
   void dispose() {
+    // Reset defensivo del form_dirty_provider: el shell que watchea
+    // este provider no debe ver dirty=true tras desmontar el form,
+    // sino el próximo sidebar tap mostraría un dialog huérfano.
+    ref.read(formDirtyProvider.notifier).state = false;
     _empresaNombre.dispose();
     _empresaDireccion.dispose();
     _empresaTelefono.dispose();
@@ -103,6 +131,10 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
         );
       }
 
+      // Reset dirty PRE-navigate para que el PopScope no intercepte
+      // la salida exitosa del wizard.
+      _dirty = false;
+      ref.read(formDirtyProvider.notifier).state = false;
       if (mounted) context.go('/admin');
     } catch (e) {
       if (mounted) setState(() => _error = e.toString());
@@ -113,89 +145,116 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // Sync el dirty state al provider global para que el sidebar del
+    // shell pueda mostrar "¿Descartar cambios?" si el user toca un
+    // item de menú con cambios sin guardar (PopScope solo cubre pops,
+    // no `context.go` del go_router).
+    if (ref.read(formDirtyProvider) != _dirty) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          ref.read(formDirtyProvider.notifier).state = _dirty;
+        }
+      });
+    }
+
     final scheme = Theme.of(context).colorScheme;
-    return Scaffold(
-      body: Center(
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 600),
-          child: Padding(
-            padding: const EdgeInsets.all(24),
-            child: Card(
-              child: Padding(
-                padding: const EdgeInsets.all(32),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Row(
-                      children: [
-                        Icon(Icons.rocket_launch, color: scheme.primary, size: 32),
-                        const SizedBox(width: 12),
-                        Text('Configuración inicial',
-                            style: Theme.of(context).textTheme.headlineSmall),
+    return PopScope(
+      canPop: !_dirty,
+      onPopInvokedWithResult: (didPop, _) async {
+        if (didPop) return;
+        final confirm = await confirmDiscardChanges(context);
+        if (confirm != true || !context.mounted) return;
+        // Onboarding no llega por push sino como ruta raíz del admin,
+        // así que Navigator.pop no haría nada. Mandamos al admin home.
+        if (context.canPop()) {
+          Navigator.pop(context);
+        } else {
+          context.go('/admin');
+        }
+      },
+      child: Scaffold(
+        body: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 600),
+            child: Padding(
+              padding: const EdgeInsets.all(24),
+              child: Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(32),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Row(
+                        children: [
+                          Icon(Icons.rocket_launch, color: scheme.primary, size: 32),
+                          const SizedBox(width: 12),
+                          Text('Configuración inicial',
+                              style: Theme.of(context).textTheme.headlineSmall),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        'Paso ${_paso + 1} de 3',
+                        style: TextStyle(color: scheme.outline),
+                      ),
+                      const SizedBox(height: 24),
+                      if (_paso == 0) _PasoEmpresa(
+                        nombre: _empresaNombre,
+                        direccion: _empresaDireccion,
+                        telefono: _empresaTelefono,
+                        ruc: _empresaRuc,
+                        onChange: () => setState(() {}),
+                      ),
+                      if (_paso == 1) _PasoCobranza(
+                        tasa: _tasaUsd,
+                        diasGracia: _diasGracia,
+                        onChange: () => setState(() {}),
+                      ),
+                      if (_paso == 2) _PasoPlan(
+                        nombre: _primerPlanNombre,
+                        precio: _primerPlanPrecio,
+                        onChange: () => setState(() {}),
+                      ),
+                      if (_error != null) ...[
+                        const SizedBox(height: 12),
+                        Text(_error!,
+                            style: TextStyle(color: scheme.error)),
                       ],
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      'Paso ${_paso + 1} de 3',
-                      style: TextStyle(color: scheme.outline),
-                    ),
-                    const SizedBox(height: 24),
-                    if (_paso == 0) _PasoEmpresa(
-                      nombre: _empresaNombre,
-                      direccion: _empresaDireccion,
-                      telefono: _empresaTelefono,
-                      ruc: _empresaRuc,
-                      onChange: () => setState(() {}),
-                    ),
-                    if (_paso == 1) _PasoCobranza(
-                      tasa: _tasaUsd,
-                      diasGracia: _diasGracia,
-                      onChange: () => setState(() {}),
-                    ),
-                    if (_paso == 2) _PasoPlan(
-                      nombre: _primerPlanNombre,
-                      precio: _primerPlanPrecio,
-                      onChange: () => setState(() {}),
-                    ),
-                    if (_error != null) ...[
-                      const SizedBox(height: 12),
-                      Text(_error!,
-                          style: TextStyle(color: scheme.error)),
-                    ],
-                    const SizedBox(height: 24),
-                    Row(
-                      children: [
-                        if (_paso > 0)
-                          OutlinedButton(
-                            onPressed: _guardando
+                      const SizedBox(height: 24),
+                      Row(
+                        children: [
+                          if (_paso > 0)
+                            OutlinedButton(
+                              onPressed: _guardando
+                                  ? null
+                                  : () => setState(() => _paso--),
+                              child: const Text('Atrás'),
+                            ),
+                          const Spacer(),
+                          FilledButton.icon(
+                            icon: _guardando
+                                ? const SizedBox(
+                                    width: 16, height: 16,
+                                    child: CircularProgressIndicator(
+                                        strokeWidth: 2),
+                                  )
+                                : Icon(_paso == 2 ? Icons.check : Icons.arrow_forward),
+                            label: Text(_paso == 2 ? 'Finalizar' : 'Siguiente'),
+                            onPressed: !_puedeAvanzar() || _guardando
                                 ? null
-                                : () => setState(() => _paso--),
-                            child: const Text('Atrás'),
+                                : () {
+                                    if (_paso == 2) {
+                                      _finalizar();
+                                    } else {
+                                      setState(() => _paso++);
+                                    }
+                                  },
                           ),
-                        const Spacer(),
-                        FilledButton.icon(
-                          icon: _guardando
-                              ? const SizedBox(
-                                  width: 16, height: 16,
-                                  child: CircularProgressIndicator(
-                                      strokeWidth: 2),
-                                )
-                              : Icon(_paso == 2 ? Icons.check : Icons.arrow_forward),
-                          label: Text(_paso == 2 ? 'Finalizar' : 'Siguiente'),
-                          onPressed: !_puedeAvanzar() || _guardando
-                              ? null
-                              : () {
-                                  if (_paso == 2) {
-                                    _finalizar();
-                                  } else {
-                                    setState(() => _paso++);
-                                  }
-                                },
-                        ),
-                      ],
-                    ),
-                  ],
+                        ],
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ),

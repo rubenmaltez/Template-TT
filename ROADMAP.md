@@ -13,9 +13,10 @@ hasta producción general y features comerciales.
   del flow que ese bulk debería habilitar.
 
 **Estado actual**: BULK 1 parcialmente completado (2/3 sprints, Sprint 1
-en pausa esperando repro). Sesión inicial (2026-05-22) entregó 34 PRs
-de infraestructura previa. Sesión 2 (2026-05-23) entregó 4 PRs con
-paginación, PopScope sidebar, y documentación (STACK.md).
+en pausa esperando repro). BULK 2 completado (8/9 sprints, 1 skippeado).
+Sesión inicial (2026-05-22) entregó 34 PRs de infraestructura previa.
+Sesión 2 (2026-05-23) entregó 5 PRs (#36-#40) con paginación, PopScope
+sidebar, documentación (STACK.md), y BULK 2 completo.
 
 ---
 
@@ -79,20 +80,20 @@ latentes pero pueden romper bajo carga real.
 
 | Sprint | Tiempo | Criterio de éxito | PR |
 |---|---|---|---|
-| Migración a Supabase CLI | 2-3h | `supabase init` + deploy desde local | — |
-| Consolidar `humanizeAuthError` en `_shared/` | 1h | 5 funciones importan del shared, cero duplicación | — |
-| forzar-password: audit row de signOut failed | 30 min | Trail de fallos de signOut global | — |
-| reenviar-invitacion: lock contra concurrencia | 1h | 2 super_admins concurrentes → uno bloquea hasta el otro | — |
-| cambiar-email: paginación >1000 users | 1-2h | Migrar `listUsers({perPage: 1000})` a RPC SECURITY DEFINER | — |
-| invitar-cobrador: cleanup ghost user | 1h | Rollback elimina user huérfano si falla post-createUser | — |
-| Race del `_rolUsuarioProvider` | 1h | Post-login super_admin no flashea `/admin` | — |
-| Auth listener cleanup en main.dart | 30 min | Hot-restart en dev no tira exception | — |
-| R8 — StreamController.broadcast replaya | 1h | Tras F5, último UploadResult con failures re-emite | — |
+| Migración a Supabase CLI | 2-3h | `supabase init` + deploy desde local | ✅ sesión interactiva |
+| Consolidar `humanizeAuthError` en `_shared/` | 1h | 5 funciones importan del shared, cero duplicación | ✅ PR #40 |
+| forzar-password: audit row de signOut failed | 30 min | Trail de fallos de signOut global | ✅ PR #40 |
+| reenviar-invitacion: lock contra concurrencia | 1h | 2 super_admins concurrentes → uno bloquea hasta el otro | ⏭ skippeado (ya mitigado por 404 check) |
+| cambiar-email: paginación >1000 users | 1-2h | Migrar `listUsers({perPage: 1000})` a RPC SECURITY DEFINER | ✅ PR #40 + migración 0036 |
+| invitar-cobrador: cleanup ghost user | 1h | Rollback elimina user huérfano si falla post-createUser | ✅ PR #40 |
+| Race del `_rolUsuarioProvider` | 1h | Post-login super_admin no flashea `/admin` | ✅ PR #40 |
+| Auth listener cleanup en main.dart | 30 min | Hot-restart en dev no tira exception | ✅ PR #40 |
+| R8 — StreamController.broadcast replaya | 1h | Tras F5, último UploadResult con failures re-emite | ✅ PR #40 |
 
-**Tiempo total**: ~9-12h (2-3 sesiones).
+**Tiempo total**: ~9-12h (2-3 sesiones). **Completado en 1 sesión.**
 
-**Validación**: cada Edge Function con test manual de happy path +
-failure path. Race del rol provider invisible en grabación del redirect.
+**Validación**: 6 Edge Functions deployadas via CLI con `_shared/` imports
+funcionando. Migración 0036 aplicada en producción.
 
 ---
 
@@ -303,3 +304,13 @@ Cada bulk se trata como mini-roadmap dentro de su(s) sesión(es):
 - Smoke testing manual de los 8 escenarios (paginación + PopScope).
   - Inyección de 200 clientes de prueba vía SQL seed.
   - Sprint 1 (sync gate stuck) en pausa — esperando reproducción natural.
+- BULK 2 completo (PR #40): hardening backend.
+  - Supabase CLI v2.101.0 instalado + deploy verificado.
+  - `_shared/` consolidación: 309 líneas de duplicación eliminadas.
+  - Audit row signOut failed en forzar-password.
+  - RPC `check_email_exists_in_auth` reemplaza listUsers (migración 0036).
+  - Ghost user cleanup en invitar-cobrador.
+  - Race rol provider: fresh install ahora usa sync gate.
+  - Auth listener cleanup: _authSub global cancelada en hot restart.
+  - Broadcast replay: FotoComprobanteService replaya último UploadResult.
+  - 6 Edge Functions deployadas via CLI en producción.

@@ -209,27 +209,20 @@ serve(async (req) => {
     }
 
     // Pre-flight: chequear que el email no exista en auth.users.
-    // - inviteUserByEmail ya falla nativamente si existe (path email).
-    // - createUser también falla con "user already exists" (path no-email).
+    // Usa RPC SECURITY DEFINER que consulta auth.users directamente.
     // Hacemos el check antes de cualquier creación para devolver el
     // error en español sin disparar el rollback de tenant.
-    //
-    // TODO escalado: listUsers con perPage:1000 cubre hasta 1000
-    // users totales en el sistema. Cuando crezca, migrar a un RPC
-    // SECURITY DEFINER que consulte `auth.users` con un WHERE email=…
-    // (auth.users no está expuesto vía PostgREST).
-    const { data: existingUsers, error: lookupErr } = await admin
-      .auth.admin.listUsers({ page: 1, perPage: 1000 });
+    const { data: emailExists, error: lookupErr } = await admin.rpc(
+      "check_email_exists_in_auth",
+      { p_email: email },
+    );
     if (lookupErr) {
       return jsonError(
         `No pude verificar el email: ${lookupErr.message}`,
         500,
       );
     }
-    const yaExiste = (existingUsers?.users ?? []).some(
-      (u) => (u.email ?? "").toLowerCase() === email,
-    );
-    if (yaExiste) {
+    if (emailExists) {
       return jsonError(
         "Ya existe un usuario con ese email — usá otro o, " +
           "si querés moverlo de tenant, contactá soporte.",
