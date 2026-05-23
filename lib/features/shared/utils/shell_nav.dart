@@ -1,5 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+
+import '../../../data/providers/form_dirty_provider.dart';
+import '../widgets/confirm_discard_dialog.dart';
 
 /// Helpers de navegación de los shells (`AdminShell`, `AppShell`,
 /// `SuperShell`).
@@ -54,6 +58,43 @@ extension ShellNav on BuildContext {
     } else {
       _showCloseFirstSnackBar(this);
     }
+  }
+
+  /// Variante de `closeModalsAndGo` que respeta el `formDirtyProvider`:
+  /// si la pantalla actual tiene un form con cambios sin guardar,
+  /// muestra `confirmDiscardChanges` antes de navegar. Si el user
+  /// confirma, resetea el provider y procede; si cancela, no navega.
+  ///
+  /// Necesario porque `context.go(...)` es REPLACE de ruta (no pop)
+  /// y NO dispara `PopScope` — el sidebar y back arrow del shell
+  /// usan go, así que sin este guard bypassaban el guard del form.
+  ///
+  /// **Detección de dialog crítico ya abierto**: si el user disparó
+  /// `confirmDiscardChanges` vía PopScope (back arrow / browser back)
+  /// y antes de confirmar tap un item del sidebar, llegamos acá con
+  /// un dialog crítico ya en el stack. Apilar un segundo dialog
+  /// idéntico es UX confusa; abortamos con el snackbar estándar.
+  ///
+  /// Usá esto desde los items del sidebar de cada shell (admin/super/
+  /// cobrador) en vez de `closeModalsAndGo` cuando hay forms con
+  /// `_dirty` tracking aguas abajo.
+  Future<void> closeModalsAndGoGuarded(WidgetRef ref, String path) async {
+    if (ref.read(formDirtyProvider)) {
+      // Pre-check de modales críticos: si el dialog "¿Descartar?" ya
+      // se disparó por otra vía (PopScope), no apilamos otro encima.
+      if (!_tryCloseDismissibleModals(this)) {
+        _showCloseFirstSnackBar(this);
+        return;
+      }
+      final confirm = await confirmDiscardChanges(this);
+      if (confirm != true || !mounted) return;
+      // Reset proactivo: el dispose del form también lo haría, pero
+      // hacerlo acá garantiza que si la transición tarda (animación
+      // de route), el shell no vuelve a leer dirty=true en clicks
+      // rápidos siguientes.
+      ref.read(formDirtyProvider.notifier).state = false;
+    }
+    if (mounted) closeModalsAndGo(path);
   }
 }
 
