@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -85,6 +87,7 @@ class _FiltrosBar extends ConsumerStatefulWidget {
 
 class _FiltrosBarState extends ConsumerState<_FiltrosBar> {
   late final TextEditingController _searchCtrl;
+  Timer? _debounce;
 
   @override
   void initState() {
@@ -94,6 +97,7 @@ class _FiltrosBarState extends ConsumerState<_FiltrosBar> {
 
   @override
   void dispose() {
+    _debounce?.cancel();
     _searchCtrl.dispose();
     super.dispose();
   }
@@ -121,6 +125,7 @@ class _FiltrosBarState extends ConsumerState<_FiltrosBar> {
                         : IconButton(
                             icon: const Icon(Icons.clear, size: 18),
                             onPressed: () {
+                              _debounce?.cancel();
                               _searchCtrl.clear();
                               setState(() {});
                               ref
@@ -129,13 +134,17 @@ class _FiltrosBarState extends ConsumerState<_FiltrosBar> {
                             },
                           ),
                   ),
-                  onChanged: (_) => setState(() {}),
-                  onSubmitted: (v) {
-                    ref
-                        .read(errorLogsFilterProvider.notifier)
-                        .update((f) => f.copyWith(
-                              search: v.trim().isEmpty ? null : v.trim(),
-                            ));
+                  onChanged: (v) {
+                    setState(() {});
+                    _debounce?.cancel();
+                    _debounce = Timer(const Duration(milliseconds: 400), () {
+                      final trimmed = v.trim();
+                      ref.read(errorLogsFilterProvider.notifier).update(
+                        (s) => s.copyWith(
+                              search: trimmed.isEmpty ? null : trimmed,
+                            ),
+                      );
+                    });
                   },
                 ),
               ),

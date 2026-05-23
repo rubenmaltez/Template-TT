@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:powersync/powersync.dart' show SyncStatus;
 
 import '../../../data/providers/sync_status_provider.dart';
+import '../../../powersync/db.dart' as ps;
 
 /// Banner persistente que aparece cuando PowerSync está desconectado.
 /// Pensado para envolver el body de los shells (cobrador y admin).
@@ -102,15 +103,36 @@ class _OfflineBannerState extends ConsumerState<OfflineBanner> {
 
     return Column(
       children: [
-        if (_show) const _Banner(),
+        AnimatedSwitcher(
+          duration: const Duration(milliseconds: 150),
+          child: _show ? const _Banner() : const SizedBox.shrink(),
+        ),
         Expanded(child: widget.child),
       ],
     );
   }
 }
 
-class _Banner extends StatelessWidget {
+class _Banner extends StatefulWidget {
   const _Banner();
+
+  @override
+  State<_Banner> createState() => _BannerState();
+}
+
+class _BannerState extends State<_Banner> {
+  bool _retrying = false;
+
+  Future<void> _retry() async {
+    if (_retrying) return;
+    setState(() => _retrying = true);
+    try {
+      await ps.disconnectPowerSync();
+      await ps.connectPowerSync();
+    } finally {
+      if (mounted) setState(() => _retrying = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -135,6 +157,24 @@ class _Banner extends StatelessWidget {
                     fontSize: 12,
                   ),
                 ),
+              ),
+              const SizedBox(width: 8),
+              TextButton.icon(
+                icon: _retrying
+                    ? SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: scheme.onErrorContainer,
+                        ),
+                      )
+                    : Icon(Icons.refresh, size: 16),
+                label: Text(_retrying ? 'Reintentando…' : 'Reintentar'),
+                style: TextButton.styleFrom(
+                  foregroundColor: scheme.onErrorContainer,
+                ),
+                onPressed: _retrying ? null : _retry,
               ),
             ],
           ),
