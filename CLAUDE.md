@@ -463,9 +463,6 @@ Estos viven acá hasta que se ataquen explícitamente. NO re-flag en audits.
 - **Race del `_rolUsuarioProvider`** cuando se navega a `/super/*` vía URL directa o refresh —
   el rol provider tarda en cargar y el guard del router rebota a `/admin`. Same fix que el
   back button (gate en shell + smart provider state).
-- **Super_admin landing va a `/`** después de login en vez de `/super/tenants`. El branch del
-  redirect que detecta rol admin/super lo manda a `/admin` por default, pero super_admin
-  termina en HomeScreen del cobrador hasta que navegue manual. Pre-existente al R7.
 - **PowerSync `lastSyncedAt` semantics** — verificar (con docs PowerSync) si el checkpoint
   signal puede llegar antes de aplicar los DELETEs de buckets descartados. Si sí, queda una
   ventana de race de algunos ms post-sync-gate donde la UI ve cache stale.

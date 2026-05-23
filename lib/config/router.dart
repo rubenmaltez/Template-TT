@@ -190,14 +190,16 @@ final routerProvider = Provider<GoRouter>((ref) {
       final rol = ref.read(_rolUsuarioProvider).valueOrNull;
       final loc = state.matchedLocation;
 
-      // Si el rol es admin / admin_cobranza / super_admin, redirigir desde
-      // la raíz del cobrador hacia el panel admin. Sólo en la raíz exacta —
-      // los usuarios admin pueden querer ver pantallas del cobrador navegando.
-      if (loc == '/' &&
-          (rol == 'admin' ||
-              rol == 'admin_cobranza' ||
-              rol == 'super_admin')) {
-        return '/admin';
+      // Landing por rol desde la raíz `/`. Sólo en la raíz exacta —
+      // los usuarios admin/super pueden querer ver pantallas del cobrador
+      // navegando, así que sub-rutas como `/clientes/:id` no se tocan.
+      //
+      // super_admin → `/super/tenants` (su panel SaaS, no necesita ver
+      //   ni operar el panel admin de un tenant para arrancar).
+      // admin / admin_cobranza → `/admin` (panel del tenant).
+      if (loc == '/') {
+        if (rol == 'super_admin') return '/super/tenants';
+        if (rol == 'admin' || rol == 'admin_cobranza') return '/admin';
       }
 
       // Onboarding: si rol=admin y `empresa.nombre` está vacío, llevar al
