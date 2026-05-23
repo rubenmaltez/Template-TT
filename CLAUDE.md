@@ -354,8 +354,6 @@ Estos viven acá hasta que se ataquen explícitamente. NO re-flag en audits.
       crashes offline subidos tarde. Agregar como columna o detail.
     - **User agent del browser**: el cliente lo deja null hoy (no usamos
       `package:web`). Útil para diagnosticar bugs específicos de browser.
-- **Animación brusca login → shell** post-sync-gate. El spinner desaparece y aparece
-  el shell sin transición. Recomendado: fade transition de 200-300ms.
 - **Edge Functions — `humanizeAuthError` duplicado en 5 funciones**. Cada Edge
   Function tiene su propia copia inline del helper (limitación del Dashboard
   que no soporta `_shared/`). Cuando migremos a CLI, consolidar en `_shared/`.
