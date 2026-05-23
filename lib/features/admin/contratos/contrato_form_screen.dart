@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../../data/providers/cobrador_provider.dart';
+import '../../../data/providers/form_dirty_provider.dart';
 import '../../../data/utils/formatters.dart';
 import '../../../powersync/db.dart' as ps;
 import '../../shared/widgets/confirm_discard_dialog.dart';
@@ -80,6 +81,10 @@ class _ContratoFormScreenState extends ConsumerState<ContratoFormScreen> {
   @override
   void dispose() {
     _diaPagoCtrl.dispose();
+    // Reset defensivo del form_dirty_provider: el shell que watchea
+    // este provider no debe ver dirty=true tras desmontar el form.
+    // Sync (no post-frame) porque dispose corre fuera del build cycle.
+    ref.read(formDirtyProvider.notifier).state = false;
     super.dispose();
   }
 
@@ -183,6 +188,18 @@ class _ContratoFormScreenState extends ConsumerState<ContratoFormScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // Sync _dirty al form_dirty_provider para que el shell sidebar
+    // pregunte "¿Descartar cambios?" antes de navegar — `context.go`
+    // bypassa PopScope. Condicional para evitar postFrameCallbacks
+    // en cada keystroke.
+    if (ref.read(formDirtyProvider) != _dirty) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          ref.read(formDirtyProvider.notifier).state = _dirty;
+        }
+      });
+    }
+
     if (_cargando) {
       return const Center(child: CircularProgressIndicator());
     }

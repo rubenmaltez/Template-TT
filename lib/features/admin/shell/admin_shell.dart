@@ -318,12 +318,14 @@ class _AdminRail extends ConsumerWidget {
                     selected: selected,
                     selectedTileColor:
                         Theme.of(context).colorScheme.primaryContainer,
-                    // closeModalsAndGo cierra cualquier dialog/sheet que
-                    // el user haya dejado abierto sobre la ruta actual
-                    // antes de navegar. En desktop con NavigationRail
-                    // (este branch del shell) el rail vive fuera del
-                    // body y permite tap mientras un modal está abierto.
-                    onTap: () => context.closeModalsAndGo(item.path),
+                    // closeModalsAndGoGuarded: cierra dialogs/sheets
+                    // descartables + consulta el formDirtyProvider. Si
+                    // el screen actual es un form con cambios sin
+                    // guardar, muestra "¿Descartar?" antes de navegar.
+                    // Sin el guard, `context.go` bypassaba el PopScope
+                    // del form y se perdían los cambios silenciosamente.
+                    onTap: () =>
+                        context.closeModalsAndGoGuarded(ref, item.path),
                   );
                 },
               ),
@@ -379,11 +381,15 @@ class _AdminDrawer extends ConsumerWidget {
                           leading: Icon(item.icon),
                           title: Text(item.label),
                           selected: currentPath == item.path,
-                          // closeModalsAndGo cierra el drawer
-                          // (Scaffold.closeDrawer) + cualquier modal
-                          // descartable que estuviera abierto antes
-                          // de navegar.
-                          onTap: () => context.closeModalsAndGo(item.path),
+                          // closeModalsAndGoGuarded: cierra el drawer
+                          // + dialogs descartables + consulta el
+                          // formDirtyProvider. Si hay form dirty,
+                          // pregunta "¿Descartar?" antes de navegar.
+                          // Sin esto, tap en item del drawer perdía
+                          // cambios sin warning (context.go bypassa
+                          // PopScope).
+                          onTap: () => context.closeModalsAndGoGuarded(
+                              ref, item.path),
                         ))
                     .toList(),
               ),
