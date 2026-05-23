@@ -8,6 +8,7 @@ import '../../data/models/tenant_admin.dart';
 import '../../data/repositories/super_admin_repo.dart';
 import '../../data/utils/cobrador_helpers.dart';
 import '../../data/utils/formatters.dart';
+import '../shared/widgets/phone_text_field.dart';
 import '../../data/utils/validators.dart';
 import '../shared/widgets/animated_list_entry.dart';
 import '../shared/widgets/credenciales_dialog.dart';
@@ -407,7 +408,7 @@ class _CrearTenantDialogState extends ConsumerState<_CrearTenantDialog> {
       // Telefono opcional: si el campo quedó vacío, mandamos null para
       // que la metadata del invite no quede con "" — el trigger
       // handle_new_user trataría "" como un valor seteado.
-      final telTrim = _telefonoCtrl.text.trim();
+      final telTrim = PhoneTextField.sanitized(_telefonoCtrl) ?? '';
       final resultado = await repo.crearTenant(
         nombre: _nombreCtrl.text.trim(),
         adminEmail: _emailCtrl.text.trim(),
@@ -513,16 +514,11 @@ class _CrearTenantDialogState extends ConsumerState<_CrearTenantDialog> {
                       Validators.requiredField(v, label: 'Nombre'),
                 ),
                 const SizedBox(height: 12),
-                TextFormField(
+                PhoneTextField(
                   controller: _telefonoCtrl,
                   enabled: !_busy,
-                  textInputAction: TextInputAction.done,
-                  autofillHints: const [AutofillHints.telephoneNumber],
-                  decoration: const InputDecoration(
-                    labelText: 'Teléfono (opcional)',
-                    hintText: '+505 8888 1234',
-                    border: OutlineInputBorder(),
-                  ),
+                  label: 'Teléfono (opcional)',
+                  hint: '+505 8888 1234',
                 ),
                 const SizedBox(height: 16),
                 Text(

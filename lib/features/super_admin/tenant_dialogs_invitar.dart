@@ -8,6 +8,7 @@ import '../../data/repositories/super_admin_repo.dart';
 import '../../data/utils/edge_functions.dart';
 import '../../data/utils/validators.dart';
 import '../shared/widgets/credenciales_dialog.dart';
+import '../shared/widgets/phone_text_field.dart';
 
 /// Dialog para que el super_admin invite el primer/otro admin de un tenant.
 /// Llama a la Edge Function `invitar-cobrador` con tenant_id explícito.
@@ -78,8 +79,8 @@ class _InvitarAdminDialogState extends ConsumerState<InvitarAdminDialog> {
           'nombre': nombre,
           'rol': 'admin',
           'tenant_id': widget.tenant.id,
-          if (_telefono.text.trim().isNotEmpty)
-            'telefono': _telefono.text.trim(),
+          if (PhoneTextField.sanitized(_telefono) != null)
+            'telefono': PhoneTextField.sanitized(_telefono),
           // Explícito para que el server no asuma default si en el
           // futuro cambia (mismo patrón que crear-tenant).
           'enviar_email': _enviarEmail,
@@ -228,13 +229,10 @@ class _InvitarAdminDialogState extends ConsumerState<InvitarAdminDialog> {
               ),
             ),
             const SizedBox(height: 12),
-            TextField(
+            PhoneTextField(
               controller: _telefono,
-              keyboardType: TextInputType.phone,
               enabled: !_enviando,
-              decoration: const InputDecoration(
-                labelText: 'Teléfono (opcional)',
-              ),
+              label: 'Teléfono (opcional)',
             ),
             if (_error != null) ...[
               const SizedBox(height: 12),

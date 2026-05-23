@@ -399,18 +399,6 @@ Estos viven acá hasta que se ataquen explícitamente. NO re-flag en audits.
       password aleatoria que nadie verá. Recuperable vía
       `forzar-password-cobrador`. Replicar el patrón `userIdParcial`
       outer-scope + cleanup de `crear-tenant` si vale el esfuerzo.
-- **Validator de teléfono — extender el fix del cliente a otros 4 forms**.
-  El sprint que arregló `cliente_form_screen.dart` (inputFormatters
-  `[0-9+\s-]` + sanitizePhone al guardar) NO cubrió los otros forms con
-  campo teléfono donde aplica el mismo patrón: `cobradores_admin_screen.dart`
-  (invitar + editar cobrador), `onboarding_screen.dart` (wizard admin
-  llenando `empresa.telefono`), `tenant_dialogs_invitar.dart` (invitar
-  admin a tenant), `tenants_list_screen.dart` (crear tenant + telefono
-  del admin). Riesgo: persistir `"abc12345678"` en `cobradores.telefono`
-  o `settings['empresa.telefono']`. Mismo fix, copy-paste a cada form.
-  Vale considerar extraer un widget compartido `PhoneTextField` o un
-  helper `Validators.phoneInputFormatters()` para no duplicar el regex
-  en 5 lugares.
 - **Sync gate se cuelga indefinidamente post-forzar-password (F5 lo desbloquea)**.
   Caso reproducido en smoke testing: tras `forzar-password-cobrador`, el
   admin afectado logea y entra al sync gate. El gate aparece, muestra el

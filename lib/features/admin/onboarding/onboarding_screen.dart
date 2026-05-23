@@ -7,6 +7,7 @@ import 'package:uuid/uuid.dart';
 import '../../../data/providers/cobrador_provider.dart';
 import '../../../data/repositories/settings_repo.dart';
 import '../../../powersync/db.dart' as ps;
+import '../../shared/widgets/phone_text_field.dart';
 
 /// Wizard de onboarding del tenant: el admin completa configuración mínima
 /// la primera vez que entra. Se accede via `/admin/onboarding` y el router
@@ -77,7 +78,8 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
       final repo = ref.read(settingsRepoProvider);
       await repo.update(tenantId, 'empresa.nombre', _empresaNombre.text.trim());
       await repo.update(tenantId, 'empresa.direccion', _empresaDireccion.text.trim());
-      await repo.update(tenantId, 'empresa.telefono', _empresaTelefono.text.trim());
+      await repo.update(tenantId, 'empresa.telefono',
+          PhoneTextField.sanitized(_empresaTelefono) ?? '');
       await repo.update(tenantId, 'empresa.ruc', _empresaRuc.text.trim());
       await repo.update(tenantId, 'pagos.tasa_usd_cordoba',
           double.parse(_tasaUsd.text));
@@ -240,13 +242,9 @@ class _PasoEmpresa extends StatelessWidget {
           decoration: const InputDecoration(labelText: 'Dirección'),
         ),
         const SizedBox(height: 12),
-        TextField(
+        PhoneTextField(
           controller: telefono,
-          decoration: const InputDecoration(
-            labelText: 'Teléfono',
-            hintText: '+505 2222-3333',
-          ),
-          keyboardType: TextInputType.phone,
+          hint: '+505 2222-3333',
         ),
         const SizedBox(height: 12),
         TextField(
