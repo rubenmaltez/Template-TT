@@ -8,6 +8,7 @@ import '../../../data/repositories/settings_repo.dart';
 import '../../../data/utils/formatters.dart';
 import '../../../data/utils/validators.dart';
 import '../../../powersync/db.dart' as ps;
+import '../../shared/widgets/cargar_mas_button.dart';
 import '../../shared/widgets/empty_state.dart';
 
 class ClientesAdminScreen extends ConsumerStatefulWidget {
@@ -37,16 +38,39 @@ class _ClientesAdminScreenState extends ConsumerState<ClientesAdminScreen> {
   // y se resetea a _kPageSize cuando cambia query/filtros (para que
   // el primer render del nuevo filtro no traiga 500 rows al pedo).
   int _pageSize = _kPageSize;
+  // True desde el tap "Cargar más" hasta que pase un debounce corto.
+  // Sirve solo de anti-doble-tap: el SQLite local emite el nuevo
+  // snapshot en pocos ms, así que un debounce de 400ms cubre el
+  // visual feedback del botón sin atarse al ciclo del stream.
+  bool _loadingMore = false;
+  Timer? _loadingMoreTimer;
 
   @override
   void dispose() {
     _searchCtrl.dispose();
     _debounce?.cancel();
+    _loadingMoreTimer?.cancel();
     super.dispose();
+  }
+
+  void _onLoadMore() {
+    setState(() {
+      _pageSize += _kPageSize;
+      _loadingMore = true;
+    });
+    _loadingMoreTimer?.cancel();
+    _loadingMoreTimer = Timer(const Duration(milliseconds: 400), () {
+      if (mounted) setState(() => _loadingMore = false);
+    });
   }
 
   void _resetPagination() {
     _pageSize = _kPageSize;
+    // Limpiar selección al cambiar filtros: sino los IDs quedan en
+    // memoria pero invisibles (no entran en el nuevo subset). Riesgo:
+    // user selecciona 10, cambia filtro, queda con "10 seleccionado(s)"
+    // pero ve 0 de ellos. Bulk-assign actuaría sobre IDs fantasma.
+    _seleccionados.clear();
   }
 
   void _onSearch(String v) {
@@ -142,7 +166,8 @@ class _ClientesAdminScreenState extends ConsumerState<ClientesAdminScreen> {
             onToggle: (id) => setState(() {
               if (!_seleccionados.add(id)) _seleccionados.remove(id);
             }),
-            onLoadMore: () => setState(() => _pageSize += _kPageSize),
+            loadingMore: _loadingMore,
+            onLoadMore: _onLoadMore,
           ),
         ),
       ],
@@ -407,6 +432,7 @@ class _Lista extends StatelessWidget {
     required this.pageSize,
     required this.seleccionados,
     required this.onToggle,
+    required this.loadingMore,
     required this.onLoadMore,
   });
 
@@ -419,6 +445,7 @@ class _Lista extends StatelessWidget {
   final int pageSize;
   final Set<String> seleccionados;
   final ValueChanged<String> onToggle;
+  final bool loadingMore;
   final VoidCallback onLoadMore;
 
   @override
@@ -508,7 +535,10 @@ class _Lista extends StatelessWidget {
           separatorBuilder: (_, __) => const SizedBox(height: 8),
           itemBuilder: (_, i) {
             if (i == rows.length) {
-              return _CargarMasButton(onPressed: onLoadMore);
+              return CargarMasButton(
+                loading: loadingMore,
+                onPressed: onLoadMore,
+              );
             }
             final r = rows[i];
             final selected = seleccionados.contains(r['id']);
@@ -520,25 +550,6 @@ class _Lista extends StatelessWidget {
           },
         );
       },
-    );
-  }
-}
-
-class _CargarMasButton extends StatelessWidget {
-  const _CargarMasButton({required this.onPressed});
-  final VoidCallback onPressed;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8),
-      child: Center(
-        child: OutlinedButton.icon(
-          icon: const Icon(Icons.expand_more),
-          label: const Text('Cargar más'),
-          onPressed: onPressed,
-        ),
-      ),
     );
   }
 }

@@ -8,6 +8,7 @@ import '../../data/repositories/settings_repo.dart';
 import '../../data/utils/formatters.dart';
 import '../../data/utils/validators.dart';
 import '../../powersync/db.dart' as ps;
+import '../shared/widgets/cargar_mas_button.dart';
 import '../shared/widgets/empty_state.dart';
 
 class ClientesListScreen extends ConsumerStatefulWidget {
@@ -31,12 +32,29 @@ class _ClientesListScreenState extends ConsumerState<ClientesListScreen> {
   // Tamaño actual de la página. Se incrementa al tocar "Cargar más"
   // y se resetea a _kPageSize cuando cambia query/filtros.
   int _pageSize = _kPageSize;
+  // True desde el tap "Cargar más" hasta que pase un debounce corto.
+  // Anti-doble-tap; el SQLite local emite el snapshot nuevo en pocos
+  // ms y el debounce de 400ms cubre el feedback visual del botón.
+  bool _loadingMore = false;
+  Timer? _loadingMoreTimer;
 
   @override
   void dispose() {
     _searchCtrl.dispose();
     _debounce?.cancel();
+    _loadingMoreTimer?.cancel();
     super.dispose();
+  }
+
+  void _onLoadMore() {
+    setState(() {
+      _pageSize += _kPageSize;
+      _loadingMore = true;
+    });
+    _loadingMoreTimer?.cancel();
+    _loadingMoreTimer = Timer(const Duration(milliseconds: 400), () {
+      if (mounted) setState(() => _loadingMore = false);
+    });
   }
 
   void _resetPagination() {
@@ -103,7 +121,8 @@ class _ClientesListScreenState extends ConsumerState<ClientesListScreen> {
             soloConMora: _soloConMora,
             diasGracia: diasGracia,
             pageSize: _pageSize,
-            onLoadMore: () => setState(() => _pageSize += _kPageSize),
+            loadingMore: _loadingMore,
+            onLoadMore: _onLoadMore,
           ),
         ),
       ],
@@ -217,6 +236,7 @@ class _ClientesList extends StatelessWidget {
     required this.soloConMora,
     required this.diasGracia,
     required this.pageSize,
+    required this.loadingMore,
     required this.onLoadMore,
   });
 
@@ -225,6 +245,7 @@ class _ClientesList extends StatelessWidget {
   final bool soloConMora;
   final int diasGracia;
   final int pageSize;
+  final bool loadingMore;
   final VoidCallback onLoadMore;
 
   @override
@@ -305,31 +326,15 @@ class _ClientesList extends StatelessWidget {
           padding: const EdgeInsets.only(bottom: 80),
           itemBuilder: (_, i) {
             if (i == rows.length) {
-              return _CargarMasButton(onPressed: onLoadMore);
+              return CargarMasButton(
+                loading: loadingMore,
+                onPressed: onLoadMore,
+              );
             }
             return _ClienteCard(row: rows[i]);
           },
         );
       },
-    );
-  }
-}
-
-class _CargarMasButton extends StatelessWidget {
-  const _CargarMasButton({required this.onPressed});
-  final VoidCallback onPressed;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
-      child: Center(
-        child: OutlinedButton.icon(
-          icon: const Icon(Icons.expand_more),
-          label: const Text('Cargar más'),
-          onPressed: onPressed,
-        ),
-      ),
     );
   }
 }
