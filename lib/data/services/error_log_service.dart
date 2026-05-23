@@ -45,6 +45,18 @@ class ErrorLogService {
   bool _flushing = false;
   String? _appVersion;
 
+  // Rate limit: evita que un crash-loop llene la cola FIFO con cientos
+  // de entries idénticas por segundo. Si el mismo error (tipo+mensaje)
+  // se registró hace menos de 5s, skip.
+  String? _lastRecordedKey;
+  DateTime? _lastRecordedAt;
+  static const _rateLimitWindow = Duration(seconds: 5);
+
+  // User agent: distingue plataforma (web vs Android vs desktop).
+  // Se cachea una vez; no es el browser UA completo pero es útil
+  // para filtrar en el viewer.
+  static String? _cachedUserAgent;
+
   /// Setup handlers + carga pendientes. Idempotente.
   Future<void> init() async {
     if (_initialized) return;
@@ -145,6 +157,26 @@ class ErrorLogService {
       // y Supabase.initialize + ErrorLogService.init).
       if (!_initialized) return;
 
+      // Rate limit: si el mismo error (tipo+mensaje) se registró hace
+      // menos de 5s, skip. Evita que un crash-loop llene la cola FIFO
+      // con cientos de entries idénticas por segundo.
+      final rateLimitKey = '${type.name}:${error.toString().hashCode}';
+      final now = DateTime.now();
+      if (rateLimitKey == _lastRecordedKey &&
+          _lastRecordedAt != null &&
+          now.difference(_lastRecordedAt!) < _rateLimitWindow) {
+        return;
+      }
+      _lastRecordedKey = rateLimitKey;
+      _lastRecordedAt = now;
+
+      // User agent: cachear una vez para distinguir plataforma.
+      if (_cachedUserAgent == null) {
+        _cachedUserAgent = kIsWeb
+            ? 'Flutter Web'
+            : 'Flutter ${defaultTargetPlatform.name}';
+      }
+
       final entry = ErrorLogEntry(
         id: _uuid.v4(),
         ts: DateTime.now().toUtc(),
@@ -154,7 +186,7 @@ class ErrorLogService {
         route: route ?? _currentRoute(),
         userId: Supabase.instance.client.auth.currentUser?.id,
         tenantId: await _currentTenantId(),
-        userAgent: null, // backlog: capturar via package:web cuando importe
+        userAgent: _cachedUserAgent,
         appVersion: _appVersion,
         synced: false,
       );
