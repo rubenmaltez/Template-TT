@@ -429,10 +429,17 @@ Estos viven acá hasta que se ataquen explícitamente. NO re-flag en audits.
   multi-plataforma (web + Android + Windows installer) — ahí podemos
   agregar animaciones de transición que enmascaren el flash y/o
   refactorear el guard del router para ser más estable.
-- **PopScope guard en forms con cambios sin guardar** — hoy un tap accidental
-  en Cancelar, browser back o cambio de tab descarta cambios silenciosamente.
-  Usar `PopScope(canPop: !_dirty, onPopInvokedWithResult: …)` cuando se
-  ataque.
+- **PopScope guard NO cubre `context.go(...)` del sidebar** — el guard
+  implementado en `cliente_form_screen.dart` y `contrato_form_screen.dart`
+  intercepta `Navigator.pop()` (browser back, hardware back, botón
+  Cancelar imperativo), pero NO la navegación con `context.go(...)`
+  porque ese es replace de ruta, no pop. Si el user tiene un form
+  dirty y toca un item del sidebar (que usa `closeModalsAndGo`), los
+  cambios se pierden sin warning. Fix futuro: coordinar shell ↔ form
+  vía Provider/InheritedWidget — el shell consulta si la pantalla
+  actual tiene dirty antes de navegar. Workaround actual: el back
+  arrow del PR #31 usa `closeModalsAndGo` — mismo gap. Forms wizards
+  (onboarding multi-step) tampoco están cubiertos. Sprint propio.
 - **Race del `_rolUsuarioProvider`** cuando se navega a `/super/*` vía URL directa o refresh —
   el rol provider tarda en cargar y el guard del router rebota a `/admin`. Same fix que el
   back button (gate en shell + smart provider state).
