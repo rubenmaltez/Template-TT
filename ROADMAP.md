@@ -12,9 +12,10 @@ hasta producción general y features comerciales.
 - Cuando se cierra un bulk entero, se hace audit ligero + smoke test
   del flow que ese bulk debería habilitar.
 
-**Estado actual**: todos los bulks pendientes. Sesión inicial (2026-05-22)
-entregó 34 PRs que constituyen la **infraestructura previa** a estos
-bulks (logger, tests base, helpers, fixes operativos descubiertos).
+**Estado actual**: BULK 1 parcialmente completado (2/3 sprints, Sprint 1
+en pausa esperando repro). Sesión inicial (2026-05-22) entregó 34 PRs
+de infraestructura previa. Sesión 2 (2026-05-23) entregó 4 PRs con
+paginación, PopScope sidebar, y documentación (STACK.md).
 
 ---
 
@@ -35,7 +36,7 @@ bulks (logger, tests base, helpers, fixes operativos descubiertos).
 | Animaciones de transición | ✅ Fade global |
 | Distribución | ⚠️ Solo web |
 | Email/Resend | ⚠️ Sandbox |
-| Paginación de listados grandes | ⚠️ Sin (explota >10k rows) |
+| Paginación clientes (admin + cobrador) | ✅ LIMIT 50/200 + Cargar más |
 | Sync gate stuck bug | ⚠️ Esperando reproducción con telemetría |
 | Super_admin UI completo | ⚠️ Sprint futuro grande |
 | Tests de Edge Functions | ❌ Sin |
@@ -54,9 +55,9 @@ pierde data sin warning).
 
 | Sprint | Tiempo | Criterio de éxito | PR |
 |---|---|---|---|
-| Diagnóstico sync gate stuck | 1-2h | Reproducir post-forzar-password → ver telemetría `[SYNC-DIAG]` en `/super/logs` → fixear causa raíz | — |
-| Paginación clientes admin + cobrador | 3-4h | Listado fluido con 10k+ clientes (cursor o offset+limit con "Cargar más") | — |
-| PopScope coverage en sidebar | 2-3h | Coordinar shell ↔ form vía Provider. Sidebar pregunta dirty antes de navegar | — |
+| Diagnóstico sync gate stuck | 1-2h | Reproducir post-forzar-password → ver telemetría `[SYNC-DIAG]` en `/super/logs` → fixear causa raíz | ⏸ esperando repro |
+| Paginación clientes admin + cobrador | 3-4h | Listado fluido con 10k+ clientes (cursor o offset+limit con "Cargar más") | ✅ PR #37 |
+| PopScope coverage en sidebar | 2-3h | Coordinar shell ↔ form vía Provider. Sidebar pregunta dirty antes de navegar | ✅ PR #38 |
 
 **Tiempo total**: ~6-9h (1 sesión larga o 2 cortas).
 
@@ -286,3 +287,19 @@ Cada bulk se trata como mini-roadmap dentro de su(s) sesión(es):
 - Tests base + 109 tests acumulados (#27, #28, #29, #30).
 - UX final: AppBar back arrow, PopScope guards, fade transition (#31, #32, #33).
 - Audit + fixes finales (#34).
+
+### Sesión 2 — 2026-05-23 (4 PRs: #36-#38 + docs)
+**Bloques**: BULK 1 operacional + documentación persistente.
+- STACK.md con explicación del stack tecnológico (PR #36).
+- Paginación clientes admin + cobrador con LIMIT + "Cargar más" (PR #37).
+  - LIMIT 50 sin search, LIMIT 200 con search activa.
+  - Widget compartido `CargarMasButton` con loading state anti-doble-tap.
+  - Fixes de audit: selección huérfana, padding unificado.
+- PopScope guard en sidebar (PR #38).
+  - `formDirtyProvider` global para coordinar shell ↔ form.
+  - `closeModalsAndGoGuarded` con pre-check de dialogs críticos.
+  - Dialog "¿Descartar?" con botones invertidos (convención UX destructiva).
+  - Fixes de audit: doble dispose, race PopScope+sidebar, botones.
+- Smoke testing manual de los 8 escenarios (paginación + PopScope).
+  - Inyección de 200 clientes de prueba vía SQL seed.
+  - Sprint 1 (sync gate stuck) en pausa — esperando reproducción natural.
