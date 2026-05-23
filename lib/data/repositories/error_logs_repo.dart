@@ -82,22 +82,28 @@ final errorLogsRepoProvider = Provider<ErrorLogsRepo>((ref) {
   return ErrorLogsRepo(Supabase.instance.client);
 });
 
+/// Tamaño de página por defecto para el viewer de error logs.
+const int kErrorLogsPageSize = 50;
+
 /// Filtros mutables del viewer.
 class ErrorLogsFilter {
   const ErrorLogsFilter({
     this.tenantId,
     this.errorType,
     this.search,
+    this.limit = kErrorLogsPageSize,
   });
 
   final String? tenantId;
   final ErrorLogType? errorType;
   final String? search;
+  final int limit;
 
   ErrorLogsFilter copyWith({
     Object? tenantId = _sentinel,
     Object? errorType = _sentinel,
     Object? search = _sentinel,
+    Object? limit = _sentinel,
   }) {
     return ErrorLogsFilter(
       tenantId: identical(tenantId, _sentinel)
@@ -108,6 +114,7 @@ class ErrorLogsFilter {
           : errorType as ErrorLogType?,
       search:
           identical(search, _sentinel) ? this.search : search as String?,
+      limit: identical(limit, _sentinel) ? this.limit : limit as int,
     );
   }
 
@@ -117,10 +124,11 @@ class ErrorLogsFilter {
       (other is ErrorLogsFilter &&
           other.tenantId == tenantId &&
           other.errorType == errorType &&
-          other.search == search);
+          other.search == search &&
+          other.limit == limit);
 
   @override
-  int get hashCode => Object.hash(tenantId, errorType, search);
+  int get hashCode => Object.hash(tenantId, errorType, search, limit);
 
   static const _sentinel = Object();
 }
@@ -135,5 +143,6 @@ final errorLogsListProvider =
         tenantId: filter.tenantId,
         errorType: filter.errorType,
         search: filter.search,
+        limit: filter.limit,
       );
 });
