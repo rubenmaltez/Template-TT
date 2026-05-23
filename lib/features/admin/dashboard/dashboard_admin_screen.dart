@@ -122,11 +122,15 @@ class _Kpis extends StatelessWidget {
         crossAxisSpacing: 16,
         shrinkWrap: true,
         physics: const NeverScrollableScrollPhysics(),
-        // Mobile (1 col): ratio 3.0 — el 4 anterior dejaba altura
-        // insuficiente para el contenido (icon + label + value + sub)
-        // y tiraba "BOTTOM OVERFLOWED BY 18 PIXELS" en viewports <500px.
-        // 2 / 3 columnas mantienen 2.2 (testeado OK).
-        childAspectRatio: cols == 1 ? 3.0 : 2.2,
+        // Mobile (1 col): ratio 2.3 — el contenido del card (icon+label
+        // row + headlineMedium value + sub-label + 3 spacings + padding
+        // 20×2) necesita ~132px de alto. Con viewport 375px y padding
+        // del padre (~32px), el ancho del card es ~343px → ratio 2.3
+        // da ~149px de alto, holgado. Probado: 4.0 → "BOTTOM OVERFLOWED
+        // BY 18 PIXELS", 3.0 → "BY 23 PIXELS", 2.3 → entra OK.
+        // 2 / 3 columnas (tablet/desktop) mantienen 2.2 — el ancho del
+        // card es menor pero el contenido entra holgado.
+        childAspectRatio: cols == 1 ? 2.3 : 2.2,
         children: items.map((k) => _KpiCard(data: k)).toList(),
       );
     });
