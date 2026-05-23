@@ -12,6 +12,7 @@ import '../../../data/providers/cobrador_provider.dart';
 import '../../../data/services/foto_cliente_service.dart';
 import '../../../data/utils/validators.dart';
 import '../../../powersync/db.dart' as ps;
+import '../../shared/widgets/phone_text_field.dart';
 import 'widgets/geo_picker.dart';
 
 class ClienteFormScreen extends ConsumerStatefulWidget {
@@ -124,21 +125,6 @@ class _ClienteFormScreenState extends ConsumerState<ClienteFormScreen> {
     super.dispose();
   }
 
-  /// Teléfono normalizado para persistir: solo `[0-9+]`. Aunque el
-  /// inputFormatters del field rechaza letras, sanitizamos también acá
-  /// como defensa en profundidad (por si en el futuro alguien setea
-  /// el campo programáticamente desde otro path).
-  ///
-  /// Si después de strip no quedan dígitos (caso `"+"`, `"+++"`, `"   "`,
-  /// o legacy con solo basura), retornamos null. Sin este guard, BD
-  /// terminaba con `"+"` que es inutilizable como `tel:`/`wa.me` —
-  /// rompe el botón "Llamar" silenciosamente.
-  String? _telefonoLimpio() {
-    final t = sanitizePhone(_telefono.text);
-    if (sanitizePhoneForWhatsApp(t).isEmpty) return null;
-    return t;
-  }
-
   Future<void> _guardar() async {
     if (!_formKey.currentState!.validate()) return;
     final tenantId = ref.read(tenantIdProvider);
@@ -173,7 +159,7 @@ class _ClienteFormScreenState extends ConsumerState<ClienteFormScreen> {
             id, tenantId, _cobradorId, _comunidadId,
             _nombre.text.trim(),
             _cedula.text.trim().isEmpty ? null : _cedula.text.trim(),
-            _telefonoLimpio(),
+            PhoneTextField.sanitized(_telefono),
             _direccion.text.trim().isEmpty ? null : _direccion.text.trim(),
             _referencia.text.trim().isEmpty ? null : _referencia.text.trim(),
             lat, lng,
@@ -194,7 +180,7 @@ class _ClienteFormScreenState extends ConsumerState<ClienteFormScreen> {
           [
             _cobradorId, _comunidadId, _nombre.text.trim(),
             _cedula.text.trim().isEmpty ? null : _cedula.text.trim(),
-            _telefonoLimpio(),
+            PhoneTextField.sanitized(_telefono),
             _direccion.text.trim().isEmpty ? null : _direccion.text.trim(),
             _referencia.text.trim().isEmpty ? null : _referencia.text.trim(),
             lat, lng,
@@ -302,30 +288,7 @@ class _ClienteFormScreenState extends ConsumerState<ClienteFormScreen> {
                   ),
                   const SizedBox(width: 12),
                   Expanded(
-                    child: TextFormField(
-                      controller: _telefono,
-                      decoration: const InputDecoration(
-                          labelText: 'Teléfono',
-                          hintText: '+505 8888-8888'),
-                      keyboardType: TextInputType.phone,
-                      // Bloquea letras y otros símbolos en el input. Antes
-                      // el validator solo contaba dígitos via
-                      // sanitizePhoneForWhatsApp pero NO sanitizaba al
-                      // guardar — el user podía meter "abc12345678" y la
-                      // BD quedaba con el string literal. inputFormatters
-                      // + sanitizePhone al guardar (ver _telefonoLimpio)
-                      // cierra ambos huecos.
-                      inputFormatters: [
-                        FilteringTextInputFormatter.allow(
-                            RegExp(r'[0-9+\s\-]')),
-                      ],
-                      validator: (v) {
-                        final digits = sanitizePhoneForWhatsApp(v ?? '');
-                        if (digits.isEmpty) return null; // Opcional
-                        if (digits.length < 8) return 'Mínimo 8 dígitos';
-                        return null;
-                      },
-                    ),
+                    child: PhoneTextField(controller: _telefono),
                   ),
                 ],
               ),
