@@ -53,12 +53,16 @@ class AuthIdentityNotifier extends StateNotifier<AuthIdentityState> {
     // exacto del lastKnownUserId del storage). No-op.
     if (state.userId == userId) return;
 
-    // State inicial completamente vacío: solo posible si el storage estaba
-    // vacío (fresh install) y nunca hubo signOut en este proceso. Es
-    // restore legítimo de la primera sesión, no hay cache previo de otro
-    // user que proteger.
+    // State inicial completamente vacío: fresh install (storage vacío).
+    // Antes no activábamos el sync gate (changedAt: null) porque "no hay
+    // cache previo que proteger". Pero sin gate, el router lee rol=null
+    // (PowerSync aún no sincronizó) → muestra la pantalla del cobrador
+    // por ~1-2s antes de corregir a /super/tenants o /admin cuando el
+    // stream del rol emite. Con changedAt: now(), el sync gate cubre
+    // el primer login y el user ve "Sincronizando datos..." con barra
+    // de progreso en vez del flash de pantalla incorrecta.
     if (state.userId == null && state.changedAt == null) {
-      state = AuthIdentityState(userId: userId, changedAt: null);
+      state = AuthIdentityState(userId: userId, changedAt: DateTime.now());
       _onPersist?.call(userId);
       return;
     }

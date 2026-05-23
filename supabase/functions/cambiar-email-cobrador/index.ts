@@ -21,18 +21,13 @@
 
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
+import { corsHeaders, jsonError } from "../_shared/response.ts";
+import { humanizeAuthError } from "../_shared/auth_errors.ts";
 
 interface CambiarEmailRequest {
   cobrador_id: string;
   nuevo_email: string;
 }
-
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers":
-    "authorization, x-client-info, apikey, content-type",
-  "Access-Control-Allow-Methods": "POST, OPTIONS",
-};
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -152,25 +147,19 @@ serve(async (req) => {
     // OTRO usuario distinto al target. Sin este check, el update
     // fallaba con el error humanizado pero el intent row del audit_log
     // ya quedaba escrito → pollution del timeline con intents fallidos.
-    // Mismo patrón que crear-tenant e invitar-cobrador.
     //
-    // TODO escalado: listUsers con perPage:1000 cubre hasta 1000
-    // users totales. Cuando crezca, migrar a un RPC SECURITY DEFINER.
-    const { data: existingUsers, error: lookupErr } = await admin
-      .auth.admin.listUsers({ page: 1, perPage: 1000 });
+    // Usa RPC SECURITY DEFINER que consulta auth.users directamente.
+    // Reemplaza el viejo listUsers({ perPage: 1000 }) que tenía tope
+    // de 1000 users y daba falsos negativos con más.
+    const { data: emailExists, error: lookupErr } = await admin.rpc(
+      "check_email_exists_in_auth",
+      { p_email: nuevoEmail, p_exclude_user_id: body.cobrador_id },
+    );
     if (lookupErr) {
-      console.error("cambiar-email: listUsers falló", lookupErr);
+      console.error("cambiar-email: check_email_exists falló", lookupErr);
       return jsonError("Error interno", 500);
     }
-    // Filtramos excluyendo al target — su email actual es distinto al
-    // nuevo (pasamos el check de idempotencia arriba) así que si
-    // aparece en la lista con el email nuevo, es OTRO usuario.
-    const yaTomado = (existingUsers?.users ?? []).some(
-      (u) =>
-        (u.email ?? "").toLowerCase() === nuevoEmail &&
-        u.id !== body.cobrador_id,
-    );
-    if (yaTomado) {
+    if (emailExists) {
       return jsonError(
         "Ese email ya está registrado en otro usuario. Elegí otro o, " +
           "si es del mismo usuario, contactá soporte.",
@@ -274,40 +263,3 @@ serve(async (req) => {
     return jsonError("Error interno", 500);
   }
 });
-
-/// Traduce errores conocidos del SDK de Supabase Auth a copy en español.
-/// Mismo patrón que `invitar-cobrador`; duplicado inline porque el Dashboard
-/// no soporta _shared/ (ver CLAUDE.md).
-function humanizeAuthError(raw: string): string {
-  const lower = raw.toLowerCase();
-  if (
-    /already.*(registered|exists)/.test(lower) ||
-    lower.includes("user already") ||
-    lower.includes("email_exists") ||
-    lower.includes("duplicate")
-  ) {
-    return "Ese email ya está registrado en otro usuario. Elegí otro o, " +
-      "si es del mismo usuario, contactá soporte.";
-  }
-  if (lower.includes("invalid email") || lower.includes("invalid_format")) {
-    return "Email inválido según el proveedor.";
-  }
-  if (lower.includes("user not found")) {
-    return "Usuario no encontrado en auth.users — pudo haber sido " +
-      "eliminado entre el guard y el update.";
-  }
-  if (lower.includes("rate limit")) {
-    return "Rate limit del proveedor alcanzado — esperá un rato y reintentá.";
-  }
-  return raw;
-}
-
-function jsonError(message: string, status: number): Response {
-  return new Response(
-    JSON.stringify({ ok: false, error: message }),
-    {
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-      status,
-    },
-  );
-}

@@ -48,6 +48,9 @@
 
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
+import { corsHeaders, jsonError } from "../_shared/response.ts";
+import { humanizeAuthError } from "../_shared/auth_errors.ts";
+import { generarPasswordSegura } from "../_shared/passwords.ts";
 
 interface InvitarRequest {
   email: string;
@@ -70,17 +73,17 @@ interface InvitarRequest {
 
 const SYSTEM_TENANT = "00000000-0000-0000-0000-000000000000";
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers":
-    "authorization, x-client-info, apikey, content-type",
-  "Access-Control-Allow-Methods": "POST, OPTIONS",
-};
-
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
   }
+
+  // Outer scope para cleanup: si createUser/inviteUser éxito pero algo
+  // tira después (excepción no anticipada), el user queda en auth.users
+  // con password que nadie conoce (ghost user). Con el id capturado en
+  // el outer scope, el catch puede borrar el ghost.
+  let userIdParcial: string | null = null;
+  let adminForCleanup: ReturnType<typeof createClient> | null = null;
 
   try {
     const authHeader = req.headers.get("Authorization");
@@ -162,6 +165,7 @@ serve(async (req) => {
     const admin = createClient(supabaseUrl, serviceKey, {
       auth: { autoRefreshToken: false, persistSession: false },
     });
+    adminForCleanup = admin;
 
     // Resolver el tenant_id objetivo según el rol del caller.
     let targetTenantId: string;
@@ -199,27 +203,20 @@ serve(async (req) => {
     }
 
     // Pre-flight: chequear que el email no exista en auth.users.
-    // - inviteUserByEmail falla nativamente si existe (path email).
-    // - createUser también falla con "user already exists" (path no-email).
-    // El check anticipado evita un round-trip al auth provider y
-    // devuelve el error en español de una. Mismo patrón que crear-tenant.
-    //
-    // TODO escalado: listUsers con perPage:1000 cubre hasta 1000
-    // users totales en el sistema. Cuando crezca, migrar a un RPC
-    // SECURITY DEFINER que consulte `auth.users` con un WHERE email=…
-    // (auth.users no está expuesto vía PostgREST).
-    const { data: existingUsers, error: lookupErr } = await admin
-      .auth.admin.listUsers({ page: 1, perPage: 1000 });
+    // Usa RPC SECURITY DEFINER que consulta auth.users directamente.
+    // Reemplaza el viejo listUsers({ perPage: 1000 }) que tenía tope
+    // y daba falsos negativos con más de 1000 users.
+    const { data: emailExists, error: lookupErr } = await admin.rpc(
+      "check_email_exists_in_auth",
+      { p_email: email },
+    );
     if (lookupErr) {
       return jsonError(
         `No pude verificar el email: ${lookupErr.message}`,
         500,
       );
     }
-    const yaExiste = (existingUsers?.users ?? []).some(
-      (u) => (u.email ?? "").toLowerCase() === email,
-    );
-    if (yaExiste) {
+    if (emailExists) {
       return jsonError(
         "Ya existe un usuario con ese email — usá otro o, " +
           "si querés moverlo de tenant, contactá soporte.",
@@ -259,6 +256,7 @@ serve(async (req) => {
       }
       if (!invite.user) return jsonError("No se creó el usuario", 500);
       nuevoUserId = invite.user.id;
+      userIdParcial = nuevoUserId;
     } else {
       // Path no-email: generamos la password ANTES de createUser. Si la
       // genera el server, no la conoce nadie más — la response es la
@@ -281,6 +279,7 @@ serve(async (req) => {
       }
       if (!created.user) return jsonError("No se creó el usuario", 500);
       nuevoUserId = created.user.id;
+      userIdParcial = nuevoUserId;
       nuevaPassword = generated;
     }
 
@@ -304,80 +303,25 @@ serve(async (req) => {
       },
     );
   } catch (e) {
-    // No echar el error crudo al cliente — puede leakear stack o data
-    // sensible. Loggeamos server-side y devolvemos mensaje genérico.
-    //
-    // Importante: en el modo no-email tenemos la `generated` password
-    // en scope. Si el SDK alguna vez incluyera el request body en el
-    // Error (vía `cause` o similar), `e` completo podría contener la
-    // password — los logs del Dashboard son consultables por cualquier
-    // colaborador del proyecto. Solo logueamos `e.message`, no el
-    // objeto entero, para minimizar la superficie. Defense in depth.
+    // Cleanup ghost user: si createUser/inviteUser éxito y luego algo
+    // tira, el user queda en auth.users con password que nadie conoce.
+    // Recuperable vía forzar-password, pero mejor limpiar automático.
+    if (userIdParcial && adminForCleanup) {
+      try {
+        await adminForCleanup.auth.admin.deleteUser(userIdParcial);
+        console.error(
+          `invitar-cobrador: ghost user ${userIdParcial} limpiado tras excepción`,
+        );
+      } catch (cleanupErr) {
+        console.error(
+          `invitar-cobrador: no se pudo limpiar ghost user ${userIdParcial}`,
+          cleanupErr,
+        );
+      }
+    }
     const safeMessage = e instanceof Error ? e.message : String(e);
     console.error("invitar-cobrador unhandled error:", safeMessage);
     return jsonError("Error interno — revisá los logs de la función", 500);
   }
 });
-
-/// Mapea los errores conocidos de Supabase Auth (en inglés) a copy en
-/// español. Mismo patrón que crear-tenant y reenviar-invitacion.
-function humanizeAuthError(raw: string): string {
-  const lower = raw.toLowerCase();
-  if (
-    /already.*(registered|exists)/.test(lower) ||
-    lower.includes("user already") ||
-    lower.includes("email_exists") ||
-    lower.includes("duplicate")
-  ) {
-    return "Ya existe un usuario con ese email — usá otro o, " +
-      "si querés moverlo de tenant, contactá soporte.";
-  }
-  if (lower.includes("sending invite") || lower.includes("sending email")) {
-    return "El proveedor de email rechazó el envío. Si estás usando " +
-      "Resend en sandbox, solo podés invitar al email dueño de tu " +
-      "cuenta Resend — para invitar a otros, verificá tu dominio.";
-  }
-  if (lower.includes("rate limit")) {
-    return "Rate limit del proveedor de email alcanzado — esperá un " +
-      "rato y reintentá.";
-  }
-  if (lower.includes("invalid email")) {
-    return "Email inválido según el proveedor de email.";
-  }
-  return raw;
-}
-
-function jsonError(message: string, status: number): Response {
-  return new Response(
-    JSON.stringify({ ok: false, error: message }),
-    {
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-      status,
-    },
-  );
-}
-
-/// Genera una password aleatoria de 16 chars usando crypto.getRandomValues.
-///
-/// NOTA: Esta función está duplicada en crear-tenant, reenviar-invitacion
-/// e invitar-cobrador porque el Dashboard de Supabase deploya un único
-/// archivo por función — no soporta importar `../_shared/...` cuando subís
-/// el código vía paste. Si en el futuro se migra a Supabase CLI (`supabase
-/// functions deploy`), mover esta función a
-/// `supabase/functions/_shared/passwords.ts` y reemplazar los cuerpos por
-/// un import. Sincronizar el alphabet con _ForzarPasswordDialog del cliente.
-function generarPasswordSegura(): string {
-  const chars =
-    "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789!@#%*-+";
-  const bytes = new Uint8Array(16);
-  crypto.getRandomValues(bytes);
-  let out = "";
-  for (let i = 0; i < 16; i++) {
-    // Sesgo del módulo: 256 mod 63 = 4, así que 4 buckets reciben 5
-    // muestras vs 4 — pérdida total ~0.4 bits sobre 16 chars
-    // (95.27 vs 95.64 bits). Irrelevante para una password rotable.
-    out += chars[bytes[i] % chars.length];
-  }
-  return out;
-}
 

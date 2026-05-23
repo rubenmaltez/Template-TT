@@ -16,18 +16,13 @@
 
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
+import { corsHeaders, jsonError } from "../_shared/response.ts";
+import { humanizeAuthError } from "../_shared/auth_errors.ts";
 
 interface ForzarPasswordRequest {
   cobrador_id: string;
   nueva_password: string;
 }
-
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers":
-    "authorization, x-client-info, apikey, content-type",
-  "Access-Control-Allow-Methods": "POST, OPTIONS",
-};
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -190,11 +185,27 @@ serve(async (req) => {
       "global",
     );
     if (signOutErr) {
-      // No bloqueamos — la password ya cambió.
+      // No bloqueamos — la password ya cambió. Pero el target mantiene
+      // su JWT viejo válido hasta ~1h (expiración natural). Registramos
+      // en audit_log para trazabilidad: el super_admin puede ver que la
+      // invalidación de sesión falló y decidir si re-intentar.
       console.error(
         "forzar-password: global signOut failed",
         signOutErr,
       );
+      await admin.from("audit_log").insert({
+        tenant_id: target.tenant_id,
+        tabla: "auth.users",
+        registro_id: body.cobrador_id,
+        campo: "session_invalidation",
+        valor_anterior: null,
+        valor_nuevo: {
+          action: "force_password_reset_signout_failed",
+          error: signOutErr.message,
+        },
+        user_id: user.id,
+        user_rol: "super_admin",
+      });
     }
 
     return new Response(
@@ -213,32 +224,3 @@ serve(async (req) => {
     return jsonError("Error interno", 500);
   }
 });
-
-/// Traduce errores conocidos del SDK de Supabase Auth a copy en español.
-/// Mismo patrón que `invitar-cobrador`; duplicado inline porque el Dashboard
-/// no soporta _shared/ (ver CLAUDE.md).
-function humanizeAuthError(raw: string): string {
-  const lower = raw.toLowerCase();
-  if (lower.includes("password should be at least") || lower.includes("weak password")) {
-    return "La contraseña no cumple los requisitos mínimos del servidor " +
-      "(longitud o complejidad).";
-  }
-  if (lower.includes("user not found")) {
-    return "Usuario no encontrado en auth.users — pudo haber sido " +
-      "eliminado entre el guard y el update.";
-  }
-  if (lower.includes("rate limit")) {
-    return "Rate limit del proveedor alcanzado — esperá un rato y reintentá.";
-  }
-  return raw;
-}
-
-function jsonError(message: string, status: number): Response {
-  return new Response(
-    JSON.stringify({ ok: false, error: message }),
-    {
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-      status,
-    },
-  );
-}
