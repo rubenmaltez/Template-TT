@@ -69,7 +69,15 @@ class FotoComprobanteService {
   /// (token expirado, bucket caído) y PowerSync reconecta cada pocos
   /// segundos. El éxito siempre se emite y resetea el throttle.
   final _results = StreamController<UploadResult>.broadcast();
-  Stream<UploadResult> get results => _results.stream;
+  // Replay del último resultado para nuevos suscriptores: si la UI se
+  // desmonta/remonta (navegación entre pantallas) o el provider se
+  // re-suscribe, el suscriptor recibe el último resultado inmediatamente
+  // en vez de esperar al próximo ciclo de sync.
+  UploadResult? _lastResult;
+  Stream<UploadResult> get results async* {
+    if (_lastResult != null) yield _lastResult!;
+    yield* _results.stream;
+  }
 
   static const _throttleErrores = Duration(minutes: 2);
   DateTime? _ultimaEmisionError;
@@ -196,6 +204,7 @@ class FotoComprobanteService {
         lastErrorMessage: ultimoError,
       );
       if (_debeEmitir(result)) {
+        _lastResult = result;
         _results.add(result);
       }
     }

@@ -18,6 +18,11 @@ import 'powersync/db.dart' as ps;
 
 const _kLastKnownUserIdKey = 'last_known_user_id';
 
+// Suscripción al auth state change. Se guarda en scope global para
+// poder cancelarla en hot restart (dev) — sino el listener previo
+// intenta usar el ProviderContainer disposed y tira excepciones.
+StreamSubscription? _authSub;
+
 Future<void> main() async {
   // Envolvemos todo en runZonedGuarded para capturar excepciones uncaught
   // de código async (sin try/catch) que no son interceptadas por
@@ -112,7 +117,11 @@ Future<void> _bootstrap() async {
   // en /super/logs con info útil. `connectPowerSync` envuelto en
   // try/catch porque sino las excepciones del SDK quedan silenciadas
   // dentro del listener async.
-  Supabase.instance.client.auth.onAuthStateChange.listen((data) async {
+  // Cancelar suscripción previa si existe (hot restart en dev). Sin
+  // cancel, el listener viejo intenta usar el container disposed →
+  // ProviderDisposedException en consola.
+  _authSub?.cancel();
+  _authSub = Supabase.instance.client.auth.onAuthStateChange.listen((data) async {
     final session = data.session;
     switch (data.event) {
       case AuthChangeEvent.initialSession:
