@@ -48,6 +48,16 @@ class _OfflineBannerState extends ConsumerState<OfflineBanner> {
   Timer? _showTimer;
   bool _show = false;
 
+  // --- Flicker tracking para indicador de red inestable ---
+  // Si hay ≥_flickerThreshold cambios de estado en ≤_flickerWindow,
+  // mostramos un hint sutil de "red inestable" (distinto al banner full).
+  int _flickerCount = 0;
+  DateTime? _flickerWindowStart;
+  static const _flickerThreshold = 3; // N cambios de estado
+  static const _flickerWindow = Duration(seconds: 30); // ventana de tiempo
+  bool _showUnstableIndicator = false;
+  Timer? _unstableResetTimer;
+
   @override
   void initState() {
     super.initState();
@@ -65,6 +75,7 @@ class _OfflineBannerState extends ConsumerState<OfflineBanner> {
   @override
   void dispose() {
     _showTimer?.cancel();
+    _unstableResetTimer?.cancel();
     super.dispose();
   }
 
@@ -78,6 +89,31 @@ class _OfflineBannerState extends ConsumerState<OfflineBanner> {
   /// - `offline=false` con banner visible → oculta inmediato.
   /// - `offline=false` desde estado limpio → no-op.
   void _onStatusChange(bool offline) {
+    // --- Flicker tracking ---
+    // Cada cambio de estado (en cualquier dirección) cuenta como un flicker.
+    // Si acumulamos ≥_flickerThreshold en ≤_flickerWindow, la red es inestable.
+    final now = DateTime.now();
+    if (_flickerWindowStart == null ||
+        now.difference(_flickerWindowStart!) > _flickerWindow) {
+      _flickerWindowStart = now;
+      _flickerCount = 0;
+    }
+    _flickerCount++;
+    if (_flickerCount >= _flickerThreshold && !_showUnstableIndicator) {
+      setState(() => _showUnstableIndicator = true);
+      // Auto-hide después de 60s de estabilidad (sin más flickers).
+      _unstableResetTimer?.cancel();
+      _unstableResetTimer = Timer(const Duration(seconds: 60), () {
+        if (mounted) setState(() => _showUnstableIndicator = false);
+      });
+    } else if (_showUnstableIndicator) {
+      // Si sigue inestable, reiniciar el timer de auto-hide.
+      _unstableResetTimer?.cancel();
+      _unstableResetTimer = Timer(const Duration(seconds: 60), () {
+        if (mounted) setState(() => _showUnstableIndicator = false);
+      });
+    }
+
     if (offline) {
       if (_showTimer != null || _show) return;
       _showTimer = Timer(OfflineBanner._debounce, () {
@@ -107,8 +143,49 @@ class _OfflineBannerState extends ConsumerState<OfflineBanner> {
           duration: const Duration(milliseconds: 150),
           child: _show ? const _Banner() : const SizedBox.shrink(),
         ),
+        // Indicador sutil de red inestable — solo cuando el banner full
+        // NO está visible. Si el banner está visible, el user ya sabe que
+        // está offline; este hint es para el caso intermedio donde la red
+        // flickers sin caer lo suficiente para el debounce de 3s.
+        if (_showUnstableIndicator && !_show) const _UnstableNetworkHint(),
         Expanded(child: widget.child),
       ],
+    );
+  }
+}
+
+/// Hint sutil de "red inestable" — se muestra cuando detectamos flickers
+/// rápidos de conexión (≥3 cambios de estado en ≤30s) pero la red no cae
+/// lo suficiente para activar el banner full de "Sin conexión".
+/// Usa colores tertiaryContainer (ámbar en la mayoría de themes) para
+/// diferenciarse del banner error (rojo).
+class _UnstableNetworkHint extends StatelessWidget {
+  const _UnstableNetworkHint();
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+      color: scheme.tertiaryContainer.withValues(alpha: 0.5),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(Icons.cloud_outlined,
+              size: 14, color: scheme.onTertiaryContainer),
+          const SizedBox(width: 6),
+          Text(
+            'Red inestable — tus datos se sincronizan cuando la conexión '
+            'se estabilice',
+            style: TextStyle(
+              fontSize: 11,
+              color: scheme.onTertiaryContainer,
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

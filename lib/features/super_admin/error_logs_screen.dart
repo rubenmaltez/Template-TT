@@ -9,19 +9,79 @@ import '../../data/models/tenant_admin.dart';
 import '../../data/repositories/error_logs_repo.dart';
 import '../../data/repositories/super_admin_repo.dart';
 import '../../data/utils/formatters.dart';
+import '../shared/widgets/cargar_mas_button.dart';
 import '../shared/widgets/empty_state.dart';
 
 /// Viewer del backend de error_logs. Solo super_admin lo alcanza
 /// (el router guard de `/super` lo cubre y la RPC `list_error_logs`
 /// también valida `is_super_admin()`).
-class ErrorLogsScreen extends ConsumerWidget {
+class ErrorLogsScreen extends ConsumerStatefulWidget {
   const ErrorLogsScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<ErrorLogsScreen> createState() => _ErrorLogsScreenState();
+}
+
+class _ErrorLogsScreenState extends ConsumerState<ErrorLogsScreen> {
+  // True desde el tap "Cargar más" hasta que el provider resuelva o
+  // pase un debounce corto. Sirve de anti-doble-tap visual.
+  bool _loadingMore = false;
+  Timer? _loadingMoreTimer;
+
+  /// Filtros previos — para detectar cambios y resetear pageSize.
+  ErrorLogsFilter? _prevFilter;
+
+  @override
+  void dispose() {
+    _loadingMoreTimer?.cancel();
+    super.dispose();
+  }
+
+  void _onLoadMore() {
+    final current = ref.read(errorLogsFilterProvider);
+    ref.read(errorLogsFilterProvider.notifier).update(
+          (f) => f.copyWith(limit: current.limit + kErrorLogsPageSize),
+        );
+    setState(() => _loadingMore = true);
+    _loadingMoreTimer?.cancel();
+    _loadingMoreTimer = Timer(const Duration(milliseconds: 400), () {
+      if (mounted) setState(() => _loadingMore = false);
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final logsAsync = ref.watch(errorLogsListProvider);
     final tenantsAsync = ref.watch(tenantsAdminProvider);
     final filter = ref.watch(errorLogsFilterProvider);
+
+    // Cuando cambian los filtros reales (tenant, errorType, search) pero
+    // NO el limit, reseteamos el pageSize al default. Así "Cargar más"
+    // arranca de nuevo cuando el user cambia filtros.
+    if (_prevFilter != null &&
+        (_prevFilter!.tenantId != filter.tenantId ||
+            _prevFilter!.errorType != filter.errorType ||
+            _prevFilter!.search != filter.search) &&
+        filter.limit != kErrorLogsPageSize) {
+      // El setState en build es seguro porque el update del provider
+      // disparará un rebuild reactivo — no necesitamos setState aquí.
+      Future.microtask(() {
+        ref.read(errorLogsFilterProvider.notifier).update(
+              (f) => f.copyWith(limit: kErrorLogsPageSize),
+            );
+      });
+    }
+    _prevFilter = filter;
+
+    // Cuando el provider termina de cargar, limpiar el flag de loading
+    // del botón "Cargar más" — el debounce del timer es un fallback,
+    // pero queremos respuesta inmediata cuando los datos llegan.
+    if (_loadingMore && logsAsync is! AsyncLoading) {
+      _loadingMoreTimer?.cancel();
+      Future.microtask(() {
+        if (mounted) setState(() => _loadingMore = false);
+      });
+    }
 
     return Column(
       children: [
@@ -59,12 +119,24 @@ class ErrorLogsScreen extends ConsumerWidget {
                     ],
                   );
                 }
+                // Heurística: si trajimos exactamente el limit, probablemente
+                // hay más. El último tap sin resultados nuevos hará desaparecer
+                // el botón naturalmente.
+                final hayMas = rows.length >= filter.limit;
                 return ListView.separated(
                   padding: const EdgeInsets.symmetric(
                       horizontal: 16, vertical: 8),
-                  itemCount: rows.length,
+                  itemCount: rows.length + (hayMas ? 1 : 0),
                   separatorBuilder: (_, __) => const SizedBox(height: 4),
-                  itemBuilder: (_, i) => _ErrorLogCard(view: rows[i]),
+                  itemBuilder: (_, i) {
+                    if (i == rows.length) {
+                      return CargarMasButton(
+                        loading: _loadingMore,
+                        onPressed: _onLoadMore,
+                      );
+                    }
+                    return _ErrorLogCard(view: rows[i]);
+                  },
                 );
               },
             ),
