@@ -10,6 +10,7 @@ import '../../../data/utils/validators.dart';
 import '../../../powersync/db.dart' as ps;
 import '../../shared/widgets/credenciales_dialog.dart';
 import '../../shared/widgets/empty_state.dart';
+import '../../shared/widgets/phone_text_field.dart';
 
 /// Gestión de cobradores: ver lista, asignar prefijo de recibo, cambiar
 /// rol, activar/desactivar.
@@ -156,8 +157,8 @@ class _InvitarDialogState extends State<_InvitarDialog> {
           'email': email,
           'nombre': nombre,
           'rol': _rol,
-          if (_telefono.text.trim().isNotEmpty)
-            'telefono': _telefono.text.trim(),
+          if (PhoneTextField.sanitized(_telefono) != null)
+            'telefono': PhoneTextField.sanitized(_telefono),
           if (_rol == 'cobrador' && prefijo.isNotEmpty)
             'prefijo_recibo': prefijo,
           // Explícito para que el server no asuma default si en el
@@ -290,11 +291,9 @@ class _InvitarDialogState extends State<_InvitarDialog> {
               decoration: const InputDecoration(labelText: 'Nombre completo *'),
             ),
             const SizedBox(height: 12),
-            TextField(
+            PhoneTextField(
               controller: _telefono,
               enabled: !_enviando,
-              decoration: const InputDecoration(labelText: 'Teléfono'),
-              keyboardType: TextInputType.phone,
             ),
             const SizedBox(height: 12),
             DropdownButtonFormField<String>(
@@ -604,7 +603,7 @@ class _EditarCobradorDialogState extends ConsumerState<_EditarCobradorDialog> {
         ''',
         [
           _nombreCtrl.text.trim(),
-          _telCtrl.text.trim().isEmpty ? null : _telCtrl.text.trim(),
+          PhoneTextField.sanitized(_telCtrl),
           _rol,
           prefijo.isEmpty ? null : prefijo,
           _activo ? 1 : 0,
@@ -634,11 +633,7 @@ class _EditarCobradorDialogState extends ConsumerState<_EditarCobradorDialog> {
                 decoration: const InputDecoration(labelText: 'Nombre'),
               ),
               const SizedBox(height: 12),
-              TextField(
-                controller: _telCtrl,
-                decoration: const InputDecoration(labelText: 'Teléfono'),
-                keyboardType: TextInputType.phone,
-              ),
+              PhoneTextField(controller: _telCtrl),
               const SizedBox(height: 12),
               DropdownButtonFormField<String>(
                 value: _rol,
