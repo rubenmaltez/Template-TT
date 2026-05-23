@@ -102,6 +102,10 @@ class _ClienteFormScreenState extends ConsumerState<ClienteFormScreen> {
         setState(() {
           _fotoPath = path;
           _urlFirmadaPreview = url;
+          // Form.onChanged solo dispara para FormField descendants; los
+          // cambios de foto/geo/dropdown/switch deben marcar dirty
+          // manualmente sino el PopScope deja escapar sin confirm.
+          _dirty = true;
         });
       }
     } catch (e) {
@@ -233,6 +237,10 @@ class _ClienteFormScreenState extends ConsumerState<ClienteFormScreen> {
       setState(() {
         _lat.text = picked.latitude.toStringAsFixed(6);
         _lng.text = picked.longitude.toStringAsFixed(6);
+        // controller.text = ... asignación programática NO dispara
+        // Form.onChanged (solo onSubmitted/onChanged del field). Marcar
+        // dirty a mano para que PopScope intercepte el discard.
+        _dirty = true;
       });
     }
   }
@@ -248,7 +256,16 @@ class _ClienteFormScreenState extends ConsumerState<ClienteFormScreen> {
       onPopInvokedWithResult: (didPop, _) async {
         if (didPop) return;
         final confirm = await confirmDiscardChanges(context);
-        if (confirm == true && context.mounted) Navigator.pop(context);
+        if (confirm != true || !context.mounted) return;
+        // Mismo patrón fallback que `_guardar()`: si vinimos por push
+        // (canPop=true), Navigator.pop. Si fue deep-link directo
+        // (canPop=false), `Navigator.pop` no haría nada y el user
+        // quedaría atrapado con _dirty=false. Hacemos go al listado.
+        if (context.canPop()) {
+          Navigator.pop(context);
+        } else {
+          context.go('/admin/clientes');
+        }
       },
       child: Form(
         key: _formKey,
@@ -273,6 +290,7 @@ class _ClienteFormScreenState extends ConsumerState<ClienteFormScreen> {
                 onQuitar: () => setState(() {
                   _fotoPath = null;
                   _urlFirmadaPreview = null;
+                  _dirty = true;
                 }),
               ),
             ],
@@ -324,7 +342,10 @@ class _ClienteFormScreenState extends ConsumerState<ClienteFormScreen> {
             children: [
               GeoPicker(
                 comunidadId: _comunidadId,
-                onChanged: (id) => setState(() => _comunidadId = id),
+                onChanged: (id) => setState(() {
+                  _comunidadId = id;
+                  _dirty = true;
+                }),
               ),
               const SizedBox(height: 12),
               TextFormField(
@@ -401,12 +422,18 @@ class _ClienteFormScreenState extends ConsumerState<ClienteFormScreen> {
             children: [
               _SelectorCobrador(
                 cobradorId: _cobradorId,
-                onChanged: (id) => setState(() => _cobradorId = id),
+                onChanged: (id) => setState(() {
+                  _cobradorId = id;
+                  _dirty = true;
+                }),
               ),
               const SizedBox(height: 8),
               SwitchListTile(
                 value: _activo,
-                onChanged: (v) => setState(() => _activo = v),
+                onChanged: (v) => setState(() {
+                  _activo = v;
+                  _dirty = true;
+                }),
                 title: Text(_activo ? 'Activo' : 'Inactivo'),
                 contentPadding: EdgeInsets.zero,
               ),

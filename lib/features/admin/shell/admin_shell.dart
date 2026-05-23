@@ -75,6 +75,7 @@ class AdminShell extends ConsumerWidget {
                     titulo: titulo,
                     showMenu: false,
                     parentRoute: _parentRouteFor(location),
+                    location: location,
                   ),
                   Expanded(child: bodyContent),
                 ],
@@ -97,7 +98,7 @@ class AdminShell extends ConsumerWidget {
             ? IconButton(
                 icon: const Icon(Icons.arrow_back),
                 tooltip: 'Volver',
-                onPressed: () => context.closeModalsAndGo(parentRoute),
+                onPressed: () => _onBackPressed(context, location, parentRoute),
               )
             : null,
         title: Text(titulo),
@@ -106,6 +107,38 @@ class AdminShell extends ConsumerWidget {
       body: bodyContent,
     );
   }
+}
+
+/// Handler del back arrow del AppBar. Decide entre:
+///   - Sub-rutas que tienen PopScope (forms con `_dirty` guard) →
+///     `Navigator.maybePop` para delegar al PopScope; el form decide
+///     mostrar "¿Descartar?" o cerrar limpio.
+///   - Otras sub-rutas → `closeModalsAndGo` directo (sin guard).
+///
+/// Sin este split, el back arrow bypassa el PopScope guard del form
+/// porque `closeModalsAndGo` usa `context.go(...)` (replace, no pop).
+Future<void> _onBackPressed(
+  BuildContext context,
+  String location,
+  String parentRoute,
+) async {
+  if (_hasFormGuard(location)) {
+    // El form tiene PopScope. Si _dirty=false, maybePop simplemente
+    // popea al parent. Si _dirty=true, dispara el handler del form
+    // que muestra "¿Descartar?" y hace el pop+go correcto.
+    await Navigator.maybePop(context);
+    return;
+  }
+  // Ruta sin PopScope guard. Navegación directa.
+  if (!context.mounted) return;
+  context.closeModalsAndGo(parentRoute);
+}
+
+/// Routes con PopScope activo. Mantener sincronizado con los forms
+/// que implementan el guard.
+bool _hasFormGuard(String loc) {
+  return loc.startsWith('/admin/clientes/') ||
+      loc.startsWith('/admin/contratos/');
 }
 
 /// Si [loc] es una sub-ruta dentro del AdminShell (con sufijo /nuevo,
@@ -133,10 +166,17 @@ class _TopBar extends StatelessWidget {
     required this.titulo,
     required this.showMenu,
     this.parentRoute,
+    this.location = '',
   });
   final String titulo;
   final bool showMenu;
   final String? parentRoute;
+
+  /// Ruta actual (matchedLocation). Necesario para que el back button
+  /// elija entre `Navigator.maybePop` (rutas con PopScope) y
+  /// `closeModalsAndGo` (sin guard). Default `''` para callers que no
+  /// muestran back (parentRoute == null).
+  final String location;
 
   @override
   Widget build(BuildContext context) {
@@ -157,7 +197,8 @@ class _TopBar extends StatelessWidget {
               IconButton(
                 icon: const Icon(Icons.arrow_back),
                 tooltip: 'Volver',
-                onPressed: () => context.closeModalsAndGo(parentRoute!),
+                onPressed: () =>
+                    _onBackPressed(context, location, parentRoute!),
               ),
               const SizedBox(width: 8),
             ],

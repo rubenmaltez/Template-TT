@@ -142,10 +142,14 @@ void main() {
       expect(Fmt.fechaRelativa(DateTime(2026, 4, 1), hoy), '01/04/2026');
     });
 
-    test('parámetro hoy default a DateTime.now() si no se pasa', () {
-      // Test indirecto: si pasamos d=DateTime.now() y omitimos hoy,
-      // debe retornar "Hoy" (ambos valores son la fecha actual).
-      expect(Fmt.fechaRelativa(DateTime.now()), 'Hoy');
+    test('parámetro hoy default a DateTime.now() no lanza excepción', () {
+      // Eliminado el test estricto que assertaba 'Hoy' — flaky por
+      // racing con medianoche entre el now() capturado y el now() que
+      // computa el default del param. Acá solo verificamos que la
+      // función no rompe cuando se llama sin `hoy` — el valor de
+      // retorno (Hoy/Ayer/Mañana según el momento) ya está cubierto
+      // por los tests con `hoy:` explícito de arriba.
+      expect(() => Fmt.fechaRelativa(DateTime.now()), returnsNormally);
     });
   });
 

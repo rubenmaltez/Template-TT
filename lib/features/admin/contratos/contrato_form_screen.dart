@@ -191,7 +191,14 @@ class _ContratoFormScreenState extends ConsumerState<ContratoFormScreen> {
       onPopInvokedWithResult: (didPop, _) async {
         if (didPop) return;
         final confirm = await confirmDiscardChanges(context);
-        if (confirm == true && context.mounted) Navigator.pop(context);
+        if (confirm != true || !context.mounted) return;
+        // Fallback para deep-link: si canPop=false, Navigator.pop no
+        // hace nada y el user queda atrapado. Go al listado.
+        if (context.canPop()) {
+          Navigator.pop(context);
+        } else {
+          context.go('/admin/contratos');
+        }
       },
       child: Form(
         key: _formKey,
@@ -213,12 +220,20 @@ class _ContratoFormScreenState extends ConsumerState<ContratoFormScreen> {
                   _ClienteSelector(
                     clienteId: _clienteId,
                     enabled: !_esEdicion,
-                    onChanged: (id) => setState(() => _clienteId = id),
+                    // Form.onChanged solo dispara para FormFields; los
+                    // selectors custom acá deben marcar dirty a mano.
+                    onChanged: (id) => setState(() {
+                      _clienteId = id;
+                      _dirty = true;
+                    }),
                   ),
                   const SizedBox(height: 12),
                   _PlanSelector(
                     planId: _planId,
-                    onChanged: (id) => setState(() => _planId = id),
+                    onChanged: (id) => setState(() {
+                      _planId = id;
+                      _dirty = true;
+                    }),
                   ),
                 ],
               ),
@@ -243,6 +258,7 @@ class _ContratoFormScreenState extends ConsumerState<ContratoFormScreen> {
                       // (regla del negocio: 'instalado el 17 paga los 17').
                       // El admin puede editar el campo después si quiere.
                       _diaPagoCtrl.text = d.day.toString();
+                      _dirty = true;
                     }),
                   ),
                   const SizedBox(height: 12),
@@ -276,8 +292,10 @@ class _ContratoFormScreenState extends ConsumerState<ContratoFormScreen> {
                           value: _Duracion.indefinido, label: Text('Indefinido')),
                     ],
                     selected: {_duracion},
-                    onSelectionChanged: (s) =>
-                        setState(() => _duracion = s.first),
+                    onSelectionChanged: (s) => setState(() {
+                      _duracion = s.first;
+                      _dirty = true;
+                    }),
                   ),
                   const SizedBox(height: 12),
                   Padding(
@@ -296,7 +314,10 @@ class _ContratoFormScreenState extends ConsumerState<ContratoFormScreen> {
                     const Divider(),
                     SwitchListTile(
                       value: _activo,
-                      onChanged: (v) => setState(() => _activo = v),
+                      onChanged: (v) => setState(() {
+                        _activo = v;
+                        _dirty = true;
+                      }),
                       title: Text(_activo ? 'Contrato activo' : 'Cancelado'),
                       subtitle: !_activo
                           ? const Text(
