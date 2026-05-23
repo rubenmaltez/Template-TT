@@ -43,6 +43,9 @@
 
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
+import { corsHeaders, jsonError } from "../_shared/response.ts";
+import { humanizeAuthError } from "../_shared/auth_errors.ts";
+import { generarPasswordSegura } from "../_shared/passwords.ts";
 
 interface CrearTenantRequest {
   tenant_nombre: string;
@@ -60,13 +63,6 @@ interface CrearTenantRequest {
 }
 
 const SYSTEM_TENANT = "00000000-0000-0000-0000-000000000000";
-
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers":
-    "authorization, x-client-info, apikey, content-type",
-  "Access-Control-Allow-Methods": "POST, OPTIONS",
-};
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -505,73 +501,4 @@ async function rollbackTenant(
   // cubre tenant_modulos / settings / etc.
   const { error } = await admin.from("tenants").delete().eq("id", tenantId);
   return !error;
-}
-
-/// Mapea los errores conocidos de Supabase Auth (en inglés) a copy en
-/// español que coincide con el resto del panel. Fallback al string
-/// original para que un mensaje desconocido no quede mudo.
-function humanizeAuthError(raw: string): string {
-  const lower = raw.toLowerCase();
-  // Regex tolera variantes de wording: "already registered", "already
-  // been registered", "already exists". Substring strict fallaba sobre
-  // el mensaje real de Supabase ("...has already been registered").
-  if (
-    /already.*(registered|exists)/.test(lower) ||
-    lower.includes("user already")
-  ) {
-    return "Ya existe un usuario con ese email — usá otro o, " +
-      "si querés moverlo de tenant, contactá soporte.";
-  }
-  // "Error sending invite email" lo emite Supabase Auth cuando el
-  // SMTP rechaza el destinatario. Caso típico: Resend en modo sandbox
-  // solo permite mandar al email del dueño de la cuenta. Mensaje
-  // explícito para que el super_admin no se vuelva loco buscando un
-  // bug en el código.
-  if (lower.includes("sending invite") || lower.includes("sending email")) {
-    return "El proveedor de email rechazó el envío. Si estás usando " +
-      "Resend en sandbox, solo podés invitar al email dueño de tu " +
-      "cuenta Resend — para invitar a otros, verificá tu dominio.";
-  }
-  if (lower.includes("rate limit")) {
-    return "Rate limit del proveedor de email alcanzado — esperá un " +
-      "rato y reintentá.";
-  }
-  if (lower.includes("invalid email")) {
-    return "Email inválido según el proveedor de email.";
-  }
-  return raw;
-}
-
-function jsonError(message: string, status: number): Response {
-  return new Response(
-    JSON.stringify({ ok: false, error: message }),
-    {
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-      status,
-    },
-  );
-}
-
-/// Genera una password aleatoria de 16 chars usando crypto.getRandomValues.
-///
-/// NOTA: Esta función está duplicada en crear-tenant y reenviar-invitacion
-/// porque el Dashboard de Supabase deploya un único archivo por función
-/// — no soporta importar `../_shared/...` cuando subís el código vía
-/// paste. Si en el futuro se migra a Supabase CLI (`supabase functions
-/// deploy`), mover esta función a `supabase/functions/_shared/passwords.ts`
-/// y reemplazar ambos cuerpos por un import. Sincronizar el alphabet con
-/// _ForzarPasswordDialog del cliente.
-function generarPasswordSegura(): string {
-  const chars =
-    "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789!@#%*-+";
-  const bytes = new Uint8Array(16);
-  crypto.getRandomValues(bytes);
-  let out = "";
-  for (let i = 0; i < 16; i++) {
-    // Sesgo del módulo: 256 mod 63 = 4, así que 4 buckets reciben 5
-    // muestras vs 4 — pérdida total ~0.4 bits sobre 16 chars
-    // (95.27 vs 95.64 bits). Irrelevante para una password rotable.
-    out += chars[bytes[i] % chars.length];
-  }
-  return out;
 }
