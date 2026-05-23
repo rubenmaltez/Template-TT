@@ -463,6 +463,33 @@ Estos viven acá hasta que se ataquen explícitamente. NO re-flag en audits.
 - **Race del `_rolUsuarioProvider`** cuando se navega a `/super/*` vía URL directa o refresh —
   el rol provider tarda en cargar y el guard del router rebota a `/admin`. Same fix que el
   back button (gate en shell + smart provider state).
+  **Manifestación adicional confirmada**: post-login del super_admin, el redirect
+  inicial cae en `/admin` por ~1-2s antes de corregir a `/super/tenants` cuando llega
+  el rol del provider. Decisión del user: aceptable por ahora — atacar cuando se
+  haga el rework de super_admin UI/UX (ver item siguiente).
+- **Rework del super_admin UI/UX (sprint futuro grande)**. El super_admin actual
+  vive con una shell minimal (`/super/tenants` + `/super/logs` + detalle de tenant/
+  miembros). El user quiere que pueda:
+    1. **Hacer todo lo que un admin puede** — el super_admin debe tener TODO el
+       acceso del admin del tenant, no un subconjunto.
+    2. **Seleccionar un tenant y actuar como su admin** (impersonate). Hoy si el
+       super_admin quiere ver/editar clientes del tenant X, no tiene UI para
+       "entrar como admin de X". Necesitaría: selector de tenant en super_admin
+       que cambie `current_tenant_id` y le dé al super_admin la vista del
+       `AdminShell` con la data del tenant elegido. Requiere refactor de
+       `current_tenant_id()` SQL (que hoy lee de `cobradores`) para que
+       super_admin pueda overridear vía algún state cliente o JWT claim
+       custom. **Sensible: hay que pensar el threat model — un override de
+       tenant del super_admin debe quedar en audit_log con un timestamp y
+       UI que muestre claramente "estás viendo el tenant X" para evitar
+       confusión / cambios en el tenant equivocado.**
+    3. **Toggle de activar/desactivar módulos por tenant**, ya implementado
+       en `/super/tenants/:id` (`tenant_modulos_screen.dart`) — vale revisar
+       que la UI de modules sea fácil de descubrir desde el flow nuevo de
+       "entrar a un tenant".
+  Decisión operativa del user: este rework se planea cuando enfoquemos sprint
+  de UI/UX multi-plataforma (web + Android + Windows installer). Hoy el
+  super_admin opera ok como está, solo es ineficiente.
 - **PowerSync `lastSyncedAt` semantics** — verificar (con docs PowerSync) si el checkpoint
   signal puede llegar antes de aplicar los DELETEs de buckets descartados. Si sí, queda una
   ventana de race de algunos ms post-sync-gate donde la UI ve cache stale.
