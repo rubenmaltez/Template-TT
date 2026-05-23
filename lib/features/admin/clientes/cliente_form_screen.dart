@@ -12,6 +12,7 @@ import '../../../data/providers/cobrador_provider.dart';
 import '../../../data/services/foto_cliente_service.dart';
 import '../../../data/utils/validators.dart';
 import '../../../powersync/db.dart' as ps;
+import '../../shared/widgets/confirm_discard_dialog.dart';
 import '../../shared/widgets/phone_text_field.dart';
 import 'widgets/geo_picker.dart';
 
@@ -25,6 +26,10 @@ class ClienteFormScreen extends ConsumerStatefulWidget {
 
 class _ClienteFormScreenState extends ConsumerState<ClienteFormScreen> {
   final _formKey = GlobalKey<FormState>();
+  // Tracking de "form sucio" — true cuando el user tocó algún campo
+  // tras la última cargada/guardado. Usado por PopScope para mostrar
+  // dialog de confirmación al intentar salir con cambios sin guardar.
+  bool _dirty = false;
   final _nombre = TextEditingController();
   final _cedula = TextEditingController();
   final _telefono = TextEditingController();
@@ -196,6 +201,11 @@ class _ClienteFormScreenState extends ConsumerState<ClienteFormScreen> {
               ? 'Cliente creado'
               : 'Cambios guardados')),
         );
+        // Reseteamos _dirty PRE-pop para que el PopScope no intercepte
+        // con el dialog "¿Descartar cambios?" — recién guardamos, no
+        // hay cambios sin persistir. Sin esto, el guardado dispara la
+        // confirmación que el user esperaría solo en cancelación.
+        _dirty = false;
         // pop si vinimos vía push (caso normal); fallback go al listado
         // si fue deep-link directo a la edición.
         if (context.canPop()) {
@@ -233,9 +243,22 @@ class _ClienteFormScreenState extends ConsumerState<ClienteFormScreen> {
       return const Center(child: CircularProgressIndicator());
     }
 
-    return Form(
-      key: _formKey,
-      child: ListView(
+    return PopScope(
+      canPop: !_dirty,
+      onPopInvokedWithResult: (didPop, _) async {
+        if (didPop) return;
+        final confirm = await confirmDiscardChanges(context);
+        if (confirm == true && context.mounted) Navigator.pop(context);
+      },
+      child: Form(
+        key: _formKey,
+        onChanged: () {
+          // Cualquier change en cualquier TextFormField del árbol del
+          // Form dispara esto. Lo usamos para flagear dirty sin tener
+          // que addListener manual a cada controller.
+          if (!_dirty) setState(() => _dirty = true);
+        },
+        child: ListView(
         padding: const EdgeInsets.all(24),
         children: [
           // ── Foto ──────────────────────────────────────────────────────
@@ -434,6 +457,7 @@ class _ClienteFormScreenState extends ConsumerState<ClienteFormScreen> {
             ],
           ),
         ],
+        ),
       ),
     );
   }

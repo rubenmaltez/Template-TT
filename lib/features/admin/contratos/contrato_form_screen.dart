@@ -7,6 +7,7 @@ import 'package:uuid/uuid.dart';
 import '../../../data/providers/cobrador_provider.dart';
 import '../../../data/utils/formatters.dart';
 import '../../../powersync/db.dart' as ps;
+import '../../shared/widgets/confirm_discard_dialog.dart';
 
 enum _Duracion { unAno, dosAnos, indefinido }
 
@@ -21,6 +22,9 @@ class ContratoFormScreen extends ConsumerStatefulWidget {
 
 class _ContratoFormScreenState extends ConsumerState<ContratoFormScreen> {
   final _formKey = GlobalKey<FormState>();
+  // Tracking de "form sucio" — flagea cambios para que PopScope muestre
+  // confirmación al salir con data sin guardar.
+  bool _dirty = false;
   final _diaPagoCtrl = TextEditingController();
   String? _clienteId;
   String? _planId;
@@ -158,6 +162,10 @@ class _ContratoFormScreenState extends ConsumerState<ContratoFormScreen> {
                 : 'Contrato creado. Cuotas generadas automáticamente.'),
           ),
         );
+        // _dirty=false pre-pop para que PopScope no intercepte con
+        // "¿Descartar?" tras guardado exitoso (no hay cambios sin
+        // persistir — recién guardamos).
+        _dirty = false;
         // pop si vinimos vía push (caso normal); fallback go al listado
         // si fue deep-link directo a la edición/creación.
         if (context.canPop()) {
@@ -178,9 +186,19 @@ class _ContratoFormScreenState extends ConsumerState<ContratoFormScreen> {
     if (_cargando) {
       return const Center(child: CircularProgressIndicator());
     }
-    return Form(
-      key: _formKey,
-      child: ListView(
+    return PopScope(
+      canPop: !_dirty,
+      onPopInvokedWithResult: (didPop, _) async {
+        if (didPop) return;
+        final confirm = await confirmDiscardChanges(context);
+        if (confirm == true && context.mounted) Navigator.pop(context);
+      },
+      child: Form(
+        key: _formKey,
+        onChanged: () {
+          if (!_dirty) setState(() => _dirty = true);
+        },
+        child: ListView(
         padding: const EdgeInsets.all(24),
         children: [
           Card(
@@ -333,6 +351,7 @@ class _ContratoFormScreenState extends ConsumerState<ContratoFormScreen> {
             ],
           ),
         ],
+        ),
       ),
     );
   }
