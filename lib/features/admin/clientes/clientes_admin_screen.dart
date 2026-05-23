@@ -19,11 +19,17 @@ class ClientesAdminScreen extends ConsumerStatefulWidget {
       _ClientesAdminScreenState();
 }
 
-/// Página inicial de la lista. Sube en increments del mismo tamaño
-/// al tocar "Cargar más". Suficiente para tenants con 10k+ clientes:
-/// el primer pintado carga 50, el user filtra/busca para reducir y
-/// no necesita paginar hasta el fondo en uso normal.
+/// Página inicial de la lista cuando NO hay búsqueda activa. Sube
+/// en increments del mismo tamaño al tocar "Cargar más". Suficiente
+/// para navegar el catálogo del tenant sin colgar la UI.
 const int _kPageSize = 50;
+
+/// Página inicial cuando HAY búsqueda activa. El WHERE LIKE ya reduce
+/// el set drásticamente (10k → decenas en búsquedas típicas), así que
+/// queremos retornar todos los matches realistas sin obligar al admin
+/// a paginar dentro de su búsqueda. 200 cubre casi todos los casos
+/// reales — solo búsquedas muy genéricas ("a") superan ese umbral.
+const int _kSearchPageSize = 200;
 
 class _ClientesAdminScreenState extends ConsumerState<ClientesAdminScreen> {
   final _searchCtrl = TextEditingController();
@@ -34,9 +40,9 @@ class _ClientesAdminScreenState extends ConsumerState<ClientesAdminScreen> {
   bool _soloSinCobrador = false;
   final Set<String> _seleccionados = {};
   Timer? _debounce;
-  // Tamaño actual de la página. Se incrementa al tocar "Cargar más"
-  // y se resetea a _kPageSize cuando cambia query/filtros (para que
-  // el primer render del nuevo filtro no traiga 500 rows al pedo).
+  // Tamaño actual de la página. Se resetea según haya búsqueda o no
+  // (50 sin search, 200 con search) cuando cambia query/filtros, y
+  // sube por incrementos del mismo tamaño al tocar "Cargar más".
   int _pageSize = _kPageSize;
   // True desde el tap "Cargar más" hasta que pase un debounce corto.
   // Sirve solo de anti-doble-tap: el SQLite local emite el nuevo
@@ -53,9 +59,15 @@ class _ClientesAdminScreenState extends ConsumerState<ClientesAdminScreen> {
     super.dispose();
   }
 
+  // Tamaño base según haya búsqueda o no. Se usa para el reset y
+  // para el incremento de "Cargar más" — así con search activo el
+  // primer pintado y cada tap traen 200 (no 50), evitando que el
+  // admin tape el botón muchas veces para llegar a su cliente.
+  int get _baseSize => _query.isEmpty ? _kPageSize : _kSearchPageSize;
+
   void _onLoadMore() {
     setState(() {
-      _pageSize += _kPageSize;
+      _pageSize += _baseSize;
       _loadingMore = true;
     });
     _loadingMoreTimer?.cancel();
@@ -65,7 +77,7 @@ class _ClientesAdminScreenState extends ConsumerState<ClientesAdminScreen> {
   }
 
   void _resetPagination() {
-    _pageSize = _kPageSize;
+    _pageSize = _baseSize;
     // Limpiar selección al cambiar filtros: sino los IDs quedan en
     // memoria pero invisibles (no entran en el nuevo subset). Riesgo:
     // user selecciona 10, cambia filtro, queda con "10 seleccionado(s)"

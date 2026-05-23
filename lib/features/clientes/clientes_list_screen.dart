@@ -18,10 +18,15 @@ class ClientesListScreen extends ConsumerStatefulWidget {
   ConsumerState<ClientesListScreen> createState() => _ClientesListScreenState();
 }
 
-/// Página inicial de la lista. Increments del mismo tamaño al tocar
-/// "Cargar más". El cobrador típico tiene <500 clientes asignados —
-/// 50 cubre el primer screen sin necesidad de paginar en uso normal.
+/// Página inicial sin búsqueda activa. Increments del mismo tamaño
+/// al tocar "Cargar más". El cobrador típico tiene <500 clientes
+/// asignados — 50 cubre el primer screen sin paginar en uso normal.
 const int _kPageSize = 50;
+
+/// Página inicial con búsqueda activa. El WHERE LIKE ya reduce el
+/// set y queremos retornar todos los matches realistas sin obligar
+/// al cobrador a paginar dentro de su búsqueda.
+const int _kSearchPageSize = 200;
 
 class _ClientesListScreenState extends ConsumerState<ClientesListScreen> {
   final _searchCtrl = TextEditingController();
@@ -46,9 +51,14 @@ class _ClientesListScreenState extends ConsumerState<ClientesListScreen> {
     super.dispose();
   }
 
+  // Tamaño base según haya búsqueda o no. Cuando hay search, el
+  // primer pintado y cada tap traen 200 — el cobrador no tiene que
+  // paginar adentro de su búsqueda salvo casos muy genéricos.
+  int get _baseSize => _query.isEmpty ? _kPageSize : _kSearchPageSize;
+
   void _onLoadMore() {
     setState(() {
-      _pageSize += _kPageSize;
+      _pageSize += _baseSize;
       _loadingMore = true;
     });
     _loadingMoreTimer?.cancel();
@@ -58,7 +68,7 @@ class _ClientesListScreenState extends ConsumerState<ClientesListScreen> {
   }
 
   void _resetPagination() {
-    _pageSize = _kPageSize;
+    _pageSize = _baseSize;
   }
 
   void _onSearchChanged(String value) {
