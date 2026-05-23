@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../data/repositories/settings_repo.dart';
 import '../../../data/utils/formatters.dart';
+import '../../../data/utils/validators.dart';
 import '../../../powersync/db.dart' as ps;
 import '../../shared/widgets/empty_state.dart';
 
@@ -389,7 +390,15 @@ class _Lista extends StatelessWidget {
       where.add(
           '(lower(c.nombre) LIKE ? OR lower(coalesce(c.cedula,\'\')) LIKE ? OR coalesce(c.telefono,\'\') LIKE ?)');
       final like = '%$query%';
-      params..add(like)..add(like)..add(like);
+      // Para el campo teléfono, sanitizamos el query a sólo dígitos.
+      // Razón: post-sprint del validator, los teléfonos se guardan sin
+      // espacios ni guiones (`+50588888888`). Si el user busca
+      // `"8888-8888"`, el LIKE raw no matchea. Strip a dígitos y matchea.
+      // Si el query no tiene dígitos, dejamos el like raw (no matchea
+      // teléfonos pero tampoco rompe nombre/cédula).
+      final digits = sanitizePhoneForWhatsApp(query);
+      final likeTelefono = digits.isEmpty ? like : '%$digits%';
+      params..add(like)..add(like)..add(likeTelefono);
     }
     if (cobradorFilter != null) {
       where.add('c.cobrador_id = ?');

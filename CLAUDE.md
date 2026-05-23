@@ -399,14 +399,6 @@ Estos viven acá hasta que se ataquen explícitamente. NO re-flag en audits.
       password aleatoria que nadie verá. Recuperable vía
       `forzar-password-cobrador`. Replicar el patrón `userIdParcial`
       outer-scope + cleanup de `crear-tenant` si vale el esfuerzo.
-- **Búsqueda por teléfono LIKE no normaliza el query**. Tras el fix del
-  validator de cliente, los nuevos teléfonos se guardan sin espacios ni
-  guiones (`"+50588888888"`). Pero el search en `clientes_admin_screen.dart:390`
-  y `clientes_list_screen.dart:204` usa `c.telefono LIKE '%query%'` sobre
-  el valor raw. Si el user busca `"8888-8888"`, no matchea clientes nuevos
-  (que están sin guión). Fix: aplicar `sanitizePhone(query)` antes del
-  LIKE, y también sanitizar el comparando con substring sobre la versión
-  ya limpia de la BD. Aplica especialmente al cobrador en campo.
 - **Validator de teléfono — extender el fix del cliente a otros 4 forms**.
   El sprint que arregló `cliente_form_screen.dart` (inputFormatters
   `[0-9+\s-]` + sanitizePhone al guardar) NO cubrió los otros forms con
