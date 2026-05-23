@@ -9,6 +9,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../../data/providers/cobrador_provider.dart';
+import '../../../data/providers/form_dirty_provider.dart';
 import '../../../data/services/foto_cliente_service.dart';
 import '../../../data/utils/validators.dart';
 import '../../../powersync/db.dart' as ps;
@@ -124,6 +125,11 @@ class _ClienteFormScreenState extends ConsumerState<ClienteFormScreen> {
 
   @override
   void dispose() {
+    // Reset defensivo del form_dirty_provider: el shell que watchea
+    // este provider no debe ver dirty=true tras desmontar el form,
+    // sino el próximo sidebar tap mostraría un dialog huérfano.
+    // Sync (antes de super.dispose) porque ref sigue válido acá.
+    ref.read(formDirtyProvider.notifier).state = false;
     _nombre.dispose();
     _cedula.dispose();
     _telefono.dispose();
@@ -247,6 +253,22 @@ class _ClienteFormScreenState extends ConsumerState<ClienteFormScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // Sync el dirty state al provider global para que el sidebar del
+    // shell pueda mostrar "¿Descartar cambios?" si el user toca un
+    // item de menú con cambios sin guardar (PopScope solo cubre pops,
+    // no `context.go` del go_router).
+    //
+    // Condicional para no schedular un postFrameCallback en cada
+    // keystroke cuando _dirty ya está en true. Post-frame porque
+    // setear el state notifica listeners; durante build no se permite.
+    if (ref.read(formDirtyProvider) != _dirty) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          ref.read(formDirtyProvider.notifier).state = _dirty;
+        }
+      });
+    }
+
     if (_cargando) {
       return const Center(child: CircularProgressIndicator());
     }
