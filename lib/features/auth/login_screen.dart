@@ -32,6 +32,11 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   final _pass = TextEditingController();
   _Modo _modo = _Modo.login;
   bool _busy = false;
+  // Toggle de visibilidad del campo Contraseña. Default false (oculto)
+  // para no exponer la password a quien mire por arriba del hombro;
+  // el icono del eye permite revelar cuando el user pega de clipboard
+  // y quiere verificar typos.
+  bool _passwordVisible = false;
   String? _error;
   String? _info;
 
@@ -287,11 +292,21 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   const SizedBox(height: 12),
                   TextField(
                     controller: _pass,
-                    obscureText: true,
+                    obscureText: !_passwordVisible,
                     autofillHints: const [AutofillHints.password],
-                    decoration: const InputDecoration(
+                    decoration: InputDecoration(
                       labelText: 'Contraseña',
-                      border: OutlineInputBorder(),
+                      border: const OutlineInputBorder(),
+                      suffixIcon: IconButton(
+                        icon: Icon(_passwordVisible
+                            ? Icons.visibility_off_outlined
+                            : Icons.visibility_outlined),
+                        tooltip: _passwordVisible
+                            ? 'Ocultar contraseña'
+                            : 'Mostrar contraseña',
+                        onPressed: () => setState(
+                            () => _passwordVisible = !_passwordVisible),
+                      ),
                     ),
                   ),
                 ],
