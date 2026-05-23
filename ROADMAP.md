@@ -12,11 +12,10 @@ hasta producción general y features comerciales.
 - Cuando se cierra un bulk entero, se hace audit ligero + smoke test
   del flow que ese bulk debería habilitar.
 
-**Estado actual**: BULK 1 parcialmente completado (2/3 sprints, Sprint 1
-en pausa esperando repro). BULK 2 completado (8/9 sprints, 1 skippeado).
-Sesión inicial (2026-05-22) entregó 34 PRs de infraestructura previa.
-Sesión 2 (2026-05-23) entregó 5 PRs (#36-#40) con paginación, PopScope
-sidebar, documentación (STACK.md), y BULK 2 completo.
+**Estado actual**: BULKs 1-3 completados (BULK 1 Sprint 1 sync gate en
+pausa esperando repro). Sesión inicial (2026-05-22) entregó 34 PRs de
+infraestructura previa. Sesión 2 (2026-05-23) entregó 8 PRs (#36-#43)
+con BULKs 1-3 completos + audit retroactivo de seguridad.
 
 ---
 
@@ -104,21 +103,23 @@ Refinarlo aumenta utilidad de soporte cuando haya clientes reales.
 
 | Sprint | Tiempo | Criterio de éxito | PR |
 |---|---|---|---|
-| Paginación viewer `/super/logs` | 1-2h | Cursor / "Cargar más" cuando hay >100 logs | — |
-| Retention policy | 2h | Cron diario purga logs >90 días + RPC `purge_error_logs` | — |
-| Rate limit en cliente | 1h | Max 1 entry / 5s por mensaje similar (anti crash-loop floods) | — |
-| Índice por `error_type` en BD | 30 min | `CREATE INDEX` en migración | — |
-| Debounce search en viewer | 30 min | 400ms onChanged en vez de onSubmitted | — |
-| Capturar user_agent del browser | 30 min | `package:web` o equivalente | — |
-| OfflineBanner — indicador red inestable | 1-2h | Sutil ícono en topbar con N flickers en M segundos | — |
-| OfflineBanner — botón Reintentar | 30 min | `disconnect+connect` igual que SyncGate retry | — |
-| OfflineBanner — AnimatedSwitcher fade | 15 min | Fade-in 150ms en vez de pop | — |
-| Onboarding wizard PopScope guard | 1-2h | Salir del wizard a medio llenar pregunta "¿Descartar?" | — |
+| Paginación viewer `/super/logs` | 1-2h | Cursor / "Cargar más" cuando hay >100 logs | ✅ PR #42 |
+| Retention policy | 2h | Cron diario purga logs >90 días + RPC `purge_error_logs` | ✅ PR #42 (migración 0037) |
+| Rate limit en cliente | 1h | Max 1 entry / 5s por mensaje similar (anti crash-loop floods) | ✅ PR #42 |
+| Índice por `error_type` en BD | 30 min | `CREATE INDEX` en migración | ✅ PR #42 (migración 0037) |
+| Debounce search en viewer | 30 min | 400ms onChanged en vez de onSubmitted | ✅ PR #42 |
+| Capturar user_agent del browser | 30 min | `package:web` o equivalente | ✅ PR #42 (Flutter Web/platform) |
+| OfflineBanner — indicador red inestable | 1-2h | Sutil ícono en topbar con N flickers en M segundos | ✅ PR #42 |
+| OfflineBanner — botón Reintentar | 30 min | `disconnect+connect` igual que SyncGate retry | ✅ PR #42 |
+| OfflineBanner — AnimatedSwitcher fade | 15 min | Fade-in 150ms en vez de pop | ✅ PR #42 |
+| Onboarding wizard PopScope guard | 1-2h | Salir del wizard a medio llenar pregunta "¿Descartar?" | ✅ PR #42 |
 
-**Tiempo total**: ~8-11h (2-3 sesiones).
+**Tiempo total**: ~8-11h (2-3 sesiones). **Completado en 1 sesión.**
 
-**Validación**: simular 200+ logs en BD, viewer pagina. Disparar 5
-flickers de red → indicador "red inestable" aparece.
+**Validación**: migraciones 0037+0038 deployadas. 6 Edge Functions
+redeployadas. Audit retroactivo de seguridad aplicado (PR #43):
+user enumeration cerrado, crear-tenant migrado a RPC, error fallback
+sanitizado.
 
 ---
 
@@ -314,3 +315,16 @@ Cada bulk se trata como mini-roadmap dentro de su(s) sesión(es):
   - Auth listener cleanup: _authSub global cancelada en hot restart.
   - Broadcast replay: FotoComprobanteService replaya último UploadResult.
   - 6 Edge Functions deployadas via CLI en producción.
+- BULK 3 completo (PR #42): observability hardening.
+  - Paginación /super/logs con "Cargar más" (LIMIT 50).
+  - Migración 0037: índices error_type + ts + RPC purge_error_logs.
+  - Rate limit 5s en ErrorLogService (anti crash-loop).
+  - Debounce 400ms en búsqueda de logs.
+  - User agent capturado (Flutter Web/platform).
+  - OfflineBanner: AnimatedSwitcher fade + botón Reintentar + indicador
+    "Red inestable" (3+ flickers en 30s → strip amber).
+  - Onboarding wizard con PopScope + formDirtyProvider.
+- Audit retroactivo de seguridad (PR #43):
+  - Migración 0038: REVOKE check_email_exists_in_auth de public.
+  - crear-tenant migrado de listUsers a RPC (3/3 callsites consistentes).
+  - humanizeAuthError fallback sanitizado (no raw errors al cliente).
