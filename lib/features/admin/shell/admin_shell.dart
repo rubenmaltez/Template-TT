@@ -401,9 +401,13 @@ class _AdminDrawer extends ConsumerWidget {
     final cobrador = ref.watch(cobradorActualProvider).valueOrNull;
     final tieneAccesoAdmin = cobrador?.tieneAccesoAdmin ?? false;
     final esSuperAdmin = cobrador?.esSuperAdmin ?? false;
+    final impersonating =
+        ref.watch(impersonatedTenantIdProvider).valueOrNull != null;
     final items = _adminMenu
         .where((m) => _menuVisible(m,
-            esSuperAdmin: esSuperAdmin, tieneAccesoAdmin: tieneAccesoAdmin))
+            esSuperAdmin: esSuperAdmin,
+            tieneAccesoAdmin: tieneAccesoAdmin,
+            impersonating: impersonating))
         .toList();
 
     return Drawer(

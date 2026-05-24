@@ -144,7 +144,7 @@ class _CuotasListState extends State<_CuotasList> {
           padding: const EdgeInsets.only(bottom: 80),
           itemCount: rows.length,
           separatorBuilder: (_, __) => const Divider(height: 1, indent: 72),
-          itemBuilder: (_, i) => _CuotaListTile(row: rows[i], diasGracia: diasGracia),
+          itemBuilder: (_, i) => _CuotaListTile(row: rows[i], diasGracia: widget.diasGracia),
         );
       },
     );
