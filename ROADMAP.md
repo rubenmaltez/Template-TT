@@ -12,11 +12,11 @@ hasta producción general y features comerciales.
 - Cuando se cierra un bulk entero, se hace audit ligero + smoke test
   del flow que ese bulk debería habilitar.
 
-**Estado actual**: BULKs 1-6 completados. E2E validado end-to-end
-(crear ISP → cobro → recibo). 5 bugs encontrados, 2 HIGH blockers
-para piloto (sync gate stuck + CRUD rejection silenciosa).
+**Estado actual**: BULKs 1-8 completados. Windows installer funcionando.
+E2E validado. 5 bugs fixeados. Producto listo para ISP piloto.
 Sesión inicial (2026-05-22): 34 PRs infraestructura.
-Sesión 2 (2026-05-23/24): 15 PRs (#36-#50) BULKs 1-6 + E2E.
+Sesión 2 (2026-05-23/24): 24 PRs (#36-#59) BULKs 1-8 + E2E + installer.
+BULK 9 planificado: refactor UI/UX post-feedback del piloto.
 
 ---
 
@@ -381,3 +381,17 @@ Cada bulk se trata como mini-roadmap dentro de su(s) sesión(es):
     5. Cobro > saldo: validator rechaza pero botón parece enabled (UX).
   - Backlog UX: vuelto en recibo, prefijo recibo workflow, onboarding
     wizard review, banner threshold.
+- BULK 7 completo (PRs #52, #53): bug fixes E2E + Windows installer.
+  - 5 bugs E2E fixeados: sync gate 2s margen, CRUD rejection no-retryable,
+    dropdown guard, onboarding listeners, contrato sin cobrador guard.
+  - Windows build: .exe + .msix generados y testeados.
+  - UpdateService + UpdateBanner para updates in-app.
+  - MSIX config + certificado self-signed.
+- BULK 8 completo (PRs #54-#59): features pre-piloto.
+  - Vuelto en recibo: sobrepago permitido, "VUELTO" en resumen + recibo
+    con saldo ajustado (incluyendo cargos_neto).
+  - Prefijo recibo auto-generado al invitar cobrador.
+  - 3 reportes PDF nuevos: por cobrador, estado clientes, estado cuenta.
+  - Mora cobrador: badge sidebar + ruta del día + auto-marcar vista.
+  - UX batch: flicker threshold 5, redirect post-impersonate.
+  - Audit fixes: vuelto con cargos, prefijo empty guard.

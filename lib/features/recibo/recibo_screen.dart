@@ -193,6 +193,40 @@ class _ReciboTicket extends StatelessWidget {
                 ),
               ],
             ),
+            // Vuelto: si el monto pagado excede el saldo real de la cuota
+            // (monto + cargos - ya pagado), mostrar la diferencia como
+            // vuelto. Usa saldo ajustado (no cuota_monto base) para
+            // que cargos extra no distorsionen el cálculo.
+            Builder(builder: (_) {
+              final montoPagado = (row['monto_cordobas'] as num).toDouble();
+              final cuotaBase = (row['cuota_monto'] as num).toDouble();
+              final cargosNeto = (row['cargos_neto'] as num?)?.toDouble() ?? 0;
+              final saldoTotal = cuotaBase + cargosNeto;
+              final vuelto = montoPagado - saldoTotal;
+              if (vuelto <= 0.01) return const SizedBox.shrink();
+              return Padding(
+                padding: const EdgeInsets.only(top: 4),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text('VUELTO',
+                        style: TextStyle(
+                          fontWeight: FontWeight.w600,
+                          fontSize: 13,
+                          color: Theme.of(context).colorScheme.primary,
+                        )),
+                    Text(
+                      Fmt.cordobas(vuelto),
+                      style: TextStyle(
+                        fontWeight: FontWeight.w600,
+                        fontSize: 13,
+                        color: Theme.of(context).colorScheme.primary,
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            }),
 
             if (settings.pieRecibo.isNotEmpty) ...[
               const Divider(),
