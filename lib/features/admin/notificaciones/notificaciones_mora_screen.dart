@@ -21,6 +21,33 @@ class NotificacionesMoraScreen extends ConsumerStatefulWidget {
 class _NotificacionesMoraScreenState
     extends ConsumerState<NotificacionesMoraScreen> {
   bool _soloPendientes = true;
+  late Stream<List<Map<String, dynamic>>> _notificacionesStream;
+
+  @override
+  void initState() {
+    super.initState();
+    _buildStream();
+  }
+
+  void _buildStream() {
+    _notificacionesStream = ps.db.watch(
+      '''
+      SELECT n.id, n.cuota_id, n.cliente_id, n.cobrador_id,
+             n.dias_mora, n.monto_adeudado, n.generada_en,
+             n.vista_en, n.resuelta_en,
+             c.nombre AS cliente_nombre, c.telefono,
+             co.nombre AS cobrador_nombre,
+             cu.fecha_vencimiento, cu.estado AS cuota_estado
+        FROM notificaciones_mora n
+        JOIN clientes c ON c.id = n.cliente_id
+        JOIN cuotas cu ON cu.id = n.cuota_id
+   LEFT JOIN cobradores co ON co.id = n.cobrador_id
+       ${_soloPendientes ? 'WHERE n.resuelta_en IS NULL' : ''}
+       ORDER BY n.dias_mora DESC, n.generada_en DESC
+       LIMIT 200
+      ''',
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -33,30 +60,17 @@ class _NotificacionesMoraScreenState
               FilterChip(
                 label: const Text('Sólo no resueltas'),
                 selected: _soloPendientes,
-                onSelected: (v) => setState(() => _soloPendientes = v),
+                onSelected: (v) => setState(() {
+                  _soloPendientes = v;
+                  _buildStream();
+                }),
               ),
             ],
           ),
         ),
         Expanded(
           child: StreamBuilder(
-            stream: ps.db.watch(
-              '''
-              SELECT n.id, n.cuota_id, n.cliente_id, n.cobrador_id,
-                     n.dias_mora, n.monto_adeudado, n.generada_en,
-                     n.vista_en, n.resuelta_en,
-                     c.nombre AS cliente_nombre, c.telefono,
-                     co.nombre AS cobrador_nombre,
-                     cu.fecha_vencimiento, cu.estado AS cuota_estado
-                FROM notificaciones_mora n
-                JOIN clientes c ON c.id = n.cliente_id
-                JOIN cuotas cu ON cu.id = n.cuota_id
-           LEFT JOIN cobradores co ON co.id = n.cobrador_id
-               ${_soloPendientes ? 'WHERE n.resuelta_en IS NULL' : ''}
-               ORDER BY n.dias_mora DESC, n.generada_en DESC
-               LIMIT 200
-              ''',
-            ),
+            stream: _notificacionesStream,
             builder: (context, snap) {
               if (!snap.hasData) {
                 return const Center(child: CircularProgressIndicator());

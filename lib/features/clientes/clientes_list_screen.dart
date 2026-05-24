@@ -175,31 +175,45 @@ class _FiltersRow extends StatelessWidget {
   }
 }
 
-class _ComunidadChip extends StatelessWidget {
+class _ComunidadChip extends StatefulWidget {
   const _ComunidadChip({required this.seleccionada, required this.onChanged});
   final String? seleccionada;
   final ValueChanged<String?> onChanged;
 
   @override
+  State<_ComunidadChip> createState() => _ComunidadChipState();
+}
+
+class _ComunidadChipState extends State<_ComunidadChip> {
+  /// Stream cacheado — query fija, no depende de props.
+  late final Stream<List<Map<String, dynamic>>> _comunidadesStream;
+
+  @override
+  void initState() {
+    super.initState();
+    _comunidadesStream = ps.db.watch(
+      '''
+      SELECT co.id, co.nombre, m.nombre AS municipio
+        FROM comunidades co
+        JOIN municipios m ON m.id = co.municipio_id
+       WHERE co.id IN (
+         SELECT DISTINCT comunidad_id FROM clientes WHERE comunidad_id IS NOT NULL
+       )
+       ORDER BY m.nombre, co.nombre
+      ''',
+    );
+  }
+
+  @override
   Widget build(BuildContext context) {
     return StreamBuilder(
-      stream: ps.db.watch(
-        '''
-        SELECT co.id, co.nombre, m.nombre AS municipio
-          FROM comunidades co
-          JOIN municipios m ON m.id = co.municipio_id
-         WHERE co.id IN (
-           SELECT DISTINCT comunidad_id FROM clientes WHERE comunidad_id IS NOT NULL
-         )
-         ORDER BY m.nombre, co.nombre
-        ''',
-      ),
+      stream: _comunidadesStream,
       builder: (context, snap) {
         final rows = snap.data ?? const [];
-        final label = seleccionada == null
+        final label = widget.seleccionada == null
             ? 'Comunidad'
             : (rows.firstWhere(
-                  (r) => r['id'] == seleccionada,
+                  (r) => r['id'] == widget.seleccionada,
                   orElse: () => {'nombre': 'Comunidad'},
                 )['nombre'] as String);
         return ActionChip(
@@ -229,7 +243,7 @@ class _ComunidadChip extends StatelessWidget {
               ),
             );
             // ignore: use_build_context_synchronously
-            onChanged(picked);
+            widget.onChanged(picked);
           },
         );
       },

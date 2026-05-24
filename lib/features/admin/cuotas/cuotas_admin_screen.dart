@@ -21,25 +21,15 @@ class _CuotasAdminScreenState extends ConsumerState<CuotasAdminScreen> {
   String _query = '';
   String _estado = 'todas'; // todas / pendiente / parcial / pagada / anulada
   Timer? _debounce;
+  late Stream<List<Map<String, dynamic>>> _cuotasStream;
 
   @override
-  void dispose() {
-    _searchCtrl.dispose();
-    _debounce?.cancel();
-    super.dispose();
+  void initState() {
+    super.initState();
+    _cuotasStream = _buildStream();
   }
 
-  void _onSearch(String v) {
-    _debounce?.cancel();
-    _debounce = Timer(const Duration(milliseconds: 250), () {
-      if (mounted) setState(() => _query = v.trim().toLowerCase());
-    });
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final diasGracia = ref.watch(appSettingsProvider).diasGracia;
-
+  Stream<List<Map<String, dynamic>>> _buildStream() {
     final where = <String>[];
     final params = <Object?>[];
     if (_query.isNotEmpty) {
@@ -51,6 +41,46 @@ class _CuotasAdminScreenState extends ConsumerState<CuotasAdminScreen> {
       params.add(_estado);
     }
     final whereSql = where.isEmpty ? '' : 'WHERE ${where.join(' AND ')}';
+
+    return ps.db.watch(
+      '''
+      SELECT cu.*, c.nombre AS cliente, p.nombre AS plan,
+             co.nombre AS cobrador
+        FROM cuotas cu
+        JOIN clientes c ON c.id = cu.cliente_id
+        JOIN contratos ct ON ct.id = cu.contrato_id
+        JOIN planes p ON p.id = ct.plan_id
+   LEFT JOIN cobradores co ON co.id = cu.cobrador_id
+       $whereSql
+       ORDER BY cu.fecha_vencimiento DESC, c.nombre
+       LIMIT 300
+      ''',
+      parameters: params,
+    );
+  }
+
+  @override
+  void dispose() {
+    _searchCtrl.dispose();
+    _debounce?.cancel();
+    super.dispose();
+  }
+
+  void _onSearch(String v) {
+    _debounce?.cancel();
+    _debounce = Timer(const Duration(milliseconds: 250), () {
+      if (mounted) {
+        setState(() {
+          _query = v.trim().toLowerCase();
+          _cuotasStream = _buildStream();
+        });
+      }
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final diasGracia = ref.watch(appSettingsProvider).diasGracia;
 
     return Column(
       children: [
@@ -74,7 +104,10 @@ class _CuotasAdminScreenState extends ConsumerState<CuotasAdminScreen> {
                 ChoiceChip(
                   label: Text(e[0].toUpperCase() + e.substring(1)),
                   selected: _estado == e,
-                  onSelected: (_) => setState(() => _estado = e),
+                  onSelected: (_) => setState(() {
+                    _estado = e;
+                    _cuotasStream = _buildStream();
+                  }),
                 ),
                 const SizedBox(width: 8),
               ],
@@ -83,21 +116,7 @@ class _CuotasAdminScreenState extends ConsumerState<CuotasAdminScreen> {
         ),
         Expanded(
           child: StreamBuilder(
-            stream: ps.db.watch(
-              '''
-              SELECT cu.*, c.nombre AS cliente, p.nombre AS plan,
-                     co.nombre AS cobrador
-                FROM cuotas cu
-                JOIN clientes c ON c.id = cu.cliente_id
-                JOIN contratos ct ON ct.id = cu.contrato_id
-                JOIN planes p ON p.id = ct.plan_id
-           LEFT JOIN cobradores co ON co.id = cu.cobrador_id
-               $whereSql
-               ORDER BY cu.fecha_vencimiento DESC, c.nombre
-               LIMIT 300
-              ''',
-              parameters: params,
-            ),
+            stream: _cuotasStream,
             builder: (context, snap) {
               if (!snap.hasData) {
                 return const Center(child: CircularProgressIndicator());

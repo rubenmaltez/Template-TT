@@ -17,6 +17,37 @@ class ContratosAdminScreen extends ConsumerStatefulWidget {
 
 class _ContratosAdminScreenState extends ConsumerState<ContratosAdminScreen> {
   bool _soloActivos = true;
+  late Stream<List<Map<String, dynamic>>> _contratosStream;
+
+  @override
+  void initState() {
+    super.initState();
+    _contratosStream = _buildStream();
+  }
+
+  Stream<List<Map<String, dynamic>>> _buildStream() {
+    return ps.db.watch(
+      '''
+      SELECT ct.id, ct.dia_pago, ct.fecha_inicio, ct.fecha_fin,
+             ct.activo,
+             c.id AS cliente_id, c.nombre AS cliente,
+             p.nombre AS plan, p.precio_mensual,
+             co.nombre AS cobrador,
+             COUNT(cu.id) AS total_cuotas,
+             COUNT(cu.id) FILTER (WHERE cu.estado = 'pagada') AS cuotas_pagadas
+        FROM contratos ct
+        JOIN clientes c   ON c.id = ct.cliente_id
+        JOIN planes   p   ON p.id = ct.plan_id
+   LEFT JOIN cobradores co ON co.id = ct.cobrador_id
+   LEFT JOIN cuotas    cu ON cu.contrato_id = ct.id
+       WHERE ${_soloActivos ? 'ct.activo = 1' : '1=1'}
+       GROUP BY ct.id, ct.dia_pago, ct.fecha_inicio, ct.fecha_fin,
+                ct.activo, c.id, c.nombre, p.nombre, p.precio_mensual,
+                co.nombre
+       ORDER BY ct.activo DESC, c.nombre
+      ''',
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -29,7 +60,10 @@ class _ContratosAdminScreenState extends ConsumerState<ContratosAdminScreen> {
               FilterChip(
                 label: const Text('Solo activos'),
                 selected: _soloActivos,
-                onSelected: (v) => setState(() => _soloActivos = v),
+                onSelected: (v) => setState(() {
+                  _soloActivos = v;
+                  _contratosStream = _buildStream();
+                }),
               ),
               const Spacer(),
               FilledButton.icon(
@@ -42,27 +76,7 @@ class _ContratosAdminScreenState extends ConsumerState<ContratosAdminScreen> {
         ),
         Expanded(
           child: StreamBuilder(
-            stream: ps.db.watch(
-              '''
-              SELECT ct.id, ct.dia_pago, ct.fecha_inicio, ct.fecha_fin,
-                     ct.activo,
-                     c.id AS cliente_id, c.nombre AS cliente,
-                     p.nombre AS plan, p.precio_mensual,
-                     co.nombre AS cobrador,
-                     COUNT(cu.id) AS total_cuotas,
-                     COUNT(cu.id) FILTER (WHERE cu.estado = 'pagada') AS cuotas_pagadas
-                FROM contratos ct
-                JOIN clientes c   ON c.id = ct.cliente_id
-                JOIN planes   p   ON p.id = ct.plan_id
-           LEFT JOIN cobradores co ON co.id = ct.cobrador_id
-           LEFT JOIN cuotas    cu ON cu.contrato_id = ct.id
-               WHERE ${_soloActivos ? 'ct.activo = 1' : '1=1'}
-               GROUP BY ct.id, ct.dia_pago, ct.fecha_inicio, ct.fecha_fin,
-                        ct.activo, c.id, c.nombre, p.nombre, p.precio_mensual,
-                        co.nombre
-               ORDER BY ct.activo DESC, c.nombre
-              ''',
-            ),
+            stream: _contratosStream,
             builder: (context, snap) {
               if (!snap.hasData) {
                 return const Center(child: CircularProgressIndicator());

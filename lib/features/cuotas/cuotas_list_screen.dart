@@ -56,14 +56,37 @@ class _CuotasListScreenState extends ConsumerState<CuotasListScreen> {
       };
 }
 
-class _CuotasList extends StatelessWidget {
+class _CuotasList extends StatefulWidget {
   const _CuotasList({required this.filtro, required this.diasGracia});
   final _Filtro filtro;
   final int diasGracia;
 
   @override
-  Widget build(BuildContext context) {
-    final (String extra, List<Object?> params) = switch (filtro) {
+  State<_CuotasList> createState() => _CuotasListState();
+}
+
+class _CuotasListState extends State<_CuotasList> {
+  // Cacheamos el stream de PowerSync en initState para evitar que cada
+  // rebuild cree una nueva suscripción (anti-patrón ps.db.watch inline).
+  // El stream se recrea en didUpdateWidget cuando cambian filtro o diasGracia.
+  late Stream<List<Map<String, dynamic>>> _cuotasStream;
+
+  @override
+  void initState() {
+    super.initState();
+    _cuotasStream = _buildStream();
+  }
+
+  @override
+  void didUpdateWidget(_CuotasList old) {
+    super.didUpdateWidget(old);
+    if (old.filtro != widget.filtro || old.diasGracia != widget.diasGracia) {
+      setState(() => _cuotasStream = _buildStream());
+    }
+  }
+
+  Stream<List<Map<String, dynamic>>> _buildStream() {
+    final (String extra, List<Object?> params) = switch (widget.filtro) {
       _Filtro.todas => (
           "AND cu.estado IN ('pendiente','parcial')",
           <Object?>[],
@@ -71,13 +94,13 @@ class _CuotasList extends StatelessWidget {
       _Filtro.mora => (
           "AND cu.estado IN ('pendiente','parcial') "
               "AND date(cu.fecha_vencimiento, '+' || ? || ' days') < date('now')",
-          <Object?>[diasGracia],
+          <Object?>[widget.diasGracia],
         ),
       _Filtro.gracia => (
           "AND cu.estado IN ('pendiente','parcial') "
               "AND cu.fecha_vencimiento < date('now') "
               "AND date(cu.fecha_vencimiento, '+' || ? || ' days') >= date('now')",
-          <Object?>[diasGracia],
+          <Object?>[widget.diasGracia],
         ),
       _Filtro.parciales => ("AND cu.estado = 'parcial'", <Object?>[]),
       _Filtro.hoy => (
@@ -100,8 +123,13 @@ class _CuotasList extends StatelessWidget {
        ORDER BY cu.fecha_vencimiento ASC, c.nombre
     ''';
 
+    return ps.db.watch(sql, parameters: params);
+  }
+
+  @override
+  Widget build(BuildContext context) {
     return StreamBuilder(
-      stream: ps.db.watch(sql, parameters: params),
+      stream: _cuotasStream,
       builder: (context, snap) {
         if (!snap.hasData) return const Center(child: CircularProgressIndicator());
         final rows = snap.data!;

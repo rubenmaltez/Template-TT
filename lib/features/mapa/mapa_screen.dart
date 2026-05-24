@@ -10,15 +10,22 @@ import '../shared/widgets/empty_state.dart';
 
 /// Mapa de clientes con flutter_map + OpenStreetMap (sin API key).
 /// Marcador coloreado según estado de cobranza.
-class MapaScreen extends ConsumerWidget {
+class MapaScreen extends ConsumerStatefulWidget {
   const MapaScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final diasGracia = ref.watch(appSettingsProvider).diasGracia;
+  ConsumerState<MapaScreen> createState() => _MapaScreenState();
+}
 
-    return StreamBuilder(
-      stream: ps.db.watch(
+class _MapaScreenState extends ConsumerState<MapaScreen> {
+  // Cacheamos el stream de PowerSync en initState para evitar que cada
+  // rebuild cree una nueva suscripción (anti-patrón ps.db.watch inline).
+  // Se recrea cuando diasGracia cambia.
+  late Stream<List<Map<String, dynamic>>> _clientesStream;
+  int? _lastDiasGracia;
+
+  Stream<List<Map<String, dynamic>>> _buildStream(int diasGracia) =>
+      ps.db.watch(
         '''
         SELECT c.id, c.nombre, c.latitud, c.longitud,
                COUNT(cu.id) FILTER (WHERE cu.estado IN ('pendiente','parcial')) AS pendientes,
@@ -34,7 +41,20 @@ class MapaScreen extends ConsumerWidget {
          GROUP BY c.id, c.nombre, c.latitud, c.longitud
         ''',
         parameters: [diasGracia],
-      ),
+      );
+
+  @override
+  Widget build(BuildContext context) {
+    final diasGracia = ref.watch(appSettingsProvider).diasGracia;
+
+    // Recrea el stream si diasGracia cambió (o en el primer build).
+    if (_lastDiasGracia != diasGracia) {
+      _lastDiasGracia = diasGracia;
+      _clientesStream = _buildStream(diasGracia);
+    }
+
+    return StreamBuilder(
+      stream: _clientesStream,
       builder: (context, snap) {
         if (!snap.hasData) {
           return const Center(child: CircularProgressIndicator());

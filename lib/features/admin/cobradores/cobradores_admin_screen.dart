@@ -20,8 +20,40 @@ import '../../shared/widgets/phone_text_field.dart';
 /// Supabase Dashboard; cuando el cobrador se logea por primera vez
 /// (después de que el trigger de Supabase cree su fila en cobradores
 /// vía una Edge Function pendiente), aparece acá para configurar.
-class CobradoresAdminScreen extends ConsumerWidget {
+class CobradoresAdminScreen extends ConsumerStatefulWidget {
   const CobradoresAdminScreen({super.key});
+
+  @override
+  ConsumerState<CobradoresAdminScreen> createState() =>
+      _CobradoresAdminScreenState();
+}
+
+class _CobradoresAdminScreenState
+    extends ConsumerState<CobradoresAdminScreen> {
+  late final Stream<List<Map<String, dynamic>>> _cobradoresStream;
+
+  @override
+  void initState() {
+    super.initState();
+    // Subqueries en SELECT evitan el producto cartesiano que tendrían
+    // dos LEFT JOINs (clientes × pagos) sobre el mismo cobrador.
+    _cobradoresStream = ps.db.watch(
+      '''
+      SELECT co.id, co.nombre, co.telefono, co.rol,
+             co.prefijo_recibo, co.activo,
+             (SELECT COUNT(*) FROM clientes
+               WHERE cobrador_id = co.id AND activo = 1
+             ) AS clientes_asignados,
+             (SELECT COALESCE(SUM(monto_cordobas), 0) FROM pagos
+               WHERE cobrador_id = co.id
+                 AND anulado = 0
+                 AND date(fecha_pago) >= date('now', 'start of month')
+             ) AS cobrado_mes
+        FROM cobradores co
+       ORDER BY co.activo DESC, co.rol, co.nombre
+      ''',
+    );
+  }
 
   Future<void> _abrirInvitar(BuildContext context) async {
     await showDialog<void>(
@@ -31,26 +63,9 @@ class CobradoresAdminScreen extends ConsumerWidget {
   }
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  Widget build(BuildContext context) {
     return StreamBuilder(
-      stream: ps.db.watch(
-        // Subqueries en SELECT evitan el producto cartesiano que tendrían
-        // dos LEFT JOINs (clientes × pagos) sobre el mismo cobrador.
-        '''
-        SELECT co.id, co.nombre, co.telefono, co.rol,
-               co.prefijo_recibo, co.activo,
-               (SELECT COUNT(*) FROM clientes
-                 WHERE cobrador_id = co.id AND activo = 1
-               ) AS clientes_asignados,
-               (SELECT COALESCE(SUM(monto_cordobas), 0) FROM pagos
-                 WHERE cobrador_id = co.id
-                   AND anulado = 0
-                   AND date(fecha_pago) >= date('now', 'start of month')
-               ) AS cobrado_mes
-          FROM cobradores co
-         ORDER BY co.activo DESC, co.rol, co.nombre
-        ''',
-      ),
+      stream: _cobradoresStream,
       builder: (context, snap) {
         if (!snap.hasData) {
           return const Center(child: CircularProgressIndicator());

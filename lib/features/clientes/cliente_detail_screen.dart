@@ -181,10 +181,45 @@ class _ClienteInfo extends StatelessWidget {
   }
 }
 
-class _CuotasSection extends StatelessWidget {
+class _CuotasSection extends StatefulWidget {
   const _CuotasSection({required this.clienteId, required this.diasGracia});
   final String clienteId;
   final int diasGracia;
+
+  @override
+  State<_CuotasSection> createState() => _CuotasSectionState();
+}
+
+class _CuotasSectionState extends State<_CuotasSection> {
+  late Stream<List<Map<String, dynamic>>> _cuotasStream;
+
+  @override
+  void initState() {
+    super.initState();
+    _cuotasStream = _buildStream();
+  }
+
+  @override
+  void didUpdateWidget(covariant _CuotasSection old) {
+    super.didUpdateWidget(old);
+    if (widget.clienteId != old.clienteId) {
+      setState(() => _cuotasStream = _buildStream());
+    }
+  }
+
+  Stream<List<Map<String, dynamic>>> _buildStream() {
+    return ps.db.watch(
+      '''
+      SELECT cu.*, p.nombre AS plan_nombre, p.precio_mensual
+        FROM cuotas cu
+        LEFT JOIN contratos ct ON ct.id = cu.contrato_id
+        LEFT JOIN planes p     ON p.id = ct.plan_id
+       WHERE cu.cliente_id = ?
+       ORDER BY cu.periodo DESC
+      ''',
+      parameters: [widget.clienteId],
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -192,17 +227,7 @@ class _CuotasSection extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
       child: Card(
         child: StreamBuilder(
-          stream: ps.db.watch(
-            '''
-            SELECT cu.*, p.nombre AS plan_nombre, p.precio_mensual
-              FROM cuotas cu
-              LEFT JOIN contratos ct ON ct.id = cu.contrato_id
-              LEFT JOIN planes p     ON p.id = ct.plan_id
-             WHERE cu.cliente_id = ?
-             ORDER BY cu.periodo DESC
-            ''',
-            parameters: [clienteId],
-          ),
+          stream: _cuotasStream,
           builder: (context, snap) {
             final rows = snap.data ?? const [];
             if (rows.isEmpty) {
@@ -225,7 +250,7 @@ class _CuotasSection extends StatelessWidget {
                   return _CuotaTile(
                     cuota: cuota,
                     planNombre: r['plan_nombre'] as String?,
-                    diasGracia: diasGracia,
+                    diasGracia: widget.diasGracia,
                   );
                 }),
                 const SizedBox(height: 8),
@@ -302,9 +327,46 @@ class _CuotaTile extends StatelessWidget {
   }
 }
 
-class _PagosSection extends StatelessWidget {
+class _PagosSection extends StatefulWidget {
   const _PagosSection({required this.clienteId});
   final String clienteId;
+
+  @override
+  State<_PagosSection> createState() => _PagosSectionState();
+}
+
+class _PagosSectionState extends State<_PagosSection> {
+  late Stream<List<Map<String, dynamic>>> _pagosStream;
+
+  @override
+  void initState() {
+    super.initState();
+    _pagosStream = _buildStream();
+  }
+
+  @override
+  void didUpdateWidget(covariant _PagosSection old) {
+    super.didUpdateWidget(old);
+    if (widget.clienteId != old.clienteId) {
+      setState(() => _pagosStream = _buildStream());
+    }
+  }
+
+  Stream<List<Map<String, dynamic>>> _buildStream() {
+    return ps.db.watch(
+      '''
+      SELECT p.id, p.monto_cordobas, p.moneda, p.monto_original,
+             p.metodo, p.fecha_pago, p.referencia,
+             cu.periodo
+        FROM pagos p
+        JOIN cuotas cu ON cu.id = p.cuota_id
+       WHERE cu.cliente_id = ?
+       ORDER BY p.fecha_pago DESC
+       LIMIT 10
+      ''',
+      parameters: [widget.clienteId],
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -312,19 +374,7 @@ class _PagosSection extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
       child: Card(
         child: StreamBuilder(
-          stream: ps.db.watch(
-            '''
-            SELECT p.id, p.monto_cordobas, p.moneda, p.monto_original,
-                   p.metodo, p.fecha_pago, p.referencia,
-                   cu.periodo
-              FROM pagos p
-              JOIN cuotas cu ON cu.id = p.cuota_id
-             WHERE cu.cliente_id = ?
-             ORDER BY p.fecha_pago DESC
-             LIMIT 10
-            ''',
-            parameters: [clienteId],
-          ),
+          stream: _pagosStream,
           builder: (context, snap) {
             final rows = snap.data ?? const [];
             if (rows.isEmpty) return const SizedBox.shrink();

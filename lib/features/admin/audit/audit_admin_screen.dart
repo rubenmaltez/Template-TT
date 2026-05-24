@@ -14,6 +14,7 @@ class AuditAdminScreen extends StatefulWidget {
 
 class _AuditAdminScreenState extends State<AuditAdminScreen> {
   String? _filtroTabla; // null = todas
+  late Stream<List<Map<String, dynamic>>> _auditStream;
 
   static const _tablas = [
     'settings',
@@ -24,10 +25,32 @@ class _AuditAdminScreenState extends State<AuditAdminScreen> {
   ];
 
   @override
-  Widget build(BuildContext context) {
+  void initState() {
+    super.initState();
+    _buildStream();
+  }
+
+  void _buildStream() {
     final where = _filtroTabla == null ? '' : "WHERE tabla = ?";
     final params = _filtroTabla == null ? <Object?>[] : <Object?>[_filtroTabla];
+    _auditStream = ps.db.watch(
+      '''
+      SELECT a.id, a.tabla, a.registro_id, a.campo,
+             a.valor_anterior, a.valor_nuevo,
+             a.user_id, a.user_rol, a.created_at,
+             co.nombre AS user_nombre
+        FROM audit_log a
+   LEFT JOIN cobradores co ON co.id = a.user_id
+       $where
+       ORDER BY a.created_at DESC
+       LIMIT 200
+      ''',
+      parameters: params,
+    );
+  }
 
+  @override
+  Widget build(BuildContext context) {
     return Column(
       children: [
         Padding(
@@ -39,14 +62,20 @@ class _AuditAdminScreenState extends State<AuditAdminScreen> {
                 ChoiceChip(
                   label: const Text('Todas'),
                   selected: _filtroTabla == null,
-                  onSelected: (_) => setState(() => _filtroTabla = null),
+                  onSelected: (_) => setState(() {
+                    _filtroTabla = null;
+                    _buildStream();
+                  }),
                 ),
                 const SizedBox(width: 8),
                 for (final t in _tablas) ...[
                   ChoiceChip(
                     label: Text(t),
                     selected: _filtroTabla == t,
-                    onSelected: (_) => setState(() => _filtroTabla = t),
+                    onSelected: (_) => setState(() {
+                      _filtroTabla = t;
+                      _buildStream();
+                    }),
                   ),
                   const SizedBox(width: 8),
                 ],
@@ -56,20 +85,7 @@ class _AuditAdminScreenState extends State<AuditAdminScreen> {
         ),
         Expanded(
           child: StreamBuilder(
-            stream: ps.db.watch(
-              '''
-              SELECT a.id, a.tabla, a.registro_id, a.campo,
-                     a.valor_anterior, a.valor_nuevo,
-                     a.user_id, a.user_rol, a.created_at,
-                     co.nombre AS user_nombre
-                FROM audit_log a
-           LEFT JOIN cobradores co ON co.id = a.user_id
-               $where
-               ORDER BY a.created_at DESC
-               LIMIT 200
-              ''',
-              parameters: params,
-            ),
+            stream: _auditStream,
             builder: (context, snap) {
               if (!snap.hasData) {
                 return const Center(child: CircularProgressIndicator());

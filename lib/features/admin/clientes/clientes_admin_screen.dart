@@ -286,26 +286,40 @@ class _Filtros extends StatelessWidget {
   }
 }
 
-class _CobradorChip extends StatelessWidget {
+class _CobradorChip extends StatefulWidget {
   const _CobradorChip({required this.seleccionado, required this.onChanged});
   final String? seleccionado;
   final ValueChanged<String?> onChanged;
 
   @override
+  State<_CobradorChip> createState() => _CobradorChipState();
+}
+
+class _CobradorChipState extends State<_CobradorChip> {
+  /// Stream cacheado — query fija, no depende de props.
+  late final Stream<List<Map<String, dynamic>>> _cobradoresStream;
+
+  @override
+  void initState() {
+    super.initState();
+    _cobradoresStream = ps.db.watch(
+      '''
+      SELECT id, nombre FROM cobradores
+       WHERE activo = 1 AND rol = 'cobrador'
+       ORDER BY nombre
+      ''',
+    );
+  }
+
+  @override
   Widget build(BuildContext context) {
     return StreamBuilder(
-      stream: ps.db.watch(
-        '''
-        SELECT id, nombre FROM cobradores
-         WHERE activo = 1 AND rol = 'cobrador'
-         ORDER BY nombre
-        ''',
-      ),
+      stream: _cobradoresStream,
       builder: (context, snap) {
         final rows = snap.data ?? const [];
-        final label = seleccionado == null
+        final label = widget.seleccionado == null
             ? 'Cobrador'
-            : (rows.firstWhere((r) => r['id'] == seleccionado,
+            : (rows.firstWhere((r) => r['id'] == widget.seleccionado,
                     orElse: () => {'nombre': 'Cobrador'})['nombre'] as String);
         return ActionChip(
           avatar: const Icon(Icons.person, size: 18),
@@ -332,7 +346,7 @@ class _CobradorChip extends StatelessWidget {
                 ),
               ),
             );
-            onChanged(picked);
+            widget.onChanged(picked);
           },
         );
       },
@@ -340,27 +354,41 @@ class _CobradorChip extends StatelessWidget {
   }
 }
 
-class _ComunidadChip extends StatelessWidget {
+class _ComunidadChip extends StatefulWidget {
   const _ComunidadChip({required this.seleccionada, required this.onChanged});
   final String? seleccionada;
   final ValueChanged<String?> onChanged;
 
   @override
+  State<_ComunidadChip> createState() => _ComunidadChipState();
+}
+
+class _ComunidadChipState extends State<_ComunidadChip> {
+  /// Stream cacheado — query fija, no depende de props.
+  late final Stream<List<Map<String, dynamic>>> _comunidadesStream;
+
+  @override
+  void initState() {
+    super.initState();
+    _comunidadesStream = ps.db.watch(
+      '''
+      SELECT co.id, co.nombre, m.nombre AS mun
+        FROM comunidades co
+        JOIN municipios m ON m.id = co.municipio_id
+       ORDER BY m.nombre, co.nombre
+      ''',
+    );
+  }
+
+  @override
   Widget build(BuildContext context) {
     return StreamBuilder(
-      stream: ps.db.watch(
-        '''
-        SELECT co.id, co.nombre, m.nombre AS mun
-          FROM comunidades co
-          JOIN municipios m ON m.id = co.municipio_id
-         ORDER BY m.nombre, co.nombre
-        ''',
-      ),
+      stream: _comunidadesStream,
       builder: (context, snap) {
         final rows = snap.data ?? const [];
-        final label = seleccionada == null
+        final label = widget.seleccionada == null
             ? 'Comunidad'
-            : (rows.firstWhere((r) => r['id'] == seleccionada,
+            : (rows.firstWhere((r) => r['id'] == widget.seleccionada,
                     orElse: () => {'nombre': 'Comunidad'})['nombre'] as String);
         return ActionChip(
           avatar: const Icon(Icons.place, size: 18),
@@ -388,7 +416,7 @@ class _ComunidadChip extends StatelessWidget {
                 ),
               ),
             );
-            onChanged(picked);
+            widget.onChanged(picked);
           },
         );
       },
@@ -657,8 +685,30 @@ class _ClienteCard extends StatelessWidget {
   }
 }
 
-class _SeleccionarCobradorDialog extends StatelessWidget {
+class _SeleccionarCobradorDialog extends StatefulWidget {
   const _SeleccionarCobradorDialog();
+
+  @override
+  State<_SeleccionarCobradorDialog> createState() =>
+      _SeleccionarCobradorDialogState();
+}
+
+class _SeleccionarCobradorDialogState
+    extends State<_SeleccionarCobradorDialog> {
+  /// Stream cacheado — query fija, no depende de props.
+  late final Stream<List<Map<String, dynamic>>> _cobradoresStream;
+
+  @override
+  void initState() {
+    super.initState();
+    _cobradoresStream = ps.db.watch(
+      '''
+      SELECT id, nombre, prefijo_recibo FROM cobradores
+       WHERE activo = 1 AND rol = 'cobrador'
+       ORDER BY nombre
+      ''',
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -667,13 +717,7 @@ class _SeleccionarCobradorDialog extends StatelessWidget {
       content: SizedBox(
         width: 400,
         child: StreamBuilder(
-          stream: ps.db.watch(
-            '''
-            SELECT id, nombre, prefijo_recibo FROM cobradores
-             WHERE activo = 1 AND rol = 'cobrador'
-             ORDER BY nombre
-            ''',
-          ),
+          stream: _cobradoresStream,
           builder: (context, snap) {
             if (!snap.hasData) {
               return const SizedBox(
