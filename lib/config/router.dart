@@ -268,6 +268,13 @@ final routerProvider = Provider<GoRouter>((ref) {
         return '/admin';
       }
 
+      // super_admin que dejó de impersonar pero quedó en /admin/*:
+      // redirigir a /super/tenants (su panel real). Sin esto, el
+      // super_admin queda viendo el AdminShell vacío post-exit.
+      if (rol == 'super_admin' && !impersonating && loc.startsWith('/admin')) {
+        return '/super/tenants';
+      }
+
       return null;
     },
     routes: [
