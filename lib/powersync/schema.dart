@@ -238,4 +238,15 @@ const schema = Schema([
     Column.text('prefijo_recibo'),
     Column.integer('activo'),
   ]),
+
+  // ── Impersonación de tenant por super_admin ──────────────────────────
+  // Una sola row (o ninguna) por super_admin. Sincronizada vía el bucket
+  // `impersonated_tenant` en sync-rules.yaml. Cuando existe, indica que
+  // el super_admin está "dentro" de un tenant y la app muestra el
+  // AdminShell con la data de ese tenant.
+  Table('super_admin_impersonation', [
+    Column.text('user_id'),
+    Column.text('tenant_id'),
+    Column.text('started_at'),
+  ]),
 ]);

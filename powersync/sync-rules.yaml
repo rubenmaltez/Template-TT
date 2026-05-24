@@ -131,3 +131,41 @@ bucket_definitions:
       - SELECT id, tenant_id, nombre, telefono, rol, prefijo_recibo, activo
         FROM cobradores
         WHERE id = bucket.user_id
+
+      # Impersonation row: si el super_admin tiene una row activa,
+      # la bajamos al SQLite local para que el provider la detecte.
+      # user_id es el PK en Postgres pero PowerSync espera `id` — lo
+      # aliaseamos. Cuando no hay row, no se baja nada.
+      - SELECT user_id AS id, user_id, tenant_id, started_at
+        FROM super_admin_impersonation
+        WHERE user_id = bucket.user_id
+
+  # ── Impersonación de tenant por super_admin ──────────────────────────
+  # Cuando el super_admin tiene una row en super_admin_impersonation,
+  # este bucket entrega TODA la data del tenant impersonado (mismos
+  # queries que todo_tenant_admin + catalogo_tenant).
+  #
+  # Cuando no hay impersonación activa, el parameters query retorna 0
+  # rows → el bucket está vacío → no descarga nada extra.
+  #
+  # Al cambiar de tenant (UPDATE impersonation row + disconnect/reconnect
+  # PowerSync), el bucket se re-evalúa y entrega la data del nuevo tenant.
+  impersonated_tenant:
+    parameters: |
+      SELECT tenant_id
+      FROM super_admin_impersonation
+      WHERE user_id = request.user_id()
+    data:
+      - SELECT * FROM planes             WHERE tenant_id = bucket.tenant_id
+      - SELECT * FROM settings           WHERE tenant_id = bucket.tenant_id
+      - SELECT * FROM clientes           WHERE tenant_id = bucket.tenant_id
+      - SELECT * FROM contratos          WHERE tenant_id = bucket.tenant_id
+      - SELECT * FROM cuotas             WHERE tenant_id = bucket.tenant_id
+      - SELECT * FROM pagos              WHERE tenant_id = bucket.tenant_id
+      - SELECT * FROM recibos            WHERE tenant_id = bucket.tenant_id
+      - SELECT * FROM cargos_extra       WHERE tenant_id = bucket.tenant_id
+      - SELECT * FROM notificaciones_mora WHERE tenant_id = bucket.tenant_id
+      - SELECT id, tenant_id, nombre, telefono, rol, prefijo_recibo, activo
+        FROM cobradores
+        WHERE tenant_id = bucket.tenant_id
+      - SELECT * FROM audit_log          WHERE tenant_id = bucket.tenant_id

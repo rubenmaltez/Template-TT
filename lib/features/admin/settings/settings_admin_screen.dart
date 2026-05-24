@@ -61,7 +61,10 @@ class SettingsAdminScreen extends ConsumerWidget {
                         .toList();
                     return _CategoriaTab(
                       settings: delCat,
-                      tenantId: cobrador?.tenantId ?? '',
+                      // tenantIdProvider respeta impersonación: si el
+                      // super_admin está dentro de un tenant, retorna
+                      // el tenant impersonado, no el System.
+                      tenantId: ref.watch(tenantIdProvider) ?? '',
                       esAdmin: esAdmin,
                     );
                   }).toList(),
