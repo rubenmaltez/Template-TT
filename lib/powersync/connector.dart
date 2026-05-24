@@ -5,6 +5,7 @@ import 'package:powersync/powersync.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../config/env.dart';
+import '../data/models/error_log_entry.dart';
 import '../data/services/error_log_service.dart';
 
 /// Conector entre PowerSync y Supabase usando **Supabase Auth directo**.
@@ -78,6 +79,7 @@ class SupabaseConnector extends PowerSyncBackendConnector {
             unawaited(ErrorLogService.instance.record(
               error: 'CRUD rejected: ${op.table}/${op.id} — ${e.message}',
               stack: StackTrace.current,
+              type: ErrorLogType.zone,
             ));
             continue;
           }
