@@ -8,6 +8,7 @@ import '../../../data/providers/cobrador_provider.dart';
 import '../../../data/repositories/pagos_repo.dart';
 import '../../../data/utils/formatters.dart';
 import '../../../powersync/db.dart' as ps;
+import '../../shared/widgets/cargar_mas_button.dart';
 import '../../shared/widgets/empty_state.dart';
 
 class PagosAdminScreen extends ConsumerStatefulWidget {
@@ -17,12 +18,18 @@ class PagosAdminScreen extends ConsumerStatefulWidget {
   ConsumerState<PagosAdminScreen> createState() => _PagosAdminScreenState();
 }
 
+const int _kPageSize = 50;
+const int _kSearchPageSize = 200;
+
 class _PagosAdminScreenState extends ConsumerState<PagosAdminScreen> {
   final _searchCtrl = TextEditingController();
   String _query = '';
   bool _verAnulados = false;
   Timer? _debounce;
   late Stream<List<Map<String, dynamic>>> _pagosStream;
+  int _pageSize = _kPageSize;
+  bool _loadingMore = false;
+  Timer? _loadingMoreTimer;
 
   @override
   void initState() {
@@ -41,6 +48,9 @@ class _PagosAdminScreenState extends ConsumerState<PagosAdminScreen> {
     }
     final whereSql = where.isEmpty ? '' : 'WHERE ${where.join(' AND ')}';
 
+    // LIMIT como último parámetro posicional.
+    params.add(_pageSize);
+
     return ps.db.watch(
       '''
       SELECT p.id, p.monto_cordobas, p.moneda, p.monto_original,
@@ -56,16 +66,35 @@ class _PagosAdminScreenState extends ConsumerState<PagosAdminScreen> {
    LEFT JOIN recibos r ON r.pago_id = p.id
        $whereSql
        ORDER BY p.fecha_pago DESC
-       LIMIT 300
+       LIMIT ?
       ''',
       parameters: params,
     );
+  }
+
+  int get _baseSize => _query.isEmpty ? _kPageSize : _kSearchPageSize;
+
+  void _onLoadMore() {
+    setState(() {
+      _pageSize += _baseSize;
+      _loadingMore = true;
+      _pagosStream = _buildStream();
+    });
+    _loadingMoreTimer?.cancel();
+    _loadingMoreTimer = Timer(const Duration(milliseconds: 400), () {
+      if (mounted) setState(() => _loadingMore = false);
+    });
+  }
+
+  void _resetPagination() {
+    _pageSize = _baseSize;
   }
 
   @override
   void dispose() {
     _searchCtrl.dispose();
     _debounce?.cancel();
+    _loadingMoreTimer?.cancel();
     super.dispose();
   }
 
@@ -75,6 +104,7 @@ class _PagosAdminScreenState extends ConsumerState<PagosAdminScreen> {
       if (mounted) {
         setState(() {
           _query = v.trim().toLowerCase();
+          _resetPagination();
           _pagosStream = _buildStream();
         });
       }
@@ -93,9 +123,22 @@ class _PagosAdminScreenState extends ConsumerState<PagosAdminScreen> {
                 child: TextField(
                   controller: _searchCtrl,
                   onChanged: _onSearch,
-                  decoration: const InputDecoration(
-                    prefixIcon: Icon(Icons.search),
+                  decoration: InputDecoration(
+                    prefixIcon: const Icon(Icons.search),
                     hintText: 'Buscar por cliente o número de recibo',
+                    suffixIcon: _searchCtrl.text.isEmpty
+                        ? null
+                        : IconButton(
+                            icon: const Icon(Icons.close),
+                            onPressed: () {
+                              _searchCtrl.clear();
+                              setState(() {
+                                _query = '';
+                                _resetPagination();
+                                _pagosStream = _buildStream();
+                              });
+                            },
+                          ),
                   ),
                 ),
               ),
@@ -105,6 +148,7 @@ class _PagosAdminScreenState extends ConsumerState<PagosAdminScreen> {
                 selected: _verAnulados,
                 onSelected: (v) => setState(() {
                   _verAnulados = v;
+                  _resetPagination();
                   _pagosStream = _buildStream();
                 }),
               ),
@@ -125,11 +169,20 @@ class _PagosAdminScreenState extends ConsumerState<PagosAdminScreen> {
                   titulo: 'Sin pagos',
                 );
               }
+              final hayMas = rows.length >= _pageSize;
               return ListView.separated(
                 padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                itemCount: rows.length,
+                itemCount: rows.length + (hayMas ? 1 : 0),
                 separatorBuilder: (_, __) => const SizedBox(height: 8),
-                itemBuilder: (_, i) => _PagoCard(row: rows[i]),
+                itemBuilder: (_, i) {
+                  if (i == rows.length) {
+                    return CargarMasButton(
+                      loading: _loadingMore,
+                      onPressed: _onLoadMore,
+                    );
+                  }
+                  return _PagoCard(row: rows[i]);
+                },
               );
             },
           ),

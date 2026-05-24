@@ -12,10 +12,10 @@ hasta producción general y features comerciales.
 - Cuando se cierra un bulk entero, se hace audit ligero + smoke test
   del flow que ese bulk debería habilitar.
 
-**Estado actual**: BULKs 1-3 completados (BULK 1 Sprint 1 sync gate en
+**Estado actual**: BULKs 1-5 completados (BULK 1 Sprint 1 sync gate en
 pausa esperando repro). Sesión inicial (2026-05-22) entregó 34 PRs de
-infraestructura previa. Sesión 2 (2026-05-23) entregó 8 PRs (#36-#43)
-con BULKs 1-3 completos + audit retroactivo de seguridad.
+infraestructura previa. Sesión 2 (2026-05-23/24) entregó 12 PRs (#36-#47)
+con BULKs 1-5 completos + 4 auditorías formales + audit integral.
 
 ---
 
@@ -154,21 +154,27 @@ en la sesión inicial.
 
 | Sprint | Tiempo | Criterio de éxito | PR |
 |---|---|---|---|
-| Refactor `current_tenant_id()` SQL | 2-3h | Soporta override via JWT claim o state cliente. Threat model documentado | — |
-| Selector de tenant en super_admin | 3-4h | UI para "actuar como admin de X" + audit row | — |
-| Super_admin accede al AdminShell con tenant elegido | 2-3h | super_admin ve `/admin/clientes` del tenant impersonado | — |
-| Toggle módulos por tenant — refinar UI | 1-2h | Más descubrible desde el flow "entrar al tenant" | — |
-| Flash setup wizard residual | 1-2h | Animación de transición + refactor del guard | — |
-| Sync gate slow optimization | 3-4h | Revisar `sync-rules.yaml`, shared workers, delete-and-replace | — |
-| Indicador "estás viendo tenant X" persistente | 1h | Banner amarillo cuando super_admin impersona | — |
+| Refactor `current_tenant_id()` SQL | 2-3h | Soporta override via tabla impersonation. 30+ RLS policies se adaptan automáticamente | ✅ PR #46 (migración 0039) |
+| Selector de tenant en super_admin | 3-4h | Botón "Entrar como admin" en tenant list + detail + audit row | ✅ PR #46 |
+| Super_admin accede al AdminShell con tenant elegido | 2-3h | super_admin ve `/admin/clientes` del tenant impersonado | ✅ PR #46 |
+| Toggle módulos por tenant — refinar UI | 1-2h | Botón "Entrar" visible desde el detalle del tenant | ✅ PR #46 |
+| Flash setup wizard residual | 1-2h | Animación de transición + refactor del guard | ➡️ Movido a BULK 6 |
+| Sync gate slow optimization | 3-4h | Revisar `sync-rules.yaml`, shared workers, delete-and-replace | ➡️ Optimización futura |
+| Indicador "estás viendo tenant X" persistente | 1h | Banner verde "Super Admin · Viendo: {nombre}" con botón Salir | ✅ PR #46 |
 
-**Tiempo total**: ~13-19h (3-4 sesiones grandes).
+**Tiempo total**: ~13-19h estimadas. **Core completado en 1 sesión.**
 
-**Validación**:
-- Super_admin elige tenant Y → ve clientes/contratos de Y.
-- Vuelve al panel super → ve audit_log con "super_admin impersonó
-  tenant Y a las HH:MM".
-- Banner amarillo persistente durante el impersonate.
+**Validación** (smoke testing manual):
+- ✅ Super_admin elige tenant → ve AdminShell con 204 clientes.
+- ✅ Banner "Super Admin · Viendo: prueba prueba jeje" persistente.
+- ✅ Botón Salir → data limpia, banner desaparece, Tenants vuelve al sidebar.
+- ⚠️ Navegación post-exit: queda en `/admin` en vez de `/super/tenants`
+  (TODO para rework UI/UX super_admin).
+
+**Pendientes para rework UI/UX futuro:**
+- Navegación automática a `/super/tenants` post-exit.
+- Sync gate optimization para impersonate de tenants grandes.
+- Flash setup wizard (movido de este BULK).
 
 ---
 
@@ -328,3 +334,21 @@ Cada bulk se trata como mini-roadmap dentro de su(s) sesión(es):
   - Migración 0038: REVOKE check_email_exists_in_auth de public.
   - crear-tenant migrado de listUsers a RPC (3/3 callsites consistentes).
   - humanizeAuthError fallback sanitizado (no raw errors al cliente).
+- BULK 4 completo (PR #45): tests + barrido anti-patrón.
+  - +45 tests nuevos (Fmt, cobrador_helpers, edge_functions). Total: 154.
+  - 19 archivos refactoreados: ps.db.watch inline → StatefulWidget con
+    late Stream en initState + didUpdateWidget.
+  - Audit: mapa stream documentado, mora setState fix.
+- BULK 5 completo (PRs #46, #47): impersonación de tenants.
+  - Migración 0039: tabla super_admin_impersonation + current_tenant_id()
+    modificada. 30+ RLS policies se adaptan automáticamente.
+  - Sync rules v4: bucket impersonated_tenant + impersonation row en
+    super_admin_self.
+  - ImpersonationService: enter/exit con audit_log + PowerSync reconnect.
+  - effectiveTenantIdProvider: tenant impersonado para INSERT/UPDATE.
+  - Router impersonation-aware: redirect a /admin cuando impersonando.
+  - AdminShell: banner "Super Admin · Viendo: {nombre}" + botón Salir.
+  - Tenant list + detail: botón "Entrar como admin".
+  - Audit seguridad: dual write path eliminado, guard System tenant.
+  - Compile fix: widget.diasGracia en cuotas_list_screen (PR #47).
+  - Smoke testing manual: 9 escenarios validados.

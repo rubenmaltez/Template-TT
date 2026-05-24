@@ -1,9 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:printing/printing.dart';
 
+import '../../../config/router.dart';
 import '../../../data/repositories/settings_repo.dart';
 import '../../../data/utils/formatters.dart';
 import '../../../powersync/db.dart' as ps;
+import 'pdf/reporte_cobros_pdf.dart';
+import 'pdf/reporte_mora_pdf.dart';
 
 class ReportesAdminScreen extends ConsumerWidget {
   const ReportesAdminScreen({super.key});
@@ -11,18 +15,142 @@ class ReportesAdminScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final diasGracia = ref.watch(appSettingsProvider).diasGracia;
-    return ListView(
-      padding: const EdgeInsets.all(24),
+    return Stack(
       children: [
-        const _RecaudacionMensualCard(),
-        const SizedBox(height: 16),
-        const _CobradoresMesCard(),
-        const SizedBox(height: 16),
-        _MoraPorComunidadCard(diasGracia: diasGracia),
-        const SizedBox(height: 16),
-        const _PlanesPopularesCard(),
+        ListView(
+          padding: const EdgeInsets.all(24),
+          children: [
+            const _RecaudacionMensualCard(),
+            const SizedBox(height: 16),
+            const _CobradoresMesCard(),
+            const SizedBox(height: 16),
+            _MoraPorComunidadCard(diasGracia: diasGracia),
+            const SizedBox(height: 16),
+            const _PlanesPopularesCard(),
+            const SizedBox(height: 80),
+          ],
+        ),
+        Positioned(
+          right: 24,
+          bottom: 24,
+          child: _DescargarPdfMenu(diasGracia: diasGracia),
+        ),
       ],
     );
+  }
+}
+
+class _DescargarPdfMenu extends ConsumerWidget {
+  const _DescargarPdfMenu({required this.diasGracia});
+  final int diasGracia;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    return PopupMenuButton<String>(
+      onSelected: (tipo) => _generar(context, ref, tipo),
+      itemBuilder: (_) => const [
+        PopupMenuItem(
+          value: 'cobros',
+          child: ListTile(
+            leading: Icon(Icons.receipt_long),
+            title: Text('Reporte de cobros'),
+            subtitle: Text('Cobros del mes actual'),
+            dense: true,
+          ),
+        ),
+        PopupMenuItem(
+          value: 'mora',
+          child: ListTile(
+            leading: Icon(Icons.warning_amber),
+            title: Text('Reporte de mora'),
+            subtitle: Text('Clientes con cuotas vencidas'),
+            dense: true,
+          ),
+        ),
+      ],
+      child: FloatingActionButton.extended(
+        onPressed: null,
+        icon: const Icon(Icons.picture_as_pdf),
+        label: const Text('Descargar PDF'),
+      ),
+    );
+  }
+
+  Future<void> _generar(
+      BuildContext context, WidgetRef ref, String tipo) async {
+    final empresaNombre =
+        ref.read(empresaNombreProvider).valueOrNull ?? 'ISP';
+
+    try {
+      if (tipo == 'cobros') {
+        final rows = await ps.db.getAll('''
+          SELECT p.fecha_pago, c.nombre AS cliente_nombre,
+                 p.monto_cordobas AS monto, p.metodo,
+                 cb.nombre AS cobrador_nombre,
+                 r.numero_completo AS numero_recibo
+            FROM pagos p
+            JOIN cuotas cu ON cu.id = p.cuota_id
+            JOIN clientes c ON c.id = cu.cliente_id
+       LEFT JOIN cobradores cb ON cb.id = p.cobrador_id
+       LEFT JOIN recibos r ON r.pago_id = p.id
+           WHERE p.anulado = 0
+             AND date(p.fecha_pago) >= date('now', 'start of month')
+           ORDER BY p.fecha_pago DESC
+        ''');
+
+        final now = DateTime.now();
+        final periodo = Fmt.mes(now);
+        final doc = buildReporteCobros(
+          titulo: 'Reporte de cobros',
+          empresaNombre: empresaNombre,
+          periodo: periodo,
+          rows: rows,
+        );
+
+        await Printing.sharePdf(
+          bytes: await doc.save(),
+          filename: 'cobros_${now.year}_${now.month}.pdf',
+        );
+      } else if (tipo == 'mora') {
+        final rows = await ps.db.getAll('''
+          SELECT c.nombre AS cliente_nombre,
+                 co.nombre AS comunidad,
+                 COUNT(cu.id) AS cuotas_vencidas,
+                 COALESCE(SUM(cu.monto + COALESCE(cu.cargos_neto, 0)
+                   - cu.monto_pagado), 0) AS monto_adeudado,
+                 CAST(julianday('now') - julianday(MIN(cu.fecha_vencimiento))
+                   AS INTEGER) AS dias_mora
+            FROM cuotas cu
+            JOIN clientes c ON c.id = cu.cliente_id
+       LEFT JOIN comunidades co ON co.id = c.comunidad_id
+           WHERE cu.estado IN ('pendiente','parcial')
+             AND date(cu.fecha_vencimiento, '+' || ? || ' days')
+                 < date('now')
+           GROUP BY c.id, c.nombre, co.nombre
+           ORDER BY dias_mora DESC
+        ''', [diasGracia]);
+
+        final now = DateTime.now();
+        final periodoMora = Fmt.mes(now);
+
+        final doc = buildReporteMora(
+          titulo: 'Reporte de mora',
+          empresaNombre: empresaNombre,
+          periodo: periodoMora,
+          rows: rows,
+        );
+        await Printing.sharePdf(
+          bytes: await doc.save(),
+          filename: 'mora_${now.year}_${now.month}_${now.day}.pdf',
+        );
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error generando PDF: $e')),
+        );
+      }
+    }
   }
 }
 
