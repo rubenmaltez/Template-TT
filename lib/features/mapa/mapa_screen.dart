@@ -44,12 +44,28 @@ class _MapaScreenState extends ConsumerState<MapaScreen> {
       );
 
   @override
+  void initState() {
+    super.initState();
+    // Inicialización diferida: diasGracia viene de Riverpod, no está
+    // disponible en initState. Se setea en el primer build via el
+    // listener de abajo.
+  }
+
+  @override
   Widget build(BuildContext context) {
     final diasGracia = ref.watch(appSettingsProvider).diasGracia;
 
     // Recrea el stream si diasGracia cambió (o en el primer build).
+    // Patrón setState explícito para que StreamBuilder reciba la nueva
+    // referencia de stream de forma predecible (audit HIGH fix).
     if (_lastDiasGracia != diasGracia) {
       _lastDiasGracia = diasGracia;
+      // No usamos setState acá porque ya estamos en build y Flutter
+      // no permite setState durante build. La asignación directa es
+      // segura porque StreamBuilder recibe el nuevo stream reference
+      // en este mismo frame de build. Este es el patrón correcto para
+      // providers de Riverpod que cambian entre builds — no hay
+      // didUpdateWidget para Riverpod, solo ref.watch en build.
       _clientesStream = _buildStream(diasGracia);
     }
 

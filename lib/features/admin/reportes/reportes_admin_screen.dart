@@ -225,7 +225,7 @@ class _MoraPorComunidadCardState extends State<_MoraPorComunidadCard> {
   void didUpdateWidget(covariant _MoraPorComunidadCard oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.diasGracia != widget.diasGracia) {
-      _buildStream();
+      setState(() => _buildStream());
     }
   }
 
