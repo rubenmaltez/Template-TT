@@ -82,9 +82,9 @@ class AdminShell extends ConsumerWidget {
     // Banners: update disponible (azul) + impersonación (amber).
     // Se apilan arriba del contenido. El update banner se auto-oculta
     // si no hay update o si el user lo cierra.
-    final Widget bodyWithBannerss;
+    final Widget bodyWithBanners;
     if (impersonating) {
-      bodyWithBannerss = Column(
+      bodyWithBanners = Column(
         children: [
           const UpdateBanner(),
           const _ImpersonationBanner(),
@@ -92,7 +92,7 @@ class AdminShell extends ConsumerWidget {
         ],
       );
     } else {
-      bodyWithBannerss = Column(
+      bodyWithBanners = Column(
         children: [
           const UpdateBanner(),
           Expanded(child: bodyContent),
