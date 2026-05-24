@@ -27,6 +27,11 @@ class ImpersonationService {
     final userId = _supabase.auth.currentUser?.id;
     if (userId == null) throw StateError('No hay sesión activa');
 
+    const systemTenant = '00000000-0000-0000-0000-000000000000';
+    if (tenantId == systemTenant) {
+      throw ArgumentError('No se puede impersonar el tenant System');
+    }
+
     // UPSERT: si ya estaba impersonando otro tenant, reemplaza.
     await _supabase.from('super_admin_impersonation').upsert({
       'user_id': userId,

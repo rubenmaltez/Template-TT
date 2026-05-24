@@ -1,10 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../data/models/modulo.dart';
 import '../../data/models/tenant_admin.dart';
-import '../../data/providers/impersonation_provider.dart';
+import '../../data/services/impersonation_service.dart';
 import '../../data/repositories/super_admin_repo.dart';
 import '../../data/utils/cobrador_helpers.dart';
 import '../shared/widgets/animated_list_entry.dart';
@@ -58,16 +59,23 @@ class TenantModulosScreen extends ConsumerWidget {
       children: [
         _Header(tenant: tenant),
         const SizedBox(height: 16),
-        Align(
-          alignment: Alignment.centerLeft,
-          child: FilledButton.tonalIcon(
-            icon: const Icon(Icons.person_add),
-            label: const Text('Invitar admin a este tenant'),
-            onPressed: () => showDialog<void>(
-              context: context,
-              builder: (_) => InvitarAdminDialog(tenant: tenant),
+        Wrap(
+          spacing: 12,
+          runSpacing: 8,
+          children: [
+            _EntrarTenantButton(
+              tenantId: tenant.id,
+              tenantNombre: tenant.nombre,
             ),
-          ),
+            FilledButton.tonalIcon(
+              icon: const Icon(Icons.person_add),
+              label: const Text('Invitar admin a este tenant'),
+              onPressed: () => showDialog<void>(
+                context: context,
+                builder: (_) => InvitarAdminDialog(tenant: tenant),
+              ),
+            ),
+          ],
         ),
         const SizedBox(height: 24),
         Text('Módulos',
@@ -337,6 +345,61 @@ class _MiembrosList extends ConsumerWidget {
               .toList(),
         );
       },
+    );
+  }
+}
+
+/// Botón "Entrar al tenant" que inicia la impersonación. Al completar,
+/// navega a /admin donde el AdminShell muestra el panel con la data del
+/// tenant impersonado y el banner de impersonación.
+class _EntrarTenantButton extends StatefulWidget {
+  const _EntrarTenantButton({
+    required this.tenantId,
+    required this.tenantNombre,
+  });
+  final String tenantId;
+  final String tenantNombre;
+
+  @override
+  State<_EntrarTenantButton> createState() => _EntrarTenantButtonState();
+}
+
+class _EntrarTenantButtonState extends State<_EntrarTenantButton> {
+  bool _busy = false;
+
+  Future<void> _entrar() async {
+    setState(() => _busy = true);
+    try {
+      await ImpersonationService(Supabase.instance.client).enter(
+        tenantId: widget.tenantId,
+        tenantNombre: widget.tenantNombre,
+      );
+      if (!mounted) return;
+      context.go('/admin');
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error al entrar al tenant: $e')),
+      );
+      setState(() => _busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FilledButton.icon(
+      icon: _busy
+          ? const SizedBox(
+              width: 16,
+              height: 16,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                color: Colors.white,
+              ),
+            )
+          : const Icon(Icons.login),
+      label: Text(_busy ? 'Entrando…' : 'Entrar al tenant'),
+      onPressed: _busy ? null : _entrar,
     );
   }
 }

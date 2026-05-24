@@ -7,6 +7,7 @@ import '../../../config/router.dart';
 import '../../../data/providers/cobrador_provider.dart';
 import '../../../data/providers/impersonation_provider.dart';
 import '../../../data/providers/sync_status_provider.dart';
+import '../../../data/services/impersonation_service.dart';
 import '../../auth/cambiar_password_dialog.dart';
 import '../../shared/utils/shell_nav.dart';
 import '../../shared/widgets/offline_banner.dart';
@@ -77,14 +78,12 @@ class AdminShell extends ConsumerWidget {
     }
 
     // Banner de impersonación: se muestra arriba del contenido cuando
-    // el super_admin está dentro de un tenant. Usa empresaNombreProvider
-    // para mostrar el nombre del tenant (que ahora viene del bucket
-    // impersonated_tenant).
+    // el super_admin está dentro de un tenant.
     final Widget bodyWithBanner;
     if (impersonating) {
       bodyWithBanner = Column(
         children: [
-          _ImpersonationBanner(empresaAsync: empresaAsync),
+          const _ImpersonationBanner(),
           Expanded(child: bodyContent),
         ],
       );
@@ -513,23 +512,26 @@ class _UserHeader extends StatelessWidget {
 
 /// Banner que se muestra en la parte superior del panel admin cuando el
 /// super_admin está impersonando un tenant. Muestra el nombre del tenant
-/// (vía empresaNombreProvider, que ahora apunta al tenant impersonado) y
-/// un botón "Salir" para terminar la impersonación.
-class _ImpersonationBanner extends StatefulWidget {
-  const _ImpersonationBanner({required this.empresaAsync});
-  final AsyncValue<String?> empresaAsync;
+/// y un botón "Salir" para terminar la impersonación.
+///
+/// Usa un query scoped por tenant_id para obtener el nombre del tenant
+/// impersonado (no el global `empresaNombreProvider`, que podría retornar
+/// el nombre del tenant System si ambos están en el SQLite local).
+class _ImpersonationBanner extends ConsumerStatefulWidget {
+  const _ImpersonationBanner();
 
   @override
-  State<_ImpersonationBanner> createState() => _ImpersonationBannerState();
+  ConsumerState<_ImpersonationBanner> createState() =>
+      _ImpersonationBannerState();
 }
 
-class _ImpersonationBannerState extends State<_ImpersonationBanner> {
+class _ImpersonationBannerState extends ConsumerState<_ImpersonationBanner> {
   bool _saliendo = false;
 
   Future<void> _salir() async {
     setState(() => _saliendo = true);
     try {
-      await stopImpersonation();
+      await ImpersonationService(Supabase.instance.client).exit();
       if (!mounted) return;
       context.go('/super/tenants');
     } catch (e) {
@@ -544,11 +546,13 @@ class _ImpersonationBannerState extends State<_ImpersonationBanner> {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    // El nombre del tenant viene de empresaNombreProvider — cuando el
-    // super_admin impersona, el bucket impersonated_tenant sincroniza
-    // los settings del tenant y empresaNombreProvider emite el nombre.
-    // Mientras la data llega (loading), mostramos "Cargando…".
-    final nombre = widget.empresaAsync.when(
+    // Leemos el nombre del tenant impersonado directamente de la tabla
+    // settings con filtro por tenant_id. No usamos empresaNombreProvider
+    // porque ese query no filtra por tenant_id y podría retornar el
+    // nombre del tenant System cuando ambos están en el SQLite local.
+    final tenantId = ref.watch(impersonatedTenantIdProvider).valueOrNull;
+    final empresaAsync = ref.watch(_impersonatedEmpresaNombreProvider(tenantId));
+    final nombre = empresaAsync.when(
       data: (n) => n ?? 'Tenant sin nombre',
       loading: () => 'Cargando…',
       error: (_, __) => 'Tenant',
@@ -595,3 +599,34 @@ class _ImpersonationBannerState extends State<_ImpersonationBanner> {
     );
   }
 }
+
+/// Nombre del tenant impersonado, scoped por tenant_id. Lee de la tabla
+/// `settings` local filtrando por el tenant_id específico (evita
+/// ambigüedad cuando hay settings de múltiples tenants en SQLite).
+///
+/// autoDispose + family: se destruye al salir de impersonación (el
+/// banner desaparece y nadie watchea más).
+final _impersonatedEmpresaNombreProvider =
+    StreamProvider.autoDispose.family<String?, String?>((ref, tenantId) async* {
+  if (tenantId == null) {
+    yield null;
+    return;
+  }
+  yield* ps.db
+      .watch(
+        "SELECT valor FROM settings WHERE tenant_id = ? AND clave = 'empresa.nombre'",
+        parameters: [tenantId],
+      )
+      .map((rows) {
+    if (rows.isEmpty) return null;
+    final v = rows.first['valor'] as String?;
+    if (v == null) return null;
+    final s = v.trim();
+    if (s == 'null' || s == '""' || s.isEmpty) return null;
+    // Remove JSON wrapping quotes: "\"ISP Las Lomas\"" → "ISP Las Lomas"
+    if (s.startsWith('"') && s.endsWith('"') && s.length > 1) {
+      return s.substring(1, s.length - 1);
+    }
+    return s;
+  });
+});
