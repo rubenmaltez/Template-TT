@@ -319,8 +319,6 @@ class _CobroScreenState extends ConsumerState<CobroScreen> {
               if (v == null || v.isEmpty) return 'Ingresá un monto';
               final n = double.tryParse(v);
               if (n == null || n <= 0) return 'Monto inválido';
-              final nio = _moneda == Moneda.usd ? n * settings.tasaUsd : n;
-              if (nio > saldo + 0.01) return 'Excede el saldo (${Fmt.cordobas(saldo)})';
               return null;
             },
           ),
@@ -740,6 +738,7 @@ class _ResumenCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final saldoFinal = (saldoActual - aCobrar).clamp(0, double.infinity);
+    final vuelto = aCobrar > saldoActual ? aCobrar - saldoActual : 0.0;
     return Card(
       color: esCompleto ? scheme.tertiaryContainer : scheme.surfaceContainer,
       child: Padding(
@@ -749,6 +748,11 @@ class _ResumenCard extends StatelessWidget {
             _row('Saldo actual', Fmt.cordobas(saldoActual)),
             const SizedBox(height: 4),
             _row('A cobrar ahora', Fmt.cordobas(aCobrar), bold: true),
+            if (vuelto > 0.01) ...[
+              const SizedBox(height: 4),
+              _row('Vuelto al cliente', Fmt.cordobas(vuelto),
+                  color: scheme.primary, bold: true),
+            ],
             const Divider(),
             _row(
               esCompleto ? 'Cuota completa ✓' : 'Saldo restante',
