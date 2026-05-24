@@ -7,6 +7,7 @@ import '../../../data/providers/cobrador_provider.dart';
 import '../../../data/repositories/settings_repo.dart';
 import '../../../data/utils/formatters.dart';
 import '../../../powersync/db.dart' as ps;
+import '../../shared/widgets/cargar_mas_button.dart';
 import '../../shared/widgets/empty_state.dart';
 
 class CuotasAdminScreen extends ConsumerStatefulWidget {
@@ -16,12 +17,18 @@ class CuotasAdminScreen extends ConsumerStatefulWidget {
   ConsumerState<CuotasAdminScreen> createState() => _CuotasAdminScreenState();
 }
 
+const int _kPageSize = 50;
+const int _kSearchPageSize = 200;
+
 class _CuotasAdminScreenState extends ConsumerState<CuotasAdminScreen> {
   final _searchCtrl = TextEditingController();
   String _query = '';
   String _estado = 'todas'; // todas / pendiente / parcial / pagada / anulada
   Timer? _debounce;
   late Stream<List<Map<String, dynamic>>> _cuotasStream;
+  int _pageSize = _kPageSize;
+  bool _loadingMore = false;
+  Timer? _loadingMoreTimer;
 
   @override
   void initState() {
@@ -42,6 +49,9 @@ class _CuotasAdminScreenState extends ConsumerState<CuotasAdminScreen> {
     }
     final whereSql = where.isEmpty ? '' : 'WHERE ${where.join(' AND ')}';
 
+    // LIMIT como último parámetro posicional.
+    params.add(_pageSize);
+
     return ps.db.watch(
       '''
       SELECT cu.*, c.nombre AS cliente, p.nombre AS plan,
@@ -53,16 +63,35 @@ class _CuotasAdminScreenState extends ConsumerState<CuotasAdminScreen> {
    LEFT JOIN cobradores co ON co.id = cu.cobrador_id
        $whereSql
        ORDER BY cu.fecha_vencimiento DESC, c.nombre
-       LIMIT 300
+       LIMIT ?
       ''',
       parameters: params,
     );
+  }
+
+  int get _baseSize => _query.isEmpty ? _kPageSize : _kSearchPageSize;
+
+  void _onLoadMore() {
+    setState(() {
+      _pageSize += _baseSize;
+      _loadingMore = true;
+      _cuotasStream = _buildStream();
+    });
+    _loadingMoreTimer?.cancel();
+    _loadingMoreTimer = Timer(const Duration(milliseconds: 400), () {
+      if (mounted) setState(() => _loadingMore = false);
+    });
+  }
+
+  void _resetPagination() {
+    _pageSize = _baseSize;
   }
 
   @override
   void dispose() {
     _searchCtrl.dispose();
     _debounce?.cancel();
+    _loadingMoreTimer?.cancel();
     super.dispose();
   }
 
@@ -72,6 +101,7 @@ class _CuotasAdminScreenState extends ConsumerState<CuotasAdminScreen> {
       if (mounted) {
         setState(() {
           _query = v.trim().toLowerCase();
+          _resetPagination();
           _cuotasStream = _buildStream();
         });
       }
@@ -89,9 +119,22 @@ class _CuotasAdminScreenState extends ConsumerState<CuotasAdminScreen> {
           child: TextField(
             controller: _searchCtrl,
             onChanged: _onSearch,
-            decoration: const InputDecoration(
-              prefixIcon: Icon(Icons.search),
+            decoration: InputDecoration(
+              prefixIcon: const Icon(Icons.search),
               hintText: 'Buscar por cliente',
+              suffixIcon: _searchCtrl.text.isEmpty
+                  ? null
+                  : IconButton(
+                      icon: const Icon(Icons.close),
+                      onPressed: () {
+                        _searchCtrl.clear();
+                        setState(() {
+                          _query = '';
+                          _resetPagination();
+                          _cuotasStream = _buildStream();
+                        });
+                      },
+                    ),
             ),
           ),
         ),
@@ -106,6 +149,7 @@ class _CuotasAdminScreenState extends ConsumerState<CuotasAdminScreen> {
                   selected: _estado == e,
                   onSelected: (_) => setState(() {
                     _estado = e;
+                    _resetPagination();
                     _cuotasStream = _buildStream();
                   }),
                 ),
@@ -128,12 +172,20 @@ class _CuotasAdminScreenState extends ConsumerState<CuotasAdminScreen> {
                   titulo: 'Sin cuotas',
                 );
               }
+              final hayMas = rows.length >= _pageSize;
               return ListView.separated(
                 padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                itemCount: rows.length,
+                itemCount: rows.length + (hayMas ? 1 : 0),
                 separatorBuilder: (_, __) => const SizedBox(height: 6),
-                itemBuilder: (_, i) =>
-                    _CuotaCard(row: rows[i], diasGracia: diasGracia),
+                itemBuilder: (_, i) {
+                  if (i == rows.length) {
+                    return CargarMasButton(
+                      loading: _loadingMore,
+                      onPressed: _onLoadMore,
+                    );
+                  }
+                  return _CuotaCard(row: rows[i], diasGracia: diasGracia);
+                },
               );
             },
           ),

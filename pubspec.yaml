@@ -54,6 +54,10 @@ dependencies:
   # Acciones del sistema (tel:, geo:, https:)
   url_launcher: ^6.3.0
 
+  # Generación y descarga/impresión de reportes PDF
+  pdf: ^3.11.1
+  printing: ^5.13.3
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
