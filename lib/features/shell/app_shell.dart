@@ -5,6 +5,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../config/router.dart';
 import '../../data/providers/cobrador_provider.dart';
+import '../../data/providers/mora_count_provider.dart';
 import '../../data/providers/sync_status_provider.dart';
 import '../shared/utils/shell_nav.dart';
 import '../shared/widgets/offline_banner.dart';
@@ -113,7 +114,7 @@ class _AppDrawer extends ConsumerWidget {
             ),
             _navTile(context, Icons.dashboard_outlined, 'Inicio', '/'),
             _navTile(context, Icons.people_outline, 'Clientes', '/clientes'),
-            _navTile(context, Icons.receipt_long_outlined, 'Cuotas pendientes', '/cuotas'),
+            _navTileWithBadge(context, ref, Icons.receipt_long_outlined, 'Cuotas pendientes', '/cuotas'),
             _navTile(context, Icons.map_outlined, 'Mapa', '/mapa'),
             _navTile(context, Icons.history_outlined, 'Historial', '/historial'),
             const Divider(),
@@ -129,6 +130,19 @@ class _AppDrawer extends ConsumerWidget {
           ],
         ),
       ),
+    );
+  }
+
+  Widget _navTileWithBadge(BuildContext context, WidgetRef ref, IconData icon, String label, String path) {
+    final moraCount = ref.watch(moraCountProvider).valueOrNull ?? 0;
+    return ListTile(
+      leading: Badge(
+        isLabelVisible: moraCount > 0,
+        label: Text('$moraCount'),
+        child: Icon(icon),
+      ),
+      title: Text(label),
+      onTap: () => context.closeModalsAndGo(path),
     );
   }
 

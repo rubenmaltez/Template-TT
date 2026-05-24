@@ -19,6 +19,18 @@ class CuotasListScreen extends ConsumerStatefulWidget {
 class _CuotasListScreenState extends ConsumerState<CuotasListScreen> {
   _Filtro _filtro = _Filtro.todas;
 
+  /// Marca todas las notificaciones de mora sin ver como "vista" cuando
+  /// el cobrador abre el filtro "En mora". Esto resetea el badge del
+  /// sidebar y le indica al sistema que el cobrador revisó las moras.
+  Future<void> _marcarMoraComoVista() async {
+    final now = DateTime.now().toUtc().toIso8601String();
+    await ps.db.execute('''
+      UPDATE notificaciones_mora
+      SET vista_en = ?, vista_por = 'cobrador'
+      WHERE vista_en IS NULL AND resuelta_en IS NULL
+    ''', [now]);
+  }
+
   @override
   Widget build(BuildContext context) {
     final diasGracia = ref.watch(appSettingsProvider).diasGracia;
@@ -33,7 +45,10 @@ class _CuotasListScreenState extends ConsumerState<CuotasListScreen> {
                 FilterChip(
                   label: Text(_label(f)),
                   selected: _filtro == f,
-                  onSelected: (_) => setState(() => _filtro = f),
+                  onSelected: (_) {
+                    setState(() => _filtro = f);
+                    if (f == _Filtro.mora) _marcarMoraComoVista();
+                  },
                 ),
                 const SizedBox(width: 8),
               ],
@@ -110,6 +125,12 @@ class _CuotasListState extends State<_CuotasList> {
         ),
     };
 
+    // Mora: ordenar por comunidad → cliente (ruta del día: minimizar
+    // viajes agrupando por zona). Otros filtros: por vencimiento.
+    final orderBy = widget.filtro == _Filtro.mora
+        ? 'ORDER BY co.nombre, c.nombre'
+        : 'ORDER BY cu.fecha_vencimiento ASC, c.nombre';
+
     final sql = '''
       SELECT cu.id, cu.monto, cu.monto_pagado, cu.fecha_vencimiento,
              cu.periodo, cu.estado,
@@ -120,7 +141,7 @@ class _CuotasListState extends State<_CuotasList> {
    LEFT JOIN comunidades co ON co.id = c.comunidad_id
        WHERE c.activo = 1
          $extra
-       ORDER BY cu.fecha_vencimiento ASC, c.nombre
+       $orderBy
     ''';
 
     return ps.db.watch(sql, parameters: params);
