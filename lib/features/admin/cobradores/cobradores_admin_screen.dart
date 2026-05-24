@@ -155,8 +155,8 @@ class _InvitarDialogState extends State<_InvitarDialog> {
     // cobrar porque no tiene prefijo asignado (E2E bug).
     final prefijoFinal = prefijo.isNotEmpty
         ? prefijo
-        : _rol == 'cobrador'
-            ? nombre.substring(0, nombre.length >= 2 ? 2 : nombre.length).toUpperCase()
+        : _rol == 'cobrador' && nombre.length >= 2
+            ? nombre.substring(0, 2).toUpperCase()
             : '';
 
     // Capturamos refs al Navigator y ScaffoldMessenger ANTES del await
