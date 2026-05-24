@@ -238,6 +238,31 @@ powersync/sync-rules.yaml  # Bucket definitions per-rol
 
 Aplicar fixes convergentes. NIT individuales se anotan al backlog.
 
+### Audit integral post-BULK
+**Al cerrar cada BULK**, lanzar un audit integral (además del audit por PR):
+- Cross-BULK consistency: imports rotos, providers huérfanos, dead code.
+- Migrations secuenciales, sync rules vs schema.
+- Verificar que cada archivo nuevo se usa en al menos un lugar.
+
+### Principio de diseño: evaluar ANTES de implementar
+Antes de elegir una herramienta/servicio para un feature nuevo (ej:
+dónde hosear un archivo, qué package usar, qué API consumir), evaluar
+**todas las opciones del stack existente** y elegir la más simple que
+resuelva el problema sin agregar dependencias ni pasos manuales. No
+asumir que "ya tenemos X, usemos X" sin verificar si hay alternativa
+más directa. Documentar la decisión y el trade-off en un comment o en
+el commit message.
+
+Checklist pre-implementación:
+1. ¿Puedo resolver esto con lo que ya existe en el stack? (GitHub,
+   Supabase, PowerSync, Flutter built-in).
+2. ¿El approach elegido agrega pasos manuales al workflow del user?
+   Si sí, ¿hay alternativa que los elimine?
+3. ¿El approach tiene limitaciones conocidas (RLS, file size, rate
+   limits) que podrían bloquear después?
+4. ¿Cómo se ve el flujo end-to-end desde la perspectiva del user
+   (no solo del developer)?
+
 ### Audit log es append-only
 Las RPCs y Edge Functions que modifican estado sensible escriben a `audit_log`.
 **Nunca borrar rows del audit_log** — el patrón es agregar rows (ej: intent + success
