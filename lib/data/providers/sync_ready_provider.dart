@@ -30,5 +30,13 @@ final syncReadyProvider = Provider<bool>((ref) {
       ref.watch(syncStatusProvider).valueOrNull?.lastSyncedAt;
   if (lastSyncedAt == null) return false;
 
-  return lastSyncedAt.isAfter(identity.changedAt!);
+  // Margen de 2 segundos: PowerSync puede emitir lastSyncedAt con un
+  // timestamp muy cercano a changedAt (race de milisegundos en el
+  // handshake inicial). Sin margen, el gate queda atascado porque
+  // isAfter(changedAt) retorna false cuando los timestamps son iguales
+  // o difieren por <1ms. El margen no compromete la seguridad del gate
+  // (que protege contra cache stale de otro user, no contra ms de
+  // timing). Bug reproducido 3+ veces en E2E sesión 2.
+  final threshold = identity.changedAt!.subtract(const Duration(seconds: 2));
+  return lastSyncedAt.isAfter(threshold);
 });

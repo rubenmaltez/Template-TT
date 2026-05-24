@@ -58,10 +58,29 @@ dependencies:
   pdf: ^3.11.1
   printing: ^5.13.3
 
+  # HTTP client para check de updates (version.json en Storage)
+  http: ^1.2.0
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^4.0.0
 
+  # Empaquetado MSIX para distribución Windows
+  msix: ^3.16.8
+
 flutter:
   uses-material-design: true
+
+# Configuración MSIX para distribución Windows.
+# Build: flutter build windows --release && dart run msix:create
+msix_config:
+  display_name: Cobranza ISP
+  publisher_display_name: Cobranza ISP
+  identity_name: com.cobranzaisp.app
+  logo_path: assets/icon/app_icon.png
+  capabilities: internetClient
+  languages: es
+  # Certificado self-signed para distribución B2B (no Microsoft Store).
+  # Para producción: reemplazar con certificado comprado.
+  store: false

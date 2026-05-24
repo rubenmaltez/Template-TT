@@ -12,10 +12,11 @@ hasta producción general y features comerciales.
 - Cuando se cierra un bulk entero, se hace audit ligero + smoke test
   del flow que ese bulk debería habilitar.
 
-**Estado actual**: BULKs 1-5 completados (BULK 1 Sprint 1 sync gate en
-pausa esperando repro). Sesión inicial (2026-05-22) entregó 34 PRs de
-infraestructura previa. Sesión 2 (2026-05-23/24) entregó 12 PRs (#36-#47)
-con BULKs 1-5 completos + 4 auditorías formales + audit integral.
+**Estado actual**: BULKs 1-6 completados. E2E validado end-to-end
+(crear ISP → cobro → recibo). 5 bugs encontrados, 2 HIGH blockers
+para piloto (sync gate stuck + CRUD rejection silenciosa).
+Sesión inicial (2026-05-22): 34 PRs infraestructura.
+Sesión 2 (2026-05-23/24): 15 PRs (#36-#50) BULKs 1-6 + E2E.
 
 ---
 
@@ -186,12 +187,24 @@ en la sesión inicial.
 
 | Sprint | Tiempo | Criterio de éxito | PR |
 |---|---|---|---|
-| Resend dominio verificado | 30 min setup + DNS | Email funciona con cualquier destinatario | — |
-| Paginación en otros listados (cuotas/pagos/audit) | 2-3h | Todos los listados grandes paginados | — |
-| Reportes PDF descargables | 2-3 días | Package `pdf` + templates + upload Storage | — |
-| Validación end-to-end del flujo ISP completo | 1 día | Documentado: crear ISP → config → plan → invitar cobrador → crear cliente → cobrar → ver reporte | — |
+| Resend dominio verificado | 30 min setup + DNS | Email funciona con cualquier destinatario | ➡️ Futuro (ya implementado, solo falta config DNS) |
+| Paginación en otros listados (cuotas/pagos/audit) | 2-3h | Todos los listados grandes paginados | ✅ PR #49 |
+| Reportes PDF descargables | 2-3 días | Package `pdf` + templates cobros + mora | ✅ PR #49 |
+| Validación end-to-end del flujo ISP completo | 1 día | Flujo completo probado | 🔴 En progreso — bugs encontrados |
 
 **Tiempo total**: ~5-7 días.
+
+**E2E findings (bugs descubiertos durante validación, sesión 2)**:
+
+| # | Bug | Severidad | Fix para próxima sesión |
+|---|---|---|---|
+| 1 | **Sync gate stuck** post-login y post-invitación. PowerSync queda en "Sincronizando datos..." indefinidamente. F5 lo desbloquea. Reproducido 2 veces en E2E. | **HIGH (BLOCKER para piloto)** | Diagnosticar con logs [SYNC-DIAG], fix en PowerSync connector o auth listener |
+| 2 | **CRUD rejection silenciosa**: contrato rechazado por trigger en Postgres pero PowerSync no muestra el error al user. El dato queda en SQLite local como si se hubiera guardado. | **HIGH** | Surfacear errores del CRUD upload al user vía SnackBar/dialog |
+| 3 | **Trigger bloquea contrato sin cobrador**: `contratos_check_cliente_con_cobrador()` requiere cobrador asignado antes de crear contrato. Workflow admin forzado sin documentar. | **MEDIUM** | Evaluar: relajar trigger (permitir NULL cobrador) o documentar workflow |
+| 4 | **Cobrador no aparece post-invitación**: probablemente relacionado con bug #1 (sync stuck). El cobrador se creó server-side pero nunca se sincronizó al local. | **MEDIUM** | Se resuelve con fix del bug #1 |
+| 5 | **Onboarding no resetea formDirtyProvider**: dialog "¿Descartar?" espurio después de completar el wizard. | **LOW** | Reset provider en `_finalizar()` |
+| 6 | **DropdownButton assertion** transitoria en contratos: red screen ~1s cuando plan/cliente carga antes que el dropdown. | **LOW** | Guard en el widget |
+| 7 | **Banner "Red inestable"** durante heartbeats normales de PowerSync. | **LOW** | Subir threshold de 3 a 5 flickers |
 
 **Validación**: poner producto en manos de **1 ISP piloto real**.
 Recoger feedback durante 2-4 semanas.
@@ -352,3 +365,19 @@ Cada bulk se trata como mini-roadmap dentro de su(s) sesión(es):
   - Audit seguridad: dual write path eliminado, guard System tenant.
   - Compile fix: widget.diasGracia en cuotas_list_screen (PR #47).
   - Smoke testing manual: 9 escenarios validados.
+- BULK 6 completo (PR #49, #50): pre-producción.
+  - Paginación cuotas/pagos/audit con "Cargar más" (LIMIT 50/200).
+  - Reportes PDF descargables: cobros del mes + mora. FAB + PopupMenu.
+  - pdf ^3.11.1 + printing ^5.13.3 en pubspec.
+  - Validación E2E del flujo ISP completo:
+    - Crear ISP → config empresa → plan → invitar cobrador → asignar
+      cobrador → contrato → 24 cuotas (4 en mora) → login cobrador →
+      cobro 500 C$ efectivo → recibo CP-00001 generado ✅
+  - Bugs E2E documentados (5 reales):
+    1. Sync gate stuck (BLOCKER): changedAt timing gap con lastSyncedAt.
+    2. CRUD rejection silenciosa: connector rethrow → retry infinito.
+    3. DropdownButton assertion: value no matchea items durante re-emit.
+    4. Onboarding formDirtyProvider: listeners con defaults programáticos.
+    5. Cobro > saldo: validator rechaza pero botón parece enabled (UX).
+  - Backlog UX: vuelto en recibo, prefijo recibo workflow, onboarding
+    wizard review, banner threshold.
