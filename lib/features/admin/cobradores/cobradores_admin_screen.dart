@@ -146,10 +146,18 @@ class _InvitarDialogState extends State<_InvitarDialog> {
       return;
     }
     final prefijo = _prefijo.text.trim().toUpperCase();
-    if (prefijo.isNotEmpty && !RegExp(r'^[A-Z0-9-]{2,16}$').hasMatch(prefijo)) {
+    if (_rol == 'cobrador' && prefijo.isNotEmpty && !RegExp(r'^[A-Z0-9-]{2,16}$').hasMatch(prefijo)) {
       setState(() => _error = 'Prefijo: [A-Z0-9-]{2,16}');
       return;
     }
+    // Auto-generar prefijo si el admin lo dejó vacío: primeras 2 letras
+    // del nombre en mayúscula. Evita el caso donde el cobrador no puede
+    // cobrar porque no tiene prefijo asignado (E2E bug).
+    final prefijoFinal = prefijo.isNotEmpty
+        ? prefijo
+        : _rol == 'cobrador'
+            ? nombre.substring(0, nombre.length >= 2 ? 2 : nombre.length).toUpperCase()
+            : '';
 
     // Capturamos refs al Navigator y ScaffoldMessenger ANTES del await
     // para no usar el context del State (que queda desmontado tras el
@@ -174,8 +182,8 @@ class _InvitarDialogState extends State<_InvitarDialog> {
           'rol': _rol,
           if (PhoneTextField.sanitized(_telefono) != null)
             'telefono': PhoneTextField.sanitized(_telefono),
-          if (_rol == 'cobrador' && prefijo.isNotEmpty)
-            'prefijo_recibo': prefijo,
+          if (_rol == 'cobrador' && prefijoFinal.isNotEmpty)
+            'prefijo_recibo': prefijoFinal,
           // Explícito para que el server no asuma default si en el
           // futuro cambia (mismo patrón que crear-tenant).
           'enviar_email': _enviarEmail,
@@ -331,7 +339,7 @@ class _InvitarDialogState extends State<_InvitarDialog> {
                 decoration: const InputDecoration(
                   labelText: 'Prefijo de recibo',
                   hintText: 'COB-01',
-                  helperText: 'Si lo dejás vacío, lo asignás después',
+                  helperText: 'Si lo dejás vacío, se genera automáticamente del nombre',
                 ),
                 inputFormatters: [
                   FilteringTextInputFormatter.allow(RegExp(r'[A-Za-z0-9-]')),
