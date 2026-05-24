@@ -53,7 +53,7 @@ class _OfflineBannerState extends ConsumerState<OfflineBanner> {
   // mostramos un hint sutil de "red inestable" (distinto al banner full).
   int _flickerCount = 0;
   DateTime? _flickerWindowStart;
-  static const _flickerThreshold = 3; // N cambios de estado
+  static const _flickerThreshold = 5; // N cambios de estado
   static const _flickerWindow = Duration(seconds: 30); // ventana de tiempo
   bool _showUnstableIndicator = false;
   Timer? _unstableResetTimer;
