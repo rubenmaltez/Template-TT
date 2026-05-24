@@ -3,7 +3,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:printing/printing.dart';
 
 import '../../../config/router.dart';
-import '../../../data/providers/cobrador_provider.dart';
 import '../../../data/repositories/settings_repo.dart';
 import '../../../data/utils/formatters.dart';
 import '../../../powersync/db.dart' as ps;
@@ -100,7 +99,7 @@ class _DescargarPdfMenu extends ConsumerWidget {
         ''');
 
         final now = DateTime.now();
-        final periodo = '${Fmt.mes(now)} ${now.year}';
+        final periodo = Fmt.mes(now);
         final doc = buildReporteCobros(
           titulo: 'Reporte de cobros',
           empresaNombre: empresaNombre,
@@ -119,7 +118,8 @@ class _DescargarPdfMenu extends ConsumerWidget {
                  COUNT(cu.id) AS cuotas_vencidas,
                  COALESCE(SUM(cu.monto + COALESCE(cu.cargos_neto, 0)
                    - cu.monto_pagado), 0) AS monto_adeudado,
-                 MIN(cu.fecha_vencimiento) AS primera_vencida
+                 CAST(julianday('now') - julianday(MIN(cu.fecha_vencimiento))
+                   AS INTEGER) AS dias_mora
             FROM cuotas cu
             JOIN clientes c ON c.id = cu.cliente_id
        LEFT JOIN comunidades co ON co.id = c.comunidad_id
@@ -127,16 +127,18 @@ class _DescargarPdfMenu extends ConsumerWidget {
              AND date(cu.fecha_vencimiento, '+' || ? || ' days')
                  < date('now')
            GROUP BY c.id, c.nombre, co.nombre
-           ORDER BY monto_adeudado DESC
+           ORDER BY dias_mora DESC
         ''', [diasGracia]);
+
+        final now = DateTime.now();
+        final periodoMora = Fmt.mes(now);
 
         final doc = buildReporteMora(
           titulo: 'Reporte de mora',
           empresaNombre: empresaNombre,
+          periodo: periodoMora,
           rows: rows,
         );
-
-        final now = DateTime.now();
         await Printing.sharePdf(
           bytes: await doc.save(),
           filename: 'mora_${now.year}_${now.month}_${now.day}.pdf',
