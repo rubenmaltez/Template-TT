@@ -8,6 +8,7 @@ import '../../../data/providers/cobrador_provider.dart';
 import '../../../data/providers/impersonation_provider.dart';
 import '../../../data/providers/sync_status_provider.dart';
 import '../../../data/services/impersonation_service.dart';
+import '../../shared/widgets/app_version_label.dart';
 import '../../shared/widgets/update_banner.dart';
 import '../../../powersync/db.dart' as ps;
 import '../../auth/cambiar_password_dialog.dart';
@@ -392,7 +393,7 @@ class _AdminRail extends ConsumerWidget {
               onTap: () => context.closeModalsThenRun(
                   () => Supabase.instance.client.auth.signOut()),
             ),
-            const SizedBox(height: 8),
+            const AppVersionLabel(),
           ],
         ),
       ),

@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
+import 'package:package_info_plus/package_info_plus.dart';
+
 import '../shared/utils/shell_nav.dart';
 import '../shared/widgets/update_banner.dart';
 
@@ -50,6 +52,16 @@ class SuperShell extends StatelessWidget {
           ],
         ),
         actions: [
+          FutureBuilder<PackageInfo>(
+            future: PackageInfo.fromPlatform(),
+            builder: (_, snap) => snap.hasData
+                ? Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                    child: Text('v${snap.data!.version}',
+                        style: TextStyle(fontSize: 11, color: scheme.outline)),
+                  )
+                : const SizedBox.shrink(),
+          ),
           if (!enTenants)
             IconButton(
               icon: const Icon(Icons.business),

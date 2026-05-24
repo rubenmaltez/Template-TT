@@ -8,6 +8,7 @@ import '../../data/providers/cobrador_provider.dart';
 import '../../data/providers/mora_count_provider.dart';
 import '../../data/providers/sync_status_provider.dart';
 import '../shared/utils/shell_nav.dart';
+import '../shared/widgets/app_version_label.dart';
 import '../shared/widgets/offline_banner.dart';
 import '../shared/widgets/update_banner.dart';
 
@@ -133,6 +134,7 @@ class _AppDrawer extends ConsumerWidget {
               onTap: () => context.closeModalsThenRun(
                   () => Supabase.instance.client.auth.signOut()),
             ),
+            const AppVersionLabel(),
           ],
         ),
       ),
