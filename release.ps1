@@ -2,8 +2,9 @@
 # Uso: .\release.ps1 -Version "0.2.0" -Notes "Descripcion del cambio"
 #
 # 100% automatizado: version bump, commit, tag, build Windows+Android,
-# crear GitHub Release con assets, actualizar version.json en Supabase.
-# Requiere: flutter, dart, git, gh (GitHub CLI), supabase CLI.
+# crear GitHub Release con assets (incluyendo version.json).
+# La app lee version.json desde /releases/latest/download/.
+# Requiere: flutter, dart, git, gh (GitHub CLI).
 
 param(
     [Parameter(Mandatory=$true)]
@@ -15,8 +16,6 @@ param(
 
 $ErrorActionPreference = "Stop"
 $repo = "rubenmaltez/Template-TT"
-$supabaseProject = "vxxzesbmilfolwjhfxgr"
-$bucket = "Installers"
 
 Write-Host "`n=== Release v$Version ===" -ForegroundColor Cyan
 
@@ -73,19 +72,8 @@ Write-Host "`n[7/8] Creando GitHub Release..." -ForegroundColor Yellow
 gh release create "v$Version" $msix $apk "version.json" --repo $repo --title "v$Version - $Notes" --notes $Notes
 Write-Host "  Release v$Version publicado con 3 assets" -ForegroundColor Green
 
-# 8. Subir version.json a Supabase Storage
-Write-Host "`n[8/8] Actualizando version.json en Supabase Storage..." -ForegroundColor Yellow
-$supabaseUrl = "https://$supabaseProject.supabase.co"
-$serviceKey = (Get-Content ".env.json" | ConvertFrom-Json).SUPABASE_ANON_KEY
-# Borrar el viejo
-try {
-    Invoke-RestMethod -Uri "$supabaseUrl/storage/v1/object/$bucket/version.json" -Method Delete -Headers @{ "Authorization" = "Bearer $serviceKey"; "apikey" = $serviceKey }
-} catch { }
-# Subir el nuevo
-$bytes = [System.IO.File]::ReadAllBytes("$PWD\version.json")
-Invoke-RestMethod -Uri "$supabaseUrl/storage/v1/object/$bucket/version.json" -Method Post -Headers @{ "Authorization" = "Bearer $serviceKey"; "apikey" = $serviceKey; "Content-Type" = "application/json" } -Body $bytes
-Write-Host "  version.json actualizado en Supabase Storage" -ForegroundColor Green
-
 Write-Host "`n=== Release v$Version completado ===" -ForegroundColor Cyan
+Write-Host "version.json incluido en el GitHub Release." -ForegroundColor Green
+Write-Host "La app lee /releases/latest/download/version.json automaticamente." -ForegroundColor Green
 Write-Host "Los users veran el banner de update al abrir la app." -ForegroundColor Green
 Write-Host ""
