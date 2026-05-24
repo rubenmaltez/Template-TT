@@ -5,6 +5,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../config/router.dart';
 import '../../../data/providers/cobrador_provider.dart';
+import '../../../data/providers/impersonation_provider.dart';
 import '../../../data/providers/sync_status_provider.dart';
 import '../../auth/cambiar_password_dialog.dart';
 import '../../shared/utils/shell_nav.dart';
@@ -24,6 +25,8 @@ class AdminShell extends ConsumerWidget {
     final isDesktop = MediaQuery.sizeOf(context).width >= _breakpoint;
     final titulo = ShellTitleScope.of(context) ?? 'Panel admin';
     final location = GoRouterState.of(context).matchedLocation;
+    final impersonating =
+        ref.watch(impersonatedTenantIdProvider).valueOrNull != null;
 
     // Gate de carga inicial: mientras `empresaNombreProvider` no haya
     // emitido su primer valor, no rendeamos el child. Sin esto, el
@@ -37,30 +40,57 @@ class AdminShell extends ConsumerWidget {
     // settingsMapProvider) podría liberar el gate antes que el router
     // tenga su data — la race se mantendría. El gate scoped al content
     // mantiene visible el sidebar/topbar — menos pérdida de contexto.
+    //
+    // Skip gate cuando super_admin está impersonando: la data del
+    // tenant llega vía el bucket impersonated_tenant y puede tardar
+    // un momento. Si gateamos en empresaNombreProvider, el super_admin
+    // vería "Cargando…" por cada entrada. Como el super_admin no
+    // necesita onboarding del tenant ajeno, lo dejamos pasar directo.
     final empresaAsync = ref.watch(empresaNombreProvider);
-    final bodyContent = empresaAsync.when(
-      data: (_) => OfflineBanner(child: child),
-      loading: () => const Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.center,
-          children: [
-            CircularProgressIndicator(),
-            SizedBox(height: 12),
-            Text('Cargando…'),
-          ],
-        ),
-      ),
-      error: (e, _) => Center(
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Text(
-            'No se pudo cargar la configuración del ISP: $e',
-            textAlign: TextAlign.center,
+    final Widget bodyContent;
+    if (impersonating) {
+      bodyContent = OfflineBanner(child: child);
+    } else {
+      bodyContent = empresaAsync.when(
+        data: (_) => OfflineBanner(child: child),
+        loading: () => const Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              CircularProgressIndicator(),
+              SizedBox(height: 12),
+              Text('Cargando…'),
+            ],
           ),
         ),
-      ),
-    );
+        error: (e, _) => Center(
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Text(
+              'No se pudo cargar la configuración del ISP: $e',
+              textAlign: TextAlign.center,
+            ),
+          ),
+        ),
+      );
+    }
+
+    // Banner de impersonación: se muestra arriba del contenido cuando
+    // el super_admin está dentro de un tenant. Usa empresaNombreProvider
+    // para mostrar el nombre del tenant (que ahora viene del bucket
+    // impersonated_tenant).
+    final Widget bodyWithBanner;
+    if (impersonating) {
+      bodyWithBanner = Column(
+        children: [
+          _ImpersonationBanner(empresaAsync: empresaAsync),
+          Expanded(child: bodyContent),
+        ],
+      );
+    } else {
+      bodyWithBanner = bodyContent;
+    }
 
     if (isDesktop) {
       return Scaffold(
@@ -77,7 +107,7 @@ class AdminShell extends ConsumerWidget {
                     parentRoute: _parentRouteFor(location),
                     location: location,
                   ),
-                  Expanded(child: bodyContent),
+                  Expanded(child: bodyWithBanner),
                 ],
               ),
             ),
@@ -104,7 +134,7 @@ class AdminShell extends ConsumerWidget {
         title: Text(titulo),
         actions: const [_SyncIndicator(), SizedBox(width: 8)],
       ),
-      body: bodyContent,
+      body: bodyWithBanner,
     );
   }
 }
@@ -479,4 +509,89 @@ class _UserHeader extends StatelessWidget {
         'cobrador' => 'Cobrador',
         _ => rol,
       };
+}
+
+/// Banner que se muestra en la parte superior del panel admin cuando el
+/// super_admin está impersonando un tenant. Muestra el nombre del tenant
+/// (vía empresaNombreProvider, que ahora apunta al tenant impersonado) y
+/// un botón "Salir" para terminar la impersonación.
+class _ImpersonationBanner extends StatefulWidget {
+  const _ImpersonationBanner({required this.empresaAsync});
+  final AsyncValue<String?> empresaAsync;
+
+  @override
+  State<_ImpersonationBanner> createState() => _ImpersonationBannerState();
+}
+
+class _ImpersonationBannerState extends State<_ImpersonationBanner> {
+  bool _saliendo = false;
+
+  Future<void> _salir() async {
+    setState(() => _saliendo = true);
+    try {
+      await stopImpersonation();
+      if (!mounted) return;
+      context.go('/super/tenants');
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error al salir: $e')),
+      );
+      setState(() => _saliendo = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    // El nombre del tenant viene de empresaNombreProvider — cuando el
+    // super_admin impersona, el bucket impersonated_tenant sincroniza
+    // los settings del tenant y empresaNombreProvider emite el nombre.
+    // Mientras la data llega (loading), mostramos "Cargando…".
+    final nombre = widget.empresaAsync.when(
+      data: (n) => n ?? 'Tenant sin nombre',
+      loading: () => 'Cargando…',
+      error: (_, __) => 'Tenant',
+    );
+    return Material(
+      color: scheme.tertiaryContainer,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        child: Row(
+          children: [
+            Icon(Icons.shield, size: 18, color: scheme.onTertiaryContainer),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                'Super Admin · Viendo: $nombre',
+                style: TextStyle(
+                  color: scheme.onTertiaryContainer,
+                  fontWeight: FontWeight.w600,
+                  fontSize: 13,
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            const SizedBox(width: 8),
+            _saliendo
+                ? const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : TextButton.icon(
+                    icon: const Icon(Icons.exit_to_app, size: 18),
+                    label: const Text('Salir'),
+                    style: TextButton.styleFrom(
+                      foregroundColor: scheme.onTertiaryContainer,
+                      visualDensity: VisualDensity.compact,
+                    ),
+                    onPressed: _salir,
+                  ),
+          ],
+        ),
+      ),
+    );
+  }
 }

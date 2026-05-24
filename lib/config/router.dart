@@ -21,6 +21,7 @@ import '../features/admin/reportes/reportes_admin_screen.dart';
 import '../features/admin/settings/settings_admin_screen.dart';
 import '../features/admin/shell/admin_shell.dart';
 import '../data/providers/cobrador_provider.dart';
+import '../data/providers/impersonation_provider.dart';
 import '../data/providers/sync_ready_provider.dart';
 import '../features/auth/auth_flow_provider.dart';
 import '../features/auth/login_screen.dart';
@@ -127,6 +128,7 @@ final routerProvider = Provider<GoRouter>((ref) {
     ref.invalidate(empresaNombreProvider);
     ref.invalidate(empresaNombreRowExistsProvider);
     ref.invalidate(cobradorActualProvider);
+    ref.invalidate(impersonatedTenantIdProvider);
   });
   ref.onDispose(authSub.cancel);
 
@@ -148,6 +150,9 @@ final routerProvider = Provider<GoRouter>((ref) {
   // identidad, syncReady flippa a true y queremos que el redirect
   // saque al user de /sync-gate hacia su pantalla por rol.
   ref.listen(syncReadyProvider, (_, __) => refresh.poke());
+  // Impersonación: cuando el super_admin entra o sale de un tenant,
+  // re-evaluamos el redirect para moverlo entre /super/* y /admin/*.
+  ref.listen(impersonatedTenantIdProvider, (_, __) => refresh.poke());
 
   return GoRouter(
     initialLocation: '/',
@@ -189,22 +194,28 @@ final routerProvider = Provider<GoRouter>((ref) {
 
       final rol = ref.read(_rolUsuarioProvider).valueOrNull;
       final loc = state.matchedLocation;
+      final impersonating =
+          ref.read(impersonatedTenantIdProvider).valueOrNull != null;
 
       // Landing por rol desde la raíz `/`. Sólo en la raíz exacta —
       // los usuarios admin/super pueden querer ver pantallas del cobrador
       // navegando, así que sub-rutas como `/clientes/:id` no se tocan.
       //
-      // super_admin → `/super/tenants` (su panel SaaS, no necesita ver
-      //   ni operar el panel admin de un tenant para arrancar).
+      // super_admin impersonando → `/admin` (opera como admin del tenant).
+      // super_admin normal → `/super/tenants` (panel SaaS).
       // admin / admin_cobranza → `/admin` (panel del tenant).
       if (loc == '/') {
-        if (rol == 'super_admin') return '/super/tenants';
+        if (rol == 'super_admin') {
+          return impersonating ? '/admin' : '/super/tenants';
+        }
         if (rol == 'admin' || rol == 'admin_cobranza') return '/admin';
       }
 
       // Onboarding: si rol=admin y `empresa.nombre` está vacío, llevar al
-      // wizard. NO aplica a super_admin (vive en el tenant System, no
-      // necesita onboarding del producto).
+      // wizard. NO aplica a super_admin normal (vive en el tenant System,
+      // no necesita onboarding del producto) NI a super_admin impersonando
+      // (el tenant ya fue configurado por su admin — el super_admin no
+      // debería ver el wizard).
       //
       // empresaNombreRowExistsProvider gate: si la row específica de
       // `empresa.nombre` aún no llegó del sync, `empresaState.value`
@@ -249,6 +260,14 @@ final routerProvider = Provider<GoRouter>((ref) {
       if (loc.startsWith('/super') && rol != 'super_admin') {
         return '/admin';
       }
+
+      // super_admin impersonando que intenta acceder a /super/*:
+      // primero debe salir de la impersonación. Lo redirigimos a /admin
+      // donde verá el banner de impersonación con "Salir".
+      if (loc.startsWith('/super') && impersonating) {
+        return '/admin';
+      }
+
       return null;
     },
     routes: [

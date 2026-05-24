@@ -132,6 +132,14 @@ bucket_definitions:
         FROM cobradores
         WHERE id = bucket.user_id
 
+      # Impersonation row: si el super_admin tiene una row activa,
+      # la bajamos al SQLite local para que el provider la detecte.
+      # user_id es el PK en Postgres pero PowerSync espera `id` — lo
+      # aliaseamos. Cuando no hay row, no se baja nada.
+      - SELECT user_id AS id, user_id, tenant_id, started_at
+        FROM super_admin_impersonation
+        WHERE user_id = bucket.user_id
+
   # ── Impersonación de tenant por super_admin ──────────────────────────
   # Cuando el super_admin tiene una row en super_admin_impersonation,
   # este bucket entrega TODA la data del tenant impersonado (mismos
