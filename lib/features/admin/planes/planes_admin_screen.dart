@@ -9,11 +9,37 @@ import '../../../powersync/db.dart' as ps;
 import '../../shared/widgets/empty_state.dart';
 
 /// CRUD de planes del tenant. Sin planes no se pueden crear contratos.
-class PlanesAdminScreen extends ConsumerWidget {
+///
+/// **ConsumerStatefulWidget** para cachear el stream de PowerSync en
+/// `late final _planesStream` inicializado en `initState`. Sin este cache,
+/// cada `build()` re-ejecuta `ps.db.watch(...)` creando un nuevo stream
+/// subscription → flicker + waste.
+class PlanesAdminScreen extends ConsumerStatefulWidget {
   const PlanesAdminScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<PlanesAdminScreen> createState() => _PlanesAdminScreenState();
+}
+
+class _PlanesAdminScreenState extends ConsumerState<PlanesAdminScreen> {
+  late final Stream<List<Map<String, dynamic>>> _planesStream;
+
+  @override
+  void initState() {
+    super.initState();
+    _planesStream = ps.db.watch(
+      '''
+      SELECT p.*,
+             (SELECT COUNT(*) FROM contratos
+               WHERE plan_id = p.id AND activo = 1) AS contratos_activos
+        FROM planes p
+       ORDER BY p.activo DESC, p.precio_mensual
+      ''',
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
     return Column(
       children: [
         Padding(
@@ -30,22 +56,14 @@ class PlanesAdminScreen extends ConsumerWidget {
               FilledButton.icon(
                 icon: const Icon(Icons.add),
                 label: const Text('Nuevo plan'),
-                onPressed: () => _abrirForm(context, ref, null),
+                onPressed: () => _abrirForm(context, null),
               ),
             ],
           ),
         ),
         Expanded(
           child: StreamBuilder(
-            stream: ps.db.watch(
-              '''
-              SELECT p.*,
-                     (SELECT COUNT(*) FROM contratos
-                       WHERE plan_id = p.id AND activo = 1) AS contratos_activos
-                FROM planes p
-               ORDER BY p.activo DESC, p.precio_mensual
-              ''',
-            ),
+            stream: _planesStream,
             builder: (context, snap) {
               if (!snap.hasData) {
                 return const Center(child: CircularProgressIndicator());
@@ -60,7 +78,7 @@ class PlanesAdminScreen extends ConsumerWidget {
                   accion: FilledButton.icon(
                     icon: const Icon(Icons.add),
                     label: const Text('Crear primer plan'),
-                    onPressed: () => _abrirForm(context, ref, null),
+                    onPressed: () => _abrirForm(context, null),
                   ),
                 );
               }
@@ -70,7 +88,7 @@ class PlanesAdminScreen extends ConsumerWidget {
                 separatorBuilder: (_, __) => const SizedBox(height: 8),
                 itemBuilder: (_, i) => _PlanCard(
                   row: rows[i],
-                  onEdit: () => _abrirForm(context, ref, rows[i]),
+                  onEdit: () => _abrirForm(context, rows[i]),
                 ),
               );
             },
@@ -82,7 +100,6 @@ class PlanesAdminScreen extends ConsumerWidget {
 
   Future<void> _abrirForm(
     BuildContext context,
-    WidgetRef ref,
     Map<String, dynamic>? row,
   ) async {
     await showDialog<void>(

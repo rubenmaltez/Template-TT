@@ -7,27 +7,42 @@ import '../../data/utils/formatters.dart';
 import '../../powersync/db.dart' as ps;
 import '../shared/widgets/empty_state.dart';
 
-class HistorialScreen extends ConsumerWidget {
+class HistorialScreen extends ConsumerStatefulWidget {
   const HistorialScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<HistorialScreen> createState() => _HistorialScreenState();
+}
+
+class _HistorialScreenState extends ConsumerState<HistorialScreen> {
+  // Cacheamos el stream de PowerSync en initState para evitar que cada
+  // rebuild cree una nueva suscripción (anti-patrón ps.db.watch inline).
+  late final Stream<List<Map<String, dynamic>>> _historialStream;
+
+  @override
+  void initState() {
+    super.initState();
+    _historialStream = ps.db.watch(
+      '''
+      SELECT p.id, p.monto_cordobas, p.moneda, p.monto_original,
+             p.metodo, p.fecha_pago,
+             c.nombre AS cliente_nombre,
+             r.id AS recibo_id, r.numero_completo
+        FROM pagos p
+        JOIN cuotas cu ON cu.id = p.cuota_id
+        JOIN clientes c ON c.id = cu.cliente_id
+   LEFT JOIN recibos r ON r.pago_id = p.id AND r.anulado = 0
+       WHERE p.anulado = 0
+       ORDER BY p.fecha_pago DESC
+       LIMIT 100
+      ''',
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
     return StreamBuilder(
-      stream: ps.db.watch(
-        '''
-        SELECT p.id, p.monto_cordobas, p.moneda, p.monto_original,
-               p.metodo, p.fecha_pago,
-               c.nombre AS cliente_nombre,
-               r.id AS recibo_id, r.numero_completo
-          FROM pagos p
-          JOIN cuotas cu ON cu.id = p.cuota_id
-          JOIN clientes c ON c.id = cu.cliente_id
-     LEFT JOIN recibos r ON r.pago_id = p.id AND r.anulado = 0
-         WHERE p.anulado = 0
-         ORDER BY p.fecha_pago DESC
-         LIMIT 100
-        ''',
-      ),
+      stream: _historialStream,
       builder: (context, snap) {
         if (!snap.hasData) {
           return const Center(child: CircularProgressIndicator());

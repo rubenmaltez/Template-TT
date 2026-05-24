@@ -13,12 +13,52 @@ import '../shared/widgets/foto_comprobante_view.dart';
 
 /// Preview visual del recibo + acción para imprimir.
 /// La impresión Bluetooth real se conecta en una iteración siguiente.
-class ReciboScreen extends ConsumerWidget {
+class ReciboScreen extends ConsumerStatefulWidget {
   const ReciboScreen({super.key, required this.reciboId});
   final String reciboId;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<ReciboScreen> createState() => _ReciboScreenState();
+}
+
+class _ReciboScreenState extends ConsumerState<ReciboScreen> {
+  // Cacheamos el stream de PowerSync en initState para evitar que cada
+  // rebuild cree una nueva suscripción (anti-patrón ps.db.watch inline).
+  // El reciboId no cambia durante el lifetime del widget.
+  late final Stream<List<Map<String, dynamic>>> _reciboStream;
+
+  @override
+  void initState() {
+    super.initState();
+    _reciboStream = ps.db.watch(
+      '''
+      SELECT r.id, r.numero_completo, r.prefijo, r.correlativo,
+             r.created_at, r.impreso_en, r.reimpresiones,
+             p.monto_cordobas, p.moneda, p.monto_original,
+             p.tasa_conversion, p.metodo, p.referencia, p.fecha_pago,
+             p.foto_comprobante_path,
+             cu.periodo, cu.monto AS cuota_monto,
+             cu.monto_pagado AS monto_pagado_cuota,
+             cu.cargos_neto,
+             ct.dia_pago,
+             c.nombre AS cliente_nombre, c.cedula AS cliente_cedula,
+             pl.nombre AS plan_nombre,
+             co.nombre AS cobrador_nombre
+        FROM recibos r
+        JOIN pagos p     ON p.id = r.pago_id
+        JOIN cuotas cu   ON cu.id = p.cuota_id
+        JOIN clientes c  ON c.id = cu.cliente_id
+        JOIN contratos ct ON ct.id = cu.contrato_id
+        JOIN planes pl   ON pl.id = ct.plan_id
+        JOIN cobradores co ON co.id = r.cobrador_id
+       WHERE r.id = ?
+      ''',
+      parameters: [widget.reciboId],
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final settings = ref.watch(appSettingsProvider);
     return Scaffold(
       appBar: AppBar(
@@ -31,31 +71,7 @@ class ReciboScreen extends ConsumerWidget {
         ],
       ),
       body: StreamBuilder(
-        stream: ps.db.watch(
-          '''
-          SELECT r.id, r.numero_completo, r.prefijo, r.correlativo,
-                 r.created_at, r.impreso_en, r.reimpresiones,
-                 p.monto_cordobas, p.moneda, p.monto_original,
-                 p.tasa_conversion, p.metodo, p.referencia, p.fecha_pago,
-                 p.foto_comprobante_path,
-                 cu.periodo, cu.monto AS cuota_monto,
-                 cu.monto_pagado AS monto_pagado_cuota,
-                 cu.cargos_neto,
-                 ct.dia_pago,
-                 c.nombre AS cliente_nombre, c.cedula AS cliente_cedula,
-                 pl.nombre AS plan_nombre,
-                 co.nombre AS cobrador_nombre
-            FROM recibos r
-            JOIN pagos p     ON p.id = r.pago_id
-            JOIN cuotas cu   ON cu.id = p.cuota_id
-            JOIN clientes c  ON c.id = cu.cliente_id
-            JOIN contratos ct ON ct.id = cu.contrato_id
-            JOIN planes pl   ON pl.id = ct.plan_id
-            JOIN cobradores co ON co.id = r.cobrador_id
-           WHERE r.id = ?
-          ''',
-          parameters: [reciboId],
-        ),
+        stream: _reciboStream,
         builder: (context, snap) {
           if (!snap.hasData) {
             return const Center(child: CircularProgressIndicator());
@@ -81,7 +97,7 @@ class ReciboScreen extends ConsumerWidget {
               ],
               const SizedBox(height: 24),
               _AccionesImpresion(
-                reciboId: reciboId,
+                reciboId: widget.reciboId,
                 recibo: r,
                 settings: settings,
               ),

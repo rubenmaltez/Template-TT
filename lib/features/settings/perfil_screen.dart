@@ -167,13 +167,24 @@ class _FotosPendientesCard extends ConsumerStatefulWidget {
 class _FotosPendientesCardState extends ConsumerState<_FotosPendientesCard> {
   bool _ejecutando = false;
 
+  // Cacheamos el stream de PowerSync en initState para evitar que cada
+  // rebuild cree una nueva suscripción (anti-patrón ps.db.watch inline).
+  // La query no tiene parámetros dinámicos, así que late final alcanza.
+  late final Stream<List<Map<String, dynamic>>> _pendientesStream;
+
+  @override
+  void initState() {
+    super.initState();
+    _pendientesStream = ps.db.watch(
+      "SELECT COUNT(*) AS n FROM pagos "
+      "WHERE foto_comprobante_path LIKE 'local://%' AND anulado = 0",
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return StreamBuilder(
-      stream: ps.db.watch(
-        "SELECT COUNT(*) AS n FROM pagos "
-        "WHERE foto_comprobante_path LIKE 'local://%' AND anulado = 0",
-      ),
+      stream: _pendientesStream,
       builder: (context, snap) {
         final pendientes = snap.data == null || snap.data!.isEmpty
             ? 0

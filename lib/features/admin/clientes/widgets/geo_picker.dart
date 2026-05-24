@@ -21,9 +21,17 @@ class _GeoPickerState extends State<GeoPicker> {
   String? _comId;
   bool _cargando = true;
 
+  /// Stream cacheado para departamentos (query fija, no depende de state).
+  /// Los streams de municipios y comunidades se dejan inline porque sus
+  /// parámetros cambian con cada selección del usuario (cascading).
+  late final Stream<List<Map<String, dynamic>>> _deptosStream;
+
   @override
   void initState() {
     super.initState();
+    _deptosStream = ps.db.watch(
+      'SELECT id, nombre FROM departamentos ORDER BY nombre',
+    );
     _comId = widget.comunidadId;
     _resolverCascada();
   }
@@ -73,8 +81,7 @@ class _GeoPickerState extends State<GeoPicker> {
         _Selector(
           label: 'Departamento',
           valueId: _deptoId,
-          stream: ps.db.watch(
-              'SELECT id, nombre FROM departamentos ORDER BY nombre'),
+          stream: _deptosStream,
           onChanged: (id) {
             setState(() {
               _deptoId = id;
