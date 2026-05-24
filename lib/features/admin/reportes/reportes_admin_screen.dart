@@ -6,8 +6,10 @@ import '../../../config/router.dart';
 import '../../../data/repositories/settings_repo.dart';
 import '../../../data/utils/formatters.dart';
 import '../../../powersync/db.dart' as ps;
+import 'pdf/reporte_clientes_pdf.dart';
 import 'pdf/reporte_cobros_pdf.dart';
 import 'pdf/reporte_mora_pdf.dart';
+import 'pdf/reporte_por_cobrador_pdf.dart';
 
 class ReportesAdminScreen extends ConsumerWidget {
   const ReportesAdminScreen({super.key});
@@ -64,6 +66,24 @@ class _DescargarPdfMenu extends ConsumerWidget {
             leading: Icon(Icons.warning_amber),
             title: Text('Reporte de mora'),
             subtitle: Text('Clientes con cuotas vencidas'),
+            dense: true,
+          ),
+        ),
+        PopupMenuItem(
+          value: 'por_cobrador',
+          child: ListTile(
+            leading: Icon(Icons.person_search),
+            title: Text('Reporte por cobrador'),
+            subtitle: Text('Cobros filtrados por cobrador'),
+            dense: true,
+          ),
+        ),
+        PopupMenuItem(
+          value: 'clientes',
+          child: ListTile(
+            leading: Icon(Icons.people),
+            title: Text('Estado de clientes'),
+            subtitle: Text('Saldo pendiente por cliente'),
             dense: true,
           ),
         ),
@@ -142,6 +162,81 @@ class _DescargarPdfMenu extends ConsumerWidget {
         await Printing.sharePdf(
           bytes: await doc.save(),
           filename: 'mora_${now.year}_${now.month}_${now.day}.pdf',
+        );
+      } else if (tipo == 'por_cobrador') {
+        // Selector de cobrador antes de generar.
+        final cobradores = await ps.db.getAll('''
+          SELECT id, nombre FROM cobradores
+          WHERE activo = 1 AND rol = 'cobrador'
+          ORDER BY nombre
+        ''');
+        if (!context.mounted) return;
+        final seleccionado = await showDialog<Map<String, dynamic>>(
+          context: context,
+          builder: (ctx) => SimpleDialog(
+            title: const Text('Seleccioná un cobrador'),
+            children: cobradores.map((c) => SimpleDialogOption(
+              onPressed: () => Navigator.pop(ctx, c),
+              child: Text(c['nombre'] as String),
+            )).toList(),
+          ),
+        );
+        if (seleccionado == null) return;
+
+        final rows = await ps.db.getAll('''
+          SELECT p.fecha_pago, c.nombre AS cliente_nombre,
+                 p.monto_cordobas AS monto, p.metodo,
+                 r.numero_completo AS numero_recibo
+            FROM pagos p
+            JOIN cuotas cu ON cu.id = p.cuota_id
+            JOIN clientes c ON c.id = cu.cliente_id
+       LEFT JOIN recibos r ON r.pago_id = p.id
+           WHERE p.anulado = 0
+             AND p.cobrador_id = ?
+             AND date(p.fecha_pago) >= date('now', 'start of month')
+           ORDER BY p.fecha_pago DESC
+        ''', [seleccionado['id']]);
+
+        final now = DateTime.now();
+        final doc = buildReportePorCobrador(
+          titulo: 'Reporte por cobrador',
+          empresaNombre: empresaNombre,
+          periodo: Fmt.mes(now),
+          cobradorNombre: seleccionado['nombre'] as String,
+          rows: rows,
+        );
+        await Printing.sharePdf(
+          bytes: await doc.save(),
+          filename: 'cobrador_${now.year}_${now.month}.pdf',
+        );
+      } else if (tipo == 'clientes') {
+        final rows = await ps.db.getAll('''
+          SELECT c.nombre, co.nombre AS comunidad,
+                 COUNT(cu.id) FILTER (WHERE cu.estado IN ('pendiente','parcial'))
+                   AS pendientes,
+                 COALESCE(SUM(CASE WHEN cu.estado IN ('pendiente','parcial')
+                   THEN cu.monto + COALESCE(cu.cargos_neto, 0) - cu.monto_pagado
+                   ELSE 0 END), 0) AS saldo,
+                 MAX(p.fecha_pago) AS ultimo_pago
+            FROM clientes c
+       LEFT JOIN comunidades co ON co.id = c.comunidad_id
+       LEFT JOIN cuotas cu ON cu.cliente_id = c.id
+       LEFT JOIN pagos p ON p.cuota_id = cu.id AND p.anulado = 0
+           WHERE c.activo = 1
+           GROUP BY c.id, c.nombre, co.nombre
+           ORDER BY saldo DESC
+        ''');
+
+        final now = DateTime.now();
+        final doc = buildReporteClientes(
+          titulo: 'Estado de clientes',
+          empresaNombre: empresaNombre,
+          periodo: Fmt.mes(now),
+          rows: rows,
+        );
+        await Printing.sharePdf(
+          bytes: await doc.save(),
+          filename: 'clientes_${now.year}_${now.month}.pdf',
         );
       }
     } catch (e) {
