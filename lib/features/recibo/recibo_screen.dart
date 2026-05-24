@@ -193,6 +193,36 @@ class _ReciboTicket extends StatelessWidget {
                 ),
               ],
             ),
+            // Vuelto: si el monto pagado excede la cuota base, mostrar
+            // la diferencia como vuelto para que el cobrador sepa cuánto
+            // devolver al cliente. Caso de uso: cliente paga con billete
+            // de denominación mayor.
+            if ((row['monto_cordobas'] as num) > (row['cuota_monto'] as num))
+              Padding(
+                padding: const EdgeInsets.only(top: 4),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text('VUELTO',
+                        style: TextStyle(
+                          fontWeight: FontWeight.w600,
+                          fontSize: 13,
+                          color: Theme.of(context).colorScheme.primary,
+                        )),
+                    Text(
+                      Fmt.cordobas(
+                        (row['monto_cordobas'] as num).toDouble() -
+                            (row['cuota_monto'] as num).toDouble(),
+                      ),
+                      style: TextStyle(
+                        fontWeight: FontWeight.w600,
+                        fontSize: 13,
+                        color: Theme.of(context).colorScheme.primary,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
 
             if (settings.pieRecibo.isNotEmpty) ...[
               const Divider(),
