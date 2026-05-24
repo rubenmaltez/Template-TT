@@ -5,7 +5,10 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../config/router.dart';
 import '../../../data/providers/cobrador_provider.dart';
+import '../../../data/providers/impersonation_provider.dart';
 import '../../../data/providers/sync_status_provider.dart';
+import '../../../data/services/impersonation_service.dart';
+import '../../../powersync/db.dart' as ps;
 import '../../auth/cambiar_password_dialog.dart';
 import '../../shared/utils/shell_nav.dart';
 import '../../shared/widgets/offline_banner.dart';
@@ -24,6 +27,8 @@ class AdminShell extends ConsumerWidget {
     final isDesktop = MediaQuery.sizeOf(context).width >= _breakpoint;
     final titulo = ShellTitleScope.of(context) ?? 'Panel admin';
     final location = GoRouterState.of(context).matchedLocation;
+    final impersonating =
+        ref.watch(impersonatedTenantIdProvider).valueOrNull != null;
 
     // Gate de carga inicial: mientras `empresaNombreProvider` no haya
     // emitido su primer valor, no rendeamos el child. Sin esto, el
@@ -37,30 +42,55 @@ class AdminShell extends ConsumerWidget {
     // settingsMapProvider) podría liberar el gate antes que el router
     // tenga su data — la race se mantendría. El gate scoped al content
     // mantiene visible el sidebar/topbar — menos pérdida de contexto.
+    //
+    // Skip gate cuando super_admin está impersonando: la data del
+    // tenant llega vía el bucket impersonated_tenant y puede tardar
+    // un momento. Si gateamos en empresaNombreProvider, el super_admin
+    // vería "Cargando…" por cada entrada. Como el super_admin no
+    // necesita onboarding del tenant ajeno, lo dejamos pasar directo.
     final empresaAsync = ref.watch(empresaNombreProvider);
-    final bodyContent = empresaAsync.when(
-      data: (_) => OfflineBanner(child: child),
-      loading: () => const Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.center,
-          children: [
-            CircularProgressIndicator(),
-            SizedBox(height: 12),
-            Text('Cargando…'),
-          ],
-        ),
-      ),
-      error: (e, _) => Center(
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Text(
-            'No se pudo cargar la configuración del ISP: $e',
-            textAlign: TextAlign.center,
+    final Widget bodyContent;
+    if (impersonating) {
+      bodyContent = OfflineBanner(child: child);
+    } else {
+      bodyContent = empresaAsync.when(
+        data: (_) => OfflineBanner(child: child),
+        loading: () => const Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              CircularProgressIndicator(),
+              SizedBox(height: 12),
+              Text('Cargando…'),
+            ],
           ),
         ),
-      ),
-    );
+        error: (e, _) => Center(
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Text(
+              'No se pudo cargar la configuración del ISP: $e',
+              textAlign: TextAlign.center,
+            ),
+          ),
+        ),
+      );
+    }
+
+    // Banner de impersonación: se muestra arriba del contenido cuando
+    // el super_admin está dentro de un tenant.
+    final Widget bodyWithBanner;
+    if (impersonating) {
+      bodyWithBanner = Column(
+        children: [
+          const _ImpersonationBanner(),
+          Expanded(child: bodyContent),
+        ],
+      );
+    } else {
+      bodyWithBanner = bodyContent;
+    }
 
     if (isDesktop) {
       return Scaffold(
@@ -77,7 +107,7 @@ class AdminShell extends ConsumerWidget {
                     parentRoute: _parentRouteFor(location),
                     location: location,
                   ),
-                  Expanded(child: bodyContent),
+                  Expanded(child: bodyWithBanner),
                 ],
               ),
             ),
@@ -104,7 +134,7 @@ class AdminShell extends ConsumerWidget {
         title: Text(titulo),
         actions: const [_SyncIndicator(), SizedBox(width: 8)],
       ),
-      body: bodyContent,
+      body: bodyWithBanner,
     );
   }
 }
@@ -276,8 +306,12 @@ bool _menuVisible(
   _MenuItem m, {
   required bool esSuperAdmin,
   required bool tieneAccesoAdmin,
+  bool impersonating = false,
 }) {
-  if (m.superAdminOnly) return esSuperAdmin;
+  // Cuando el super_admin está impersonando, ocultar el item de
+  // /super/* — el router lo bloquearía de todas formas, pero es
+  // mejor no mostrar una opción que no funciona.
+  if (m.superAdminOnly) return esSuperAdmin && !impersonating;
   if (m.adminOnly) return tieneAccesoAdmin;
   return true;
 }
@@ -291,9 +325,13 @@ class _AdminRail extends ConsumerWidget {
     final cobrador = ref.watch(cobradorActualProvider).valueOrNull;
     final tieneAccesoAdmin = cobrador?.tieneAccesoAdmin ?? false;
     final esSuperAdmin = cobrador?.esSuperAdmin ?? false;
+    final impersonating =
+        ref.watch(impersonatedTenantIdProvider).valueOrNull != null;
     final items = _adminMenu
         .where((m) => _menuVisible(m,
-            esSuperAdmin: esSuperAdmin, tieneAccesoAdmin: tieneAccesoAdmin))
+            esSuperAdmin: esSuperAdmin,
+            tieneAccesoAdmin: tieneAccesoAdmin,
+            impersonating: impersonating))
         .toList();
     final selectedIndex = items
         .indexWhere((m) => currentPath == m.path || currentPath.startsWith('${m.path}/'));
@@ -480,3 +518,124 @@ class _UserHeader extends StatelessWidget {
         _ => rol,
       };
 }
+
+/// Banner que se muestra en la parte superior del panel admin cuando el
+/// super_admin está impersonando un tenant. Muestra el nombre del tenant
+/// y un botón "Salir" para terminar la impersonación.
+///
+/// Usa un query scoped por tenant_id para obtener el nombre del tenant
+/// impersonado (no el global `empresaNombreProvider`, que podría retornar
+/// el nombre del tenant System si ambos están en el SQLite local).
+class _ImpersonationBanner extends ConsumerStatefulWidget {
+  const _ImpersonationBanner();
+
+  @override
+  ConsumerState<_ImpersonationBanner> createState() =>
+      _ImpersonationBannerState();
+}
+
+class _ImpersonationBannerState extends ConsumerState<_ImpersonationBanner> {
+  bool _saliendo = false;
+
+  Future<void> _salir() async {
+    setState(() => _saliendo = true);
+    try {
+      await ImpersonationService(Supabase.instance.client).exit();
+      if (!mounted) return;
+      context.go('/super/tenants');
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error al salir: $e')),
+      );
+      setState(() => _saliendo = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    // Leemos el nombre del tenant impersonado directamente de la tabla
+    // settings con filtro por tenant_id. No usamos empresaNombreProvider
+    // porque ese query no filtra por tenant_id y podría retornar el
+    // nombre del tenant System cuando ambos están en el SQLite local.
+    final tenantId = ref.watch(impersonatedTenantIdProvider).valueOrNull;
+    final empresaAsync = ref.watch(_impersonatedEmpresaNombreProvider(tenantId));
+    final nombre = empresaAsync.when(
+      data: (n) => n ?? 'Tenant sin nombre',
+      loading: () => 'Cargando…',
+      error: (_, __) => 'Tenant',
+    );
+    return Material(
+      color: scheme.tertiaryContainer,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        child: Row(
+          children: [
+            Icon(Icons.shield, size: 18, color: scheme.onTertiaryContainer),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                'Super Admin · Viendo: $nombre',
+                style: TextStyle(
+                  color: scheme.onTertiaryContainer,
+                  fontWeight: FontWeight.w600,
+                  fontSize: 13,
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            const SizedBox(width: 8),
+            _saliendo
+                ? const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : TextButton.icon(
+                    icon: const Icon(Icons.exit_to_app, size: 18),
+                    label: const Text('Salir'),
+                    style: TextButton.styleFrom(
+                      foregroundColor: scheme.onTertiaryContainer,
+                      visualDensity: VisualDensity.compact,
+                    ),
+                    onPressed: _salir,
+                  ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Nombre del tenant impersonado, scoped por tenant_id. Lee de la tabla
+/// `settings` local filtrando por el tenant_id específico (evita
+/// ambigüedad cuando hay settings de múltiples tenants en SQLite).
+///
+/// autoDispose + family: se destruye al salir de impersonación (el
+/// banner desaparece y nadie watchea más).
+final _impersonatedEmpresaNombreProvider =
+    StreamProvider.autoDispose.family<String?, String?>((ref, tenantId) async* {
+  if (tenantId == null) {
+    yield null;
+    return;
+  }
+  yield* ps.db
+      .watch(
+        "SELECT valor FROM settings WHERE tenant_id = ? AND clave = 'empresa.nombre'",
+        parameters: [tenantId],
+      )
+      .map((rows) {
+    if (rows.isEmpty) return null;
+    final v = rows.first['valor'] as String?;
+    if (v == null) return null;
+    final s = v.trim();
+    if (s == 'null' || s == '""' || s.isEmpty) return null;
+    // Remove JSON wrapping quotes: "\"ISP Las Lomas\"" → "ISP Las Lomas"
+    if (s.startsWith('"') && s.endsWith('"') && s.length > 1) {
+      return s.substring(1, s.length - 1);
+    }
+    return s;
+  });
+});
