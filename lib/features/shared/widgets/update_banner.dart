@@ -90,8 +90,9 @@ class _UpdateBannerState extends ConsumerState<UpdateBanner> {
 
   Future<void> _download(String url) async {
     final uri = Uri.parse(url);
-    if (await canLaunchUrl(uri)) {
-      await launchUrl(uri, mode: LaunchMode.externalApplication);
-    }
+    // No usar canLaunchUrl — en Android 11+ requiere <queries>
+    // en AndroidManifest y retorna false sin ellas. launchUrl
+    // funciona directo sin esa declaración.
+    await launchUrl(uri, mode: LaunchMode.externalApplication);
   }
 }
