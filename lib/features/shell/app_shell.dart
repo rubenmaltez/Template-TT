@@ -9,6 +9,7 @@ import '../../data/providers/mora_count_provider.dart';
 import '../../data/providers/sync_status_provider.dart';
 import '../shared/utils/shell_nav.dart';
 import '../shared/widgets/offline_banner.dart';
+import '../shared/widgets/update_banner.dart';
 
 /// Scaffold con drawer compartido por todas las pantallas raíz (las
 /// pantallas detalle/cobro/recibo tienen su propio Scaffold).
@@ -25,7 +26,12 @@ class AppShell extends ConsumerWidget {
         title: Text(titulo),
         actions: const [_SyncIndicator(), SizedBox(width: 8)],
       ),
-      body: OfflineBanner(child: child),
+      body: Column(
+        children: [
+          const UpdateBanner(),
+          Expanded(child: OfflineBanner(child: child)),
+        ],
+      ),
     );
   }
 }

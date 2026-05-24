@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io' show Platform;
 
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
@@ -52,7 +53,26 @@ class UpdateService {
 
       final json = jsonDecode(response.body) as Map<String, dynamic>;
       final remoteVersion = json['version'] as String?;
-      final downloadUrl = json['download_url'] as String?;
+
+      // URL por plataforma: version.json tiene download_url_windows,
+      // download_url_android, y download_url como fallback genérico.
+      // Formato esperado:
+      // {
+      //   "version": "0.2.0",
+      //   "download_url_windows": "https://.../cobranza-isp-0.2.0.msix",
+      //   "download_url_android": "https://.../cobranza-isp-0.2.0.apk",
+      //   "download_url": "https://.../fallback",
+      //   "release_notes": "..."
+      // }
+      final platformKey = kIsWeb
+          ? 'download_url'
+          : Platform.isAndroid
+              ? 'download_url_android'
+              : Platform.isWindows
+                  ? 'download_url_windows'
+                  : 'download_url';
+      final downloadUrl =
+          json[platformKey] as String? ?? json['download_url'] as String?;
 
       if (remoteVersion == null || downloadUrl == null) return null;
 
