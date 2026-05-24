@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import '../shared/utils/shell_nav.dart';
+import '../shared/widgets/update_banner.dart';
 
 /// Shell del panel Super Admin (gestión cross-tenant del SaaS).
 /// Visualmente separado del AdminShell para dejar claro que estás "afuera"
@@ -63,7 +64,12 @@ class SuperShell extends StatelessWidget {
             ),
         ],
       ),
-      body: child,
+      body: Column(
+        children: [
+          const UpdateBanner(),
+          Expanded(child: child),
+        ],
+      ),
     );
   }
 }
