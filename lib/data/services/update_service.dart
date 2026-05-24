@@ -36,10 +36,10 @@ class AppUpdate {
 /// Compara con la versión local (`package_info_plus`) y retorna
 /// `AppUpdate` si hay nueva versión, `null` si está al día.
 class UpdateService {
-  /// URL del version.json. Construida a partir del Supabase URL del
-  /// proyecto + path al bucket público `installers`.
-  static String get _versionUrl =>
-      '${Env.supabaseUrl}/storage/v1/object/public/Installers/version.json';
+  /// URL del version.json. Hosteado como asset del último GitHub Release.
+  /// La URL /latest/download/ siempre apunta al release más reciente.
+  static const _versionUrl =
+      'https://github.com/rubenmaltez/Template-TT/releases/latest/download/version.json';
 
   /// Checa si hay actualización disponible. Retorna null si está al día
   /// o si no se puede conectar (no bloquea el arranque).
