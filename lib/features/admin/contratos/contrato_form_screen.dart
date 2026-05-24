@@ -395,7 +395,7 @@ class _ContratoFormScreenState extends ConsumerState<ContratoFormScreen> {
   }
 }
 
-class _ClienteSelector extends StatelessWidget {
+class _ClienteSelector extends StatefulWidget {
   const _ClienteSelector({
     required this.clienteId,
     required this.onChanged,
@@ -406,19 +406,33 @@ class _ClienteSelector extends StatelessWidget {
   final bool enabled;
 
   @override
+  State<_ClienteSelector> createState() => _ClienteSelectorState();
+}
+
+class _ClienteSelectorState extends State<_ClienteSelector> {
+  /// Stream cacheado — query fija, no depende de props.
+  late final Stream<List<Map<String, dynamic>>> _clientesStream;
+
+  @override
+  void initState() {
+    super.initState();
+    _clientesStream = ps.db.watch(
+      'SELECT id, nombre FROM clientes WHERE activo = 1 ORDER BY nombre',
+    );
+  }
+
+  @override
   Widget build(BuildContext context) {
     return StreamBuilder(
-      stream: ps.db.watch(
-        'SELECT id, nombre FROM clientes WHERE activo = 1 ORDER BY nombre',
-      ),
+      stream: _clientesStream,
       builder: (context, snap) {
         final rows = snap.data ?? const [];
         return DropdownButtonFormField<String?>(
-          value: clienteId,
+          value: widget.clienteId,
           decoration: InputDecoration(
             labelText: 'Cliente *',
-            enabled: enabled,
-            helperText: !enabled ? 'No se puede cambiar al editar contrato' : null,
+            enabled: widget.enabled,
+            helperText: !widget.enabled ? 'No se puede cambiar al editar contrato' : null,
           ),
           items: [
             const DropdownMenuItem<String?>(value: null, child: Text('—')),
@@ -427,7 +441,7 @@ class _ClienteSelector extends StatelessWidget {
                   child: Text(r['nombre'] as String),
                 )),
           ],
-          onChanged: enabled ? onChanged : null,
+          onChanged: widget.enabled ? widget.onChanged : null,
           validator: (v) => v == null ? 'Requerido' : null,
         );
       },
@@ -435,17 +449,31 @@ class _ClienteSelector extends StatelessWidget {
   }
 }
 
-class _PlanSelector extends StatelessWidget {
+class _PlanSelector extends StatefulWidget {
   const _PlanSelector({required this.planId, required this.onChanged});
   final String? planId;
   final ValueChanged<String?> onChanged;
 
   @override
+  State<_PlanSelector> createState() => _PlanSelectorState();
+}
+
+class _PlanSelectorState extends State<_PlanSelector> {
+  /// Stream cacheado — query fija, no depende de props.
+  late final Stream<List<Map<String, dynamic>>> _planesStream;
+
+  @override
+  void initState() {
+    super.initState();
+    _planesStream = ps.db.watch(
+      'SELECT id, nombre, precio_mensual FROM planes WHERE activo = 1 ORDER BY precio_mensual',
+    );
+  }
+
+  @override
   Widget build(BuildContext context) {
     return StreamBuilder(
-      stream: ps.db.watch(
-        'SELECT id, nombre, precio_mensual FROM planes WHERE activo = 1 ORDER BY precio_mensual',
-      ),
+      stream: _planesStream,
       builder: (context, snap) {
         final rows = snap.data ?? const [];
         if (rows.isEmpty) {
@@ -473,7 +501,7 @@ class _PlanSelector extends StatelessWidget {
           );
         }
         return DropdownButtonFormField<String?>(
-          value: planId,
+          value: widget.planId,
           decoration: const InputDecoration(labelText: 'Plan *'),
           items: [
             const DropdownMenuItem<String?>(value: null, child: Text('—')),
@@ -483,7 +511,7 @@ class _PlanSelector extends StatelessWidget {
                       '${r['nombre']} · ${Fmt.cordobas(r['precio_mensual'] as num)}'),
                 )),
           ],
-          onChanged: onChanged,
+          onChanged: widget.onChanged,
           validator: (v) => v == null ? 'Requerido' : null,
         );
       },
