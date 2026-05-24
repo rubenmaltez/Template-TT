@@ -8,6 +8,7 @@ import '../../../data/providers/cobrador_provider.dart';
 import '../../../data/providers/impersonation_provider.dart';
 import '../../../data/providers/sync_status_provider.dart';
 import '../../../data/services/impersonation_service.dart';
+import '../../../powersync/db.dart' as ps;
 import '../../auth/cambiar_password_dialog.dart';
 import '../../shared/utils/shell_nav.dart';
 import '../../shared/widgets/offline_banner.dart';
@@ -305,8 +306,12 @@ bool _menuVisible(
   _MenuItem m, {
   required bool esSuperAdmin,
   required bool tieneAccesoAdmin,
+  bool impersonating = false,
 }) {
-  if (m.superAdminOnly) return esSuperAdmin;
+  // Cuando el super_admin está impersonando, ocultar el item de
+  // /super/* — el router lo bloquearía de todas formas, pero es
+  // mejor no mostrar una opción que no funciona.
+  if (m.superAdminOnly) return esSuperAdmin && !impersonating;
   if (m.adminOnly) return tieneAccesoAdmin;
   return true;
 }
@@ -320,9 +325,13 @@ class _AdminRail extends ConsumerWidget {
     final cobrador = ref.watch(cobradorActualProvider).valueOrNull;
     final tieneAccesoAdmin = cobrador?.tieneAccesoAdmin ?? false;
     final esSuperAdmin = cobrador?.esSuperAdmin ?? false;
+    final impersonating =
+        ref.watch(impersonatedTenantIdProvider).valueOrNull != null;
     final items = _adminMenu
         .where((m) => _menuVisible(m,
-            esSuperAdmin: esSuperAdmin, tieneAccesoAdmin: tieneAccesoAdmin))
+            esSuperAdmin: esSuperAdmin,
+            tieneAccesoAdmin: tieneAccesoAdmin,
+            impersonating: impersonating))
         .toList();
     final selectedIndex = items
         .indexWhere((m) => currentPath == m.path || currentPath.startsWith('${m.path}/'));
