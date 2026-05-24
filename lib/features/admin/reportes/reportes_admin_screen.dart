@@ -26,8 +26,33 @@ class ReportesAdminScreen extends ConsumerWidget {
   }
 }
 
-class _RecaudacionMensualCard extends StatelessWidget {
+class _RecaudacionMensualCard extends StatefulWidget {
   const _RecaudacionMensualCard();
+
+  @override
+  State<_RecaudacionMensualCard> createState() =>
+      _RecaudacionMensualCardState();
+}
+
+class _RecaudacionMensualCardState extends State<_RecaudacionMensualCard> {
+  late final Stream<List<Map<String, dynamic>>> _recaudacionStream;
+
+  @override
+  void initState() {
+    super.initState();
+    _recaudacionStream = ps.db.watch(
+      '''
+      SELECT strftime('%Y-%m', fecha_pago) AS mes,
+             COALESCE(SUM(monto_cordobas), 0) AS total,
+             COUNT(*) AS qty
+        FROM pagos
+       WHERE anulado = 0
+         AND date(fecha_pago) >= date('now', '-5 months', 'start of month')
+       GROUP BY mes
+       ORDER BY mes
+      ''',
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -41,18 +66,7 @@ class _RecaudacionMensualCard extends StatelessWidget {
                 style: Theme.of(context).textTheme.titleMedium),
             const SizedBox(height: 16),
             StreamBuilder(
-              stream: ps.db.watch(
-                '''
-                SELECT strftime('%Y-%m', fecha_pago) AS mes,
-                       COALESCE(SUM(monto_cordobas), 0) AS total,
-                       COUNT(*) AS qty
-                  FROM pagos
-                 WHERE anulado = 0
-                   AND date(fecha_pago) >= date('now', '-5 months', 'start of month')
-                 GROUP BY mes
-                 ORDER BY mes
-                ''',
-              ),
+              stream: _recaudacionStream,
               builder: (context, snap) {
                 if (!snap.hasData) return const SizedBox.shrink();
                 final rows = snap.data!;
@@ -116,8 +130,35 @@ class _RecaudacionMensualCard extends StatelessWidget {
   }
 }
 
-class _CobradoresMesCard extends StatelessWidget {
+class _CobradoresMesCard extends StatefulWidget {
   const _CobradoresMesCard();
+
+  @override
+  State<_CobradoresMesCard> createState() => _CobradoresMesCardState();
+}
+
+class _CobradoresMesCardState extends State<_CobradoresMesCard> {
+  late final Stream<List<Map<String, dynamic>>> _cobradoresMesStream;
+
+  @override
+  void initState() {
+    super.initState();
+    _cobradoresMesStream = ps.db.watch(
+      '''
+      SELECT co.id, co.nombre, co.prefijo_recibo,
+             COALESCE(SUM(p.monto_cordobas), 0) AS total,
+             COUNT(p.id) AS qty,
+             COUNT(DISTINCT p.cuota_id) AS cuotas
+        FROM cobradores co
+   LEFT JOIN pagos p ON p.cobrador_id = co.id
+                    AND p.anulado = 0
+                    AND date(p.fecha_pago) >= date('now', 'start of month')
+       WHERE co.rol = 'cobrador' AND co.activo = 1
+       GROUP BY co.id, co.nombre, co.prefijo_recibo
+       ORDER BY total DESC
+      ''',
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -131,21 +172,7 @@ class _CobradoresMesCard extends StatelessWidget {
                 style: Theme.of(context).textTheme.titleMedium),
             const SizedBox(height: 16),
             StreamBuilder(
-              stream: ps.db.watch(
-                '''
-                SELECT co.id, co.nombre, co.prefijo_recibo,
-                       COALESCE(SUM(p.monto_cordobas), 0) AS total,
-                       COUNT(p.id) AS qty,
-                       COUNT(DISTINCT p.cuota_id) AS cuotas
-                  FROM cobradores co
-             LEFT JOIN pagos p ON p.cobrador_id = co.id
-                              AND p.anulado = 0
-                              AND date(p.fecha_pago) >= date('now', 'start of month')
-                 WHERE co.rol = 'cobrador' AND co.activo = 1
-                 GROUP BY co.id, co.nombre, co.prefijo_recibo
-                 ORDER BY total DESC
-                ''',
-              ),
+              stream: _cobradoresMesStream,
               builder: (context, snap) {
                 if (!snap.hasData) return const SizedBox.shrink();
                 return Column(
@@ -177,9 +204,50 @@ class _CobradoresMesCard extends StatelessWidget {
   }
 }
 
-class _MoraPorComunidadCard extends StatelessWidget {
+class _MoraPorComunidadCard extends StatefulWidget {
   const _MoraPorComunidadCard({required this.diasGracia});
   final int diasGracia;
+
+  @override
+  State<_MoraPorComunidadCard> createState() => _MoraPorComunidadCardState();
+}
+
+class _MoraPorComunidadCardState extends State<_MoraPorComunidadCard> {
+  late Stream<List<Map<String, dynamic>>> _moraStream;
+
+  @override
+  void initState() {
+    super.initState();
+    _buildStream();
+  }
+
+  @override
+  void didUpdateWidget(covariant _MoraPorComunidadCard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.diasGracia != widget.diasGracia) {
+      setState(() => _buildStream());
+    }
+  }
+
+  void _buildStream() {
+    _moraStream = ps.db.watch(
+      '''
+      SELECT co.nombre AS comunidad, m.nombre AS municipio,
+             COUNT(cu.id) AS vencidas,
+             COALESCE(SUM(cu.monto + COALESCE(cu.cargos_neto, 0) - cu.monto_pagado), 0) AS adeudo
+        FROM cuotas cu
+        JOIN clientes c ON c.id = cu.cliente_id
+        JOIN comunidades co ON co.id = c.comunidad_id
+        JOIN municipios m ON m.id = co.municipio_id
+       WHERE cu.estado IN ('pendiente','parcial')
+         AND date(cu.fecha_vencimiento, '+' || ? || ' days') < date('now')
+       GROUP BY co.id, co.nombre, m.nombre
+       ORDER BY adeudo DESC
+       LIMIT 10
+      ''',
+      parameters: [widget.diasGracia],
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -193,23 +261,7 @@ class _MoraPorComunidadCard extends StatelessWidget {
                 style: Theme.of(context).textTheme.titleMedium),
             const SizedBox(height: 16),
             StreamBuilder(
-              stream: ps.db.watch(
-                '''
-                SELECT co.nombre AS comunidad, m.nombre AS municipio,
-                       COUNT(cu.id) AS vencidas,
-                       COALESCE(SUM(cu.monto + COALESCE(cu.cargos_neto, 0) - cu.monto_pagado), 0) AS adeudo
-                  FROM cuotas cu
-                  JOIN clientes c ON c.id = cu.cliente_id
-                  JOIN comunidades co ON co.id = c.comunidad_id
-                  JOIN municipios m ON m.id = co.municipio_id
-                 WHERE cu.estado IN ('pendiente','parcial')
-                   AND date(cu.fecha_vencimiento, '+' || ? || ' days') < date('now')
-                 GROUP BY co.id, co.nombre, m.nombre
-                 ORDER BY adeudo DESC
-                 LIMIT 10
-                ''',
-                parameters: [diasGracia],
-              ),
+              stream: _moraStream,
               builder: (context, snap) {
                 if (!snap.hasData) return const SizedBox.shrink();
                 final rows = snap.data!;
@@ -243,8 +295,30 @@ class _MoraPorComunidadCard extends StatelessWidget {
   }
 }
 
-class _PlanesPopularesCard extends StatelessWidget {
+class _PlanesPopularesCard extends StatefulWidget {
   const _PlanesPopularesCard();
+
+  @override
+  State<_PlanesPopularesCard> createState() => _PlanesPopularesCardState();
+}
+
+class _PlanesPopularesCardState extends State<_PlanesPopularesCard> {
+  late final Stream<List<Map<String, dynamic>>> _planesStream;
+
+  @override
+  void initState() {
+    super.initState();
+    _planesStream = ps.db.watch(
+      '''
+      SELECT p.nombre, p.precio_mensual,
+             COUNT(ct.id) AS contratos
+        FROM planes p
+   LEFT JOIN contratos ct ON ct.plan_id = p.id AND ct.activo = 1
+       GROUP BY p.id, p.nombre, p.precio_mensual
+       ORDER BY contratos DESC
+      ''',
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -258,16 +332,7 @@ class _PlanesPopularesCard extends StatelessWidget {
                 style: Theme.of(context).textTheme.titleMedium),
             const SizedBox(height: 16),
             StreamBuilder(
-              stream: ps.db.watch(
-                '''
-                SELECT p.nombre, p.precio_mensual,
-                       COUNT(ct.id) AS contratos
-                  FROM planes p
-             LEFT JOIN contratos ct ON ct.plan_id = p.id AND ct.activo = 1
-                 GROUP BY p.id, p.nombre, p.precio_mensual
-                 ORDER BY contratos DESC
-                ''',
-              ),
+              stream: _planesStream,
               builder: (context, snap) {
                 if (!snap.hasData) return const SizedBox.shrink();
                 return Column(

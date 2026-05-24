@@ -206,4 +206,101 @@ void main() {
       expect(out, contains('2027'));
     });
   });
+
+  group('Fmt.fechaLarga', () {
+    test('formato legible con nombre de mes en español', () {
+      final out = Fmt.fechaLarga(DateTime(2026, 5, 22));
+      // Esperado: "22 de mayo de 2026"
+      expect(out, contains('22'));
+      expect(out.toLowerCase(), contains('mayo'));
+      expect(out, contains('2026'));
+      expect(out, contains('de'));
+    });
+
+    test('primer día del año', () {
+      final out = Fmt.fechaLarga(DateTime(2026, 1, 1));
+      expect(out, contains('1'));
+      expect(out.toLowerCase(), contains('enero'));
+      expect(out, contains('2026'));
+    });
+
+    test('último día del año', () {
+      final out = Fmt.fechaLarga(DateTime(2026, 12, 31));
+      expect(out, contains('31'));
+      expect(out.toLowerCase(), contains('diciembre'));
+      expect(out, contains('2026'));
+    });
+
+    test('día sin leading zero (formato d, no dd)', () {
+      // El patrón es "d 'de' MMMM 'de' y" — día sin padding.
+      final out = Fmt.fechaLarga(DateTime(2026, 3, 5));
+      // Debe ser "5 de marzo de 2026", NO "05 de marzo de 2026".
+      expect(out, startsWith('5'));
+    });
+  });
+
+  group('Fmt.mes', () {
+    test('formato MMMM y con nombre de mes en español', () {
+      final out = Fmt.mes(DateTime(2026, 5, 1));
+      expect(out.toLowerCase(), contains('mayo'));
+      expect(out, contains('2026'));
+    });
+
+    test('enero', () {
+      final out = Fmt.mes(DateTime(2026, 1, 15));
+      expect(out.toLowerCase(), contains('enero'));
+      expect(out, contains('2026'));
+    });
+
+    test('diciembre — boundary fin de año', () {
+      final out = Fmt.mes(DateTime(2026, 12, 25));
+      expect(out.toLowerCase(), contains('diciembre'));
+      expect(out, contains('2026'));
+    });
+
+    test('ignora el día — solo muestra mes y año', () {
+      // Dos fechas del mismo mes con días distintos deben dar idéntico output.
+      final a = Fmt.mes(DateTime(2026, 7, 1));
+      final b = Fmt.mes(DateTime(2026, 7, 31));
+      expect(a, equals(b));
+    });
+  });
+
+  group('Fmt.diaSemana', () {
+    test('viernes — nombre completo en español con mayúscula inicial', () {
+      // 22 de mayo 2026 es viernes.
+      final out = Fmt.diaSemana(DateTime(2026, 5, 22));
+      expect(out.toLowerCase(), equals('viernes'));
+      // Verifica que la primera letra es mayúscula.
+      expect(out[0], equals(out[0].toUpperCase()));
+    });
+
+    test('lunes — primer día laboral', () {
+      // 25 de mayo 2026 es lunes.
+      final out = Fmt.diaSemana(DateTime(2026, 5, 25));
+      expect(out.toLowerCase(), equals('lunes'));
+      expect(out[0], equals('L'));
+    });
+
+    test('domingo', () {
+      // 24 de mayo 2026 es domingo.
+      final out = Fmt.diaSemana(DateTime(2026, 5, 24));
+      expect(out.toLowerCase(), equals('domingo'));
+      expect(out[0], equals('D'));
+    });
+
+    test('capitalización — solo la primera letra es mayúscula', () {
+      // El método hace [0].toUpperCase() + substring(1). Verificamos
+      // que el resto está en minúscula (como viene de DateFormat).
+      final out = Fmt.diaSemana(DateTime(2026, 5, 22));
+      expect(out, equals(out[0].toUpperCase() + out.substring(1).toLowerCase()));
+    });
+
+    test('sábado — fin de semana', () {
+      // 23 de mayo 2026 es sábado.
+      final out = Fmt.diaSemana(DateTime(2026, 5, 23));
+      expect(out.toLowerCase(), equals('sábado'));
+      expect(out[0], equals('S'));
+    });
+  });
 }

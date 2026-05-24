@@ -22,6 +22,45 @@ class _PagosAdminScreenState extends ConsumerState<PagosAdminScreen> {
   String _query = '';
   bool _verAnulados = false;
   Timer? _debounce;
+  late Stream<List<Map<String, dynamic>>> _pagosStream;
+
+  @override
+  void initState() {
+    super.initState();
+    _pagosStream = _buildStream();
+  }
+
+  Stream<List<Map<String, dynamic>>> _buildStream() {
+    final where = <String>[];
+    final params = <Object?>[];
+    if (!_verAnulados) where.add('p.anulado = 0');
+    if (_query.isNotEmpty) {
+      where.add('(lower(c.nombre) LIKE ? OR r.numero_completo LIKE ?)');
+      final like = '%$_query%';
+      params..add(like)..add(like);
+    }
+    final whereSql = where.isEmpty ? '' : 'WHERE ${where.join(' AND ')}';
+
+    return ps.db.watch(
+      '''
+      SELECT p.id, p.monto_cordobas, p.moneda, p.monto_original,
+             p.metodo, p.fecha_pago, p.referencia,
+             p.anulado, p.anulado_en, p.motivo_anulacion,
+             c.nombre AS cliente,
+             co.nombre AS cobrador,
+             r.numero_completo
+        FROM pagos p
+        JOIN cuotas cu ON cu.id = p.cuota_id
+        JOIN clientes c ON c.id = cu.cliente_id
+   LEFT JOIN cobradores co ON co.id = p.cobrador_id
+   LEFT JOIN recibos r ON r.pago_id = p.id
+       $whereSql
+       ORDER BY p.fecha_pago DESC
+       LIMIT 300
+      ''',
+      parameters: params,
+    );
+  }
 
   @override
   void dispose() {
@@ -33,22 +72,17 @@ class _PagosAdminScreenState extends ConsumerState<PagosAdminScreen> {
   void _onSearch(String v) {
     _debounce?.cancel();
     _debounce = Timer(const Duration(milliseconds: 250), () {
-      if (mounted) setState(() => _query = v.trim().toLowerCase());
+      if (mounted) {
+        setState(() {
+          _query = v.trim().toLowerCase();
+          _pagosStream = _buildStream();
+        });
+      }
     });
   }
 
   @override
   Widget build(BuildContext context) {
-    final where = <String>[];
-    final params = <Object?>[];
-    if (!_verAnulados) where.add('p.anulado = 0');
-    if (_query.isNotEmpty) {
-      where.add('(lower(c.nombre) LIKE ? OR r.numero_completo LIKE ?)');
-      final like = '%$_query%';
-      params..add(like)..add(like);
-    }
-    final whereSql = where.isEmpty ? '' : 'WHERE ${where.join(' AND ')}';
-
     return Column(
       children: [
         Padding(
@@ -69,32 +103,17 @@ class _PagosAdminScreenState extends ConsumerState<PagosAdminScreen> {
               FilterChip(
                 label: const Text('Ver anulados'),
                 selected: _verAnulados,
-                onSelected: (v) => setState(() => _verAnulados = v),
+                onSelected: (v) => setState(() {
+                  _verAnulados = v;
+                  _pagosStream = _buildStream();
+                }),
               ),
             ],
           ),
         ),
         Expanded(
           child: StreamBuilder(
-            stream: ps.db.watch(
-              '''
-              SELECT p.id, p.monto_cordobas, p.moneda, p.monto_original,
-                     p.metodo, p.fecha_pago, p.referencia,
-                     p.anulado, p.anulado_en, p.motivo_anulacion,
-                     c.nombre AS cliente,
-                     co.nombre AS cobrador,
-                     r.numero_completo
-                FROM pagos p
-                JOIN cuotas cu ON cu.id = p.cuota_id
-                JOIN clientes c ON c.id = cu.cliente_id
-           LEFT JOIN cobradores co ON co.id = p.cobrador_id
-           LEFT JOIN recibos r ON r.pago_id = p.id
-               $whereSql
-               ORDER BY p.fecha_pago DESC
-               LIMIT 300
-              ''',
-              parameters: params,
-            ),
+            stream: _pagosStream,
             builder: (context, snap) {
               if (!snap.hasData) {
                 return const Center(child: CircularProgressIndicator());

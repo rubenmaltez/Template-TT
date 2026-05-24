@@ -675,25 +675,39 @@ class _Section extends StatelessWidget {
   }
 }
 
-class _SelectorCobrador extends StatelessWidget {
+class _SelectorCobrador extends StatefulWidget {
   const _SelectorCobrador({required this.cobradorId, required this.onChanged});
   final String? cobradorId;
   final ValueChanged<String?> onChanged;
 
   @override
+  State<_SelectorCobrador> createState() => _SelectorCobradorState();
+}
+
+class _SelectorCobradorState extends State<_SelectorCobrador> {
+  /// Stream cacheado — query fija, no depende de props.
+  late final Stream<List<Map<String, dynamic>>> _cobradoresStream;
+
+  @override
+  void initState() {
+    super.initState();
+    _cobradoresStream = ps.db.watch(
+      '''
+      SELECT id, nombre, prefijo_recibo FROM cobradores
+       WHERE activo = 1 AND rol = 'cobrador'
+       ORDER BY nombre
+      ''',
+    );
+  }
+
+  @override
   Widget build(BuildContext context) {
     return StreamBuilder(
-      stream: ps.db.watch(
-        '''
-        SELECT id, nombre, prefijo_recibo FROM cobradores
-         WHERE activo = 1 AND rol = 'cobrador'
-         ORDER BY nombre
-        ''',
-      ),
+      stream: _cobradoresStream,
       builder: (context, snap) {
         final rows = snap.data ?? const [];
         return DropdownButtonFormField<String?>(
-          value: cobradorId,
+          value: widget.cobradorId,
           decoration: const InputDecoration(labelText: 'Cobrador asignado'),
           items: [
             const DropdownMenuItem<String?>(
@@ -709,7 +723,7 @@ class _SelectorCobrador extends StatelessWidget {
                   ),
                 )),
           ],
-          onChanged: onChanged,
+          onChanged: widget.onChanged,
         );
       },
     );

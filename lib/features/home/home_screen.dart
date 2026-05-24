@@ -68,17 +68,35 @@ class HomeScreen extends ConsumerWidget {
   }
 }
 
-class _DashboardMetrics extends StatelessWidget {
+class _DashboardMetrics extends StatefulWidget {
   const _DashboardMetrics({required this.diasGracia, required this.hoyIso});
   final int diasGracia;
   final String hoyIso;
 
   @override
-  Widget build(BuildContext context) {
-    // Una sola query para todas las métricas. Se re-emite ante cualquier
-    // cambio en cuotas o pagos.
-    return StreamBuilder(
-      stream: ps.db.watch(
+  State<_DashboardMetrics> createState() => _DashboardMetricsState();
+}
+
+class _DashboardMetricsState extends State<_DashboardMetrics> {
+  // Cacheamos el stream de PowerSync en initState para evitar que cada
+  // rebuild cree una nueva suscripción (anti-patrón ps.db.watch inline).
+  late Stream<List<Map<String, dynamic>>> _metricsStream;
+
+  @override
+  void initState() {
+    super.initState();
+    _metricsStream = _buildStream();
+  }
+
+  @override
+  void didUpdateWidget(_DashboardMetrics old) {
+    super.didUpdateWidget(old);
+    if (old.diasGracia != widget.diasGracia || old.hoyIso != widget.hoyIso) {
+      setState(() => _metricsStream = _buildStream());
+    }
+  }
+
+  Stream<List<Map<String, dynamic>>> _buildStream() => ps.db.watch(
         '''
         SELECT
           (SELECT COUNT(*) FROM clientes WHERE activo = 1) AS clientes_total,
@@ -100,8 +118,15 @@ class _DashboardMetrics extends StatelessWidget {
           (SELECT COALESCE(SUM(monto_cordobas), 0) FROM pagos
              WHERE date(fecha_pago) = ? AND anulado = 0) AS cobrado_hoy
         ''',
-        parameters: [diasGracia, hoyIso, hoyIso],
-      ),
+        parameters: [widget.diasGracia, widget.hoyIso, widget.hoyIso],
+      );
+
+  @override
+  Widget build(BuildContext context) {
+    // Una sola query para todas las métricas. Se re-emite ante cualquier
+    // cambio en cuotas o pagos.
+    return StreamBuilder(
+      stream: _metricsStream,
       builder: (context, snap) {
         if (!snap.hasData || snap.data!.isEmpty) {
           return const _MetricsSkeleton();
@@ -133,7 +158,7 @@ class _DashboardMetrics extends StatelessWidget {
                     icon: Icons.warning_amber,
                     titulo: 'En mora',
                     valor: '${r['cuotas_vencidas']}',
-                    sub: 'Más de $diasGracia días',
+                    sub: 'Más de ${widget.diasGracia} días',
                     color: Theme.of(context).colorScheme.error,
                   ),
                 ),
