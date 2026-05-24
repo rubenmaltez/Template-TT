@@ -2,10 +2,12 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../data/models/modulo.dart';
 import '../../data/models/tenant_admin.dart';
 import '../../data/repositories/super_admin_repo.dart';
+import '../../data/services/impersonation_service.dart';
 import '../../data/utils/cobrador_helpers.dart';
 import '../../data/utils/formatters.dart';
 import '../shared/widgets/phone_text_field.dart';
@@ -165,6 +167,27 @@ class _TenantCard extends StatefulWidget {
 
 class _TenantCardState extends State<_TenantCard> {
   bool _hover = false;
+  bool _entering = false;
+
+  Future<void> _enterTenant(BuildContext context, TenantAdmin tenant) async {
+    if (_entering) return;
+    setState(() => _entering = true);
+    try {
+      final service = ImpersonationService(Supabase.instance.client);
+      await service.enter(
+        tenantId: tenant.id,
+        tenantNombre: tenant.nombre,
+      );
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error al entrar: $e')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _entering = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -279,6 +302,15 @@ class _TenantCardState extends State<_TenantCard> {
                               TextStyle(color: scheme.onSecondaryContainer),
                         ))
                     .toList(),
+              ),
+              const SizedBox(height: 12),
+              Align(
+                alignment: Alignment.centerRight,
+                child: FilledButton.tonalIcon(
+                  icon: const Icon(Icons.login, size: 18),
+                  label: const Text('Entrar como admin'),
+                  onPressed: () => _enterTenant(context, tenant),
+                ),
               ),
             ],
           ),
