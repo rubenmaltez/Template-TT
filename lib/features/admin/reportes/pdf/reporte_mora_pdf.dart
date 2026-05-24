@@ -65,11 +65,13 @@ pw.Widget _buildTable(List<Map<String, dynamic>> rows) {
     headers: [
       'Cliente',
       'Cuotas vencidas',
-      'Monto adeudado',
+      'Monto adeudado (C\$)',
       'Días mora',
       'Comunidad',
     ],
-    data: List.generate(rows.length, (i) {
+    data: rows.isEmpty
+        ? [['Sin clientes en mora', '', '', '', '']]
+        : List.generate(rows.length, (i) {
       final r = rows[i];
       return [
         (r['cliente_nombre'] as String?) ?? '—',

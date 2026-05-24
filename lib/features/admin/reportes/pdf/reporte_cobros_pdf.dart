@@ -62,8 +62,10 @@ pw.Widget _buildTable(List<Map<String, dynamic>> rows) {
       4: const pw.FlexColumnWidth(2),   // Cobrador
       5: const pw.FlexColumnWidth(1.3), // Recibo
     },
-    headers: ['Fecha', 'Cliente', 'Monto', 'Método', 'Cobrador', 'Recibo'],
-    data: List.generate(rows.length, (i) {
+    headers: ['Fecha', 'Cliente', 'Monto (C\$)', 'Método', 'Cobrador', 'Recibo'],
+    data: rows.isEmpty
+        ? [['', '', 'Sin cobros en el período', '', '', '']]
+        : List.generate(rows.length, (i) {
       final r = rows[i];
       final fecha = r['fecha_pago'] as String? ?? '';
       final fechaFmt = _formatearFecha(fecha);
