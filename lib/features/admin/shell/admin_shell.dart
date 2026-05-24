@@ -8,6 +8,7 @@ import '../../../data/providers/cobrador_provider.dart';
 import '../../../data/providers/impersonation_provider.dart';
 import '../../../data/providers/sync_status_provider.dart';
 import '../../../data/services/impersonation_service.dart';
+import '../../shared/widgets/update_banner.dart';
 import '../../../powersync/db.dart' as ps;
 import '../../auth/cambiar_password_dialog.dart';
 import '../../shared/utils/shell_nav.dart';
@@ -78,18 +79,25 @@ class AdminShell extends ConsumerWidget {
       );
     }
 
-    // Banner de impersonación: se muestra arriba del contenido cuando
-    // el super_admin está dentro de un tenant.
-    final Widget bodyWithBanner;
+    // Banners: update disponible (azul) + impersonación (amber).
+    // Se apilan arriba del contenido. El update banner se auto-oculta
+    // si no hay update o si el user lo cierra.
+    final Widget bodyWithBannerss;
     if (impersonating) {
-      bodyWithBanner = Column(
+      bodyWithBannerss = Column(
         children: [
+          const UpdateBanner(),
           const _ImpersonationBanner(),
           Expanded(child: bodyContent),
         ],
       );
     } else {
-      bodyWithBanner = bodyContent;
+      bodyWithBannerss = Column(
+        children: [
+          const UpdateBanner(),
+          Expanded(child: bodyContent),
+        ],
+      );
     }
 
     if (isDesktop) {
@@ -107,7 +115,7 @@ class AdminShell extends ConsumerWidget {
                     parentRoute: _parentRouteFor(location),
                     location: location,
                   ),
-                  Expanded(child: bodyWithBanner),
+                  Expanded(child: bodyWithBanners),
                 ],
               ),
             ),
@@ -134,7 +142,7 @@ class AdminShell extends ConsumerWidget {
         title: Text(titulo),
         actions: const [_SyncIndicator(), SizedBox(width: 8)],
       ),
-      body: bodyWithBanner,
+      body: bodyWithBanners,
     );
   }
 }
