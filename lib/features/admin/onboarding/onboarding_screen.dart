@@ -44,13 +44,20 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
   void initState() {
     super.initState();
     // Listener en todos los controllers para marcar dirty al primer cambio.
-    final controllers = [
-      _empresaNombre, _empresaDireccion, _empresaTelefono, _empresaRuc,
-      _tasaUsd, _diasGracia, _primerPlanNombre, _primerPlanPrecio,
-    ];
-    for (final c in controllers) {
-      c.addListener(_markDirty);
-    }
+    // Se registran en un post-frame callback para que los defaults
+    // programáticos (text = '36.50', '10', etc.) no disparen _markDirty
+    // durante initState. Sin esto, _dirty arranca en true y el dialog
+    // "¿Descartar?" aparece aún sin que el user toque nada.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final controllers = [
+        _empresaNombre, _empresaDireccion, _empresaTelefono, _empresaRuc,
+        _tasaUsd, _diasGracia, _primerPlanNombre, _primerPlanPrecio,
+      ];
+      for (final c in controllers) {
+        c.addListener(_markDirty);
+      }
+    });
   }
 
   void _markDirty() {

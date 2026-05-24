@@ -109,6 +109,21 @@ class _ContratoFormScreenState extends ConsumerState<ContratoFormScreen> {
       setState(() => _error = 'Seleccioná un plan');
       return;
     }
+    // Guard: el trigger contratos_check_cliente_con_cobrador en Postgres
+    // requiere que el cliente tenga cobrador asignado. Validamos acá
+    // para dar feedback claro en vez de una CRUD rejection silenciosa.
+    if (!_esEdicion) {
+      final clienteRows = await ps.db.getAll(
+        'SELECT cobrador_id FROM clientes WHERE id = ?',
+        [_clienteId],
+      );
+      if (clienteRows.isNotEmpty && clienteRows.first['cobrador_id'] == null) {
+        setState(() => _error =
+            'El cliente no tiene cobrador asignado. '
+            'Asigná uno desde Clientes → Editar antes de crear el contrato.');
+        return;
+      }
+    }
     final tenantId = ref.read(tenantIdProvider);
     if (tenantId == null) {
       setState(() => _error = 'No se pudo determinar el tenant');
@@ -427,8 +442,15 @@ class _ClienteSelectorState extends State<_ClienteSelector> {
       stream: _clientesStream,
       builder: (context, snap) {
         final rows = snap.data ?? const [];
+        // Guard: si el value actual no está en los items (stream re-emit
+        // durante sync), usamos null para evitar la assertion de Flutter
+        // "There should be exactly one item with [DropdownButton]'s value".
+        final clienteIds = rows.map((r) => r['id'] as String).toSet();
+        final safeClienteId = (widget.clienteId != null && clienteIds.contains(widget.clienteId))
+            ? widget.clienteId
+            : null;
         return DropdownButtonFormField<String?>(
-          value: widget.clienteId,
+          value: safeClienteId,
           decoration: InputDecoration(
             labelText: 'Cliente *',
             enabled: widget.enabled,
@@ -500,8 +522,12 @@ class _PlanSelectorState extends State<_PlanSelector> {
             ],
           );
         }
+        final planIds = rows.map((r) => r['id'] as String).toSet();
+        final safePlanId = (widget.planId != null && planIds.contains(widget.planId))
+            ? widget.planId
+            : null;
         return DropdownButtonFormField<String?>(
-          value: widget.planId,
+          value: safePlanId,
           decoration: const InputDecoration(labelText: 'Plan *'),
           items: [
             const DropdownMenuItem<String?>(value: null, child: Text('—')),
