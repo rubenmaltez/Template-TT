@@ -39,7 +39,7 @@ class UpdateService {
   /// URL del version.json. Construida a partir del Supabase URL del
   /// proyecto + path al bucket público `installers`.
   static String get _versionUrl =>
-      '${Env.supabaseUrl}/storage/v1/object/public/installers/version.json';
+      '${Env.supabaseUrl}/storage/v1/object/public/Installers/version.json';
 
   /// Checa si hay actualización disponible. Retorna null si está al día
   /// o si no se puede conectar (no bloquea el arranque).
