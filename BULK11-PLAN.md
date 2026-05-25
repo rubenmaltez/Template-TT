@@ -138,9 +138,25 @@ tabla — extender con los nuevos campos.
 ### FASE A: Settings Panel (base para todo)
 | Sprint | Tiempo | Qué |
 |---|---|---|
-| A1 | 3-4h | Settings UI refactor con categorías (tabs/accordion) |
-| A2 | 2-3h | Logo upload a Storage + mostrar en recibo + shell |
+| A1 | 3-4h | Settings UI refactor con categorías (tabs/accordion) | ✅ Completado |
+| A2 | 2-3h | Logo upload a Storage + mostrar en recibo + shell | ✅ Completado |
 | A3 | 3-4h | Recibo template editor con preview visual |
+
+### Template de recibo — referencia (Telenet ISP real)
+Elementos que el template debe soportar (configurable por admin):
+- Logo de la empresa (upload, ya implementado)
+- Título del documento ("COBRO", "RECIBO", personalizable)
+- Teléfono + WhatsApp de la empresa
+- ID del cliente (código corto visible)
+- Número de recibo
+- Fecha de vencimiento + Tarifa/monto
+- Nombre completo del cliente (razón social)
+- Cantidad en letras (monto convertido a texto en español)
+- Mes cobrado + Fecha real del cobro
+- Tabla de meses adeudados con montos (deuda pendiente)
+- Nombre del recaudador/cobrador
+- Pie de recibo con frase personalizable (slogan)
+- Formato optimizado para impresión térmica 58mm/80mm
 
 ### FASE B: Cobranza flexible
 | Sprint | Tiempo | Qué |
