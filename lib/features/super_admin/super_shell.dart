@@ -55,10 +55,15 @@ class SuperShell extends StatelessWidget {
           FutureBuilder<PackageInfo>(
             future: PackageInfo.fromPlatform(),
             builder: (_, snap) => snap.hasData
-                ? Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                ? Container(
+                    margin: const EdgeInsets.symmetric(horizontal: 8),
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: scheme.outline.withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
                     child: Text('v${snap.data!.version}',
-                        style: TextStyle(fontSize: 11, color: scheme.outline)),
+                        style: TextStyle(fontSize: 11, color: scheme.onTertiaryContainer)),
                   )
                 : const SizedBox.shrink(),
           ),
