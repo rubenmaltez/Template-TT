@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:path_provider/path_provider.dart';
 import 'package:powersync/powersync.dart';
@@ -9,10 +11,13 @@ import 'schema.dart';
 /// Singleton de la base PowerSync. Inicializar con [openDatabase] en `main`.
 late final PowerSyncDatabase db;
 
+/// Stream global de errores de CRUD upload. Se re-emite cada vez que
+/// el connector detecta un error no-retryable (constraint, trigger, RLS).
+/// Los shells lo escuchan para mostrar SnackBars al user.
+final uploadErrorsController = StreamController<CrudUploadError>.broadcast();
+
 /// Abre el SQLite local. Llamar UNA vez al arrancar la app.
 Future<void> openDatabase() async {
-  // En web, PowerSync usa OPFS/IndexedDB y solo necesita un nombre.
-  // En nativo, necesita una ruta absoluta dentro de un directorio de la app.
   final String path;
   if (kIsWeb) {
     path = 'isp_billing.db';
@@ -26,9 +31,11 @@ Future<void> openDatabase() async {
 
 /// Conecta PowerSync usando la sesión Supabase actual. Llamar en login.
 Future<void> connectPowerSync() async {
-  await db.connect(
-    connector: SupabaseConnector(Supabase.instance.client),
-  );
+  final connector = SupabaseConnector(Supabase.instance.client);
+  connector.uploadErrors.listen((error) {
+    uploadErrorsController.add(error);
+  });
+  await db.connect(connector: connector);
 }
 
 /// Desconecta PowerSync. Llamar en logout.
