@@ -326,3 +326,239 @@ class _SettingTileState extends State<_SettingTile> {
     return labels[clave] ?? clave.split('.').last;
   }
 }
+
+/// Widget de upload del logo de la empresa. Se muestra al inicio de la
+/// tab "Empresa" cuando el usuario tiene permiso de admin.
+///
+/// Flujo:
+/// 1. Muestra preview del logo actual (URL firmada vía `logoEmpresaUrlProvider`)
+///    o un placeholder si no hay logo.
+/// 2. Botón "Subir logo" abre el image picker.
+/// 3. Al seleccionar imagen, sube a Storage y guarda el path en
+///    `empresa.logo_path` vía `settingsRepo.update`.
+/// 4. El provider se invalida y la URL firmada se refresca.
+class _LogoUploadWidget extends ConsumerStatefulWidget {
+  const _LogoUploadWidget({required this.tenantId});
+  final String tenantId;
+
+  @override
+  ConsumerState<_LogoUploadWidget> createState() => _LogoUploadWidgetState();
+}
+
+class _LogoUploadWidgetState extends ConsumerState<_LogoUploadWidget> {
+  bool _subiendo = false;
+  String? _error;
+
+  Future<void> _subirLogo() async {
+    setState(() {
+      _subiendo = true;
+      _error = null;
+    });
+    try {
+      final service = ref.read(logoEmpresaServiceProvider);
+      final path = await service.pickYSubir(tenantId: widget.tenantId);
+      if (path == null) {
+        // Usuario canceló el picker.
+        setState(() => _subiendo = false);
+        return;
+      }
+      // Guardar el path en settings.
+      await ref.read(settingsRepoProvider).update(
+            widget.tenantId,
+            'empresa.logo_path',
+            path,
+          );
+      // Invalidar el provider para refrescar la URL firmada.
+      ref.invalidate(logoEmpresaUrlProvider);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Logo actualizado')),
+        );
+      }
+    } catch (e) {
+      setState(() => _error = e.toString());
+    } finally {
+      if (mounted) setState(() => _subiendo = false);
+    }
+  }
+
+  Future<void> _eliminarLogo() async {
+    final confirmar = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Eliminar logo'),
+        content: const Text('¿Seguro que querés eliminar el logo de la empresa?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Eliminar'),
+          ),
+        ],
+      ),
+    );
+    if (confirmar != true) return;
+
+    setState(() {
+      _subiendo = true;
+      _error = null;
+    });
+    try {
+      final settings = ref.read(appSettingsProvider);
+      final currentPath = settings.empresaLogoPath;
+      if (currentPath.isNotEmpty) {
+        final service = ref.read(logoEmpresaServiceProvider);
+        await service.eliminar(currentPath);
+      }
+      // Limpiar el path en settings (null serializado como JSON).
+      await ref.read(settingsRepoProvider).update(
+            widget.tenantId,
+            'empresa.logo_path',
+            null,
+          );
+      ref.invalidate(logoEmpresaUrlProvider);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Logo eliminado')),
+        );
+      }
+    } catch (e) {
+      setState(() => _error = e.toString());
+    } finally {
+      if (mounted) setState(() => _subiendo = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final logoUrlAsync = ref.watch(logoEmpresaUrlProvider);
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Logo de la empresa',
+              style: TextStyle(fontWeight: FontWeight.w600, fontSize: 15),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              'Se muestra en el recibo de cobro.',
+              style: TextStyle(color: scheme.outline, fontSize: 12),
+            ),
+            const SizedBox(height: 12),
+
+            // Preview del logo o placeholder.
+            Center(
+              child: Container(
+                width: 160,
+                height: 160,
+                decoration: BoxDecoration(
+                  border: Border.all(color: scheme.outlineVariant),
+                  borderRadius: BorderRadius.circular(12),
+                  color: scheme.surfaceContainerHighest,
+                ),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(11),
+                  child: logoUrlAsync.when(
+                    data: (url) {
+                      if (url == null) {
+                        return Center(
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.image_outlined,
+                                  size: 48, color: scheme.outline),
+                              const SizedBox(height: 8),
+                              Text('Sin logo',
+                                  style: TextStyle(
+                                      color: scheme.outline, fontSize: 13)),
+                            ],
+                          ),
+                        );
+                      }
+                      return Image.network(
+                        url,
+                        fit: BoxFit.contain,
+                        loadingBuilder: (_, child, progress) {
+                          if (progress == null) return child;
+                          return const Center(
+                              child: CircularProgressIndicator(strokeWidth: 2));
+                        },
+                        errorBuilder: (_, __, ___) => Center(
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.broken_image,
+                                  size: 48, color: scheme.error),
+                              const SizedBox(height: 8),
+                              Text('Error al cargar',
+                                  style: TextStyle(
+                                      color: scheme.error, fontSize: 13)),
+                            ],
+                          ),
+                        ),
+                      );
+                    },
+                    loading: () => const Center(
+                        child: CircularProgressIndicator(strokeWidth: 2)),
+                    error: (_, __) => Center(
+                      child: Icon(Icons.error_outline,
+                          size: 48, color: scheme.error),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 12),
+
+            if (_error != null)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: Text(
+                  _error!,
+                  style: TextStyle(color: scheme.error, fontSize: 12),
+                ),
+              ),
+
+            // Botones de acción.
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                FilledButton.icon(
+                  onPressed: _subiendo ? null : _subirLogo,
+                  icon: _subiendo
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.upload),
+                  label: Text(_subiendo ? 'Subiendo...' : 'Subir logo'),
+                ),
+                // Botón eliminar solo si hay logo.
+                if (ref.read(appSettingsProvider).empresaLogoPath.isNotEmpty) ...[
+                  const SizedBox(width: 8),
+                  OutlinedButton.icon(
+                    onPressed: _subiendo ? null : _eliminarLogo,
+                    icon: const Icon(Icons.delete_outline),
+                    label: const Text('Eliminar'),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: scheme.error,
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}

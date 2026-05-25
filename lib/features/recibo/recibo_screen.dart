@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../data/models/pago.dart';
 import '../../data/providers/impresora_provider.dart';
+import '../../data/providers/logo_empresa_provider.dart';
 import '../../data/repositories/settings_repo.dart';
 import '../../data/utils/formatters.dart';
 import '../../powersync/db.dart' as ps;
@@ -60,6 +61,13 @@ class _ReciboScreenState extends ConsumerState<ReciboScreen> {
   @override
   Widget build(BuildContext context) {
     final settings = ref.watch(appSettingsProvider);
+    // Logo URL firmada. Solo se carga si `imprimirLogoEnRecibo` está
+    // activo y hay un path configurado. El provider es reactivo: si
+    // el admin cambia el logo en settings, se refresca.
+    final logoUrl = settings.imprimirLogoEnRecibo
+        ? ref.watch(logoEmpresaUrlProvider).valueOrNull
+        : null;
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('Recibo'),
@@ -86,7 +94,7 @@ class _ReciboScreenState extends ConsumerState<ReciboScreen> {
           return ListView(
             padding: const EdgeInsets.all(16),
             children: [
-              _ReciboTicket(row: r, settings: settings),
+              _ReciboTicket(row: r, settings: settings, logoUrl: logoUrl),
               if (r['foto_comprobante_path'] != null) ...[
                 const SizedBox(height: 16),
                 Text('Comprobante adjunto',
@@ -110,9 +118,17 @@ class _ReciboScreenState extends ConsumerState<ReciboScreen> {
 }
 
 class _ReciboTicket extends StatelessWidget {
-  const _ReciboTicket({required this.row, required this.settings});
+  const _ReciboTicket({
+    required this.row,
+    required this.settings,
+    this.logoUrl,
+  });
   final Map<String, dynamic> row;
   final AppSettings settings;
+
+  /// URL firmada del logo. Null si no hay logo o si el toggle
+  /// `recibo.imprimir_logo` está desactivado.
+  final String? logoUrl;
 
   @override
   Widget build(BuildContext context) {
@@ -140,6 +156,17 @@ class _ReciboTicket extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
+            // Logo de la empresa (si está configurado y el toggle activo).
+            if (logoUrl != null)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: Image.network(
+                  logoUrl!,
+                  height: 60,
+                  fit: BoxFit.contain,
+                  errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+                ),
+              ),
             if (settings.empresaNombre.isNotEmpty)
               Text(
                 settings.empresaNombre.toUpperCase(),
