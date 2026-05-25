@@ -211,6 +211,96 @@ class PagosRepo {
     });
   }
 
+  /// Edita un pago existente (monto, método, notas). Solo actualiza los
+  /// campos proporcionados. El trigger server recalcula cuota si el monto
+  /// cambió. Localmente espejamos el recálculo igual que en registrarCobro.
+  Future<void> editarPago({
+    required String pagoId,
+    double? montoCordobas,
+    double? montoOriginal,
+    double? tasaConversion,
+    MetodoPago? metodo,
+    String? notas,
+    /// Pasar true para limpiar notas (null = no tocar).
+    bool limpiarNotas = false,
+  }) async {
+    await ps.db.writeTransaction((tx) async {
+      // Leer el pago actual para obtener cuota_id y monto previo.
+      final pagoRows = await tx.getAll(
+        'SELECT cuota_id, monto_cordobas FROM pagos WHERE id = ? AND anulado = 0',
+        [pagoId],
+      );
+      if (pagoRows.isEmpty) {
+        throw Exception('Pago no encontrado o ya anulado');
+      }
+      final cuotaId = pagoRows.first['cuota_id'] as String;
+      final montoPrevio = (pagoRows.first['monto_cordobas'] as num).toDouble();
+
+      // Construir SET clause dinámico.
+      final sets = <String>[];
+      final params = <Object?>[];
+      if (montoCordobas != null) {
+        sets.add('monto_cordobas = ?');
+        params.add(montoCordobas);
+      }
+      if (montoOriginal != null) {
+        sets.add('monto_original = ?');
+        params.add(montoOriginal);
+      }
+      if (tasaConversion != null) {
+        sets.add('tasa_conversion = ?');
+        params.add(tasaConversion);
+      }
+      if (metodo != null) {
+        sets.add('metodo = ?');
+        params.add(metodo.value);
+      }
+      if (limpiarNotas) {
+        sets.add('notas = NULL');
+      } else if (notas != null) {
+        sets.add('notas = ?');
+        params.add(notas);
+      }
+
+      if (sets.isEmpty) return;
+
+      params.add(pagoId);
+      await tx.execute(
+        'UPDATE pagos SET ${sets.join(', ')} WHERE id = ?',
+        params,
+      );
+
+      // Si el monto cambió, recalcular estado de la cuota localmente
+      // (mirror del trigger server).
+      if (montoCordobas != null && montoCordobas != montoPrevio) {
+        final cuotaRows = await tx.getAll(
+          'SELECT monto, monto_pagado, estado FROM cuotas WHERE id = ?',
+          [cuotaId],
+        );
+        if (cuotaRows.isNotEmpty) {
+          final montoCuota = (cuotaRows.first['monto'] as num).toDouble();
+          final pagadoViejo =
+              (cuotaRows.first['monto_pagado'] as num? ?? 0).toDouble();
+          final estadoActual = cuotaRows.first['estado'] as String;
+          // Ajustar: quitar el monto previo, sumar el nuevo.
+          final pagadoNuevo = (pagadoViejo - montoPrevio + montoCordobas)
+              .clamp(0.0, double.infinity);
+          final delta = await _deltaCargosExtra(tx, cuotaId);
+          final nuevoEstado = calcularEstadoCuota(
+            estadoActual: estadoActual,
+            montoCuota: montoCuota,
+            pagadoNuevo: pagadoNuevo,
+            deltaCargosExtra: delta,
+          );
+          await tx.execute(
+            'UPDATE cuotas SET monto_pagado = ?, estado = ? WHERE id = ?',
+            [pagadoNuevo, nuevoEstado, cuotaId],
+          );
+        }
+      }
+    });
+  }
+
   /// Suma neta de cargos_extra de la cuota: cargos sumados (reconexion/otro)
   /// menos descuentos. Mirror del SQL `cuota_total_a_cobrar` (0018).
   Future<double> _deltaCargosExtra(dynamic tx, String cuotaId) async {
