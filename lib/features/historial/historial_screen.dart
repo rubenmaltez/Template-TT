@@ -3,6 +3,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../data/providers/cobrador_provider.dart';
+import '../../data/repositories/pagos_repo.dart';
+import '../../data/repositories/settings_repo.dart';
 import '../../data/utils/formatters.dart';
 import '../../powersync/db.dart' as ps;
 import '../shared/widgets/empty_state.dart';
@@ -82,15 +85,18 @@ class _HistorialScreenState extends ConsumerState<HistorialScreen> {
   }
 }
 
-class _GrupoDia extends StatelessWidget {
+class _GrupoDia extends ConsumerWidget {
   const _GrupoDia({required this.dia, required this.total, required this.pagos});
   final DateTime dia;
   final double total;
   final List<Map<String, dynamic>> pagos;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final scheme = Theme.of(context).colorScheme;
+    final settings = ref.watch(appSettingsProvider);
+    final puedeAnular = settings.cobradorAnulaCobros;
+
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
       child: Column(
@@ -135,9 +141,25 @@ class _GrupoDia extends StatelessWidget {
                             if (p['numero_completo'] != null) p['numero_completo'],
                           ].join(' · '),
                         ),
-                        trailing: Text(
-                          Fmt.cordobas(p['monto_cordobas'] as num),
-                          style: const TextStyle(fontWeight: FontWeight.w600),
+                        trailing: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              Fmt.cordobas(p['monto_cordobas'] as num),
+                              style: const TextStyle(fontWeight: FontWeight.w600),
+                            ),
+                            if (puedeAnular) ...[
+                              const SizedBox(width: 4),
+                              IconButton(
+                                icon: Icon(Icons.block, size: 20, color: scheme.error),
+                                tooltip: 'Anular pago',
+                                onPressed: () => _anular(context, ref, p),
+                                visualDensity: VisualDensity.compact,
+                                padding: EdgeInsets.zero,
+                                constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                              ),
+                            ],
+                          ],
                         ),
                         onTap: p['recibo_id'] != null
                             ? () => context.push('/recibo/${p['recibo_id']}')
@@ -152,6 +174,40 @@ class _GrupoDia extends StatelessWidget {
     );
   }
 
+  Future<void> _anular(
+    BuildContext context,
+    WidgetRef ref,
+    Map<String, dynamic> pago,
+  ) async {
+    final motivo = await showDialog<String?>(
+      context: context,
+      builder: (_) => const _AnularCobroDialog(),
+    );
+    if (motivo == null || motivo.trim().isEmpty || !context.mounted) return;
+
+    final me = ref.read(cobradorActualProvider).valueOrNull;
+    if (me == null) return;
+
+    try {
+      await ref.read(pagosRepoProvider).anularPago(
+            pagoId: pago['id'] as String,
+            anuladoPorId: me.id,
+            motivo: motivo.trim(),
+          );
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Pago anulado')),
+        );
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error al anular: $e')),
+        );
+      }
+    }
+  }
+
   IconData _iconForMethod(String m) => switch (m) {
         'efectivo' => Icons.payments,
         'transferencia' => Icons.swap_horiz,
@@ -159,4 +215,63 @@ class _GrupoDia extends StatelessWidget {
         'tarjeta' => Icons.credit_card,
         _ => Icons.payments,
       };
+}
+
+class _AnularCobroDialog extends StatefulWidget {
+  const _AnularCobroDialog();
+  @override
+  State<_AnularCobroDialog> createState() => _AnularCobroDialogState();
+}
+
+class _AnularCobroDialogState extends State<_AnularCobroDialog> {
+  final _ctrl = TextEditingController();
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Anular pago'),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+              'Esta acción queda registrada en auditoría. La cuota volverá '
+              'a su estado anterior. El recibo emitido queda inválido.'),
+          const SizedBox(height: 16),
+          TextField(
+            controller: _ctrl,
+            autofocus: true,
+            maxLines: 3,
+            decoration: const InputDecoration(
+              labelText: 'Motivo de anulación *',
+              hintText: 'Ej. Monto incorrecto, registrado por error...',
+            ),
+          ),
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Cancelar'),
+        ),
+        FilledButton(
+          onPressed: () {
+            if (_ctrl.text.trim().isEmpty) return;
+            Navigator.pop(context, _ctrl.text);
+          },
+          style: FilledButton.styleFrom(
+            backgroundColor: Theme.of(context).colorScheme.error,
+            foregroundColor: Theme.of(context).colorScheme.onError,
+          ),
+          child: const Text('Anular'),
+        ),
+      ],
+    );
+  }
 }
