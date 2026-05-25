@@ -75,9 +75,9 @@ flutter:
 # Configuración MSIX para distribución Windows.
 # Build: flutter build windows --release && dart run msix:create
 msix_config:
-  display_name: Cobranza ISP
-  publisher_display_name: Cobranza ISP
-  identity_name: com.cobranzaisp.app
+  display_name: SITECSA CRM
+  publisher_display_name: SITECSA
+  identity_name: com.sitecsa.crm
   logo_path: assets/icon/app_icon.png
   capabilities: internetClient
   languages: es
