@@ -514,12 +514,11 @@ Estos viven acá hasta que se ataquen explícitamente. NO re-flag en audits.
   Android, scheme registrado Windows).
 - **Sin pagination** en `clientesAsignadosProvider` y la lista admin de clientes — explota
   a 10k+ rows. R15 del sprint hardening.
-- **BULK 11 Fase C — sprints pendientes**:
-    - **C3 Cargo por reconexion automatico**: detectar cuando un cliente con cuota
-      vencida paga, auto-agregar cargo de reconexion. Requiere integracion con el
-      flow de cobro. Skipped por complejidad — sprint propio.
-    - **C4 Descuento pronto pago**: detectar si el pago es antes del vencimiento y
-      auto-aplicar descuento. Similar complejidad a C3. Sprint propio.
+- **BULK 11 backlog completado** (B4 + C3 + C4):
+    - B4 Multi-cuota: ✅ long-press multi-select + cobro batch + recibo global.
+    - C3 Cargo reconexión: ✅ auto-insert en transacción del cobro.
+    - C4 Descuento pronto pago: ✅ auto-insert en transacción del cobro.
+    - Migración 0043: `grupo_cobro UUID` en pagos.
 
 ---
 

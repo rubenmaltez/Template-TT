@@ -148,7 +148,7 @@ tabla — extender con los nuevos campos.
 | B1 | 2-3h | Fecha de cobro editable (toggle settings) | ✅ |
 | B2 | 2-3h | Anulación de cobros por cobrador (toggle settings) | ✅ |
 | B3 | 2-3h | Edición de cobros post-registro (toggle settings) | ✅ |
-| B4 | 3-4h | Pago multi-cuota (recibo global) | ⏳ Diferido |
+| B4 | 3-4h | Pago multi-cuota (recibo global) | ✅ |
 | B5 | 2h | Métodos de pago configurables | ✅ Ya existía |
 
 ### FASE C: Cuotas y finanzas
@@ -156,8 +156,8 @@ tabla — extender con los nuevos campos.
 |---|---|---|---|
 | C1 | 2h | Cuotas manuales (contrato_id NULL) + migración 0042 | ✅ |
 | C2 | 1-2h | Editar monto de cuota generada | ✅ |
-| C3 | 2-3h | Cargo por reconexión automático | ⏳ Diferido |
-| C4 | 2h | Descuento pronto pago | ⏳ Diferido |
+| C3 | 2-3h | Cargo por reconexión automático | ✅ |
+| C4 | 2h | Descuento pronto pago | ✅ |
 | C5 | 2-3h | Tasa de cambio con histórico | ✅ Ya funcionaba |
 
 ### FASE D: Cobrador UX
@@ -185,6 +185,4 @@ tabla — extender con los nuevos campos.
 | F4 | 2h | Responsive polish (desktop grids + mobile full-width) | ✅ Verificado (ya responsive) |
 
 ### Sprints diferidos (backlog)
-- B4: Pago multi-cuota — TODO en cobro_screen.dart línea 204
-- C3: Cargo por reconexión — TODO en CLAUDE.md backlog
-- C4: Descuento pronto pago — TODO en CLAUDE.md backlog
+Todos los sprints diferidos fueron completados. BULK 11 cerrado al 100%.

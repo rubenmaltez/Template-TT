@@ -21,8 +21,8 @@ Sesión 2 (2026-05-23/24/25): 40+ PRs. BULKs 1-9 + BULK 11 completo
 categorías + 14 toggles. Migraciones 0036-0042 deployadas. 3 GitHub
 Releases (v0.1-v0.3).
 
-**Sprints diferidos (backlog)**: B4 (multi-cuota), C3 (reconexión),
-C4 (pronto pago). Ver BULK11-PLAN.md.
+**BULK 11 100% cerrado** — incluyendo B4 (multi-cuota), C3 (reconexión),
+C4 (pronto pago). Migración 0043 pendiente de deploy.
 
 ---
 
