@@ -5,6 +5,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../config/router.dart';
 import '../../../data/providers/cobrador_provider.dart';
+import '../../../data/providers/crud_error_provider.dart';
 import '../../../data/providers/impersonation_provider.dart';
 import '../../../data/providers/sync_status_provider.dart';
 import '../../../data/services/impersonation_service.dart';
@@ -26,6 +27,21 @@ class AdminShell extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    // Escuchar errores de CRUD upload para mostrar SnackBar cuando un
+    // write local es rechazado por Postgres (trigger, constraint, RLS).
+    ref.listen(crudUploadErrorProvider, (_, next) {
+      final error = next.valueOrNull;
+      if (error != null && context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error al sincronizar ${error.table}: ${error.message}'),
+            backgroundColor: Theme.of(context).colorScheme.error,
+            duration: const Duration(seconds: 6),
+          ),
+        );
+      }
+    });
+
     final isDesktop = MediaQuery.sizeOf(context).width >= _breakpoint;
     final titulo = ShellTitleScope.of(context) ?? 'Panel admin';
     final location = GoRouterState.of(context).matchedLocation;

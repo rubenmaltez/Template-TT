@@ -5,6 +5,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../config/router.dart';
 import '../../data/providers/cobrador_provider.dart';
+import '../../data/providers/crud_error_provider.dart';
 import '../../data/providers/mora_count_provider.dart';
 import '../../data/providers/sync_status_provider.dart';
 import '../shared/utils/shell_nav.dart';
@@ -20,6 +21,19 @@ class AppShell extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    ref.listen(crudUploadErrorProvider, (_, next) {
+      final error = next.valueOrNull;
+      if (error != null && context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error al sincronizar ${error.table}: ${error.message}'),
+            backgroundColor: Theme.of(context).colorScheme.error,
+            duration: const Duration(seconds: 6),
+          ),
+        );
+      }
+    });
+
     final titulo = ShellTitleScope.of(context) ?? 'Cobranza ISP';
     return Scaffold(
       drawer: const _AppDrawer(),
