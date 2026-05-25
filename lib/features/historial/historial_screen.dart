@@ -139,7 +139,7 @@ class _GrupoDia extends ConsumerWidget {
                         title: Text(p['cliente_nombre'] as String),
                         subtitle: Text(
                           [
-                            (p['metodo'] as String),
+                            MetodoPago.fromString(p['metodo'] as String).label,
                             if (p['numero_completo'] != null) p['numero_completo'],
                           ].join(' · '),
                         ),

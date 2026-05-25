@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../data/models/cuota.dart';
+import '../../data/models/pago.dart';
 import '../../data/repositories/clientes_repo.dart';
 import '../../data/repositories/settings_repo.dart';
 import '../../data/services/external_actions.dart';
@@ -618,7 +619,7 @@ class _PagosSectionState extends State<_PagosSection> {
                       leading: const Icon(Icons.payments_outlined),
                       title: Text(Fmt.cordobas(r['monto_cordobas'] as num)),
                       subtitle: Text(
-                        '${r['metodo']} · ${Fmt.fechaCorta(DateTime.parse(r['fecha_pago'] as String))}',
+                        '${MetodoPago.fromString(r['metodo'] as String).label} · ${Fmt.fechaCorta(DateTime.parse(r['fecha_pago'] as String))}',
                       ),
                       trailing: (r['moneda'] as String) == 'USD'
                           ? Text('US\$${(r['monto_original'] as num).toStringAsFixed(2)}',

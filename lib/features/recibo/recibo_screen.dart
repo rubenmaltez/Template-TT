@@ -277,7 +277,7 @@ class _ReciboTicket extends StatelessWidget {
             const Divider(),
 
             _ticketRow('Método',
-                (row['metodo'] as String).toUpperCase()),
+                MetodoPago.fromString(row['metodo'] as String).label.toUpperCase()),
             if (row['referencia'] != null)
               _ticketRow('Ref.', row['referencia'] as String),
             if ((row['moneda'] as String) == 'USD')
@@ -342,7 +342,7 @@ class _ReciboTicket extends StatelessWidget {
             if (row['impreso_en'] != null)
               Text(
                 'Reimpresión #${(row['reimpresiones'] as int? ?? 0) + 1}',
-                style: const TextStyle(fontSize: 10, color: Colors.grey),
+                style: TextStyle(fontSize: 10, color: Theme.of(context).colorScheme.outline),
               ),
           ],
         ),
@@ -456,7 +456,7 @@ class _MultiReciboTicket extends StatelessWidget {
               ),
 
             const Divider(),
-            _ticketRow('Método', (first['metodo'] as String).toUpperCase()),
+            _ticketRow('Método', MetodoPago.fromString(first['metodo'] as String).label.toUpperCase()),
             if (first['referencia'] != null)
               _ticketRow('Ref.', first['referencia'] as String),
 

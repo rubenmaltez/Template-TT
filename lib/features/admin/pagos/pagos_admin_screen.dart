@@ -249,7 +249,7 @@ class _PagoCard extends ConsumerWidget {
                   Text(
                     [
                       row['numero_completo'] ?? '—',
-                      (row['metodo'] as String),
+                      MetodoPago.fromString(row['metodo'] as String).label,
                       Fmt.fechaCorta(fecha),
                       if (row['cobrador'] != null) row['cobrador'],
                     ].join(' · '),

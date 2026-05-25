@@ -108,11 +108,30 @@ class _CategoriaTab extends ConsumerWidget {
       return const Center(child: Text('Sin opciones en esta categoría'));
     }
 
-    // Filtrar el setting de logo_path: lo rendereamos con un widget
-    // especial en vez del TextFormField genérico.
+    // Filtrar settings que se renderizan con widgets especiales o que
+    // están obsoletos/orphaned y no deben mostrarse al admin.
+    const _hidden = {
+      'empresa.logo_path',
+      // Legacy duplicados — la app ya usa los metodo_* de 0040.
+      'pagos.transferencia_habilitada',
+      'pagos.tarjeta_habilitada',
+      // Orphaned — nunca leído por AppSettings.
+      'cobranza.cargo_reconexion',
+      // Templates sin implementar — confunden al admin.
+      'recibo.template_57mm',
+      'recibo.template_80mm',
+    };
     final settingsFiltrados = settings
-        .where((s) => s.clave != 'empresa.logo_path')
+        .where((s) => !_hidden.contains(s.clave))
         .toList();
+
+    // Orden lógico en vez de alfabético.
+    settingsFiltrados.sort((a, b) {
+      final oa = _sortOrder(a.clave);
+      final ob = _sortOrder(b.clave);
+      if (oa != ob) return oa.compareTo(ob);
+      return a.clave.compareTo(b.clave);
+    });
 
     return ListView(
       padding: const EdgeInsets.all(16),
@@ -256,6 +275,20 @@ class _SettingTileState extends State<_SettingTile> {
     final s = widget.setting;
     final enabled = widget.puedeEditar;
 
+    // Dropdown especial para formato de recibo (number type).
+    if (s.clave == 'recibo.formato_default_mm') {
+      final current = (s.valor as num?)?.toInt() ?? 80;
+      return DropdownButtonFormField<int>(
+        value: current == 57 ? 57 : 80,
+        decoration: const InputDecoration(isDense: true),
+        items: const [
+          DropdownMenuItem(value: 57, child: Text('57 mm (angosto)')),
+          DropdownMenuItem(value: 80, child: Text('80 mm (estándar)')),
+        ],
+        onChanged: enabled ? (v) { if (v != null) widget.onSave(v); } : null,
+      );
+    }
+
     // Dropdowns para settings con opciones fijas.
     final dropdownOptions = _dropdownFor(s.clave);
     if (dropdownOptions != null) {
@@ -394,6 +427,57 @@ class _SettingTileState extends State<_SettingTile> {
       _ => null,
     };
   }
+}
+
+int _sortOrder(String clave) {
+  const order = <String, int>{
+    // Empresa
+    'empresa.nombre': 0,
+    'empresa.direccion': 1,
+    'empresa.telefono': 2,
+    'empresa.ruc': 3,
+    'empresa.whatsapp': 4,
+    // Cobranza — fundamentales primero
+    'cobranza.dias_gracia': 0,
+    'cobranza.modo_ruta': 1,
+    'cobranza.pago_parcial': 2,
+    'cobranza.pago_adelantado': 3,
+    'cobranza.foto_obligatoria': 4,
+    // Cobrador permisos
+    'cobranza.cobrador_edita_fecha': 10,
+    'cobranza.cobrador_anula_cobros': 11,
+    'cobranza.cobrador_edita_cobros': 12,
+    // Descuentos (toggle padre → hijos)
+    'cobranza.descuentos_habilitados': 20,
+    'cobranza.descuento_tipo': 21,
+    'cobranza.descuento_max_monto': 22,
+    'cobranza.descuento_max_porcentaje': 23,
+    // Reconexión (toggle padre → valor)
+    'cobranza.cargo_reconexion_habilitado': 30,
+    'cobranza.monto_reconexion': 31,
+    // Pagos
+    'pagos.metodo_efectivo': 0,
+    'pagos.metodo_transferencia': 1,
+    'pagos.deposito_habilitado': 2,
+    'pagos.metodo_tarjeta': 3,
+    'pagos.usd_habilitado': 10,
+    'pagos.tasa_usd_cordoba': 11,
+    // Moneda
+    'moneda.principal': 0,
+    // Cuotas
+    'cuotas.manuales': 0,
+    'cuotas.editar_monto': 1,
+    'cuotas.descuento_pronto_pago': 10,
+    'cuotas.descuento_pronto_pago_tipo': 11,
+    // Recibos
+    'recibo.titulo': 0,
+    'recibo.formato_default_mm': 1,
+    'recibo.imprimir_logo': 2,
+    'recibo.monto_en_letras': 3,
+    'recibo.mostrar_adeudado': 4,
+    'recibo.pie_libre': 5,
+  };
+  return order[clave] ?? 99;
 }
 
 /// Widget de upload del logo de la empresa. Se muestra al inicio de la

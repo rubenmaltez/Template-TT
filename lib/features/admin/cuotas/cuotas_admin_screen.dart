@@ -457,8 +457,8 @@ class _NuevaCuotaManualDialogState extends State<_NuevaCuotaManualDialog> {
               TextField(
                 controller: _descripcionCtrl,
                 decoration: const InputDecoration(
-                  labelText: 'Descripcion *',
-                  hintText: 'Ej: Cargo por reconexion, Instalacion...',
+                  labelText: 'Descripción *',
+                  hintText: 'Ej: Cargo por reconexión, Instalación...',
                 ),
                 onChanged: (_) => setState(() {}),
               ),
@@ -703,10 +703,10 @@ class _CuotaCard extends ConsumerWidget {
     if (estado == 'pagada') return (s.tertiary, 'Pagada');
     if (estado == 'anulada') return (s.outline, 'Anulada');
     final diff = DateTime.now().difference(vence).inDays;
-    if (diff > dg) return (s.error, 'Vencida hace ${diff - dg} dia(s)');
+    if (diff > dg) return (s.error, 'Vencida hace ${diff - dg} día(s)');
     if (diff > 0) return (s.tertiary, 'En gracia');
     if (diff == 0) return (s.primary, 'Vence hoy');
-    return (s.outline, 'Al dia');
+    return (s.outline, 'Al día');
   }
 
   Future<void> _accionesCuota(BuildContext context, WidgetRef ref) async {

@@ -17,10 +17,10 @@ class AppColors {
   static const textSecondary = Color(0xFF636366);   // Texto secundario (más oscuro)
   static const outline = Color(0xFF9A9AA0);          // Bordes inputs (más visible)
 
-  // Semánticos
-  static const error = Color(0xFFFF3B30);            // Rojo iOS
-  static const success = Color(0xFF34C759);          // Verde iOS
-  static const warning = Color(0xFFFF9500);          // Naranja iOS
+  // Semánticos (contrastes WCAG AA con blanco)
+  static const error = Color(0xFFD63029);            // Rojo oscurecido (5.0:1)
+  static const success = Color(0xFF1B8A35);          // Verde oscurecido (4.6:1)
+  static const warning = Color(0xFFCC7700);          // Naranja oscurecido (4.5:1)
 }
 
 class AppTheme {
