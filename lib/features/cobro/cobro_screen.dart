@@ -49,6 +49,9 @@ class _CobroScreenState extends ConsumerState<CobroScreen> {
   bool _capturandoUbicacion = false;
   // Path local de la foto del comprobante (prefijo 'local://').
   String? _fotoPath;
+  // Fecha del cobro. Default: hoy. Editable si el admin habilitó
+  // cobranza.cobrador_edita_fecha en settings.
+  DateTime _fechaCobro = DateTime.now();
 
   @override
   void initState() {
@@ -195,6 +198,7 @@ class _CobroScreenState extends ConsumerState<CobroScreen> {
             notas: _notasCtrl.text.trim().isEmpty
                 ? null
                 : _notasCtrl.text.trim(),
+            fechaPago: _fechaCobro,
           );
       if (!mounted) return;
       context.pushReplacement('/recibo/${result.reciboId}');
@@ -368,6 +372,31 @@ class _CobroScreenState extends ConsumerState<CobroScreen> {
             capturando: _capturandoUbicacion,
             ubicacion: _ubicacion,
           ),
+          // Fecha del cobro: editable si el admin lo habilitó.
+          if (settings.cobradorEditaFecha) ...[
+            const SizedBox(height: 16),
+            InkWell(
+              onTap: () async {
+                final picked = await showDatePicker(
+                  context: context,
+                  initialDate: _fechaCobro,
+                  firstDate: DateTime(2020),
+                  lastDate: DateTime.now(),
+                  locale: const Locale('es', 'NI'),
+                );
+                if (picked != null) {
+                  setState(() => _fechaCobro = picked);
+                }
+              },
+              child: InputDecorator(
+                decoration: const InputDecoration(
+                  labelText: 'Fecha del cobro',
+                  prefixIcon: Icon(Icons.calendar_today),
+                ),
+                child: Text(Fmt.fechaCorta(_fechaCobro)),
+              ),
+            ),
+          ],
           const SizedBox(height: 12),
           _ResumenCard(
             saldoActual: saldo,

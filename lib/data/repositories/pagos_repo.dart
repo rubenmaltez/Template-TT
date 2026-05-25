@@ -37,12 +37,13 @@ class PagosRepo {
     double? lat,
     double? lng,
     String? notas,
+    DateTime? fechaPago,
   }) async {
     final pagoId = _uuid.v4();
     final reciboId = _uuid.v4();
     final clientLocalIdPago = _uuid.v4();
     final clientLocalIdRecibo = _uuid.v4();
-    final now = DateTime.now().toIso8601String();
+    final now = (fechaPago ?? DateTime.now()).toIso8601String();
     final correlativoCompleter = <int>[];
 
     await ps.db.writeTransaction((tx) async {

@@ -93,6 +93,20 @@ class AppSettings {
   double get tasaUsd =>
       settingValue<num>(_map, 'pagos.tasa_usd_cordoba', 36.5).toDouble();
 
+  // Permisos del cobrador (toggles en Settings → Cobranza).
+  bool get cobradorEditaFecha =>
+      settingValue<bool>(_map, 'cobranza.cobrador_edita_fecha', false);
+  bool get cobradorAnulaCobros =>
+      settingValue<bool>(_map, 'cobranza.cobrador_anula_cobros', false);
+  bool get cobradorEditaCobros =>
+      settingValue<bool>(_map, 'cobranza.cobrador_edita_cobros', false);
+  bool get fotoObligatoria =>
+      settingValue<bool>(_map, 'cobranza.foto_obligatoria', false);
+  bool get pagoParicialPermitido =>
+      settingValue<bool>(_map, 'cobranza.pago_parcial', true);
+  bool get pagoAdelantadoPermitido =>
+      settingValue<bool>(_map, 'cobranza.pago_adelantado', true);
+
   int get formatoReciboMm =>
       settingValue<num>(_map, 'recibo.formato_default_mm', 80).toInt();
   String get pieRecibo => settingValue<String>(_map, 'recibo.pie_libre', '');
