@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show Clipboard, ClipboardData;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:printing/printing.dart';
 
@@ -6,8 +7,12 @@ import '../../../config/router.dart';
 import '../../../data/repositories/settings_repo.dart';
 import '../../../data/utils/formatters.dart';
 import '../../../powersync/db.dart' as ps;
+import 'pdf/reporte_anulaciones_pdf.dart';
 import 'pdf/reporte_clientes_pdf.dart';
 import 'pdf/reporte_cobros_pdf.dart';
+import 'pdf/reporte_eficiencia_pdf.dart';
+import 'pdf/reporte_fiscal_pdf.dart';
+import 'pdf/reporte_inactivos_pdf.dart';
 import 'pdf/reporte_mora_pdf.dart';
 import 'pdf/reporte_por_cobrador_pdf.dart';
 
@@ -50,7 +55,7 @@ class _DescargarPdfMenu extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     return PopupMenuButton<String>(
       onSelected: (tipo) => _generar(context, ref, tipo),
-      itemBuilder: (_) => const [
+      itemBuilder: (_) => [
         PopupMenuItem(
           value: 'cobros',
           child: ListTile(
@@ -87,11 +92,58 @@ class _DescargarPdfMenu extends ConsumerWidget {
             dense: true,
           ),
         ),
+        PopupMenuDivider(),
+        PopupMenuItem(
+          value: 'fiscal',
+          child: ListTile(
+            leading: Icon(Icons.account_balance),
+            title: Text('Reporte fiscal'),
+            subtitle: Text('Ingresos por plan y método'),
+            dense: true,
+          ),
+        ),
+        PopupMenuItem(
+          value: 'eficiencia',
+          child: ListTile(
+            leading: Icon(Icons.speed),
+            title: Text('Eficiencia por cobrador'),
+            subtitle: Text('Tasa de éxito y montos'),
+            dense: true,
+          ),
+        ),
+        PopupMenuItem(
+          value: 'inactivos',
+          child: ListTile(
+            leading: Icon(Icons.person_off),
+            title: Text('Clientes inactivos'),
+            subtitle: Text('Sin pagos en los últimos 3 meses'),
+            dense: true,
+          ),
+        ),
+        PopupMenuItem(
+          value: 'anulaciones',
+          child: ListTile(
+            leading: Icon(Icons.cancel_outlined),
+            title: Text('Reporte de anulaciones'),
+            subtitle: Text('Cobros anulados con motivo'),
+            dense: true,
+          ),
+        ),
+        PopupMenuDivider(),
+        PopupMenuItem(
+          value: 'csv',
+          child: ListTile(
+            leading: Icon(Icons.table_chart),
+            title: Text('Exportar CSV'),
+            subtitle: Text('Copiar al portapapeles'),
+            dense: true,
+          ),
+        ),
       ],
       child: FloatingActionButton.extended(
         onPressed: null,
         icon: const Icon(Icons.picture_as_pdf),
-        label: const Text('Descargar PDF'),
+        label: const Text('Reportes'),
       ),
     );
   }
@@ -100,6 +152,13 @@ class _DescargarPdfMenu extends ConsumerWidget {
       BuildContext context, WidgetRef ref, String tipo) async {
     final empresaNombre =
         ref.read(empresaNombreProvider).valueOrNull ?? 'ISP';
+
+    // CSV export abre un sub-menú para elegir qué reporte exportar.
+    if (tipo == 'csv') {
+      if (!context.mounted) return;
+      await _mostrarMenuCsv(context, ref);
+      return;
+    }
 
     try {
       if (tipo == 'cobros') {
@@ -238,14 +297,455 @@ class _DescargarPdfMenu extends ConsumerWidget {
           bytes: await doc.save(),
           filename: 'clientes_${now.year}_${now.month}.pdf',
         );
+      } else if (tipo == 'fiscal') {
+        await _generarFiscal(context, empresaNombre);
+      } else if (tipo == 'eficiencia') {
+        await _generarEficiencia(context, empresaNombre);
+      } else if (tipo == 'inactivos') {
+        await _generarInactivos(context, empresaNombre);
+      } else if (tipo == 'anulaciones') {
+        await _generarAnulaciones(context, empresaNombre);
       }
     } catch (e) {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error generando PDF: $e')),
+          SnackBar(content: Text('Error generando reporte: $e')),
         );
       }
     }
+  }
+
+  // ---------------------------------------------------------------------------
+  // E1: Reporte fiscal — ingresos por mes, plan y método de pago
+  // ---------------------------------------------------------------------------
+
+  Future<void> _generarFiscal(
+      BuildContext context, String empresaNombre) async {
+    final rows = await ps.db.getAll('''
+      SELECT strftime('%Y-%m', p.fecha_pago) AS mes,
+             COALESCE(pl.nombre, 'Sin plan') AS plan_nombre,
+             p.metodo,
+             COALESCE(SUM(p.monto_cordobas), 0) AS total_monto,
+             COUNT(p.id) AS cantidad
+        FROM pagos p
+        JOIN cuotas cu ON cu.id = p.cuota_id
+   LEFT JOIN contratos ct ON ct.id = cu.contrato_id
+   LEFT JOIN planes pl ON pl.id = ct.plan_id
+       WHERE p.anulado = 0
+         AND date(p.fecha_pago) >= date('now', '-5 months', 'start of month')
+       GROUP BY mes, plan_nombre, p.metodo
+       ORDER BY mes DESC, plan_nombre, p.metodo
+    ''');
+
+    final now = DateTime.now();
+    final doc = buildReporteFiscal(
+      titulo: 'Reporte fiscal / contable',
+      empresaNombre: empresaNombre,
+      periodo: 'Últimos 6 meses — ${Fmt.mes(now)}',
+      rows: rows,
+    );
+    await Printing.sharePdf(
+      bytes: await doc.save(),
+      filename: 'fiscal_${now.year}_${now.month}.pdf',
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // E2: Reporte eficiencia por cobrador
+  // ---------------------------------------------------------------------------
+
+  Future<void> _generarEficiencia(
+      BuildContext context, String empresaNombre) async {
+    final rows = await ps.db.getAll('''
+      SELECT cb.nombre AS cobrador_nombre,
+             COUNT(p.id) AS total_cobros,
+             COUNT(DISTINCT cu.cliente_id) AS clientes_visitados,
+             COALESCE(SUM(p.monto_cordobas), 0) AS monto_total,
+             (SELECT COUNT(*)
+                FROM cuotas cq
+               WHERE cq.cobrador_id = cb.id
+                 AND cq.estado IN ('pendiente','parcial','pagada')
+                 AND date(cq.fecha_vencimiento) >= date('now', 'start of month')
+             ) AS cuotas_asignadas
+        FROM cobradores cb
+   LEFT JOIN pagos p ON p.cobrador_id = cb.id
+                    AND p.anulado = 0
+                    AND date(p.fecha_pago) >= date('now', 'start of month')
+   LEFT JOIN cuotas cu ON cu.id = p.cuota_id
+       WHERE cb.rol = 'cobrador' AND cb.activo = 1
+       GROUP BY cb.id, cb.nombre
+       ORDER BY monto_total DESC
+    ''');
+
+    final now = DateTime.now();
+    final doc = buildReporteEficiencia(
+      titulo: 'Eficiencia por cobrador',
+      empresaNombre: empresaNombre,
+      periodo: Fmt.mes(now),
+      rows: rows,
+    );
+    await Printing.sharePdf(
+      bytes: await doc.save(),
+      filename: 'eficiencia_${now.year}_${now.month}.pdf',
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // E3: Reporte clientes inactivos
+  // ---------------------------------------------------------------------------
+
+  Future<void> _generarInactivos(
+      BuildContext context, String empresaNombre) async {
+    const mesesInactividad = 3;
+    final rows = await ps.db.getAll('''
+      SELECT c.nombre, co.nombre AS comunidad,
+             c.telefono,
+             MAX(p.fecha_pago) AS ultimo_pago,
+             CAST(julianday('now') - julianday(MAX(p.fecha_pago))
+               AS INTEGER) AS dias_sin_pago
+        FROM clientes c
+   LEFT JOIN comunidades co ON co.id = c.comunidad_id
+   LEFT JOIN cuotas cu ON cu.cliente_id = c.id
+   LEFT JOIN pagos p ON p.cuota_id = cu.id AND p.anulado = 0
+       WHERE c.activo = 1
+       GROUP BY c.id, c.nombre, co.nombre, c.telefono
+      HAVING MAX(p.fecha_pago) IS NULL
+          OR MAX(p.fecha_pago) < date('now', '-$mesesInactividad months')
+       ORDER BY ultimo_pago ASC
+    ''');
+
+    final now = DateTime.now();
+    final doc = buildReporteInactivos(
+      titulo: 'Clientes inactivos',
+      empresaNombre: empresaNombre,
+      periodo: Fmt.mes(now),
+      rows: rows,
+      mesesInactividad: mesesInactividad,
+    );
+    await Printing.sharePdf(
+      bytes: await doc.save(),
+      filename: 'inactivos_${now.year}_${now.month}.pdf',
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // E4: Reporte de anulaciones
+  // ---------------------------------------------------------------------------
+
+  Future<void> _generarAnulaciones(
+      BuildContext context, String empresaNombre) async {
+    final rows = await ps.db.getAll('''
+      SELECT p.fecha_pago,
+             c.nombre AS cliente_nombre,
+             p.monto_cordobas AS monto,
+             p.motivo_anulacion,
+             cb_anulador.nombre AS anulado_por_nombre,
+             r.numero_completo AS numero_recibo
+        FROM pagos p
+        JOIN cuotas cu ON cu.id = p.cuota_id
+        JOIN clientes c ON c.id = cu.cliente_id
+   LEFT JOIN cobradores cb_anulador ON cb_anulador.id = p.anulado_por
+   LEFT JOIN recibos r ON r.pago_id = p.id
+       WHERE p.anulado = 1
+       ORDER BY p.anulado_en DESC, p.fecha_pago DESC
+    ''');
+
+    final now = DateTime.now();
+    final doc = buildReporteAnulaciones(
+      titulo: 'Reporte de anulaciones',
+      empresaNombre: empresaNombre,
+      periodo: Fmt.mes(now),
+      rows: rows,
+    );
+    await Printing.sharePdf(
+      bytes: await doc.save(),
+      filename: 'anulaciones_${now.year}_${now.month}.pdf',
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // E5: Exportar CSV — sub-menú de selección de reporte
+  // ---------------------------------------------------------------------------
+
+  Future<void> _mostrarMenuCsv(BuildContext context, WidgetRef ref) async {
+    final tipo = await showDialog<String>(
+      context: context,
+      builder: (ctx) => SimpleDialog(
+        title: const Text('Exportar CSV'),
+        children: [
+          _csvOpcion(ctx, 'cobros', Icons.receipt_long, 'Cobros del mes'),
+          _csvOpcion(ctx, 'mora', Icons.warning_amber, 'Mora'),
+          _csvOpcion(ctx, 'clientes', Icons.people, 'Estado de clientes'),
+          _csvOpcion(ctx, 'fiscal', Icons.account_balance, 'Fiscal'),
+          _csvOpcion(ctx, 'eficiencia', Icons.speed, 'Eficiencia cobradores'),
+          _csvOpcion(ctx, 'inactivos', Icons.person_off, 'Clientes inactivos'),
+          _csvOpcion(ctx, 'anulaciones', Icons.cancel_outlined, 'Anulaciones'),
+        ],
+      ),
+    );
+    if (tipo == null || !context.mounted) return;
+
+    try {
+      final csv = await _generarCsv(tipo);
+      await Clipboard.setData(ClipboardData(text: csv));
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('CSV copiado al portapapeles — pegalo en Excel'),
+          ),
+        );
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error generando CSV: $e')),
+        );
+      }
+    }
+  }
+
+  SimpleDialogOption _csvOpcion(
+      BuildContext ctx, String value, IconData icon, String label) {
+    return SimpleDialogOption(
+      onPressed: () => Navigator.pop(ctx, value),
+      child: Row(
+        children: [
+          Icon(icon, size: 20),
+          const SizedBox(width: 12),
+          Text(label),
+        ],
+      ),
+    );
+  }
+
+  Future<String> _generarCsv(String tipo) async {
+    switch (tipo) {
+      case 'cobros':
+        final rows = await ps.db.getAll('''
+          SELECT p.fecha_pago, c.nombre AS cliente_nombre,
+                 p.monto_cordobas AS monto, p.metodo,
+                 cb.nombre AS cobrador_nombre,
+                 r.numero_completo AS numero_recibo
+            FROM pagos p
+            JOIN cuotas cu ON cu.id = p.cuota_id
+            JOIN clientes c ON c.id = cu.cliente_id
+       LEFT JOIN cobradores cb ON cb.id = p.cobrador_id
+       LEFT JOIN recibos r ON r.pago_id = p.id
+           WHERE p.anulado = 0
+             AND date(p.fecha_pago) >= date('now', 'start of month')
+           ORDER BY p.fecha_pago DESC
+        ''');
+        return _toCsv(
+          ['Fecha', 'Cliente', 'Monto', 'Método', 'Cobrador', 'Recibo'],
+          rows.map((r) => [
+            r['fecha_pago']?.toString() ?? '',
+            r['cliente_nombre']?.toString() ?? '',
+            r['monto']?.toString() ?? '0',
+            r['metodo']?.toString() ?? '',
+            r['cobrador_nombre']?.toString() ?? '',
+            r['numero_recibo']?.toString() ?? '',
+          ]).toList(),
+        );
+
+      case 'mora':
+        final rows = await ps.db.getAll('''
+          SELECT c.nombre AS cliente_nombre,
+                 co.nombre AS comunidad,
+                 COUNT(cu.id) AS cuotas_vencidas,
+                 COALESCE(SUM(cu.monto + COALESCE(cu.cargos_neto, 0)
+                   - cu.monto_pagado), 0) AS monto_adeudado,
+                 CAST(julianday('now') - julianday(MIN(cu.fecha_vencimiento))
+                   AS INTEGER) AS dias_mora
+            FROM cuotas cu
+            JOIN clientes c ON c.id = cu.cliente_id
+       LEFT JOIN comunidades co ON co.id = c.comunidad_id
+           WHERE cu.estado IN ('pendiente','parcial')
+             AND date(cu.fecha_vencimiento, '+' || ? || ' days')
+                 < date('now')
+           GROUP BY c.id, c.nombre, co.nombre
+           ORDER BY dias_mora DESC
+        ''', [diasGracia]);
+        return _toCsv(
+          ['Cliente', 'Comunidad', 'Cuotas vencidas', 'Monto adeudado',
+           'Días mora'],
+          rows.map((r) => [
+            r['cliente_nombre']?.toString() ?? '',
+            r['comunidad']?.toString() ?? '',
+            r['cuotas_vencidas']?.toString() ?? '0',
+            r['monto_adeudado']?.toString() ?? '0',
+            r['dias_mora']?.toString() ?? '0',
+          ]).toList(),
+        );
+
+      case 'clientes':
+        final rows = await ps.db.getAll('''
+          SELECT c.nombre, co.nombre AS comunidad,
+                 COUNT(cu.id) FILTER (WHERE cu.estado IN ('pendiente','parcial'))
+                   AS pendientes,
+                 COALESCE(SUM(CASE WHEN cu.estado IN ('pendiente','parcial')
+                   THEN cu.monto + COALESCE(cu.cargos_neto, 0) - cu.monto_pagado
+                   ELSE 0 END), 0) AS saldo,
+                 MAX(p.fecha_pago) AS ultimo_pago
+            FROM clientes c
+       LEFT JOIN comunidades co ON co.id = c.comunidad_id
+       LEFT JOIN cuotas cu ON cu.cliente_id = c.id
+       LEFT JOIN pagos p ON p.cuota_id = cu.id AND p.anulado = 0
+           WHERE c.activo = 1
+           GROUP BY c.id, c.nombre, co.nombre
+           ORDER BY saldo DESC
+        ''');
+        return _toCsv(
+          ['Cliente', 'Comunidad', 'Pendientes', 'Saldo', 'Último pago'],
+          rows.map((r) => [
+            r['nombre']?.toString() ?? '',
+            r['comunidad']?.toString() ?? '',
+            r['pendientes']?.toString() ?? '0',
+            r['saldo']?.toString() ?? '0',
+            r['ultimo_pago']?.toString() ?? 'Sin pagos',
+          ]).toList(),
+        );
+
+      case 'fiscal':
+        final rows = await ps.db.getAll('''
+          SELECT strftime('%Y-%m', p.fecha_pago) AS mes,
+                 COALESCE(pl.nombre, 'Sin plan') AS plan_nombre,
+                 p.metodo,
+                 COALESCE(SUM(p.monto_cordobas), 0) AS total_monto,
+                 COUNT(p.id) AS cantidad
+            FROM pagos p
+            JOIN cuotas cu ON cu.id = p.cuota_id
+       LEFT JOIN contratos ct ON ct.id = cu.contrato_id
+       LEFT JOIN planes pl ON pl.id = ct.plan_id
+           WHERE p.anulado = 0
+             AND date(p.fecha_pago) >= date('now', '-5 months', 'start of month')
+           GROUP BY mes, plan_nombre, p.metodo
+           ORDER BY mes DESC, plan_nombre, p.metodo
+        ''');
+        return _toCsv(
+          ['Mes', 'Plan', 'Método', 'Monto total', 'Cantidad cobros'],
+          rows.map((r) => [
+            r['mes']?.toString() ?? '',
+            r['plan_nombre']?.toString() ?? '',
+            r['metodo']?.toString() ?? '',
+            r['total_monto']?.toString() ?? '0',
+            r['cantidad']?.toString() ?? '0',
+          ]).toList(),
+        );
+
+      case 'eficiencia':
+        final rows = await ps.db.getAll('''
+          SELECT cb.nombre AS cobrador_nombre,
+                 COUNT(p.id) AS total_cobros,
+                 COUNT(DISTINCT cu.cliente_id) AS clientes_visitados,
+                 COALESCE(SUM(p.monto_cordobas), 0) AS monto_total,
+                 (SELECT COUNT(*)
+                    FROM cuotas cq
+                   WHERE cq.cobrador_id = cb.id
+                     AND cq.estado IN ('pendiente','parcial','pagada')
+                     AND date(cq.fecha_vencimiento) >= date('now', 'start of month')
+                 ) AS cuotas_asignadas
+            FROM cobradores cb
+       LEFT JOIN pagos p ON p.cobrador_id = cb.id
+                        AND p.anulado = 0
+                        AND date(p.fecha_pago) >= date('now', 'start of month')
+       LEFT JOIN cuotas cu ON cu.id = p.cuota_id
+           WHERE cb.rol = 'cobrador' AND cb.activo = 1
+           GROUP BY cb.id, cb.nombre
+           ORDER BY monto_total DESC
+        ''');
+        return _toCsv(
+          ['Cobrador', 'Cobros', 'Clientes visitados', 'Monto total',
+           'Cuotas asignadas', '% Éxito'],
+          rows.map((r) {
+            final cobros = ((r['total_cobros'] as num?) ?? 0).toInt();
+            final asignadas =
+                ((r['cuotas_asignadas'] as num?) ?? 0).toInt();
+            final tasa = asignadas > 0
+                ? ((cobros / asignadas) * 100).toStringAsFixed(1)
+                : '0';
+            return [
+              r['cobrador_nombre']?.toString() ?? '',
+              '$cobros',
+              r['clientes_visitados']?.toString() ?? '0',
+              r['monto_total']?.toString() ?? '0',
+              '$asignadas',
+              '$tasa%',
+            ];
+          }).toList(),
+        );
+
+      case 'inactivos':
+        const mesesInactividad = 3;
+        final rows = await ps.db.getAll('''
+          SELECT c.nombre, co.nombre AS comunidad,
+                 c.telefono,
+                 MAX(p.fecha_pago) AS ultimo_pago,
+                 CAST(julianday('now') - julianday(MAX(p.fecha_pago))
+                   AS INTEGER) AS dias_sin_pago
+            FROM clientes c
+       LEFT JOIN comunidades co ON co.id = c.comunidad_id
+       LEFT JOIN cuotas cu ON cu.cliente_id = c.id
+       LEFT JOIN pagos p ON p.cuota_id = cu.id AND p.anulado = 0
+           WHERE c.activo = 1
+           GROUP BY c.id, c.nombre, co.nombre, c.telefono
+          HAVING MAX(p.fecha_pago) IS NULL
+              OR MAX(p.fecha_pago) < date('now', '-$mesesInactividad months')
+           ORDER BY ultimo_pago ASC
+        ''');
+        return _toCsv(
+          ['Cliente', 'Comunidad', 'Teléfono', 'Último pago',
+           'Días sin pago'],
+          rows.map((r) => [
+            r['nombre']?.toString() ?? '',
+            r['comunidad']?.toString() ?? '',
+            r['telefono']?.toString() ?? '',
+            r['ultimo_pago']?.toString() ?? 'Sin pagos',
+            r['dias_sin_pago']?.toString() ?? '',
+          ]).toList(),
+        );
+
+      case 'anulaciones':
+        final rows = await ps.db.getAll('''
+          SELECT p.fecha_pago,
+                 c.nombre AS cliente_nombre,
+                 p.monto_cordobas AS monto,
+                 p.motivo_anulacion,
+                 cb_anulador.nombre AS anulado_por_nombre,
+                 r.numero_completo AS numero_recibo
+            FROM pagos p
+            JOIN cuotas cu ON cu.id = p.cuota_id
+            JOIN clientes c ON c.id = cu.cliente_id
+       LEFT JOIN cobradores cb_anulador ON cb_anulador.id = p.anulado_por
+       LEFT JOIN recibos r ON r.pago_id = p.id
+           WHERE p.anulado = 1
+           ORDER BY p.anulado_en DESC, p.fecha_pago DESC
+        ''');
+        return _toCsv(
+          ['Fecha', 'Cliente', 'Monto', 'Motivo', 'Anulado por', 'Recibo'],
+          rows.map((r) => [
+            r['fecha_pago']?.toString() ?? '',
+            r['cliente_nombre']?.toString() ?? '',
+            r['monto']?.toString() ?? '0',
+            r['motivo_anulacion']?.toString() ?? 'Sin motivo',
+            r['anulado_por_nombre']?.toString() ?? '',
+            r['numero_recibo']?.toString() ?? '',
+          ]).toList(),
+        );
+
+      default:
+        return '';
+    }
+  }
+
+  /// Convierte headers + filas a CSV con escape correcto de comillas.
+  String _toCsv(List<String> headers, List<List<String>> rows) {
+    String escapar(String celda) =>
+        '"${celda.replaceAll('"', '""')}"';
+    final lineas = <String>[
+      headers.map(escapar).join(','),
+      ...rows.map((r) => r.map(escapar).join(',')),
+    ];
+    return lineas.join('\n');
   }
 }
 
