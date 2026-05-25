@@ -158,6 +158,7 @@ class _AppDrawer extends ConsumerWidget {
 
   Widget _navTileWithBadge(BuildContext context, WidgetRef ref, IconData icon, String label, String path) {
     final moraCount = ref.watch(moraCountProvider).valueOrNull ?? 0;
+    final currentPath = GoRouterState.of(context).uri.path;
     return ListTile(
       leading: Badge(
         isLabelVisible: moraCount > 0,
@@ -165,18 +166,19 @@ class _AppDrawer extends ConsumerWidget {
         child: Icon(icon),
       ),
       title: Text(label),
+      selected: currentPath == path,
+      selectedTileColor: Theme.of(context).colorScheme.primaryContainer,
       onTap: () => context.closeModalsAndGo(path),
     );
   }
 
   Widget _navTile(BuildContext context, IconData icon, String label, String path) {
+    final currentPath = GoRouterState.of(context).uri.path;
     return ListTile(
       leading: Icon(icon),
       title: Text(label),
-      // closeModalsAndGo cierra el drawer + cualquier dialog que el user
-      // haya dejado abierto antes de navegar. Sin esto, en algunas rutas
-      // un dialog imperativo (showDialog) queda flotando sobre la nueva
-      // ruta porque go_router no desmonta PopupRoutes al cambiar shell child.
+      selected: currentPath == path,
+      selectedTileColor: Theme.of(context).colorScheme.primaryContainer,
       onTap: () => context.closeModalsAndGo(path),
     );
   }
