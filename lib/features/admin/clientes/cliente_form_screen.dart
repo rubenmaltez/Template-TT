@@ -779,8 +779,8 @@ class _MapaPickerScreenState extends State<_MapaPickerScreen> {
                     Marker(
                       point: _punto,
                       width: 40, height: 40,
-                      child: const Icon(Icons.location_on,
-                          color: Colors.red, size: 40),
+                      child: Icon(Icons.location_on,
+                          color: Theme.of(context).colorScheme.error, size: 40),
                     ),
                   ],
                 ),

@@ -389,12 +389,12 @@ class _EntrarTenantButtonState extends State<_EntrarTenantButton> {
   Widget build(BuildContext context) {
     return FilledButton.icon(
       icon: _busy
-          ? const SizedBox(
+          ? SizedBox(
               width: 16,
               height: 16,
               child: CircularProgressIndicator(
                 strokeWidth: 2,
-                color: Colors.white,
+                color: Theme.of(context).colorScheme.onPrimary,
               ),
             )
           : const Icon(Icons.login),

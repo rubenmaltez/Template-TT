@@ -32,14 +32,15 @@ class _UpdateBannerState extends ConsumerState<UpdateBanner> {
       data: (update) {
         if (update == null) return const SizedBox.shrink();
 
+        final scheme = Theme.of(context).colorScheme;
         return Material(
-          color: Colors.blue.shade800,
+          color: scheme.primary,
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
             child: Row(
               children: [
                 Icon(Icons.system_update,
-                    size: 20, color: Colors.blue.shade50),
+                    size: 20, color: scheme.onPrimary),
                 const SizedBox(width: 8),
                 Expanded(
                   child: Column(
@@ -49,7 +50,7 @@ class _UpdateBannerState extends ConsumerState<UpdateBanner> {
                       Text(
                         'Actualización disponible v${update.version}',
                         style: TextStyle(
-                          color: Colors.blue.shade50,
+                          color: scheme.onPrimary,
                           fontWeight: FontWeight.w600,
                           fontSize: 13,
                         ),
@@ -58,7 +59,7 @@ class _UpdateBannerState extends ConsumerState<UpdateBanner> {
                         Text(
                           update.releaseNotes!,
                           style: TextStyle(
-                            color: Colors.blue.shade100,
+                            color: scheme.onPrimary.withValues(alpha: 0.8),
                             fontSize: 11,
                           ),
                           maxLines: 1,
@@ -70,13 +71,13 @@ class _UpdateBannerState extends ConsumerState<UpdateBanner> {
                 TextButton(
                   onPressed: () => _download(update.downloadUrl),
                   style: TextButton.styleFrom(
-                    foregroundColor: Colors.blue.shade50,
+                    foregroundColor: scheme.onPrimary,
                   ),
                   child: const Text('Descargar'),
                 ),
                 IconButton(
                   icon: Icon(Icons.close,
-                      size: 18, color: Colors.blue.shade100),
+                      size: 18, color: scheme.onPrimary.withValues(alpha: 0.8)),
                   onPressed: () => setState(() => _dismissed = true),
                   tooltip: 'Cerrar',
                 ),

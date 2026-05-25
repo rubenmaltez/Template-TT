@@ -436,6 +436,7 @@ class _AdminDrawer extends ConsumerWidget {
         .toList();
 
     return Drawer(
+      backgroundColor: Theme.of(context).colorScheme.surfaceContainerLow,
       child: SafeArea(
         child: Column(
           children: [
@@ -448,6 +449,8 @@ class _AdminDrawer extends ConsumerWidget {
                           leading: Icon(item.icon),
                           title: Text(item.label),
                           selected: currentPath == item.path,
+                          selectedTileColor:
+                              Theme.of(context).colorScheme.primaryContainer,
                           // closeModalsAndGoGuarded: cierra el drawer
                           // + dialogs descartables + consulta el
                           // formDirtyProvider. Si hay form dirty,

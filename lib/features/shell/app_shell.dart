@@ -104,6 +104,7 @@ class _AppDrawer extends ConsumerWidget {
     final scheme = Theme.of(context).colorScheme;
 
     return Drawer(
+      backgroundColor: scheme.surfaceContainerLow,
       child: SafeArea(
         child: Column(
           children: [
