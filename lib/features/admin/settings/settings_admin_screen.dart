@@ -3,10 +3,13 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../data/models/setting.dart';
 import '../../../data/providers/cobrador_provider.dart';
+import '../../../data/providers/logo_empresa_provider.dart';
 import '../../../data/repositories/settings_repo.dart';
+import '../../../data/services/logo_empresa_service.dart';
 import '../../shared/widgets/empty_state.dart';
 
 /// Panel de configuración. Agrupa settings por categoría en pestañas.
@@ -67,6 +70,7 @@ class SettingsAdminScreen extends ConsumerWidget {
                         .where((s) => s.categoria == c.$1)
                         .toList();
                     return _CategoriaTab(
+                      categoria: c.$1,
                       settings: delCat,
                       // tenantIdProvider respeta impersonación: si el
                       // super_admin está dentro de un tenant, retorna
@@ -87,11 +91,13 @@ class SettingsAdminScreen extends ConsumerWidget {
 
 class _CategoriaTab extends ConsumerWidget {
   const _CategoriaTab({
+    required this.categoria,
     required this.settings,
     required this.tenantId,
     required this.esAdmin,
   });
 
+  final String categoria;
   final List<Setting> settings;
   final String tenantId;
   final bool esAdmin;
@@ -101,26 +107,38 @@ class _CategoriaTab extends ConsumerWidget {
     if (settings.isEmpty) {
       return const Center(child: Text('Sin opciones en esta categoría'));
     }
+
+    // Filtrar el setting de logo_path: lo rendereamos con un widget
+    // especial en vez del TextFormField genérico.
+    final settingsFiltrados = settings
+        .where((s) => s.clave != 'empresa.logo_path')
+        .toList();
+
     return ListView(
       padding: const EdgeInsets.all(16),
-      children: settings.map((s) {
-        final puedeEditar = esAdmin || s.editablePor == 'admin_cobranza';
-        return _SettingTile(
-          setting: s,
-          puedeEditar: puedeEditar,
-          onSave: (nuevo) async {
-            await ref.read(settingsRepoProvider).update(tenantId, s.clave, nuevo);
-            if (context.mounted) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Text('${_labelCorto(s.clave)} actualizado'),
-                  duration: const Duration(seconds: 2),
-                ),
-              );
-            }
-          },
-        );
-      }).toList(),
+      children: [
+        // Widget de logo al inicio de la tab Empresa.
+        if (categoria == 'empresa' && esAdmin)
+          _LogoUploadWidget(tenantId: tenantId),
+        ...settingsFiltrados.map((s) {
+          final puedeEditar = esAdmin || s.editablePor == 'admin_cobranza';
+          return _SettingTile(
+            setting: s,
+            puedeEditar: puedeEditar,
+            onSave: (nuevo) async {
+              await ref.read(settingsRepoProvider).update(tenantId, s.clave, nuevo);
+              if (context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text('${_labelCorto(s.clave)} actualizado'),
+                    duration: const Duration(seconds: 2),
+                  ),
+                );
+              }
+            },
+          );
+        }),
+      ],
     );
   }
 }
