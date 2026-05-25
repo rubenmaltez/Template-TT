@@ -12,17 +12,17 @@ hasta producción general y features comerciales.
 - Cuando se cierra un bulk entero, se hace audit ligero + smoke test
   del flow que ese bulk debería habilitar.
 
-**Estado actual**: BULKs 1-9 completados. BULK 11 (UI/UX refactor) INICIADO.
-Tema iOS light (blanco + azul celeste) aplicado. Rebrand a "SITECSA CRM".
-Producto listo para ISP piloto. Windows + Android + Web funcionando.
+**Estado actual**: BULKs 1-9 completados. BULK 11 Fases A-E completadas.
+Falta Fase F (UI polish). Nombre: SITECSA CRM. Tema iOS light aplicado.
+Windows (.msix) + Android (.apk) + Web funcionando. release.ps1 automatizado.
 Sesión inicial (2026-05-22): 34 PRs infraestructura.
-Sesión 2 (2026-05-23/24): 31 PRs (#36-#66) BULKs 1-9 + E2E + installer +
-updates + fixes pre-piloto + inicio BULK 11 tema.
+Sesión 2 (2026-05-23/24/25): 40+ PRs. BULKs 1-9 + BULK 11 (Fases A-E).
+9 reportes PDF + CSV. Settings panel con 6 categorías + 14 toggles.
+Migraciones 0036-0042 deployadas. 3 GitHub Releases (v0.1-v0.3).
 
-**Próxima sesión**: continuar BULK 11 desde Sprint A1 parte 2 (Settings
-Panel tabs). Leer BULK11-PLAN.md para el plan completo de 25 sprints.
-Decisiones de diseño ya tomadas: light-only, sidebar gris claro,
-cards flat, iOS style. Nombre: SITECSA CRM.
+**Próxima sesión**: BULK 11 Fase F (UI polish — design system, tema en
+todos los shells, responsive). Leer BULK11-PLAN.md para detalle.
+Sprints diferidos: B4 (multi-cuota), C3 (reconexión), C4 (pronto pago).
 
 ---
 

@@ -136,68 +136,55 @@ tabla — extender con los nuevos campos.
 ## Sprints por fase
 
 ### FASE A: Settings Panel (base para todo)
-| Sprint | Tiempo | Qué |
-|---|---|---|
-| A1 | 3-4h | Settings UI refactor con categorías (tabs/accordion) | ✅ Completado |
-| A2 | 2-3h | Logo upload a Storage + mostrar en recibo + shell | ✅ Completado |
-| A3 | 3-4h | Recibo template editor con preview visual |
-
-### Template de recibo — referencia (Telenet ISP real)
-Elementos que el template debe soportar (configurable por admin):
-- Logo de la empresa (upload, ya implementado)
-- Título del documento ("COBRO", "RECIBO", personalizable)
-- Teléfono + WhatsApp de la empresa
-- ID del cliente (código corto visible)
-- Número de recibo
-- Fecha de vencimiento + Tarifa/monto
-- Nombre completo del cliente (razón social)
-- Cantidad en letras (monto convertido a texto en español)
-- Mes cobrado + Fecha real del cobro
-- Tabla de meses adeudados con montos (deuda pendiente)
-- Nombre del recaudador/cobrador
-- Pie de recibo con frase personalizable (slogan)
-- Formato optimizado para impresión térmica 58mm/80mm
+| Sprint | Tiempo | Qué | Estado |
+|---|---|---|---|
+| A1 | 3-4h | Settings UI refactor + tema iOS light + rebrand SITECSA CRM | ✅ PR #66 |
+| A2 | 2-3h | Logo upload a Storage + mostrar en recibo + shell | ✅ |
+| A3 | 3-4h | Monto en letras + settings recibo + migración 0041 | ✅ |
 
 ### FASE B: Cobranza flexible
-| Sprint | Tiempo | Qué |
-|---|---|---|
-| B1 | 2-3h | Fecha de cobro editable (respeta toggle) |
-| B2 | 2-3h | Anulación de cobros (respeta toggle, marca recibo) |
-| B3 | 2-3h | Edición de cobros post-registro (respeta toggle) |
-| B4 | 3-4h | Pago multi-cuota + recibo global |
-| B5 | 2h | Métodos de pago configurables |
+| Sprint | Tiempo | Qué | Estado |
+|---|---|---|---|
+| B1 | 2-3h | Fecha de cobro editable (toggle settings) | ✅ |
+| B2 | 2-3h | Anulación de cobros por cobrador (toggle settings) | ✅ |
+| B3 | 2-3h | Edición de cobros post-registro (toggle settings) | ✅ |
+| B4 | 3-4h | Pago multi-cuota (recibo global) | ⏳ Diferido |
+| B5 | 2h | Métodos de pago configurables | ✅ Ya existía |
 
 ### FASE C: Cuotas y finanzas
-| Sprint | Tiempo | Qué |
-|---|---|---|
-| C1 | 2h | Cuotas manuales |
-| C2 | 1-2h | Editar monto de cuota generada |
-| C3 | 2-3h | Cargo por reconexión automático |
-| C4 | 2h | Descuento pronto pago |
-| C5 | 2-3h | Tasa de cambio con histórico |
+| Sprint | Tiempo | Qué | Estado |
+|---|---|---|---|
+| C1 | 2h | Cuotas manuales (contrato_id NULL) + migración 0042 | ✅ |
+| C2 | 1-2h | Editar monto de cuota generada | ✅ |
+| C3 | 2-3h | Cargo por reconexión automático | ⏳ Diferido |
+| C4 | 2h | Descuento pronto pago | ⏳ Diferido |
+| C5 | 2-3h | Tasa de cambio con histórico | ✅ Ya funcionaba |
 
 ### FASE D: Cobrador UX
-| Sprint | Tiempo | Qué |
-|---|---|---|
-| D1 | 2h | Registro de interacciones/visitas |
-| D2 | 2h | Botón "Cómo llegar" (Google Maps/Waze) |
-| D3 | 1-2h | Cuotas agrupadas por contrato |
+| Sprint | Tiempo | Qué | Estado |
+|---|---|---|---|
+| D1 | 2h | Registro de interacciones/visitas | ✅ |
+| D2 | 2h | Botón "Cómo llegar" (Google Maps) | ✅ Ya existía |
+| D3 | 1-2h | Cuotas agrupadas por contrato con headers | ✅ |
 
 ### FASE E: Reportes avanzados
-| Sprint | Tiempo | Qué |
-|---|---|---|
-| E1 | 2-3h | Reporte fiscal/contable PDF |
-| E2 | 2h | Reporte eficiencia por cobrador PDF |
-| E3 | 1-2h | Reporte clientes inactivos PDF |
-| E4 | 2-3h | Reporte de anulaciones PDF |
-| E5 | 2-3h | Exportar CSV/Excel |
+| Sprint | Tiempo | Qué | Estado |
+|---|---|---|---|
+| E1 | 2-3h | Reporte fiscal/contable (ingresos por mes/plan/método) | ✅ |
+| E2 | 2h | Reporte eficiencia por cobrador | ✅ |
+| E3 | 1-2h | Reporte clientes inactivos (3+ meses sin pago) | ✅ |
+| E4 | 2-3h | Reporte de anulaciones | ✅ |
+| E5 | 2-3h | Exportar CSV (clipboard, sin packages extra) | ✅ |
 
 ### FASE F: UI polish
-| Sprint | Tiempo | Qué |
-|---|---|---|
-| F1 | 2-3h | Design system documentado |
-| F2 | 3-4h | Tema blanco + azul celeste iOS-style |
-| F3 | 2-3h | Módulos template (patrón visual consistente) |
-| F4 | 2h | Responsive polish (desktop grids + mobile full-width) |
+| Sprint | Tiempo | Qué | Estado |
+|---|---|---|---|
+| F1 | 2-3h | Design system documentado | ⏳ |
+| F2 | 3-4h | Tema blanco + azul celeste aplicado a todos los shells | ⏳ |
+| F3 | 2-3h | Módulos template (patrón visual consistente) | ⏳ |
+| F4 | 2h | Responsive polish (desktop grids + mobile full-width) | ⏳ |
 
-**Total: 25 sprints, ~54-69h estimadas (3-4 sesiones).**
+### Sprints diferidos (backlog)
+- B4: Pago multi-cuota — TODO en cobro_screen.dart línea 204
+- C3: Cargo por reconexión — TODO en CLAUDE.md backlog
+- C4: Descuento pronto pago — TODO en CLAUDE.md backlog
