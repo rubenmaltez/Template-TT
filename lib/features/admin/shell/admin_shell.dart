@@ -596,18 +596,18 @@ class _ImpersonationBannerState extends ConsumerState<_ImpersonationBanner> {
       error: (_, __) => 'Tenant',
     );
     return Material(
-      color: scheme.tertiaryContainer,
+      color: scheme.primaryContainer,
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
         child: Row(
           children: [
-            Icon(Icons.shield, size: 18, color: scheme.onTertiaryContainer),
+            Icon(Icons.shield, size: 18, color: scheme.onPrimaryContainer),
             const SizedBox(width: 8),
             Expanded(
               child: Text(
                 'Super Admin · Viendo: $nombre',
                 style: TextStyle(
-                  color: scheme.onTertiaryContainer,
+                  color: scheme.onPrimaryContainer,
                   fontWeight: FontWeight.w600,
                   fontSize: 13,
                 ),
@@ -626,7 +626,7 @@ class _ImpersonationBannerState extends ConsumerState<_ImpersonationBanner> {
                     icon: const Icon(Icons.exit_to_app, size: 18),
                     label: const Text('Salir'),
                     style: TextButton.styleFrom(
-                      foregroundColor: scheme.onTertiaryContainer,
+                      foregroundColor: scheme.onPrimaryContainer,
                       visualDensity: VisualDensity.compact,
                     ),
                     onPressed: _salir,
