@@ -1,19 +1,56 @@
 import 'package:flutter/material.dart';
 
+/// Paleta SITECSA CRM — iOS-inspired, light-only.
+class AppColors {
+  // Primarios
+  static const primary = Color(0xFF007AFF);        // Azul celeste iOS
+  static const onPrimary = Colors.white;
+
+  // Fondos
+  static const background = Colors.white;           // Fondo principal
+  static const surface = Colors.white;               // Cards, dialogs
+  static const surfaceContainer = Color(0xFFF2F2F7); // Sidebar, containers
+  static const surfaceContainerHigh = Color(0xFFE5E5EA); // Bordes, dividers
+
+  // Texto
+  static const textPrimary = Color(0xFF1C1C1E);     // Texto principal
+  static const textSecondary = Color(0xFF8E8E93);   // Texto secundario
+  static const outline = Color(0xFFC7C7CC);          // Bordes inputs
+
+  // Semánticos
+  static const error = Color(0xFFFF3B30);            // Rojo iOS
+  static const success = Color(0xFF34C759);          // Verde iOS
+  static const warning = Color(0xFFFF9500);          // Naranja iOS
+}
+
 class AppTheme {
   static ThemeData light() {
-    final scheme = ColorScheme.fromSeed(
-      seedColor: const Color(0xFF1B5E20),
-      brightness: Brightness.light,
-    );
-    return _build(scheme);
-  }
+    const primary = AppColors.primary;
 
-  static ThemeData dark() {
-    final scheme = ColorScheme.fromSeed(
-      seedColor: const Color(0xFF1B5E20),
-      brightness: Brightness.dark,
+    final scheme = ColorScheme.light(
+      primary: primary,
+      onPrimary: AppColors.onPrimary,
+      secondary: primary.withValues(alpha: 0.1),
+      onSecondary: primary,
+      surface: AppColors.surface,
+      onSurface: AppColors.textPrimary,
+      surfaceContainerLow: AppColors.surfaceContainer,
+      surfaceContainerHighest: AppColors.surfaceContainer,
+      outline: AppColors.outline,
+      outlineVariant: AppColors.surfaceContainerHigh,
+      error: AppColors.error,
+      onError: Colors.white,
+      errorContainer: AppColors.error.withValues(alpha: 0.1),
+      onErrorContainer: AppColors.error,
+      primaryContainer: primary.withValues(alpha: 0.08),
+      onPrimaryContainer: primary,
+      secondaryContainer: AppColors.surfaceContainer,
+      onSecondaryContainer: AppColors.textPrimary,
+      tertiaryContainer: AppColors.success.withValues(alpha: 0.1),
+      onTertiaryContainer: AppColors.success,
+      tertiary: AppColors.success,
     );
+
     return _build(scheme);
   }
 
@@ -21,14 +58,8 @@ class AppTheme {
     return ThemeData(
       colorScheme: scheme,
       useMaterial3: true,
+      scaffoldBackgroundColor: AppColors.background,
       visualDensity: VisualDensity.adaptivePlatformDensity,
-      // Fade transition global entre routes. Sin esto, las navegaciones
-      // top-level (login → shell, sync-gate → shell, set-password →
-      // shell) eran cortes abruptos: el spinner desaparece y aparece el
-      // nuevo layout sin transición visual, "se sentía amateur".
-      // Aplicado a todas las plataformas (web/desktop/mobile) para
-      // consistencia. Las rutas dentro de un ShellRoute mantienen su
-      // comportamiento default — solo afecta a las PageRoutes top-level.
       pageTransitionsTheme: const PageTransitionsTheme(
         builders: {
           TargetPlatform.android: _FadeTransitionsBuilder(),
@@ -40,52 +71,112 @@ class AppTheme {
         },
       ),
       appBarTheme: AppBarTheme(
-        backgroundColor: scheme.surface,
-        foregroundColor: scheme.onSurface,
+        backgroundColor: AppColors.background,
+        foregroundColor: AppColors.textPrimary,
         elevation: 0,
-        scrolledUnderElevation: 1,
+        scrolledUnderElevation: 0.5,
         centerTitle: false,
+        surfaceTintColor: Colors.transparent,
+        shape: Border(
+          bottom: BorderSide(color: AppColors.surfaceContainerHigh, width: 0.5),
+        ),
       ),
       cardTheme: CardThemeData(
         elevation: 0,
+        color: AppColors.surface,
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
-          side: BorderSide(color: scheme.outlineVariant),
+          borderRadius: BorderRadius.circular(12),
+          side: const BorderSide(color: AppColors.surfaceContainerHigh, width: 0.5),
         ),
         margin: EdgeInsets.zero,
       ),
       filledButtonTheme: FilledButtonThemeData(
         style: FilledButton.styleFrom(
-          padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 24),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          backgroundColor: AppColors.primary,
+          foregroundColor: AppColors.onPrimary,
+          padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 24),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
         ),
       ),
       outlinedButtonTheme: OutlinedButtonThemeData(
         style: OutlinedButton.styleFrom(
+          foregroundColor: AppColors.primary,
           padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 20),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+          side: const BorderSide(color: AppColors.outline),
         ),
       ),
-      inputDecorationTheme: InputDecorationTheme(
-        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-        filled: true,
-        fillColor: scheme.surfaceContainerHighest.withValues(alpha: 0.4),
+      textButtonTheme: TextButtonThemeData(
+        style: TextButton.styleFrom(
+          foregroundColor: AppColors.primary,
+        ),
       ),
-      listTileTheme: ListTileThemeData(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+      floatingActionButtonTheme: FloatingActionButtonThemeData(
+        backgroundColor: AppColors.primary,
+        foregroundColor: AppColors.onPrimary,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      ),
+      inputDecorationTheme: InputDecorationTheme(
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(10),
+          borderSide: const BorderSide(color: AppColors.outline),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(10),
+          borderSide: const BorderSide(color: AppColors.outline),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(10),
+          borderSide: const BorderSide(color: AppColors.primary, width: 1.5),
+        ),
+        filled: true,
+        fillColor: AppColors.surfaceContainer.withValues(alpha: 0.5),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      ),
+      listTileTheme: const ListTileThemeData(
+        contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 2),
       ),
       chipTheme: ChipThemeData(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+        backgroundColor: AppColors.surfaceContainer,
+        selectedColor: AppColors.primary.withValues(alpha: 0.15),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        side: BorderSide.none,
+        labelStyle: const TextStyle(fontSize: 13),
+      ),
+      dividerTheme: const DividerThemeData(
+        color: AppColors.surfaceContainerHigh,
+        thickness: 0.5,
+        space: 0.5,
+      ),
+      switchTheme: SwitchThemeData(
+        thumbColor: WidgetStateProperty.resolveWith((states) {
+          if (states.contains(WidgetState.selected)) return AppColors.primary;
+          return AppColors.outline;
+        }),
+        trackColor: WidgetStateProperty.resolveWith((states) {
+          if (states.contains(WidgetState.selected)) {
+            return AppColors.primary.withValues(alpha: 0.3);
+          }
+          return AppColors.surfaceContainerHigh;
+        }),
+      ),
+      snackBarTheme: SnackBarThemeData(
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+      ),
+      dialogTheme: DialogThemeData(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        surfaceTintColor: Colors.transparent,
+      ),
+      bottomSheetTheme: const BottomSheetThemeData(
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+        ),
       ),
     );
   }
 }
 
-/// PageTransitionsBuilder con fade simple de ~300ms (default de
-/// Material). Reemplaza el FadeUpwards / Zoom default de cada
-/// plataforma por algo neutral y suave que funciona bien en Flutter
-/// Web y desktop sin "slide" que se siente fuera de lugar.
 class _FadeTransitionsBuilder extends PageTransitionsBuilder {
   const _FadeTransitionsBuilder();
 

@@ -267,7 +267,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                     size: 64, color: scheme.primary),
                 const SizedBox(height: 8),
                 Text(
-                  'Cobranza ISP',
+                  'SITECSA CRM',
                   style: Theme.of(context).textTheme.headlineMedium,
                 ),
                 const SizedBox(height: 4),
