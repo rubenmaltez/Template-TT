@@ -12,11 +12,13 @@ hasta producción general y features comerciales.
 - Cuando se cierra un bulk entero, se hace audit ligero + smoke test
   del flow que ese bulk debería habilitar.
 
-**Estado actual**: BULKs 1-8 completados. Windows installer funcionando.
-E2E validado. 5 bugs fixeados. Producto listo para ISP piloto.
+**Estado actual**: BULKs 1-9 completados + fixes pre-piloto. Producto
+listo para ISP piloto. Windows (.msix) + Android (.apk) funcionando.
+Sistema de updates in-app validado. Script release.ps1 automatizado.
 Sesión inicial (2026-05-22): 34 PRs infraestructura.
-Sesión 2 (2026-05-23/24): 24 PRs (#36-#59) BULKs 1-8 + E2E + installer.
-BULK 9 planificado: refactor UI/UX post-feedback del piloto.
+Sesión 2 (2026-05-23/24): 29 PRs (#36-#64) BULKs 1-9 + E2E + installer +
+updates + fixes pre-piloto. 3 GitHub Releases (v0.1.0, v0.2.0, v0.3.0).
+Próximo: BULK 10 (piloto real con ISP) → BULK 11 (UI/UX refactor).
 
 ---
 
@@ -395,3 +397,18 @@ Cada bulk se trata como mini-roadmap dentro de su(s) sesión(es):
   - Mora cobrador: badge sidebar + ruta del día + auto-marcar vista.
   - UX batch: flicker threshold 5, redirect post-impersonate.
   - Audit fixes: vuelto con cargos, prefijo empty guard.
+- BULK 9 completo (PRs #61-#63): Android APK + updates.
+  - Android APK build (68MB) + plataforma Android agregada al repo.
+  - UpdateService con URLs por plataforma (Windows/Android).
+  - UpdateBanner en los 3 shells (admin, cobrador, super).
+  - version.json hosteado en GitHub Releases (no Supabase Storage).
+  - release.ps1 script automatizado de release.
+  - AppVersionLabel visible en sidebar/appbar de todos los shells.
+  - 3 GitHub Releases publicados (v0.1.0, v0.2.0, v0.3.0).
+  - Banner de update validado en Windows + Android.
+- Fixes pre-piloto (PR #64):
+  - release.ps1: numeración [1/7] + fallback 403.
+  - Versión visual Android (chip con fondo).
+  - CRUD errors SnackBar global (connector → provider → shells).
+  - Android Descargar: quitado canLaunchUrl (falla Android 11+).
+  - CLAUDE.md: principio de diseño pre-implementación agregado.
