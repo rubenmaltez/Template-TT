@@ -8,26 +8,30 @@ inicio de cada sesión.
 
 ## Design System
 
+### Nombre del producto
+**SITECSA CRM** — nombre oficial para branding (header, login, recibo,
+installer, título de ventana).
+
 ### Tema visual
 - **Estilo**: iOS-inspired — limpio, blanco prominente, bordes suaves.
-- **Colores primarios**: blanco (#FFFFFF) fondo + azul celeste (#007AFF
-  o similar) para acciones, selección, íconos activos.
-- **Colores secundarios**: gris claro (#F2F2F7) para cards/containers,
-  gris medio (#8E8E93) para texto secundario.
-- **Accent**: azul celeste para FABs, toggles activos, links, badges.
+- **Modo**: Solo light (sin dark mode).
+- **Fondo principal**: blanco (#FFFFFF).
+- **Fondo containers/sidebar**: gris claro iOS (#F2F2F7).
+- **Color primario/accent**: azul celeste iOS (#007AFF) para acciones,
+  selección, íconos activos, FABs, toggles, links.
+- **Texto primario**: negro/gris oscuro (#1C1C1E).
+- **Texto secundario**: gris medio (#8E8E93).
 - **Error**: rojo iOS (#FF3B30).
 - **Success**: verde iOS (#34C759).
 - **Warning**: amber/naranja iOS (#FF9500).
-- **Tipografía**: SF Pro style (usar el default de Flutter que es
-  Roboto en Android/Windows — similar en proporciones).
+- **Cards**: flat, sin sombra, borde 1px gris claro (#E5E5EA). iOS style puro.
 - **Border radius**: 12-16px en cards, 8-10px en inputs, 20px en chips.
-- **Sombras**: sutiles, elevación baja (Material elevation 1-2).
+- **Sombras**: ninguna en cards. Solo en FAB y modals (elevation mínima).
 
-### Responsive
-- **Desktop (≥900px)**: NavigationRail permanente, contenido con max-width,
-  uso del screen space con grids de 2-3 columnas.
-- **Mobile (<900px)**: Drawer hamburguesa, contenido full-width, listas
-  verticales, bottom sheets en vez de dialogs grandes.
+### Sidebar / Navigation
+- **Desktop (≥900px)**: NavigationRail fondo gris claro (#F2F2F7),
+  íconos azul celeste cuando activos, gris cuando inactivos.
+- **Mobile (<900px)**: Drawer fondo blanco, mismos colores de íconos.
 
 ---
 
