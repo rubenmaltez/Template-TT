@@ -59,6 +59,10 @@ T settingValue<T>(Map<String, Setting>? map, String clave, T fallback) {
   if (v is T) return v;
   if (T == double && v is num) return v.toDouble() as T;
   if (T == int && v is num) return v.toInt() as T;
+  // Boolean defense: JSONB puede llegar como string "true"/"false" via PowerSync.
+  if (T == bool && v is String) {
+    return (v.toLowerCase() == 'true') as T;
+  }
   return fallback;
 }
 
