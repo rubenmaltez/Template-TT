@@ -426,3 +426,116 @@ class _AnularDialogState extends State<_AnularDialog> {
     );
   }
 }
+
+/// Resultado de la edición de un pago (admin).
+class _EditarPagoResult {
+  const _EditarPagoResult({
+    required this.monto,
+    required this.metodo,
+    this.notas,
+  });
+  final double monto;
+  final MetodoPago metodo;
+  final String? notas;
+}
+
+class _EditarPagoDialog extends StatefulWidget {
+  const _EditarPagoDialog({
+    required this.montoActual,
+    required this.metodoActual,
+    this.notasActuales,
+  });
+  final double montoActual;
+  final MetodoPago metodoActual;
+  final String? notasActuales;
+
+  @override
+  State<_EditarPagoDialog> createState() => _EditarPagoDialogState();
+}
+
+class _EditarPagoDialogState extends State<_EditarPagoDialog> {
+  late final TextEditingController _montoCtrl;
+  late final TextEditingController _notasCtrl;
+  late MetodoPago _metodo;
+
+  @override
+  void initState() {
+    super.initState();
+    _montoCtrl = TextEditingController(
+      text: widget.montoActual.toStringAsFixed(2),
+    );
+    _notasCtrl = TextEditingController(text: widget.notasActuales ?? '');
+    _metodo = widget.metodoActual;
+  }
+
+  @override
+  void dispose() {
+    _montoCtrl.dispose();
+    _notasCtrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Editar pago'),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          TextField(
+            controller: _montoCtrl,
+            autofocus: true,
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            decoration: const InputDecoration(
+              labelText: 'Monto (C\$)',
+              prefixText: 'C\$ ',
+            ),
+          ),
+          const SizedBox(height: 16),
+          DropdownButtonFormField<MetodoPago>(
+            value: _metodo,
+            decoration: const InputDecoration(labelText: 'Método de pago'),
+            items: MetodoPago.values
+                .map((m) => DropdownMenuItem(value: m, child: Text(m.label)))
+                .toList(),
+            onChanged: (v) {
+              if (v != null) setState(() => _metodo = v);
+            },
+          ),
+          const SizedBox(height: 16),
+          TextField(
+            controller: _notasCtrl,
+            maxLines: 3,
+            decoration: const InputDecoration(
+              labelText: 'Notas (opcional)',
+            ),
+          ),
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Cancelar'),
+        ),
+        FilledButton(
+          onPressed: () {
+            final monto = double.tryParse(_montoCtrl.text);
+            if (monto == null || monto <= 0) return;
+            Navigator.pop(
+              context,
+              _EditarPagoResult(
+                monto: monto,
+                metodo: _metodo,
+                notas: _notasCtrl.text.trim().isEmpty
+                    ? null
+                    : _notasCtrl.text.trim(),
+              ),
+            );
+          },
+          child: const Text('Guardar'),
+        ),
+      ],
+    );
+  }
+}

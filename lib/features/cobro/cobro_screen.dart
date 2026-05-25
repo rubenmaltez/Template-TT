@@ -201,6 +201,16 @@ class _CobroScreenState extends ConsumerState<CobroScreen> {
             fechaPago: _fechaCobro,
           );
       if (!mounted) return;
+      // TODO(B4 — Pago multi-cuota): si `settings.pagoAdelantadoPermitido`
+      // es true, antes de navegar al recibo, mostrar un prompt preguntando
+      // "¿Deseas pagar la siguiente cuota también?" con la info de la próxima
+      // cuota pendiente del mismo contrato. Si acepta, repetir el cobro con
+      // el mismo monto/método para la siguiente cuota. Cada cuota genera su
+      // propio pago + recibo (no un recibo global). El flow completo se
+      // implementará en un sprint dedicado porque requiere:
+      //   1. Query de la siguiente cuota pendiente del contrato.
+      //   2. Loop de confirmación + cobro hasta que el cobrador diga "no".
+      //   3. Navegar a una pantalla de resumen multi-recibo.
       context.pushReplacement('/recibo/${result.reciboId}');
     } catch (e) {
       if (!mounted) return;
@@ -214,6 +224,21 @@ class _CobroScreenState extends ConsumerState<CobroScreen> {
   Widget build(BuildContext context) {
     final settings = ref.watch(appSettingsProvider);
     final cobrador = ref.watch(cobradorActualProvider).valueOrNull;
+
+    // Si el método seleccionado fue deshabilitado en settings, corregir
+    // al primer método disponible para evitar un estado inválido.
+    final metodosDisponibles = <MetodoPago>[
+      if (settings.efectivoHabilitado) MetodoPago.efectivo,
+      if (settings.transferenciaHabilitada) MetodoPago.transferencia,
+      if (settings.depositoHabilitado) MetodoPago.deposito,
+      if (settings.tarjetaHabilitada) MetodoPago.tarjeta,
+    ];
+    if (metodosDisponibles.isNotEmpty && !metodosDisponibles.contains(_metodo)) {
+      // Schedule después del build para evitar setState durante build.
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) setState(() => _metodo = metodosDisponibles.first);
+      });
+    }
 
     if (_cuota == null) {
       return Scaffold(
@@ -539,7 +564,7 @@ class _MetodosWrap extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final disponibles = <MetodoPago>[
-      MetodoPago.efectivo,
+      if (settings.efectivoHabilitado) MetodoPago.efectivo,
       if (settings.transferenciaHabilitada) MetodoPago.transferencia,
       if (settings.depositoHabilitado) MetodoPago.deposito,
       if (settings.tarjetaHabilitada) MetodoPago.tarjeta,
