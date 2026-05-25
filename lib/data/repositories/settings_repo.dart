@@ -82,12 +82,23 @@ class AppSettings {
   double get montoReconexion =>
       settingValue<num>(_map, 'cobranza.monto_reconexion', 0).toDouble();
 
+  // Efectivo: la migración 0040 introdujo `pagos.metodo_efectivo` que
+  // permite al admin deshabilitar efectivo. Default true (siempre visible
+  // a menos que el admin lo apague explícitamente).
+  bool get efectivoHabilitado =>
+      settingValue<bool>(_map, 'pagos.metodo_efectivo', true);
+
+  // Transferencia: chequeamos la clave original de 0010 y la de 0040 (OR).
+  // Esto cubre tenants que tengan una, la otra, o ambas.
   bool get transferenciaHabilitada =>
-      settingValue<bool>(_map, 'pagos.transferencia_habilitada', false);
+      settingValue<bool>(_map, 'pagos.transferencia_habilitada', false) ||
+      settingValue<bool>(_map, 'pagos.metodo_transferencia', false);
   bool get depositoHabilitado =>
       settingValue<bool>(_map, 'pagos.deposito_habilitado', false);
+  // Tarjeta: chequeamos clave original de 0010 y la de 0040 (OR).
   bool get tarjetaHabilitada =>
-      settingValue<bool>(_map, 'pagos.tarjeta_habilitada', false);
+      settingValue<bool>(_map, 'pagos.tarjeta_habilitada', false) ||
+      settingValue<bool>(_map, 'pagos.metodo_tarjeta', false);
   bool get usdHabilitado =>
       settingValue<bool>(_map, 'pagos.usd_habilitado', true);
   double get tasaUsd =>
