@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../data/models/pago.dart';
 import '../../data/providers/cobrador_provider.dart';
 import '../../data/repositories/pagos_repo.dart';
 import '../../data/repositories/settings_repo.dart';
@@ -28,7 +29,7 @@ class _HistorialScreenState extends ConsumerState<HistorialScreen> {
     _historialStream = ps.db.watch(
       '''
       SELECT p.id, p.monto_cordobas, p.moneda, p.monto_original,
-             p.metodo, p.fecha_pago,
+             p.metodo, p.fecha_pago, p.notas,
              c.nombre AS cliente_nombre,
              r.id AS recibo_id, r.numero_completo
         FROM pagos p
@@ -96,6 +97,7 @@ class _GrupoDia extends ConsumerWidget {
     final scheme = Theme.of(context).colorScheme;
     final settings = ref.watch(appSettingsProvider);
     final puedeAnular = settings.cobradorAnulaCobros;
+    final puedeEditar = settings.cobradorEditaCobros;
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
@@ -148,6 +150,17 @@ class _GrupoDia extends ConsumerWidget {
                               Fmt.cordobas(p['monto_cordobas'] as num),
                               style: const TextStyle(fontWeight: FontWeight.w600),
                             ),
+                            if (puedeEditar) ...[
+                              const SizedBox(width: 4),
+                              IconButton(
+                                icon: Icon(Icons.edit, size: 20, color: scheme.primary),
+                                tooltip: 'Editar pago',
+                                onPressed: () => _editar(context, ref, p),
+                                visualDensity: VisualDensity.compact,
+                                padding: EdgeInsets.zero,
+                                constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                              ),
+                            ],
                             if (puedeAnular) ...[
                               const SizedBox(width: 4),
                               IconButton(
@@ -172,6 +185,45 @@ class _GrupoDia extends ConsumerWidget {
         ],
       ),
     );
+  }
+
+  Future<void> _editar(
+    BuildContext context,
+    WidgetRef ref,
+    Map<String, dynamic> pago,
+  ) async {
+    final resultado = await showDialog<_EditarCobroResult?>(
+      context: context,
+      builder: (_) => _EditarCobroDialog(
+        montoActual: (pago['monto_cordobas'] as num).toDouble(),
+        metodoActual: MetodoPago.fromString(pago['metodo'] as String),
+        notasActuales: pago['notas'] as String?,
+      ),
+    );
+    if (resultado == null || !context.mounted) return;
+
+    try {
+      await ref.read(pagosRepoProvider).editarPago(
+            pagoId: pago['id'] as String,
+            montoCordobas: resultado.monto,
+            montoOriginal: resultado.monto,
+            tasaConversion: 1.0,
+            metodo: resultado.metodo,
+            notas: resultado.notas,
+            limpiarNotas: resultado.notas == null,
+          );
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Pago editado')),
+        );
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error al editar: $e')),
+        );
+      }
+    }
   }
 
   Future<void> _anular(
@@ -215,6 +267,119 @@ class _GrupoDia extends ConsumerWidget {
         'tarjeta' => Icons.credit_card,
         _ => Icons.payments,
       };
+}
+
+/// Resultado de la edición de un cobro.
+class _EditarCobroResult {
+  const _EditarCobroResult({
+    required this.monto,
+    required this.metodo,
+    this.notas,
+  });
+  final double monto;
+  final MetodoPago metodo;
+  final String? notas;
+}
+
+class _EditarCobroDialog extends StatefulWidget {
+  const _EditarCobroDialog({
+    required this.montoActual,
+    required this.metodoActual,
+    this.notasActuales,
+  });
+  final double montoActual;
+  final MetodoPago metodoActual;
+  final String? notasActuales;
+
+  @override
+  State<_EditarCobroDialog> createState() => _EditarCobroDialogState();
+}
+
+class _EditarCobroDialogState extends State<_EditarCobroDialog> {
+  late final TextEditingController _montoCtrl;
+  late final TextEditingController _notasCtrl;
+  late MetodoPago _metodo;
+
+  @override
+  void initState() {
+    super.initState();
+    _montoCtrl = TextEditingController(
+      text: widget.montoActual.toStringAsFixed(2),
+    );
+    _notasCtrl = TextEditingController(text: widget.notasActuales ?? '');
+    _metodo = widget.metodoActual;
+  }
+
+  @override
+  void dispose() {
+    _montoCtrl.dispose();
+    _notasCtrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Editar pago'),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          TextField(
+            controller: _montoCtrl,
+            autofocus: true,
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            decoration: const InputDecoration(
+              labelText: 'Monto (C\$)',
+              prefixText: 'C\$ ',
+            ),
+          ),
+          const SizedBox(height: 16),
+          DropdownButtonFormField<MetodoPago>(
+            value: _metodo,
+            decoration: const InputDecoration(labelText: 'Método de pago'),
+            items: MetodoPago.values
+                .map((m) => DropdownMenuItem(value: m, child: Text(m.label)))
+                .toList(),
+            onChanged: (v) {
+              if (v != null) setState(() => _metodo = v);
+            },
+          ),
+          const SizedBox(height: 16),
+          TextField(
+            controller: _notasCtrl,
+            maxLines: 3,
+            decoration: const InputDecoration(
+              labelText: 'Notas (opcional)',
+            ),
+          ),
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Cancelar'),
+        ),
+        FilledButton(
+          onPressed: () {
+            final monto = double.tryParse(_montoCtrl.text);
+            if (monto == null || monto <= 0) return;
+            Navigator.pop(
+              context,
+              _EditarCobroResult(
+                monto: monto,
+                metodo: _metodo,
+                notas: _notasCtrl.text.trim().isEmpty
+                    ? null
+                    : _notasCtrl.text.trim(),
+              ),
+            );
+          },
+          child: const Text('Guardar'),
+        ),
+      ],
+    );
+  }
 }
 
 class _AnularCobroDialog extends StatefulWidget {
