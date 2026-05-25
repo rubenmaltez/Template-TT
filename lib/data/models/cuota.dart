@@ -50,7 +50,7 @@ class Cuota {
   const Cuota({
     required this.id,
     required this.tenantId,
-    required this.contratoId,
+    this.contratoId,
     required this.clienteId,
     this.cobradorId,
     required this.periodo,
@@ -59,11 +59,13 @@ class Cuota {
     required this.montoPagado,
     required this.cargosNeto,
     required this.estado,
+    this.descripcion,
   });
 
   final String id;
   final String tenantId;
-  final String contratoId;
+  /// Null para cuotas manuales (no ligadas a contrato).
+  final String? contratoId;
   final String clienteId;
   final String? cobradorId;
   final DateTime periodo;
@@ -74,6 +76,11 @@ class Cuota {
   /// Mantenido por trigger en server (migración 0023).
   final double cargosNeto;
   final CuotaEstado estado;
+  /// Descripción libre para cuotas manuales (ej: "Cargo por reconexión").
+  final String? descripcion;
+
+  /// Indica si la cuota es manual (no generada desde contrato).
+  bool get esManual => contratoId == null;
 
   /// Total real a cobrar (monto + cargos netos).
   double get totalACobrar => (monto + cargosNeto).clamp(0, double.infinity);
@@ -114,7 +121,8 @@ class Cuota {
           other.monto == monto &&
           other.montoPagado == montoPagado &&
           other.cargosNeto == cargosNeto &&
-          other.estado == estado;
+          other.estado == estado &&
+          other.descripcion == descripcion;
 
   @override
   int get hashCode => Object.hash(
@@ -129,12 +137,13 @@ class Cuota {
         montoPagado,
         cargosNeto,
         estado,
+        descripcion,
       );
 
   factory Cuota.fromRow(Map<String, dynamic> row) => Cuota(
         id: row['id'] as String,
         tenantId: row['tenant_id'] as String,
-        contratoId: row['contrato_id'] as String,
+        contratoId: row['contrato_id'] as String?,
         clienteId: row['cliente_id'] as String,
         cobradorId: row['cobrador_id'] as String?,
         periodo: DateTime.parse(row['periodo'] as String),
@@ -143,5 +152,6 @@ class Cuota {
         montoPagado: (row['monto_pagado'] as num? ?? 0).toDouble(),
         cargosNeto: (row['cargos_neto'] as num? ?? 0).toDouble(),
         estado: CuotaEstado.fromString(row['estado'] as String),
+        descripcion: row['descripcion'] as String?,
       );
 }
