@@ -322,6 +322,9 @@ class _SettingTileState extends State<_SettingTile> {
       'recibo.template_80mm': 'Template 80mm',
       'recibo.imprimir_logo': 'Imprimir logo en recibo',
       'recibo.pie_libre': 'Pie del recibo',
+      'cuotas.manuales': 'Cuotas manuales',
+      'cuotas.editar_monto': 'Editar monto de cuota',
+      'cuotas.descuento_pronto_pago': 'Descuento pronto pago',
     };
     return labels[clave] ?? clave.split('.').last;
   }
