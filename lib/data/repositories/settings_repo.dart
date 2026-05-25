@@ -111,6 +111,22 @@ class AppSettings {
   /// Si el recibo debe incluir el logo (toggle en tab Recibos).
   bool get imprimirLogoEnRecibo =>
       settingValue<bool>(_map, 'recibo.imprimir_logo', true);
+
+  /// Título del documento en el recibo (ej: "COBRO", "RECIBO").
+  String get reciboTitulo =>
+      settingValue<String>(_map, 'recibo.titulo', 'RECIBO');
+
+  /// Mostrar monto en letras en el recibo.
+  bool get reciboMontoEnLetras =>
+      settingValue<bool>(_map, 'recibo.monto_en_letras', true);
+
+  /// Mostrar tabla de meses adeudados en el recibo.
+  bool get reciboMostrarAdeudado =>
+      settingValue<bool>(_map, 'recibo.mostrar_adeudado', true);
+
+  /// Mostrar WhatsApp de la empresa en el recibo.
+  String get empresaWhatsapp =>
+      settingValue<String>(_map, 'empresa.whatsapp', '');
 }
 
 final appSettingsProvider = Provider<AppSettings>((ref) {

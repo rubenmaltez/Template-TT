@@ -8,6 +8,7 @@ import '../../data/providers/impresora_provider.dart';
 import '../../data/providers/logo_empresa_provider.dart';
 import '../../data/repositories/settings_repo.dart';
 import '../../data/utils/formatters.dart';
+import '../../data/utils/monto_a_letras.dart';
 import '../../powersync/db.dart' as ps;
 import '../shared/widgets/empty_state.dart';
 import '../shared/widgets/foto_comprobante_view.dart';
@@ -196,6 +197,21 @@ class _ReciboTicket extends StatelessWidget {
             _ticketRow('Servicio', row['plan_nombre'] as String),
             _ticketRow('Período', periodoLabel[0].toUpperCase() + periodoLabel.substring(1)),
             _ticketRow('Cuota base', Fmt.cordobas(row['cuota_monto'] as num)),
+
+            // Cantidad en letras (si está habilitado en settings).
+            if (settings.reciboMontoEnLetras)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 4),
+                child: Text(
+                  montoALetras(
+                    (row['monto_cordobas'] as num).toDouble(),
+                    moneda: (row['moneda'] as String?) ?? 'NIO',
+                  ),
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600),
+                ),
+              ),
+
             const Divider(),
 
             _ticketRow('Método',
