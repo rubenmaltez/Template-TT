@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../data/models/pago.dart';
 import '../../../data/providers/cobrador_provider.dart';
 import '../../../data/repositories/pagos_repo.dart';
 import '../../../data/utils/formatters.dart';
@@ -54,7 +55,7 @@ class _PagosAdminScreenState extends ConsumerState<PagosAdminScreen> {
     return ps.db.watch(
       '''
       SELECT p.id, p.monto_cordobas, p.moneda, p.monto_original,
-             p.metodo, p.fecha_pago, p.referencia,
+             p.metodo, p.fecha_pago, p.referencia, p.notas,
              p.anulado, p.anulado_en, p.motivo_anulacion,
              c.nombre AS cliente,
              co.nombre AS cobrador,
@@ -275,12 +276,18 @@ class _PagoCard extends ConsumerWidget {
                 ],
               ),
             ),
-            if (!anulado)
+            if (!anulado) ...[
+              IconButton(
+                icon: const Icon(Icons.edit),
+                tooltip: 'Editar pago',
+                onPressed: () => _editar(context, ref),
+              ),
               IconButton(
                 icon: const Icon(Icons.block),
                 tooltip: 'Anular pago',
                 onPressed: () => _anular(context, ref),
               ),
+            ],
           ],
         ),
       ),
@@ -294,6 +301,41 @@ class _PagoCard extends ConsumerWidget {
         'tarjeta' => Icons.credit_card,
         _ => Icons.payments,
       };
+
+  Future<void> _editar(BuildContext context, WidgetRef ref) async {
+    final resultado = await showDialog<_EditarPagoResult?>(
+      context: context,
+      builder: (_) => _EditarPagoDialog(
+        montoActual: (row['monto_cordobas'] as num).toDouble(),
+        metodoActual: MetodoPago.fromString(row['metodo'] as String),
+        notasActuales: row['notas'] as String?,
+      ),
+    );
+    if (resultado == null || !context.mounted) return;
+
+    try {
+      await ref.read(pagosRepoProvider).editarPago(
+            pagoId: row['id'] as String,
+            montoCordobas: resultado.monto,
+            montoOriginal: resultado.monto,
+            tasaConversion: 1.0,
+            metodo: resultado.metodo,
+            notas: resultado.notas,
+            limpiarNotas: resultado.notas == null,
+          );
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Pago editado')),
+        );
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error al editar: $e')),
+        );
+      }
+    }
+  }
 
   Future<void> _anular(BuildContext context, WidgetRef ref) async {
     final motivo = await showDialog<String?>(
