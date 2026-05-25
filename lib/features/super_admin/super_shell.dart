@@ -33,8 +33,8 @@ class SuperShell extends StatelessWidget {
         backTarget == '/admin' ? 'Volver al panel' : 'Volver';
     return Scaffold(
       appBar: AppBar(
-        backgroundColor: scheme.tertiaryContainer,
-        foregroundColor: scheme.onTertiaryContainer,
+        backgroundColor: scheme.primaryContainer,
+        foregroundColor: scheme.onPrimaryContainer,
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
           tooltip: backTooltip,
@@ -63,7 +63,7 @@ class SuperShell extends StatelessWidget {
                       borderRadius: BorderRadius.circular(8),
                     ),
                     child: Text('v${snap.data!.version}',
-                        style: TextStyle(fontSize: 11, color: scheme.onTertiaryContainer)),
+                        style: TextStyle(fontSize: 11, color: scheme.onPrimaryContainer)),
                   )
                 : const SizedBox.shrink(),
           ),
