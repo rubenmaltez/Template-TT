@@ -62,11 +62,9 @@ class IspBillingApp extends ConsumerWidget {
     });
 
     return MaterialApp.router(
-      title: 'Cobranza ISP',
+      title: 'SITECSA CRM',
       scaffoldMessengerKey: rootScaffoldMessengerKey,
       theme: AppTheme.light(),
-      darkTheme: AppTheme.dark(),
-      themeMode: ThemeMode.system,
       routerConfig: ref.watch(routerProvider),
       debugShowCheckedModeBanner: false,
       locale: const Locale('es', 'NI'),

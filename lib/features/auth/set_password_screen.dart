@@ -70,7 +70,7 @@ class _SetPasswordScreenState extends ConsumerState<SetPasswordScreen> {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
         content: Text(
           esInvite
-              ? 'Contraseña creada. ¡Bienvenido a Cobranza ISP!'
+              ? 'Contraseña creada. ¡Bienvenido a SITECSA CRM!'
               : 'Contraseña actualizada.',
         ),
         behavior: SnackBarBehavior.floating,
@@ -109,7 +109,7 @@ class _SetPasswordScreenState extends ConsumerState<SetPasswordScreen> {
 
     final titulo = esInvite ? '¡Bienvenido!' : 'Restablecer contraseña';
     final subtitulo = esInvite
-        ? 'Creá una contraseña para empezar a usar Cobranza ISP.'
+        ? 'Creá una contraseña para empezar a usar SITECSA CRM.'
         : 'Tu link es válido. Definí una nueva contraseña.';
 
     final email = Supabase.instance.client.auth.currentUser?.email;
@@ -131,7 +131,7 @@ class _SetPasswordScreenState extends ConsumerState<SetPasswordScreen> {
                       size: 64, color: scheme.primary),
                   const SizedBox(height: 8),
                   Text(
-                    'Cobranza ISP',
+                    'SITECSA CRM',
                     textAlign: TextAlign.center,
                     style: Theme.of(context).textTheme.headlineMedium,
                   ),

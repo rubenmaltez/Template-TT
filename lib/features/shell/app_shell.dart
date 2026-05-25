@@ -34,7 +34,7 @@ class AppShell extends ConsumerWidget {
       }
     });
 
-    final titulo = ShellTitleScope.of(context) ?? 'Cobranza ISP';
+    final titulo = ShellTitleScope.of(context) ?? 'SITECSA CRM';
     return Scaffold(
       drawer: const _AppDrawer(),
       appBar: AppBar(
