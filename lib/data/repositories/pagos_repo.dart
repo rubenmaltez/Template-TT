@@ -62,6 +62,7 @@ class PagosRepo {
     double? lng,
     String? notas,
     DateTime? fechaPago,
+    List<CargoAutoInfo>? cargosAuto,
   }) async {
     final pagoId = _uuid.v4();
     final reciboId = _uuid.v4();
@@ -71,6 +72,24 @@ class PagosRepo {
     final correlativoCompleter = <int>[];
 
     await ps.db.writeTransaction((tx) async {
+      if (cargosAuto != null) {
+        for (final cargo in cargosAuto) {
+          await tx.execute(
+            '''
+            INSERT INTO cargos_extra (
+              id, tenant_id, cuota_id, cobrador_id, tipo, monto,
+              porcentaje, descripcion, aplicado_por, aplicado_en, client_local_id
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ''',
+            [
+              _uuid.v4(), tenantId, cargo.cuotaId, cobradorId,
+              cargo.tipo, cargo.monto, cargo.porcentaje,
+              cargo.descripcion, cobradorId, now, _uuid.v4(),
+            ],
+          );
+        }
+      }
+
       // Calcular correlativo DENTRO de la transacción para evitar carrera
       // entre dos cobros simultáneos. NO filtramos anulado=0: si filtramos,
       // anular el recibo #1 hace que el próximo cobro reutilice el #1 y

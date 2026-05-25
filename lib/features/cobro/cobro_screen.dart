@@ -7,8 +7,6 @@ import 'dart:typed_data';
 
 import 'package:image_picker/image_picker.dart';
 
-import 'package:uuid/uuid.dart';
-
 import '../../data/models/cuota.dart';
 import '../../data/models/pago.dart';
 import '../../data/providers/cobrador_provider.dart';
@@ -124,7 +122,7 @@ class _CobroScreenState extends ConsumerState<CobroScreen> {
         final vence = cu.fechaVencimiento;
         final diasPasados = hoy.difference(vence).inDays;
         if (diasPasados > diasGracia &&
-            (cu.estado == 'pendiente' || cu.estado == 'parcial')) {
+            (cu.estado == CuotaEstado.pendiente || cu.estado == CuotaEstado.parcial)) {
           // Verificar que no haya ya un cargo reconexión para esta cuota.
           final existing = await ps.db.getAll(
             "SELECT id FROM cargos_extra WHERE cuota_id = ? AND tipo = 'reconexion'",
@@ -313,25 +311,15 @@ class _CobroScreenState extends ConsumerState<CobroScreen> {
         final monto = double.parse(_montoCtrl.text);
         final montoCordobas = monto * tasa;
 
-        // Insertar cargos auto si hay (C3/C4 para single cuota).
-        if (_cargosAuto.isNotEmpty) {
-          final now = DateTime.now().toIso8601String();
-          for (final cargo in _cargosAuto) {
-            await ps.db.execute(
-              '''
-              INSERT INTO cargos_extra (
-                id, tenant_id, cuota_id, cobrador_id, tipo, monto,
-                porcentaje, descripcion, aplicado_por, aplicado_en, client_local_id
-              ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-              ''',
-              [
-                const Uuid().v4(), cobrador.tenantId, cargo.cuotaId,
-                cobrador.id, cargo.tipo, cargo.monto, cargo.porcentaje,
-                cargo.descripcion, cobrador.id, now, const Uuid().v4(),
-              ],
-            );
-          }
-        }
+        final cargosInfo = _cargosAuto
+            .map((c) => CargoAutoInfo(
+                  cuotaId: c.cuotaId,
+                  tipo: c.tipo,
+                  monto: c.monto,
+                  porcentaje: c.porcentaje,
+                  descripcion: c.descripcion,
+                ))
+            .toList();
 
         result = await ref.read(pagosRepoProvider).registrarCobro(
               tenantId: cobrador.tenantId,
@@ -353,6 +341,7 @@ class _CobroScreenState extends ConsumerState<CobroScreen> {
                   ? null
                   : _notasCtrl.text.trim(),
               fechaPago: _fechaCobro,
+              cargosAuto: cargosInfo.isEmpty ? null : cargosInfo,
             );
       }
 
@@ -530,6 +519,7 @@ class _CobroScreenState extends ConsumerState<CobroScreen> {
           const SizedBox(height: 8),
           TextFormField(
             controller: _montoCtrl,
+            readOnly: _esMultiCuota,
             keyboardType: const TextInputType.numberWithOptions(decimal: true),
             inputFormatters: [
               FilteringTextInputFormatter.allow(RegExp(r'[0-9.]')),
@@ -537,8 +527,11 @@ class _CobroScreenState extends ConsumerState<CobroScreen> {
             decoration: InputDecoration(
               prefixText: _moneda.symbol + ' ',
               hintText: '0.00',
+              helperText: _esMultiCuota
+                  ? 'Monto fijo: cada cuota se paga completa'
+                  : null,
             ),
-            onChanged: (_) => setState(() {}),
+            onChanged: _esMultiCuota ? null : (_) => setState(() {}),
             validator: (v) {
               if (v == null || v.isEmpty) return 'Ingresá un monto';
               final n = double.tryParse(v);

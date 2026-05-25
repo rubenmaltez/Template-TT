@@ -99,17 +99,31 @@ class _CuotasListScreenState extends ConsumerState<CuotasListScreen> {
             ),
           ],
         ),
-        if (_selected.length >= 2)
+        if (_selected.isNotEmpty)
           Positioned(
             left: 16, right: 16, bottom: 16,
-            child: FilledButton.icon(
-              icon: const Icon(Icons.payment),
-              label: Text('Cobrar ${_selected.length} cuotas'),
-              onPressed: () {
-                final ids = _selected.join(',');
-                _clearSelection();
-                context.push('/cobro/$ids');
-              },
+            child: Row(
+              children: [
+                IconButton.filledTonal(
+                  icon: const Icon(Icons.close),
+                  onPressed: _clearSelection,
+                  tooltip: 'Cancelar selección',
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: FilledButton.icon(
+                    icon: const Icon(Icons.payment),
+                    label: Text(_selected.length == 1
+                        ? 'Cobrar cuota'
+                        : 'Cobrar ${_selected.length} cuotas'),
+                    onPressed: () {
+                      final ids = _selected.join(',');
+                      _clearSelection();
+                      context.push('/cobro/$ids');
+                    },
+                  ),
+                ),
+              ],
             ),
           ),
       ],

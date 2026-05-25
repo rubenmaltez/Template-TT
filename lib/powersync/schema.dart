@@ -152,6 +152,7 @@ const schema = Schema([
       IndexedColumn('cobrador_id'),
       IndexedColumn('fecha_pago'),
     ]),
+    Index('by_grupo_cobro', [IndexedColumn('grupo_cobro')]),
   ]),
 
   Table('recibos', [
