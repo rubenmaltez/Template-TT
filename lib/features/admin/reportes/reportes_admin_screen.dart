@@ -166,7 +166,8 @@ class _DescargarPdfMenu extends ConsumerWidget {
           SELECT p.fecha_pago, c.nombre AS cliente_nombre,
                  p.monto_cordobas AS monto, p.metodo,
                  cb.nombre AS cobrador_nombre,
-                 r.numero_completo AS numero_recibo
+                 r.numero_completo AS numero_recibo,
+                 SUBSTR(p.grupo_cobro, 1, 8) AS ref_grupo
             FROM pagos p
             JOIN cuotas cu ON cu.id = p.cuota_id
             JOIN clientes c ON c.id = cu.cliente_id
@@ -525,7 +526,8 @@ class _DescargarPdfMenu extends ConsumerWidget {
           SELECT p.fecha_pago, c.nombre AS cliente_nombre,
                  p.monto_cordobas AS monto, p.metodo,
                  cb.nombre AS cobrador_nombre,
-                 r.numero_completo AS numero_recibo
+                 r.numero_completo AS numero_recibo,
+                 SUBSTR(p.grupo_cobro, 1, 8) AS ref_grupo
             FROM pagos p
             JOIN cuotas cu ON cu.id = p.cuota_id
             JOIN clientes c ON c.id = cu.cliente_id
@@ -536,7 +538,7 @@ class _DescargarPdfMenu extends ConsumerWidget {
            ORDER BY p.fecha_pago DESC
         ''');
         return _toCsv(
-          ['Fecha', 'Cliente', 'Monto', 'Método', 'Cobrador', 'Recibo'],
+          ['Fecha', 'Cliente', 'Monto', 'Método', 'Cobrador', 'Recibo', 'Grupo'],
           rows.map((r) => [
             r['fecha_pago']?.toString() ?? '',
             r['cliente_nombre']?.toString() ?? '',
@@ -544,6 +546,7 @@ class _DescargarPdfMenu extends ConsumerWidget {
             r['metodo']?.toString() ?? '',
             r['cobrador_nombre']?.toString() ?? '',
             r['numero_recibo']?.toString() ?? '',
+            r['ref_grupo']?.toString() ?? '',
           ]).toList(),
         );
 

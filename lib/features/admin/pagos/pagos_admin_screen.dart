@@ -57,6 +57,7 @@ class _PagosAdminScreenState extends ConsumerState<PagosAdminScreen> {
       SELECT p.id, p.monto_cordobas, p.moneda, p.monto_original,
              p.metodo, p.fecha_pago, p.referencia, p.notas,
              p.anulado, p.anulado_en, p.motivo_anulacion,
+             p.grupo_cobro,
              c.nombre AS cliente,
              co.nombre AS cobrador,
              r.numero_completo
@@ -258,6 +259,25 @@ class _PagoCard extends ConsumerWidget {
                     Text(
                       'Pagado en USD: ${(row['monto_original'] as num).toStringAsFixed(2)}',
                       style: TextStyle(color: scheme.outline, fontSize: 12),
+                    ),
+                  if (row['grupo_cobro'] != null)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 4),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: scheme.primaryContainer,
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Text(
+                          'Cobro agrupado',
+                          style: TextStyle(
+                            color: scheme.onPrimaryContainer,
+                            fontSize: 11,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ),
                     ),
                   if (anulado && row['motivo_anulacion'] != null) ...[
                     const SizedBox(height: 4),

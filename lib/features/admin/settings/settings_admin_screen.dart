@@ -329,6 +329,7 @@ class _SettingTileState extends State<_SettingTile> {
       'cobranza.descuento_max_porcentaje': 'Tope descuento %',
       'cobranza.descuento_max_monto': 'Tope descuento monto',
       'cobranza.cargo_reconexion_habilitado': 'Cobrar reconexión',
+      'cobranza.cargo_reconexion': 'Monto reconexión automática',
       'cobranza.monto_reconexion': 'Monto de reconexión',
       'pagos.transferencia_habilitada': 'Aceptar transferencias',
       'pagos.deposito_habilitado': 'Aceptar depósitos',

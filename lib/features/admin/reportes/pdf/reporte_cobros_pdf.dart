@@ -55,16 +55,17 @@ pw.Widget _buildTable(List<Map<String, dynamic>> rows) {
     headerAlignment: pw.Alignment.centerLeft,
     cellAlignment: pw.Alignment.centerLeft,
     columnWidths: {
-      0: const pw.FlexColumnWidth(1.5), // Fecha
-      1: const pw.FlexColumnWidth(2.5), // Cliente
-      2: const pw.FlexColumnWidth(1.5), // Monto
-      3: const pw.FlexColumnWidth(1.2), // Método
-      4: const pw.FlexColumnWidth(2),   // Cobrador
-      5: const pw.FlexColumnWidth(1.3), // Recibo
+      0: const pw.FlexColumnWidth(1.4), // Fecha
+      1: const pw.FlexColumnWidth(2.3), // Cliente
+      2: const pw.FlexColumnWidth(1.3), // Monto
+      3: const pw.FlexColumnWidth(1.1), // Método
+      4: const pw.FlexColumnWidth(1.8), // Cobrador
+      5: const pw.FlexColumnWidth(1.2), // Recibo
+      6: const pw.FlexColumnWidth(0.9), // Grupo
     },
-    headers: ['Fecha', 'Cliente', 'Monto (C\$)', 'Método', 'Cobrador', 'Recibo'],
+    headers: ['Fecha', 'Cliente', 'Monto (C\$)', 'Método', 'Cobrador', 'Recibo', 'Grupo'],
     data: rows.isEmpty
-        ? [['', '', 'Sin cobros en el período', '', '', '']]
+        ? [['', '', 'Sin cobros en el período', '', '', '', '']]
         : List.generate(rows.length, (i) {
       final r = rows[i];
       final fecha = r['fecha_pago'] as String? ?? '';
@@ -76,6 +77,7 @@ pw.Widget _buildTable(List<Map<String, dynamic>> rows) {
         _metodoLabel((r['metodo'] as String?) ?? ''),
         (r['cobrador_nombre'] as String?) ?? '—',
         (r['numero_recibo'] as String?) ?? '—',
+        (r['ref_grupo'] as String?) ?? '',
       ];
     }),
     oddRowDecoration: const pw.BoxDecoration(color: colorFilaPar),
