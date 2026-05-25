@@ -303,7 +303,7 @@ class _CuotaTile extends StatelessWidget {
       subtitle: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(planNombre ?? '—',
+          Text(planNombre ?? cuota.descripcion ?? '—',
               maxLines: 1, overflow: TextOverflow.ellipsis),
           Text('Vence ${Fmt.fechaCorta(cuota.fechaVencimiento)} · ${estadoVisual.label}',
               style: TextStyle(color: color, fontSize: 12)),
