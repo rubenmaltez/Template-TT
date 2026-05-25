@@ -256,16 +256,19 @@ class _SettingTileState extends State<_SettingTile> {
     final s = widget.setting;
     final enabled = widget.puedeEditar;
 
-    // Dropdown especial para tipo de descuento pronto pago.
-    if (s.clave == 'cuotas.descuento_pronto_pago_tipo') {
-      final current = (s.valor as String?) ?? 'porcentaje';
+    // Dropdowns para settings con opciones fijas.
+    final dropdownOptions = _dropdownFor(s.clave);
+    if (dropdownOptions != null) {
+      final current = (s.valor as String?) ?? dropdownOptions.first.$1;
+      final validValue = dropdownOptions.any((o) => o.$1 == current)
+          ? current
+          : dropdownOptions.first.$1;
       return DropdownButtonFormField<String>(
-        value: current == 'monto' ? 'monto' : 'porcentaje',
+        value: validValue,
         decoration: const InputDecoration(isDense: true),
-        items: const [
-          DropdownMenuItem(value: 'porcentaje', child: Text('Porcentaje (%)')),
-          DropdownMenuItem(value: 'monto', child: Text('Monto fijo (C\$)')),
-        ],
+        items: dropdownOptions
+            .map((o) => DropdownMenuItem(value: o.$1, child: Text(o.$2)))
+            .toList(),
         onChanged: enabled
             ? (v) {
                 if (v != null) widget.onSave(v);
@@ -322,6 +325,7 @@ class _SettingTileState extends State<_SettingTile> {
       'empresa.telefono': 'Teléfono',
       'empresa.ruc': 'RUC',
       'empresa.logo_path': 'Path del logo',
+      'empresa.whatsapp': 'WhatsApp',
       'cobranza.dias_gracia': 'Días de gracia',
       'cobranza.modo_ruta': 'Modo de ruta',
       'cobranza.descuentos_habilitados': 'Permitir descuentos',
@@ -331,22 +335,64 @@ class _SettingTileState extends State<_SettingTile> {
       'cobranza.cargo_reconexion_habilitado': 'Cobrar reconexión',
       'cobranza.cargo_reconexion': 'Monto reconexión automática',
       'cobranza.monto_reconexion': 'Monto de reconexión',
+      'cobranza.cobrador_edita_fecha': 'Cobrador puede editar fecha',
+      'cobranza.cobrador_anula_cobros': 'Cobrador puede anular cobros',
+      'cobranza.cobrador_edita_cobros': 'Cobrador puede editar cobros',
+      'cobranza.foto_obligatoria': 'Foto comprobante obligatoria',
+      'cobranza.pago_parcial': 'Permitir pago parcial',
+      'cobranza.pago_adelantado': 'Permitir pago adelantado (multi-cuota)',
       'pagos.transferencia_habilitada': 'Aceptar transferencias',
       'pagos.deposito_habilitado': 'Aceptar depósitos',
       'pagos.tarjeta_habilitada': 'Aceptar tarjeta',
+      'pagos.metodo_efectivo': 'Aceptar efectivo',
+      'pagos.metodo_transferencia': 'Aceptar transferencia',
+      'pagos.metodo_tarjeta': 'Aceptar tarjeta',
       'pagos.usd_habilitado': 'Aceptar pagos en USD',
       'pagos.tasa_usd_cordoba': 'Tasa USD → C\$',
+      'moneda.principal': 'Moneda principal',
       'recibo.formato_default_mm': 'Ancho de papel (mm)',
       'recibo.template_57mm': 'Template 57mm',
       'recibo.template_80mm': 'Template 80mm',
       'recibo.imprimir_logo': 'Imprimir logo en recibo',
       'recibo.pie_libre': 'Pie del recibo',
+      'recibo.titulo': 'Título del recibo',
+      'recibo.monto_en_letras': 'Monto en letras',
+      'recibo.mostrar_adeudado': 'Mostrar meses adeudados',
       'cuotas.manuales': 'Cuotas manuales',
       'cuotas.editar_monto': 'Editar monto de cuota',
       'cuotas.descuento_pronto_pago': 'Descuento pronto pago (valor)',
       'cuotas.descuento_pronto_pago_tipo': 'Tipo de descuento pronto pago',
     };
-    return labels[clave] ?? clave.split('.').last;
+    return labels[clave] ?? _humanize(clave.split('.').last);
+  }
+
+  static String _humanize(String raw) {
+    return raw
+        .replaceAll('_', ' ')
+        .replaceFirstMapped(RegExp(r'^.'), (m) => m[0]!.toUpperCase());
+  }
+
+  static List<(String, String)>? _dropdownFor(String clave) {
+    return switch (clave) {
+      'cuotas.descuento_pronto_pago_tipo' => [
+        ('porcentaje', 'Porcentaje (%)'),
+        ('monto', 'Monto fijo (C\$)'),
+      ],
+      'cobranza.descuento_tipo' => [
+        ('monto', 'Monto fijo'),
+        ('porcentaje', 'Porcentaje'),
+        ('ambos', 'Ambos'),
+      ],
+      'cobranza.modo_ruta' => [
+        ('libre', 'Libre'),
+        ('planificada', 'Planificada'),
+      ],
+      'moneda.principal' => [
+        ('NIO', 'Córdobas (NIO)'),
+        ('USD', 'Dólares (USD)'),
+      ],
+      _ => null,
+    };
   }
 }
 

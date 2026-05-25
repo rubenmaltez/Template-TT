@@ -7,15 +7,15 @@ class AppColors {
   static const onPrimary = Colors.white;
 
   // Fondos
-  static const background = Colors.white;           // Fondo principal
+  static const background = Color(0xFFFAFAFC);      // Fondo principal (off-white)
   static const surface = Colors.white;               // Cards, dialogs
   static const surfaceContainer = Color(0xFFF2F2F7); // Sidebar, containers
   static const surfaceContainerHigh = Color(0xFFE5E5EA); // Bordes, dividers
 
   // Texto
   static const textPrimary = Color(0xFF1C1C1E);     // Texto principal
-  static const textSecondary = Color(0xFF8E8E93);   // Texto secundario
-  static const outline = Color(0xFFC7C7CC);          // Bordes inputs
+  static const textSecondary = Color(0xFF636366);   // Texto secundario (más oscuro)
+  static const outline = Color(0xFF9A9AA0);          // Bordes inputs (más visible)
 
   // Semánticos
   static const error = Color(0xFFFF3B30);            // Rojo iOS
@@ -36,8 +36,8 @@ class AppTheme {
       onSurface: AppColors.textPrimary,
       surfaceContainerLow: AppColors.surfaceContainer,
       surfaceContainerHighest: AppColors.surfaceContainer,
-      outline: AppColors.outline,
-      outlineVariant: AppColors.surfaceContainerHigh,
+      outline: AppColors.textSecondary,
+      outlineVariant: AppColors.outline,
       error: AppColors.error,
       onError: Colors.white,
       errorContainer: AppColors.error.withValues(alpha: 0.1),
