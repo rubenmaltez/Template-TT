@@ -40,7 +40,7 @@ BEGIN
        'Habilitar pago con tarjeta', 'admin'),
 
       -- Moneda
-      (v_tenant.id, 'moneda.principal', '"NIO"', 'text', 'moneda',
+      (v_tenant.id, 'moneda.principal', '"NIO"', 'string', 'moneda',
        'Moneda principal del tenant (NIO o USD)', 'admin'),
 
       -- Cuotas
