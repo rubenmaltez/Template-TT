@@ -103,6 +103,14 @@ class AppSettings {
   String get empresaTelefono =>
       settingValue<String>(_map, 'empresa.telefono', '');
   String get empresaRuc => settingValue<String>(_map, 'empresa.ruc', '');
+
+  /// Path del logo en Storage (bucket `logos-empresa`). Vacío si no hay logo.
+  String get empresaLogoPath =>
+      settingValue<String>(_map, 'empresa.logo_path', '');
+
+  /// Si el recibo debe incluir el logo (toggle en tab Recibos).
+  bool get imprimirLogoEnRecibo =>
+      settingValue<bool>(_map, 'recibo.imprimir_logo', true);
 }
 
 final appSettingsProvider = Provider<AppSettings>((ref) {
