@@ -395,11 +395,18 @@ final routerProvider = Provider<GoRouter>((ref) {
       ),
       GoRoute(
         path: '/cobro/:cuotaId',
-        builder: (_, s) => CobroScreen(cuotaId: s.pathParameters['cuotaId']!),
+        builder: (_, s) {
+          final param = s.pathParameters['cuotaId']!;
+          final ids = param.split(',');
+          return CobroScreen(cuotaIds: ids);
+        },
       ),
       GoRoute(
         path: '/recibo/:reciboId',
-        builder: (_, s) => ReciboScreen(reciboId: s.pathParameters['reciboId']!),
+        builder: (_, s) => ReciboScreen(
+          reciboId: s.pathParameters['reciboId']!,
+          grupoCobro: s.uri.queryParameters['grupo'],
+        ),
       ),
       GoRoute(
         path: '/perfil/impresora',

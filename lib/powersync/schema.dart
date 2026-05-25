@@ -143,6 +143,7 @@ const schema = Schema([
     Column.text('anulado_en'),
     Column.text('anulado_por'),
     Column.text('motivo_anulacion'),
+    Column.text('grupo_cobro'),
     Column.text('client_local_id'),
   ], indexes: [
     Index('by_cuota', [IndexedColumn('cuota_id')]),

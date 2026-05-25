@@ -19,9 +19,11 @@ class CuotasListScreen extends ConsumerStatefulWidget {
 class _CuotasListScreenState extends ConsumerState<CuotasListScreen> {
   _Filtro _filtro = _Filtro.todas;
 
-  /// Marca todas las notificaciones de mora sin ver como "vista" cuando
-  /// el cobrador abre el filtro "En mora". Esto resetea el badge del
-  /// sidebar y le indica al sistema que el cobrador revisó las moras.
+  // Multi-select: cuota IDs seleccionadas + contrato_id para validar
+  // que todas sean del mismo contrato.
+  final Set<String> _selected = {};
+  String? _selectedContratoId;
+
   Future<void> _marcarMoraComoVista() async {
     final now = DateTime.now().toUtc().toIso8601String();
     await ps.db.execute('''
@@ -31,33 +33,85 @@ class _CuotasListScreenState extends ConsumerState<CuotasListScreen> {
     ''', [now]);
   }
 
+  void _toggleSelect(String cuotaId, String? contratoId) {
+    setState(() {
+      if (_selected.contains(cuotaId)) {
+        _selected.remove(cuotaId);
+        if (_selected.isEmpty) _selectedContratoId = null;
+      } else {
+        if (_selected.isEmpty) {
+          _selectedContratoId = contratoId;
+          _selected.add(cuotaId);
+        } else if (contratoId == _selectedContratoId) {
+          _selected.add(cuotaId);
+        }
+        // Si es de otro contrato, no seleccionar (solo mismo contrato).
+      }
+    });
+  }
+
+  void _clearSelection() {
+    setState(() {
+      _selected.clear();
+      _selectedContratoId = null;
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
-    final diasGracia = ref.watch(appSettingsProvider).diasGracia;
-    return Column(
+    final settings = ref.watch(appSettingsProvider);
+    final diasGracia = settings.diasGracia;
+    final multiCuotaEnabled = settings.pagoAdelantadoPermitido;
+
+    return Stack(
       children: [
-        SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-          child: Row(
-            children: [
-              for (final f in _Filtro.values) ...[
-                FilterChip(
-                  label: Text(_label(f)),
-                  selected: _filtro == f,
-                  onSelected: (_) {
-                    setState(() => _filtro = f);
-                    if (f == _Filtro.mora) _marcarMoraComoVista();
-                  },
-                ),
-                const SizedBox(width: 8),
-              ],
-            ],
+        Column(
+          children: [
+            SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              child: Row(
+                children: [
+                  for (final f in _Filtro.values) ...[
+                    FilterChip(
+                      label: Text(_label(f)),
+                      selected: _filtro == f,
+                      onSelected: (_) {
+                        setState(() => _filtro = f);
+                        _clearSelection();
+                        if (f == _Filtro.mora) _marcarMoraComoVista();
+                      },
+                    ),
+                    const SizedBox(width: 8),
+                  ],
+                ],
+              ),
+            ),
+            Expanded(
+              child: _CuotasList(
+                filtro: _filtro,
+                diasGracia: diasGracia,
+                multiSelect: multiCuotaEnabled,
+                selected: _selected,
+                selectedContratoId: _selectedContratoId,
+                onToggle: _toggleSelect,
+              ),
+            ),
+          ],
+        ),
+        if (_selected.length >= 2)
+          Positioned(
+            left: 16, right: 16, bottom: 16,
+            child: FilledButton.icon(
+              icon: const Icon(Icons.payment),
+              label: Text('Cobrar ${_selected.length} cuotas'),
+              onPressed: () {
+                final ids = _selected.join(',');
+                _clearSelection();
+                context.push('/cobro/$ids');
+              },
+            ),
           ),
-        ),
-        Expanded(
-          child: _CuotasList(filtro: _filtro, diasGracia: diasGracia),
-        ),
       ],
     );
   }
@@ -72,9 +126,20 @@ class _CuotasListScreenState extends ConsumerState<CuotasListScreen> {
 }
 
 class _CuotasList extends StatefulWidget {
-  const _CuotasList({required this.filtro, required this.diasGracia});
+  const _CuotasList({
+    required this.filtro,
+    required this.diasGracia,
+    required this.multiSelect,
+    required this.selected,
+    required this.selectedContratoId,
+    required this.onToggle,
+  });
   final _Filtro filtro;
   final int diasGracia;
+  final bool multiSelect;
+  final Set<String> selected;
+  final String? selectedContratoId;
+  final void Function(String cuotaId, String? contratoId) onToggle;
 
   @override
   State<_CuotasList> createState() => _CuotasListState();
@@ -186,7 +251,7 @@ class _CuotasListState extends State<_CuotasList> {
         }
 
         return ListView.builder(
-          padding: const EdgeInsets.only(bottom: 80),
+          padding: EdgeInsets.only(bottom: widget.selected.length >= 2 ? 80 : 16),
           itemCount: items.length,
           itemBuilder: (context, i) {
             final item = items[i];
@@ -194,7 +259,28 @@ class _CuotasListState extends State<_CuotasList> {
               return _ContratoHeader(titulo: item);
             }
             final row = item as Map<String, dynamic>;
-            return _CuotaListTile(row: row, diasGracia: widget.diasGracia);
+            final cuotaId = row['id'] as String;
+            final contratoId = row['contrato_id'] as String?;
+            final isSelected = widget.selected.contains(cuotaId);
+            final canSelect = widget.multiSelect &&
+                (widget.selected.isEmpty || contratoId == widget.selectedContratoId);
+            return _CuotaListTile(
+              row: row,
+              diasGracia: widget.diasGracia,
+              isSelected: isSelected,
+              canSelect: canSelect && widget.multiSelect,
+              showCheckbox: widget.selected.isNotEmpty,
+              onTap: () {
+                if (widget.selected.isNotEmpty) {
+                  widget.onToggle(cuotaId, contratoId);
+                } else {
+                  context.push('/cobro/$cuotaId');
+                }
+              },
+              onLongPress: widget.multiSelect
+                  ? () => widget.onToggle(cuotaId, contratoId)
+                  : null,
+            );
           },
         );
       },
@@ -234,9 +320,22 @@ class _ContratoHeader extends StatelessWidget {
 }
 
 class _CuotaListTile extends StatelessWidget {
-  const _CuotaListTile({required this.row, required this.diasGracia});
+  const _CuotaListTile({
+    required this.row,
+    required this.diasGracia,
+    required this.isSelected,
+    required this.canSelect,
+    required this.showCheckbox,
+    required this.onTap,
+    this.onLongPress,
+  });
   final Map<String, dynamic> row;
   final int diasGracia;
+  final bool isSelected;
+  final bool canSelect;
+  final bool showCheckbox;
+  final VoidCallback onTap;
+  final VoidCallback? onLongPress;
 
   @override
   Widget build(BuildContext context) {
@@ -260,10 +359,17 @@ class _CuotaListTile extends StatelessWidget {
                     Icons.event);
 
     return ListTile(
-      leading: CircleAvatar(
-        backgroundColor: color.withValues(alpha: 0.15),
-        child: Icon(icon, color: color),
-      ),
+      selected: isSelected,
+      selectedTileColor: scheme.primaryContainer.withValues(alpha: 0.3),
+      leading: showCheckbox
+          ? Checkbox(
+              value: isSelected,
+              onChanged: canSelect ? (_) => onTap() : null,
+            )
+          : CircleAvatar(
+              backgroundColor: color.withValues(alpha: 0.15),
+              child: Icon(icon, color: color),
+            ),
       title: Text(row['cliente_nombre'] as String,
           maxLines: 1, overflow: TextOverflow.ellipsis),
       subtitle: Column(
@@ -286,7 +392,8 @@ class _CuotaListTile extends StatelessWidget {
               style: TextStyle(color: scheme.outline, fontSize: 11)),
         ],
       ),
-      onTap: () => context.push('/cobro/${row['id']}'),
+      onTap: onTap,
+      onLongPress: onLongPress,
     );
   }
 }

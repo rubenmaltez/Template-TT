@@ -7,9 +7,33 @@ import '../utils/cuota_estado.dart';
 
 /// Resultado de un cobro exitoso. La UI navega a /recibo/[reciboId].
 class CobroResultado {
-  const CobroResultado({required this.pagoId, required this.reciboId});
+  const CobroResultado({
+    required this.pagoId,
+    required this.reciboId,
+    this.reciboIds,
+    this.grupoCobro,
+  });
   final String pagoId;
   final String reciboId;
+  final List<String>? reciboIds;
+  final String? grupoCobro;
+
+  bool get esMultiCuota => reciboIds != null && reciboIds!.length > 1;
+}
+
+class CargoAutoInfo {
+  const CargoAutoInfo({
+    required this.cuotaId,
+    required this.tipo,
+    required this.monto,
+    this.porcentaje,
+    required this.descripcion,
+  });
+  final String cuotaId;
+  final String tipo;
+  final double monto;
+  final double? porcentaje;
+  final String descripcion;
 }
 
 class PagosRepo {
@@ -146,6 +170,139 @@ class PagosRepo {
     });
 
     return CobroResultado(pagoId: pagoId, reciboId: reciboId);
+  }
+
+  /// Registra un cobro multi-cuota: N pagos + N recibos en una sola
+  /// transacción, todos vinculados por el mismo grupo_cobro UUID.
+  /// Cada cuota recibe un pago por su saldo completo.
+  Future<CobroResultado> registrarCobroMultiple({
+    required String tenantId,
+    required String cobradorId,
+    required String prefijoRecibo,
+    required List<String> cuotaIds,
+    required List<double> montosCordobas,
+    required Moneda moneda,
+    required List<double> montosOriginal,
+    required double tasaConversion,
+    required MetodoPago metodo,
+    String? referencia,
+    String? fotoComprobantePath,
+    double? lat,
+    double? lng,
+    String? notas,
+    DateTime? fechaPago,
+    List<CargoAutoInfo>? cargosAuto,
+  }) async {
+    assert(cuotaIds.length == montosCordobas.length);
+    assert(cuotaIds.length == montosOriginal.length);
+
+    final grupoCobro = _uuid.v4();
+    final now = (fechaPago ?? DateTime.now()).toIso8601String();
+    final reciboIds = <String>[];
+    String? primerPagoId;
+
+    await ps.db.writeTransaction((tx) async {
+      // Insertar cargos automáticos (reconexión / pronto pago) antes de
+      // los pagos para que el delta de cargos_extra ya los incluya.
+      if (cargosAuto != null) {
+        for (final cargo in cargosAuto) {
+          await tx.execute(
+            '''
+            INSERT INTO cargos_extra (
+              id, tenant_id, cuota_id, cobrador_id, tipo, monto,
+              porcentaje, descripcion, aplicado_por, aplicado_en, client_local_id
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ''',
+            [
+              _uuid.v4(), tenantId, cargo.cuotaId, cobradorId,
+              cargo.tipo, cargo.monto, cargo.porcentaje,
+              cargo.descripcion, cobradorId, now, _uuid.v4(),
+            ],
+          );
+        }
+      }
+
+      for (var i = 0; i < cuotaIds.length; i++) {
+        final pagoId = _uuid.v4();
+        final reciboId = _uuid.v4();
+        primerPagoId ??= pagoId;
+        reciboIds.add(reciboId);
+
+        final rows = await tx.getAll(
+          '''
+          SELECT COALESCE(MAX(correlativo), 0) + 1 AS prox
+            FROM recibos
+           WHERE cobrador_id = ? AND prefijo = ?
+          ''',
+          [cobradorId, prefijoRecibo],
+        );
+        final correlativo = (rows.first['prox'] as num).toInt();
+        final numeroCompleto =
+            '$prefijoRecibo-${correlativo.toString().padLeft(5, '0')}';
+
+        await tx.execute(
+          '''
+          INSERT INTO pagos (
+            id, tenant_id, cuota_id, cobrador_id,
+            monto_cordobas, moneda, monto_original, tasa_conversion,
+            metodo, referencia, foto_comprobante_path,
+            lat, lng, notas, fecha_pago, anulado, grupo_cobro, client_local_id
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)
+          ''',
+          [
+            pagoId, tenantId, cuotaIds[i], cobradorId,
+            montosCordobas[i], moneda.value, montosOriginal[i], tasaConversion,
+            metodo.value, referencia, fotoComprobantePath,
+            lat, lng, notas, now, grupoCobro, _uuid.v4(),
+          ],
+        );
+
+        await tx.execute(
+          '''
+          INSERT INTO recibos (
+            id, tenant_id, pago_id, cobrador_id,
+            prefijo, correlativo, numero_completo,
+            reimpresiones, anulado, created_at, client_local_id
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, 0, 0, ?, ?)
+          ''',
+          [
+            reciboId, tenantId, pagoId, cobradorId,
+            prefijoRecibo, correlativo, numeroCompleto, now, _uuid.v4(),
+          ],
+        );
+
+        // Reflejar localmente el efecto del trigger server.
+        final cuotaRows = await tx.getAll(
+          'SELECT monto, monto_pagado, estado FROM cuotas WHERE id = ?',
+          [cuotaIds[i]],
+        );
+        if (cuotaRows.isNotEmpty) {
+          final montoCuota = (cuotaRows.first['monto'] as num).toDouble();
+          final pagadoViejo =
+              (cuotaRows.first['monto_pagado'] as num? ?? 0).toDouble();
+          final estadoActual = cuotaRows.first['estado'] as String;
+          final pagadoNuevo = pagadoViejo + montosCordobas[i];
+          final delta = await _deltaCargosExtra(tx, cuotaIds[i]);
+          final nuevoEstado = calcularEstadoCuota(
+            estadoActual: estadoActual,
+            montoCuota: montoCuota,
+            pagadoNuevo: pagadoNuevo,
+            deltaCargosExtra: delta,
+          );
+          await tx.execute(
+            'UPDATE cuotas SET monto_pagado = ?, estado = ? WHERE id = ?',
+            [pagadoNuevo, nuevoEstado, cuotaIds[i]],
+          );
+        }
+      }
+    });
+
+    return CobroResultado(
+      pagoId: primerPagoId!,
+      reciboId: reciboIds.first,
+      reciboIds: reciboIds,
+      grupoCobro: grupoCobro,
+    );
   }
 
   /// Anula un pago aplicando soft delete. También marca como anulados los

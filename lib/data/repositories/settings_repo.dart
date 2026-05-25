@@ -124,6 +124,11 @@ class AppSettings {
   bool get pagoAdelantadoPermitido =>
       settingValue<bool>(_map, 'cobranza.pago_adelantado', true);
 
+  /// Descuento pronto pago: si <100 es porcentaje, si >=100 es monto fijo.
+  /// 0 = deshabilitado.
+  double get descuentoProntoPago =>
+      settingValue<num>(_map, 'cuotas.descuento_pronto_pago', 0).toDouble();
+
   int get formatoReciboMm =>
       settingValue<num>(_map, 'recibo.formato_default_mm', 80).toInt();
   String get pieRecibo => settingValue<String>(_map, 'recibo.pie_libre', '');
