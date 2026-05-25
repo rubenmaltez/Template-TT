@@ -19,6 +19,8 @@ class SettingsAdminScreen extends ConsumerWidget {
     ('empresa', 'Empresa', Icons.business),
     ('cobranza', 'Cobranza', Icons.receipt_long),
     ('pagos', 'Pagos', Icons.payments),
+    ('moneda', 'Moneda', Icons.currency_exchange),
+    ('cuotas', 'Cuotas', Icons.calendar_month),
     ('recibos', 'Recibos', Icons.print),
   ];
 
@@ -48,8 +50,13 @@ class SettingsAdminScreen extends ConsumerWidget {
                 color: Theme.of(context).colorScheme.surface,
                 child: TabBar(
                   isScrollable: true,
+                  indicatorColor: Theme.of(context).colorScheme.primary,
+                  labelColor: Theme.of(context).colorScheme.primary,
+                  unselectedLabelColor: Theme.of(context).colorScheme.outline,
+                  indicatorSize: TabBarIndicatorSize.label,
+                  dividerColor: Theme.of(context).colorScheme.outlineVariant,
                   tabs: _categorias
-                      .map((c) => Tab(icon: Icon(c.$3), text: c.$2))
+                      .map((c) => Tab(icon: Icon(c.$3, size: 20), text: c.$2))
                       .toList(),
                 ),
               ),
