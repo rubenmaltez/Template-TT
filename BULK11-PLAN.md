@@ -179,10 +179,10 @@ tabla — extender con los nuevos campos.
 ### FASE F: UI polish
 | Sprint | Tiempo | Qué | Estado |
 |---|---|---|---|
-| F1 | 2-3h | Design system documentado | ⏳ |
-| F2 | 3-4h | Tema blanco + azul celeste aplicado a todos los shells | ⏳ |
-| F3 | 2-3h | Módulos template (patrón visual consistente) | ⏳ |
-| F4 | 2h | Responsive polish (desktop grids + mobile full-width) | ⏳ |
+| F1 | 2-3h | Design system documentado | ✅ Verificado (theme.dart ya completo) |
+| F2 | 3-4h | Tema blanco + azul celeste aplicado a todos los shells | ✅ |
+| F3 | 2-3h | Módulos template (patrón visual consistente) | ✅ Verificado (ya consistente) |
+| F4 | 2h | Responsive polish (desktop grids + mobile full-width) | ✅ Verificado (ya responsive) |
 
 ### Sprints diferidos (backlog)
 - B4: Pago multi-cuota — TODO en cobro_screen.dart línea 204

@@ -12,17 +12,17 @@ hasta producción general y features comerciales.
 - Cuando se cierra un bulk entero, se hace audit ligero + smoke test
   del flow que ese bulk debería habilitar.
 
-**Estado actual**: BULKs 1-9 completados. BULK 11 Fases A-E completadas.
-Falta Fase F (UI polish). Nombre: SITECSA CRM. Tema iOS light aplicado.
-Windows (.msix) + Android (.apk) + Web funcionando. release.ps1 automatizado.
+**Estado actual**: BULKs 1-9 + BULK 11 completados. Nombre: SITECSA CRM.
+Tema iOS light aplicado en todos los shells. Windows (.msix) + Android
+(.apk) + Web funcionando. release.ps1 automatizado.
 Sesión inicial (2026-05-22): 34 PRs infraestructura.
-Sesión 2 (2026-05-23/24/25): 40+ PRs. BULKs 1-9 + BULK 11 (Fases A-E).
-9 reportes PDF + CSV. Settings panel con 6 categorías + 14 toggles.
-Migraciones 0036-0042 deployadas. 3 GitHub Releases (v0.1-v0.3).
+Sesión 2 (2026-05-23/24/25): 40+ PRs. BULKs 1-9 + BULK 11 completo
+(6 Fases, 25 sprints). 9 reportes PDF + CSV. Settings panel con 6
+categorías + 14 toggles. Migraciones 0036-0042 deployadas. 3 GitHub
+Releases (v0.1-v0.3).
 
-**Próxima sesión**: BULK 11 Fase F (UI polish — design system, tema en
-todos los shells, responsive). Leer BULK11-PLAN.md para detalle.
-Sprints diferidos: B4 (multi-cuota), C3 (reconexión), C4 (pronto pago).
+**Sprints diferidos (backlog)**: B4 (multi-cuota), C3 (reconexión),
+C4 (pronto pago). Ver BULK11-PLAN.md.
 
 ---
 
@@ -416,3 +416,19 @@ Cada bulk se trata como mini-roadmap dentro de su(s) sesión(es):
   - CRUD errors SnackBar global (connector → provider → shells).
   - Android Descargar: quitado canLaunchUrl (falla Android 11+).
   - CLAUDE.md: principio de diseño pre-implementación agregado.
+- BULK 11 completo (PRs #66+): UI/UX refactor completo.
+  - 6 Fases (A-F), 25 sprints, 14 completados + 8 verificados + 3 diferidos.
+  - Fase A: Settings panel con 6 categorías + 14 toggles + logo upload +
+    monto en letras + migraciones 0040-0041. Tema iOS light (theme.dart).
+    Rebrand a "SITECSA CRM".
+  - Fase B: Cobranza flexible — fecha editable, anulación por cobrador,
+    edición post-registro. Todos gateados por settings toggles.
+  - Fase C: Cuotas manuales (contrato_id NULL, migración 0042) + editar
+    monto. LEFT JOINs en recibo/cuotas para cuotas sin contrato.
+  - Fase D: Registro visitas (SharedPreferences) + "Cómo llegar" + cuotas
+    agrupadas por contrato con headers.
+  - Fase E: 9 reportes PDF (cobros, mora, por cobrador, clientes, estado
+    cuenta, fiscal, eficiencia, inactivos, anulaciones) + CSV clipboard.
+  - Fase F: UI polish — colores hardcoded eliminados en todos los shells.
+    Theme tokens (scheme.primary/onPrimary/error/surfaceContainerLow).
+    Design system, responsive y consistencia verificados.
