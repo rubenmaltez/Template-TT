@@ -11,13 +11,21 @@ import '../../data/utils/formatters.dart';
 import '../../powersync/db.dart' as ps;
 import '../shared/widgets/empty_state.dart';
 
-class ClienteDetailScreen extends ConsumerWidget {
+class ClienteDetailScreen extends ConsumerStatefulWidget {
   const ClienteDetailScreen({super.key, required this.clienteId});
   final String clienteId;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final clienteAsync = ref.watch(clienteByIdProvider(clienteId));
+  ConsumerState<ClienteDetailScreen> createState() =>
+      _ClienteDetailScreenState();
+}
+
+class _ClienteDetailScreenState extends ConsumerState<ClienteDetailScreen> {
+  final _visitasKey = GlobalKey<_VisitasSectionState>();
+
+  @override
+  Widget build(BuildContext context) {
+    final clienteAsync = ref.watch(clienteByIdProvider(widget.clienteId));
     final diasGracia = ref.watch(appSettingsProvider).diasGracia;
 
     return Scaffold(
@@ -29,7 +37,7 @@ class ClienteDetailScreen extends ConsumerWidget {
         ),
       ),
       floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => _mostrarDialogVisita(context, ref),
+        onPressed: () => _mostrarDialogVisita(context),
         icon: const Icon(Icons.add_task),
         label: const Text('Registrar visita'),
       ),
@@ -55,11 +63,12 @@ class ClienteDetailScreen extends ConsumerWidget {
               ),
               _ClienteInfo(cliente: cliente),
               const SizedBox(height: 8),
-              _CuotasSection(clienteId: clienteId, diasGracia: diasGracia),
+              _CuotasSection(
+                  clienteId: widget.clienteId, diasGracia: diasGracia),
               const SizedBox(height: 8),
-              _PagosSection(clienteId: clienteId),
+              _PagosSection(clienteId: widget.clienteId),
               const SizedBox(height: 8),
-              _VisitasSection(clienteId: clienteId),
+              _VisitasSection(key: _visitasKey, clienteId: widget.clienteId),
             ],
           );
         },
@@ -67,8 +76,9 @@ class ClienteDetailScreen extends ConsumerWidget {
     );
   }
 
-  Future<void> _mostrarDialogVisita(BuildContext context, WidgetRef ref) async {
-    final resultado = await showDialog<({VisitaResultado resultado, String? notas})>(
+  Future<void> _mostrarDialogVisita(BuildContext context) async {
+    final resultado =
+        await showDialog<({VisitaResultado resultado, String? notas})>(
       context: context,
       builder: (_) => const _RegistrarVisitaDialog(),
     );
@@ -76,7 +86,7 @@ class ClienteDetailScreen extends ConsumerWidget {
 
     final service = ref.read(visitasServiceProvider);
     await service.registrar(
-      clienteId: clienteId,
+      clienteId: widget.clienteId,
       resultado: resultado.resultado,
       notas: resultado.notas,
     );
@@ -84,12 +94,8 @@ class ClienteDetailScreen extends ConsumerWidget {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Visita registrada')),
       );
-      // Fuerza rebuild de la sección de visitas.
-      // Usamos un mecanismo simple: invalidar la pantalla entera via un
-      // setState-like trigger. Como ClienteDetailScreen es ConsumerWidget
-      // sin state propio, usamos un workaround: navegamos al mismo lugar.
-      // Alternativa más limpia sería un StateNotifier, pero para MVP es
-      // aceptable que el user vea la visita tras scroll down o re-enter.
+      // Fuerza recarga de la sección de visitas via GlobalKey.
+      _visitasKey.currentState?.recargar();
     }
   }
 }
@@ -368,6 +374,193 @@ class _PagosSection extends StatefulWidget {
   @override
   State<_PagosSection> createState() => _PagosSectionState();
 }
+
+// ── Sprint D1: Registrar visita dialog + historial de visitas ──────────
+
+class _RegistrarVisitaDialog extends StatefulWidget {
+  const _RegistrarVisitaDialog();
+
+  @override
+  State<_RegistrarVisitaDialog> createState() => _RegistrarVisitaDialogState();
+}
+
+class _RegistrarVisitaDialogState extends State<_RegistrarVisitaDialog> {
+  VisitaResultado _resultado = VisitaResultado.noEstaba;
+  final _notasCtrl = TextEditingController();
+
+  @override
+  void dispose() {
+    _notasCtrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Registrar visita'),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          DropdownButtonFormField<VisitaResultado>(
+            value: _resultado,
+            decoration: const InputDecoration(
+              labelText: 'Resultado',
+              border: OutlineInputBorder(),
+            ),
+            items: VisitaResultado.values
+                .map((r) => DropdownMenuItem(value: r, child: Text(r.label)))
+                .toList(),
+            onChanged: (v) {
+              if (v != null) setState(() => _resultado = v);
+            },
+          ),
+          const SizedBox(height: 16),
+          TextField(
+            controller: _notasCtrl,
+            decoration: const InputDecoration(
+              labelText: 'Notas (opcional)',
+              hintText: 'Ej: promete pagar el viernes',
+              border: OutlineInputBorder(),
+            ),
+            maxLines: 3,
+            textCapitalization: TextCapitalization.sentences,
+          ),
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Cancelar'),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.pop(
+            context,
+            (
+              resultado: _resultado,
+              notas: _notasCtrl.text.trim().isEmpty
+                  ? null
+                  : _notasCtrl.text.trim(),
+            ),
+          ),
+          child: const Text('Guardar'),
+        ),
+      ],
+    );
+  }
+}
+
+class _VisitasSection extends StatefulWidget {
+  const _VisitasSection({super.key, required this.clienteId});
+  final String clienteId;
+
+  @override
+  State<_VisitasSection> createState() => _VisitasSectionState();
+}
+
+class _VisitasSectionState extends State<_VisitasSection> {
+  late Future<List<Visita>> _visitasFuture;
+  final _service = VisitasService();
+
+  @override
+  void initState() {
+    super.initState();
+    _visitasFuture = _service.listar(widget.clienteId);
+  }
+
+  @override
+  void didUpdateWidget(covariant _VisitasSection old) {
+    super.didUpdateWidget(old);
+    if (widget.clienteId != old.clienteId) {
+      setState(() => _visitasFuture = _service.listar(widget.clienteId));
+    }
+  }
+
+  /// Permite al parent forzar un rebuild (tras registrar una visita nueva).
+  void recargar() {
+    setState(() => _visitasFuture = _service.listar(widget.clienteId));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+      child: Card(
+        child: FutureBuilder<List<Visita>>(
+          future: _visitasFuture,
+          builder: (context, snap) {
+            final visitas = snap.data ?? const [];
+            if (visitas.isEmpty) return const SizedBox.shrink();
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+                  child: Text('Visitas recientes',
+                      style: Theme.of(context).textTheme.titleMedium),
+                ),
+                ...visitas.take(10).map((v) => _VisitaTile(visita: v)),
+                if (visitas.length > 10)
+                  Padding(
+                    padding: const EdgeInsets.all(12),
+                    child: Text(
+                      '${visitas.length - 10} visita(s) más antiguas',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        color: Theme.of(context).colorScheme.outline,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ),
+                const SizedBox(height: 8),
+              ],
+            );
+          },
+        ),
+      ),
+    );
+  }
+}
+
+class _VisitaTile extends StatelessWidget {
+  const _VisitaTile({required this.visita});
+  final Visita visita;
+
+  IconData get _icon => switch (visita.resultado) {
+        VisitaResultado.cobrado => Icons.check_circle,
+        VisitaResultado.noEstaba => Icons.person_off,
+        VisitaResultado.sinPago => Icons.money_off,
+        VisitaResultado.promesaPago => Icons.handshake,
+        VisitaResultado.otro => Icons.notes,
+      };
+
+  Color _color(ColorScheme scheme) => switch (visita.resultado) {
+        VisitaResultado.cobrado => scheme.tertiary,
+        VisitaResultado.noEstaba => scheme.outline,
+        VisitaResultado.sinPago => scheme.error,
+        VisitaResultado.promesaPago => scheme.secondary,
+        VisitaResultado.otro => scheme.outline,
+      };
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final color = _color(scheme);
+    return ListTile(
+      dense: true,
+      leading: Icon(_icon, color: color, size: 20),
+      title: Text(visita.resultado.label),
+      subtitle: visita.notas != null && visita.notas!.isNotEmpty
+          ? Text(visita.notas!, maxLines: 2, overflow: TextOverflow.ellipsis)
+          : null,
+      trailing: Text(
+        Fmt.fechaRelativa(visita.fecha),
+        style: TextStyle(color: scheme.outline, fontSize: 11),
+      ),
+    );
+  }
+}
+
+// ── Fin Sprint D1 ──────────────────────────────────────────────────────
 
 class _PagosSectionState extends State<_PagosSection> {
   late Stream<List<Map<String, dynamic>>> _pagosStream;
