@@ -45,13 +45,14 @@ class _ReciboScreenState extends ConsumerState<ReciboScreen> {
              ct.dia_pago,
              c.nombre AS cliente_nombre, c.cedula AS cliente_cedula,
              pl.nombre AS plan_nombre,
+             cu.descripcion AS cuota_descripcion,
              co.nombre AS cobrador_nombre
         FROM recibos r
         JOIN pagos p     ON p.id = r.pago_id
         JOIN cuotas cu   ON cu.id = p.cuota_id
         JOIN clientes c  ON c.id = cu.cliente_id
-        JOIN contratos ct ON ct.id = cu.contrato_id
-        JOIN planes pl   ON pl.id = ct.plan_id
+   LEFT JOIN contratos ct ON ct.id = cu.contrato_id
+   LEFT JOIN planes pl   ON pl.id = ct.plan_id
         JOIN cobradores co ON co.id = r.cobrador_id
        WHERE r.id = ?
       ''',
@@ -136,9 +137,13 @@ class _ReciboTicket extends StatelessWidget {
     final scheme = Theme.of(context).colorScheme;
     final emision = DateTime.parse(row['fecha_pago'] as String);
     final periodoCuota = DateTime.parse(row['periodo'] as String);
-    final diaPago = (row['dia_pago'] as num).toInt();
+    final diaPago = (row['dia_pago'] as num?)?.toInt();
+    final esManual = row['plan_nombre'] == null;
     // Regla del 15 sobre día de pago del cliente, no fecha de emisión.
-    final periodoLabel = Fmt.periodoRecibo(diaPago, periodoCuota);
+    // Para cuotas manuales (sin contrato) mostramos el mes del periodo directamente.
+    final periodoLabel = diaPago != null
+        ? Fmt.periodoRecibo(diaPago, periodoCuota)
+        : Fmt.mes(periodoCuota);
 
     return Container(
       decoration: BoxDecoration(
@@ -194,7 +199,9 @@ class _ReciboTicket extends StatelessWidget {
               _ticketRow('Cédula', row['cliente_cedula'] as String),
             const Divider(),
 
-            _ticketRow('Servicio', row['plan_nombre'] as String),
+            _ticketRow('Servicio', esManual
+                ? (row['cuota_descripcion'] as String? ?? 'Cuota manual')
+                : row['plan_nombre'] as String),
             _ticketRow('Período', periodoLabel[0].toUpperCase() + periodoLabel.substring(1)),
             _ticketRow('Cuota base', Fmt.cordobas(row['cuota_monto'] as num)),
 
