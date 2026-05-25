@@ -143,18 +143,17 @@ class _CobroScreenState extends ConsumerState<CobroScreen> {
     // C4: detectar pago adelantado para descuento pronto pago.
     final descuento = settings.descuentoProntoPago;
     if (descuento > 0) {
+      final esPorcentaje = settings.descuentoProntoPagoTipo == 'porcentaje';
       final hoy = DateTime.now();
       for (var i = 0; i < cuotas.length; i++) {
         final cu = cuotas[i];
         if (hoy.isBefore(cu.fechaVencimiento)) {
-          // Verificar que no haya ya un descuento pronto pago.
+          // Verificar que no haya ya un descuento (manual o automático).
           final existing = await ps.db.getAll(
-            "SELECT id FROM cargos_extra WHERE cuota_id = ? AND tipo IN ('descuento_monto','descuento_porcentaje')"
-            " AND descripcion = 'Descuento pronto pago'",
+            "SELECT id FROM cargos_extra WHERE cuota_id = ? AND tipo IN ('descuento_monto','descuento_porcentaje')",
             [cu.id],
           );
           if (existing.isEmpty) {
-            final esPorcentaje = descuento < 100;
             final montoDescuento = esPorcentaje
                 ? cuotas[i].monto * descuento / 100
                 : descuento;

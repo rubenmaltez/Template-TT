@@ -256,6 +256,24 @@ class _SettingTileState extends State<_SettingTile> {
     final s = widget.setting;
     final enabled = widget.puedeEditar;
 
+    // Dropdown especial para tipo de descuento pronto pago.
+    if (s.clave == 'cuotas.descuento_pronto_pago_tipo') {
+      final current = (s.valor as String?) ?? 'porcentaje';
+      return DropdownButtonFormField<String>(
+        value: current == 'monto' ? 'monto' : 'porcentaje',
+        decoration: const InputDecoration(isDense: true),
+        items: const [
+          DropdownMenuItem(value: 'porcentaje', child: Text('Porcentaje (%)')),
+          DropdownMenuItem(value: 'monto', child: Text('Monto fijo (C\$)')),
+        ],
+        onChanged: enabled
+            ? (v) {
+                if (v != null) widget.onSave(v);
+              }
+            : null,
+      );
+    }
+
     if (s.tipo == 'boolean') {
       return SwitchListTile.adaptive(
         title: Text(_boolValor ? 'Activado' : 'Desactivado'),
@@ -324,7 +342,8 @@ class _SettingTileState extends State<_SettingTile> {
       'recibo.pie_libre': 'Pie del recibo',
       'cuotas.manuales': 'Cuotas manuales',
       'cuotas.editar_monto': 'Editar monto de cuota',
-      'cuotas.descuento_pronto_pago': 'Descuento pronto pago',
+      'cuotas.descuento_pronto_pago': 'Descuento pronto pago (valor)',
+      'cuotas.descuento_pronto_pago_tipo': 'Tipo de descuento pronto pago',
     };
     return labels[clave] ?? clave.split('.').last;
   }
