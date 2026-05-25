@@ -133,12 +133,15 @@ class _CuotasListState extends State<_CuotasList> {
 
     final sql = '''
       SELECT cu.id, cu.monto, cu.monto_pagado, cu.fecha_vencimiento,
-             cu.periodo, cu.estado,
+             cu.periodo, cu.estado, cu.contrato_id,
              c.id AS cliente_id, c.nombre AS cliente_nombre,
-             co.nombre AS comunidad
+             co.nombre AS comunidad,
+             p.nombre AS plan_nombre
         FROM cuotas cu
         JOIN clientes c ON c.id = cu.cliente_id
    LEFT JOIN comunidades co ON co.id = c.comunidad_id
+   LEFT JOIN contratos ct ON ct.id = cu.contrato_id
+   LEFT JOIN planes p ON p.id = ct.plan_id
        WHERE c.activo = 1
          $extra
        $orderBy
@@ -161,13 +164,71 @@ class _CuotasListState extends State<_CuotasList> {
             descripcion: 'No hay cuotas que coincidan con el filtro.',
           );
         }
-        return ListView.separated(
+
+        // Armar lista con headers de contrato intercalados.
+        // Cada "item" es un header (String) o una cuota row (Map).
+        final items = <Object>[];
+        String? lastContratoId;
+        for (final r in rows) {
+          final contratoId = r['contrato_id'] as String?;
+          if (contratoId != lastContratoId) {
+            final planNombre = r['plan_nombre'] as String?;
+            final clienteNombre = r['cliente_nombre'] as String;
+            // Header: "Plan Internet 10Mbps — Juan Pérez" o solo el cliente
+            // si no hay plan (cuota manual).
+            final header = planNombre != null
+                ? '$planNombre  —  $clienteNombre'
+                : clienteNombre;
+            items.add(header);
+            lastContratoId = contratoId;
+          }
+          items.add(r);
+        }
+
+        return ListView.builder(
           padding: const EdgeInsets.only(bottom: 80),
-          itemCount: rows.length,
-          separatorBuilder: (_, __) => const Divider(height: 1, indent: 72),
-          itemBuilder: (_, i) => _CuotaListTile(row: rows[i], diasGracia: widget.diasGracia),
+          itemCount: items.length,
+          itemBuilder: (context, i) {
+            final item = items[i];
+            if (item is String) {
+              return _ContratoHeader(titulo: item);
+            }
+            final row = item as Map<String, dynamic>;
+            return _CuotaListTile(row: row, diasGracia: widget.diasGracia);
+          },
         );
       },
+    );
+  }
+}
+
+class _ContratoHeader extends StatelessWidget {
+  const _ContratoHeader({required this.titulo});
+  final String titulo;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 4),
+      child: Row(
+        children: [
+          Icon(Icons.description_outlined,
+              size: 16, color: scheme.primary),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              titulo,
+              style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                    color: scheme.primary,
+                    fontWeight: FontWeight.w600,
+                  ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
