@@ -514,11 +514,18 @@ Estos viven acá hasta que se ataquen explícitamente. NO re-flag en audits.
   Android, scheme registrado Windows).
 - **Sin pagination** en `clientesAsignadosProvider` y la lista admin de clientes — explota
   a 10k+ rows. R15 del sprint hardening.
-- **BULK 11 backlog completado** (B4 + C3 + C4):
+- **BULK 11 backlog completado + audit integral aplicado** (B4 + C3 + C4):
     - B4 Multi-cuota: ✅ long-press multi-select + cobro batch + recibo global.
+      Guard: cuotas manuales (contrato_id NULL) no permiten multi-select.
+      Monto read-only en multi-cuota. Recibo filtra anulados.
     - C3 Cargo reconexión: ✅ auto-insert en transacción del cobro.
-    - C4 Descuento pronto pago: ✅ auto-insert en transacción del cobro.
-    - Migración 0043: `grupo_cobro UUID` en pagos.
+    - C4 Descuento pronto pago: ✅ tipo explícito (porcentaje/monto) via setting.
+    - Migraciones 0043 (grupo_cobro), 0044 (descuento tipo), 0045 (seed actualizado).
+    - Bluetooth print: nullable-safe para cuotas manuales (plan_nombre/dia_pago).
+    - Pago model: campo grupo_cobro en Pago.fromRow.
+- **Admin pagos sin grupo_cobro visual**: los pagos multi-cuota aparecen como N
+    filas separadas en `/admin/pagos` sin indicador de agrupación. UX aceptable
+    por ahora — sprint futuro si un admin lo pide.
 
 ---
 

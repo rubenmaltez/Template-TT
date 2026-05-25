@@ -186,3 +186,31 @@ tabla — extender con los nuevos campos.
 
 ### Sprints diferidos (backlog)
 Todos los sprints diferidos fueron completados. BULK 11 cerrado al 100%.
+
+---
+
+## Audit integral post-BULK (sesión 3)
+
+3 agentes en paralelo: Code, QA, Deployment Safety.
+
+### Bugs críticos encontrados y fixeados
+| # | Bug | Severidad | Fix |
+|---|-----|-----------|-----|
+| 1 | `CuotaEstado` enum vs string comparison — C3 nunca triggereaba | BLOCKER | `cu.estado == CuotaEstado.pendiente` |
+| 2 | Cargos_extra single-cuota insertados fuera de transacción | HIGH | `cargosAuto` param en `registrarCobro` |
+| 3 | Cross-client multi-select en cuotas manuales (`null == null`) | HIGH | Bloquear multi-select cuando `contrato_id == null` |
+| 4 | Bluetooth print crash en cuotas manuales | HIGH | `plan_nombre`/`dia_pago` nullable-safe |
+| 5 | Recibo multi-cuota mostraba pagos anulados | MEDIUM | `AND p.anulado = 0` en query |
+| 6 | Monto editable pero ignorado en multi-cuota | MEDIUM | `readOnly: true` + helper text |
+| 7 | Single-selection limbo (1 selected, no FAB) | MEDIUM | FAB con 1+ cuotas + botón X cancelar |
+| 8 | Threshold 99.99 ambiguo en descuento | MEDIUM | Tipo explícito (migración 0044) |
+| 9 | Duplicate check descuento por descripcion | MEDIUM | Check por `tipo` sin filtrar descripcion |
+| 10 | `Pago` model sin `grupo_cobro` | MEDIUM | Campo agregado a `Pago.fromRow` |
+| 11 | `_totalACobrar` dead state | LOW | Eliminado |
+| 12 | `seed_settings_default()` sin settings BULK 11 | RISK | Migración 0045 |
+
+### Items aceptados (no fixeados)
+- Admin pagos sin indicador visual de grupo_cobro — N filas separadas. UX aceptable.
+- Reportes PDF muestran pagos individuales sin agrupar — correcto financieramente.
+- Setting key `cobranza.cargo_reconexion` de 0040 orphaned (AppSettings lee 0010 keys). Harmless.
+- `cuotas_admin_screen.dart` usa string comparisons en estado — correcto para raw SQL rows.

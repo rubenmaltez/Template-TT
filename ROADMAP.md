@@ -18,11 +18,15 @@ Tema iOS light aplicado en todos los shells. Windows (.msix) + Android
 Sesión inicial (2026-05-22): 34 PRs infraestructura.
 Sesión 2 (2026-05-23/24/25): 40+ PRs. BULKs 1-9 + BULK 11 completo
 (6 Fases, 25 sprints). 9 reportes PDF + CSV. Settings panel con 6
-categorías + 14 toggles. Migraciones 0036-0042 deployadas. 3 GitHub
-Releases (v0.1-v0.3).
+categorías + 14 toggles. Migraciones 0036-0044 deployadas (0045 pendiente).
+3 GitHub Releases (v0.1-v0.3).
 
-**BULK 11 100% cerrado** — incluyendo B4 (multi-cuota), C3 (reconexión),
-C4 (pronto pago). Migración 0043 pendiente de deploy.
+**BULK 11 100% cerrado + audit integral aplicado**:
+- B4 multi-cuota, C3 reconexión, C4 pronto pago implementados.
+- Migraciones 0043 (grupo_cobro) + 0044 (descuento tipo) deployadas.
+- Migración 0045 (seed_settings_default actualizado) pendiente de deploy.
+- Audit integral: 6 fixes aplicados (cross-client guard, Bluetooth crash,
+  recibo anulados, Pago model, dead code, seed function).
 
 ---
 
@@ -432,3 +436,32 @@ Cada bulk se trata como mini-roadmap dentro de su(s) sesión(es):
   - Fase F: UI polish — colores hardcoded eliminados en todos los shells.
     Theme tokens (scheme.primary/onPrimary/error/surfaceContainerLow).
     Design system, responsive y consistencia verificados.
+
+### Sesión 3 — 2026-05-25 (backlog + audit integral)
+**Bloques**: BULK 11 backlog + audit integral post-BULK.
+- Backlog B4 multi-cuota:
+  - Migración 0043: grupo_cobro UUID en pagos.
+  - CuotasListScreen: long-press multi-select del mismo contrato + FAB.
+  - CobroScreen: acepta List cuotaIds, _MultiCuotaCard, monto read-only.
+  - PagosRepo.registrarCobroMultiple: N pagos + N recibos en 1 transacción.
+  - ReciboScreen: _MultiReciboTicket con vista combinada por grupo_cobro.
+  - Router: /cobro/:cuotaId acepta comma-separated IDs.
+- Backlog C3 reconexión automática:
+  - Auto-detecta cuotas vencidas + setting reconexionHabilitada.
+  - Inserta cargos_extra tipo 'reconexion' dentro de la transacción.
+  - Preview card roja antes de confirmar.
+- Backlog C4 descuento pronto pago:
+  - Migración 0044: setting descuento_pronto_pago_tipo (porcentaje/monto).
+  - Getter descuentoProntoPagoTipo en AppSettings + dropdown en admin UI.
+  - Auto-detecta pago antes de vencimiento, inserta descuento en transacción.
+- Audit integral post-BULK (3 agentes: Code, QA, Deployment):
+  - BLOCKER fixeado: CuotaEstado enum vs string comparison (C3 nunca triggereaba).
+  - HIGH fixeado: cargos_extra single-cuota movidos dentro de transacción.
+  - Bugs críticos fixeados: cross-client multi-select en cuotas manuales,
+    Bluetooth print crash con plan_nombre/dia_pago null.
+  - Recibo multi-cuota: filtro anulados (AND p.anulado = 0).
+  - Pago model: campo grupo_cobro agregado.
+  - Dead code: _totalACobrar eliminado.
+  - M1: threshold ambiguo → tipo explícito (porcentaje/monto).
+  - M2: duplicate check ampliado (por tipo, no por descripcion).
+  - Migración 0045: seed_settings_default() actualizado con 19 settings BULK 11.
