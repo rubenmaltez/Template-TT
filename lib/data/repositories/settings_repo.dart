@@ -104,6 +104,12 @@ class AppSettings {
   double get tasaUsd =>
       settingValue<num>(_map, 'pagos.tasa_usd_cordoba', 36.5).toDouble();
 
+  // Cuotas: permisos del admin.
+  bool get cuotasManuales =>
+      settingValue<bool>(_map, 'cuotas.manuales', false);
+  bool get cuotasEditarMonto =>
+      settingValue<bool>(_map, 'cuotas.editar_monto', false);
+
   // Permisos del cobrador (toggles en Settings → Cobranza).
   bool get cobradorEditaFecha =>
       settingValue<bool>(_map, 'cobranza.cobrador_edita_fecha', false);
