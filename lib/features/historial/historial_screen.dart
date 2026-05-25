@@ -98,6 +98,7 @@ class _GrupoDia extends ConsumerWidget {
     final settings = ref.watch(appSettingsProvider);
     final puedeAnular = settings.cobradorAnulaCobros;
     final puedeEditar = settings.cobradorEditaCobros;
+    debugPrint('[HIST] anular=$puedeAnular editar=$puedeEditar');
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
