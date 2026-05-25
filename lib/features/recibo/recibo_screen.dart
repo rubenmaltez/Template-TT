@@ -55,7 +55,7 @@ class _ReciboScreenState extends ConsumerState<ReciboScreen> {
      LEFT JOIN contratos ct ON ct.id = cu.contrato_id
      LEFT JOIN planes pl   ON pl.id = ct.plan_id
           JOIN cobradores co ON co.id = r.cobrador_id
-         WHERE p.grupo_cobro = ?
+         WHERE p.grupo_cobro = ? AND p.anulado = 0
          ORDER BY cu.periodo ASC
         ''',
         parameters: [widget.grupoCobro],

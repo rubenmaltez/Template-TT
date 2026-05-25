@@ -34,6 +34,10 @@ class _CuotasListScreenState extends ConsumerState<CuotasListScreen> {
   }
 
   void _toggleSelect(String cuotaId, String? contratoId) {
+    // Cuotas manuales (contrato_id NULL) no se pueden multi-seleccionar
+    // porque no pertenecen a un contrato y podrían ser de clientes distintos.
+    if (contratoId == null) return;
+
     setState(() {
       if (_selected.contains(cuotaId)) {
         _selected.remove(cuotaId);
@@ -45,7 +49,6 @@ class _CuotasListScreenState extends ConsumerState<CuotasListScreen> {
         } else if (contratoId == _selectedContratoId) {
           _selected.add(cuotaId);
         }
-        // Si es de otro contrato, no seleccionar (solo mismo contrato).
       }
     });
   }

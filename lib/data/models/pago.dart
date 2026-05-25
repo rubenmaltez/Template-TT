@@ -65,6 +65,7 @@ class Pago {
     this.anuladoEn,
     this.anuladoPor,
     this.motivoAnulacion,
+    this.grupoCobro,
     this.clientLocalId,
   });
 
@@ -87,6 +88,7 @@ class Pago {
   final DateTime? anuladoEn;
   final String? anuladoPor;
   final String? motivoAnulacion;
+  final String? grupoCobro;
   final String? clientLocalId;
 
   factory Pago.fromRow(Map<String, dynamic> row) => Pago(
@@ -111,6 +113,7 @@ class Pago {
             : null,
         anuladoPor: row['anulado_por'] as String?,
         motivoAnulacion: row['motivo_anulacion'] as String?,
+        grupoCobro: row['grupo_cobro'] as String?,
         clientLocalId: row['client_local_id'] as String?,
       );
 }

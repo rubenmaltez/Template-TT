@@ -43,7 +43,6 @@ class _CobroScreenState extends ConsumerState<CobroScreen> {
   final List<Cuota> _cuotas = [];
   final List<double> _totalesACobrar = [];
   Map<String, dynamic>? _clienteRow;
-  double _totalACobrar = 0;
   double? _tasaSnapshot;
   ({double lat, double lng})? _ubicacion;
   bool _capturandoUbicacion = false;
@@ -188,7 +187,6 @@ class _CobroScreenState extends ConsumerState<CobroScreen> {
       _cuotas.addAll(cuotas);
       _totalesACobrar.addAll(totales);
       _clienteRow = cliRows.isEmpty ? null : cliRows.first;
-      _totalACobrar = totalGlobal;
       _cargosAuto.addAll(cargos);
       // Default: cobrar el saldo completo de todas las cuotas.
       var saldo = 0.0;
@@ -477,7 +475,6 @@ class _CobroScreenState extends ConsumerState<CobroScreen> {
                   if (mounted) {
                     setState(() {
                       _totalesACobrar[0] = nuevo;
-                      _totalACobrar = nuevo;
                       final s = (nuevo - cuota.montoPagado)
                           .clamp(0.0, double.infinity);
                       _montoCtrl.text = s.toStringAsFixed(2);

@@ -182,12 +182,16 @@ class ImpresoraService {
     }
     bytes.addAll(gen.hr());
 
-    // Servicio y período (regla del 15 — fuente única en Fmt.periodoRecibo).
+    // Servicio y período. Cuotas manuales no tienen plan ni contrato.
+    final planNombre = recibo['plan_nombre'] as String?;
+    final cuotaDesc = recibo['cuota_descripcion'] as String?;
     bytes.addAll(_doblColumna(gen, anchoMm, 'Servicio',
-        recibo['plan_nombre'] as String));
+        planNombre ?? cuotaDesc ?? 'Cuota manual'));
     final periodoCuota = DateTime.parse(recibo['periodo'] as String);
-    final diaPago = (recibo['dia_pago'] as num).toInt();
-    final periodoLabel = Fmt.periodoRecibo(diaPago, periodoCuota);
+    final diaPago = (recibo['dia_pago'] as num?)?.toInt();
+    final periodoLabel = diaPago != null
+        ? Fmt.periodoRecibo(diaPago, periodoCuota)
+        : Fmt.mes(periodoCuota);
     bytes.addAll(_doblColumna(gen, anchoMm, 'Período',
         periodoLabel[0].toUpperCase() + periodoLabel.substring(1)));
 
