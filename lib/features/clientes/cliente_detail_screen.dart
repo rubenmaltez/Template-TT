@@ -233,6 +233,7 @@ class _CuotasSection extends StatefulWidget {
 
 class _CuotasSectionState extends State<_CuotasSection> {
   late Stream<List<Map<String, dynamic>>> _cuotasStream;
+  final Set<String> _selected = {};
 
   @override
   void initState() {
@@ -244,7 +245,10 @@ class _CuotasSectionState extends State<_CuotasSection> {
   void didUpdateWidget(covariant _CuotasSection old) {
     super.didUpdateWidget(old);
     if (widget.clienteId != old.clienteId) {
-      setState(() => _cuotasStream = _buildStream());
+      setState(() {
+        _cuotasStream = _buildStream();
+        _selected.clear();
+      });
     }
   }
 
@@ -256,56 +260,129 @@ class _CuotasSectionState extends State<_CuotasSection> {
         LEFT JOIN contratos ct ON ct.id = cu.contrato_id
         LEFT JOIN planes p     ON p.id = ct.plan_id
        WHERE cu.cliente_id = ?
-       ORDER BY cu.periodo DESC
+       ORDER BY cu.periodo ASC
       ''',
       parameters: [widget.clienteId],
     );
+  }
+
+  void _toggleSelect(String cuotaId, List<String> pendingIds) {
+    setState(() {
+      if (_selected.contains(cuotaId)) {
+        // Al deseleccionar, quitar este y todos los posteriores.
+        final idx = pendingIds.indexOf(cuotaId);
+        for (var i = idx; i < pendingIds.length; i++) {
+          _selected.remove(pendingIds[i]);
+        }
+      } else {
+        // Solo permitir seleccionar si es el siguiente en la secuencia.
+        final idx = pendingIds.indexOf(cuotaId);
+        if (idx == 0 || _selected.contains(pendingIds[idx - 1])) {
+          _selected.add(cuotaId);
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Debés cobrar las cuotas anteriores primero'),
+              duration: Duration(seconds: 2),
+            ),
+          );
+        }
+      }
+    });
   }
 
   @override
   Widget build(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-      child: Card(
-        child: StreamBuilder<List<Map<String, dynamic>>>(
-          stream: _cuotasStream,
-          initialData: const [],
-          builder: (context, snap) {
-            if (snap.hasError) {
-              return Padding(
+      child: StreamBuilder<List<Map<String, dynamic>>>(
+        stream: _cuotasStream,
+        initialData: const [],
+        builder: (context, snap) {
+          if (snap.hasError) {
+            return Card(
+              child: Padding(
                 padding: const EdgeInsets.all(24),
                 child: Text('Error: ${snap.error}'),
-              );
-            }
-            final rows = snap.data!;
-            if (rows.isEmpty) {
-              return const Padding(
+              ),
+            );
+          }
+          final rows = snap.data!;
+          if (rows.isEmpty) {
+            return const Card(
+              child: Padding(
                 padding: EdgeInsets.all(24),
                 child: Text('No hay cuotas todavía',
                     textAlign: TextAlign.center),
-              );
-            }
-            return Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-                  child: Text('Cuotas',
-                      style: Theme.of(context).textTheme.titleMedium),
-                ),
-                ...rows.map((r) {
-                  final cuota = Cuota.fromRow(r);
-                  return _CuotaTile(
-                    cuota: cuota,
-                    planNombre: r['plan_nombre'] as String?,
-                    diasGracia: widget.diasGracia,
-                  );
-                }),
-                const SizedBox(height: 8),
-              ],
+              ),
             );
-          },
-        ),
+          }
+
+          final total = rows.length;
+          final pendientes = rows.where((r) {
+            final e = r['estado'] as String;
+            return e == 'pendiente' || e == 'parcial';
+          }).toList();
+          final pendingIds = pendientes.map((r) => r['id'] as String).toList();
+
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Card(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+                      child: Row(
+                        children: [
+                          Text('Cuotas',
+                              style: Theme.of(context).textTheme.titleMedium),
+                          const SizedBox(width: 8),
+                          Text('(${pendientes.length} pendientes de $total)',
+                              style: TextStyle(
+                                color: Theme.of(context).colorScheme.outline,
+                                fontSize: 13,
+                              )),
+                        ],
+                      ),
+                    ),
+                    ...rows.map((r) {
+                      final cuota = Cuota.fromRow(r);
+                      final isPending = pendingIds.contains(cuota.id);
+                      final isSelected = _selected.contains(cuota.id);
+                      return _CuotaTile(
+                        cuota: cuota,
+                        planNombre: r['plan_nombre'] as String?,
+                        diasGracia: widget.diasGracia,
+                        showCheckbox: _selected.isNotEmpty && isPending,
+                        isSelected: isSelected,
+                        onSelect: isPending
+                            ? () => _toggleSelect(cuota.id, pendingIds)
+                            : null,
+                      );
+                    }),
+                    const SizedBox(height: 8),
+                  ],
+                ),
+              ),
+              if (_selected.isNotEmpty) ...[
+                const SizedBox(height: 12),
+                FilledButton.icon(
+                  icon: const Icon(Icons.payment),
+                  label: Text(_selected.length == 1
+                      ? 'Cobrar cuota'
+                      : 'Cobrar ${_selected.length} cuotas'),
+                  onPressed: () {
+                    final ids = _selected.join(',');
+                    setState(() => _selected.clear());
+                    context.push('/cobro/$ids');
+                  },
+                ),
+              ],
+            ],
+          );
+        },
       ),
     );
   }
@@ -316,11 +393,17 @@ class _CuotaTile extends StatelessWidget {
     required this.cuota,
     required this.planNombre,
     required this.diasGracia,
+    this.showCheckbox = false,
+    this.isSelected = false,
+    this.onSelect,
   });
 
   final Cuota cuota;
   final String? planNombre;
   final int diasGracia;
+  final bool showCheckbox;
+  final bool isSelected;
+  final VoidCallback? onSelect;
 
   @override
   Widget build(BuildContext context) {
@@ -336,17 +419,21 @@ class _CuotaTile extends StatelessWidget {
     };
 
     return ListTile(
-      leading: CircleAvatar(
-        backgroundColor: color.withValues(alpha: 0.15),
-        child: Icon(
-          estadoVisual == CuotaEstadoVisual.pagada
-              ? Icons.check
-              : estadoVisual == CuotaEstadoVisual.vencida
-                  ? Icons.warning
-                  : Icons.receipt_long,
-          color: color,
-        ),
-      ),
+      selected: isSelected,
+      selectedTileColor: scheme.primaryContainer.withValues(alpha: 0.3),
+      leading: showCheckbox
+          ? Checkbox(value: isSelected, onChanged: (_) => onSelect?.call())
+          : CircleAvatar(
+              backgroundColor: color.withValues(alpha: 0.15),
+              child: Icon(
+                estadoVisual == CuotaEstadoVisual.pagada
+                    ? Icons.check
+                    : estadoVisual == CuotaEstadoVisual.vencida
+                        ? Icons.warning
+                        : Icons.receipt_long,
+                color: color,
+              ),
+            ),
       title: Text('${Fmt.mes(cuota.periodo)[0].toUpperCase()}${Fmt.mes(cuota.periodo).substring(1)}'),
       subtitle: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -369,8 +456,9 @@ class _CuotaTile extends StatelessWidget {
         ],
       ),
       onTap: estadoVisual.esCobrable
-          ? () => context.push('/cobro/${cuota.id}')
+          ? (onSelect ?? () => context.push('/cobro/${cuota.id}'))
           : null,
+      onLongPress: onSelect,
     );
   }
 }
