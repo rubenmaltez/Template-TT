@@ -648,11 +648,19 @@ class _CuotaCard extends ConsumerWidget {
     final periodo = DateTime.parse(row['periodo'] as String);
     final planNombre = row['plan'] as String?;
     final descripcion = row['descripcion'] as String?;
+    final tipoCargoManual = row['tipo_cargo_manual'] as String?;
     final esManual = row['contrato_id'] == null;
+
+    const tipoLabels = {
+      'reconexion': 'Reconexión',
+      'instalacion': 'Instalación',
+      'mora': 'Mora',
+      'reparacion': 'Reparación',
+      'otro': 'Otro',
+    };
 
     final (color, label) = _displayEstado(estado, vence, diasGracia, scheme);
 
-    // Subtexto: para cuotas manuales mostramos descripción, para normales el plan.
     final subtexto = esManual
         ? (descripcion ?? 'Cuota manual')
         : '${planNombre ?? '?'} · ${Fmt.mes(periodo)[0].toUpperCase()}${Fmt.mes(periodo).substring(1)}';
@@ -666,7 +674,7 @@ class _CuotaCard extends ConsumerWidget {
         title: Row(
           children: [
             Expanded(child: Text(row['cliente'] as String)),
-            if (esManual)
+            if (esManual) ...[
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                 decoration: BoxDecoration(
@@ -681,6 +689,24 @@ class _CuotaCard extends ConsumerWidget {
                   ),
                 ),
               ),
+              if (tipoCargoManual != null) ...[
+                const SizedBox(width: 4),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: scheme.primaryContainer,
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                  child: Text(
+                    tipoLabels[tipoCargoManual] ?? tipoCargoManual,
+                    style: TextStyle(
+                      fontSize: 10,
+                      color: scheme.onPrimaryContainer,
+                    ),
+                  ),
+                ),
+              ],
+            ],
           ],
         ),
         subtitle: Column(
