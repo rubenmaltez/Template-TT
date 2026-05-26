@@ -299,7 +299,7 @@ class _NuevaCuotaManualDialogState extends State<_NuevaCuotaManualDialog> {
   final _descripcionCtrl = TextEditingController();
   final _montoCtrl = TextEditingController();
   final _busquedaCtrl = TextEditingController();
-  DateTime _fechaVencimiento = DateTime.now().add(const Duration(days: 30));
+  DateTime _fechaVencimiento = DateTime.now();
 
   String? _clienteId;
   String? _clienteNombre;
