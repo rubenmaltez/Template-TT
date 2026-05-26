@@ -34,6 +34,7 @@ class AppTheme {
       onSecondary: primary,
       surface: AppColors.surface,
       onSurface: AppColors.textPrimary,
+      onSurfaceVariant: AppColors.textSecondary,
       surfaceContainerLow: AppColors.surfaceContainer,
       surfaceContainerHighest: AppColors.surfaceContainer,
       outline: AppColors.textSecondary,

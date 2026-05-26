@@ -24,6 +24,7 @@ import '../data/providers/cobrador_provider.dart';
 import '../data/providers/impersonation_provider.dart';
 import '../data/providers/sync_ready_provider.dart';
 import '../data/providers/sync_status_provider.dart';
+import '../data/providers/mora_count_provider.dart';
 import '../features/auth/auth_flow_provider.dart';
 import '../features/auth/login_screen.dart';
 import '../features/auth/set_password_screen.dart';
@@ -131,6 +132,7 @@ final routerProvider = Provider<GoRouter>((ref) {
     ref.invalidate(cobradorActualProvider);
     ref.invalidate(impersonatedTenantIdProvider);
     ref.invalidate(syncStatusProvider);
+    ref.invalidate(moraCountProvider);
   });
   ref.onDispose(authSub.cancel);
 

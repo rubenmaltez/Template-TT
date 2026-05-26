@@ -145,7 +145,7 @@ class _PlanCard extends StatelessWidget {
               Fmt.cordobas(row['precio_mensual'] as num),
               style: const TextStyle(fontWeight: FontWeight.bold),
             ),
-            IconButton(icon: const Icon(Icons.edit), onPressed: onEdit),
+            IconButton(icon: const Icon(Icons.edit), tooltip: 'Editar plan', onPressed: onEdit),
           ],
         ),
       ),

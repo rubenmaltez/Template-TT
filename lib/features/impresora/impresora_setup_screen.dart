@@ -131,7 +131,7 @@ class _ImpresoraSetupScreenState extends ConsumerState<ImpresoraSetupScreen> {
       appBar: AppBar(
         title: const Text('Impresora térmica'),
         actions: [
-          IconButton(icon: const Icon(Icons.refresh), onPressed: _refrescar),
+          IconButton(icon: const Icon(Icons.refresh), tooltip: 'Buscar impresoras', onPressed: _refrescar),
         ],
       ),
       body: _cargando
