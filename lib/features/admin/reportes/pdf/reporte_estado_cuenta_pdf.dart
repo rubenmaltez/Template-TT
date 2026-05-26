@@ -145,7 +145,7 @@ pw.Widget _buildPagosTable(List<Map<String, dynamic>> pagos) {
               _fmtFecha(r['fecha_pago'] as String?),
               (r['periodo'] as String?) ?? '—',
               fmtCordobas((r['monto_cordobas'] as num?) ?? 0),
-              (r['metodo'] as String?) ?? '—',
+              _metodoLabel((r['metodo'] as String?) ?? ''),
               (r['numero_recibo'] as String?) ?? '—',
             ];
           }),
@@ -178,3 +178,13 @@ String _estadoLabel(String estado) {
       return estado;
   }
 }
+
+String _metodoLabel(String metodo) => switch (metodo) {
+      'efectivo' => 'Efectivo',
+      'transferencia' => 'Transferencia',
+      'deposito' => 'Depósito',
+      'tarjeta' => 'Tarjeta',
+      _ => metodo.isNotEmpty
+          ? metodo[0].toUpperCase() + metodo.substring(1)
+          : '—',
+    };

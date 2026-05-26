@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:printing/printing.dart';
 
 import '../../../config/router.dart';
+import '../../../data/models/pago.dart';
 import '../../../data/repositories/settings_repo.dart';
 import '../../../data/utils/formatters.dart';
 import '../../../powersync/db.dart' as ps;
@@ -543,7 +544,7 @@ class _DescargarPdfMenu extends ConsumerWidget {
             r['fecha_pago']?.toString() ?? '',
             r['cliente_nombre']?.toString() ?? '',
             r['monto']?.toString() ?? '0',
-            r['metodo']?.toString() ?? '',
+            MetodoPago.fromString(r['metodo']?.toString() ?? '').label,
             r['cobrador_nombre']?.toString() ?? '',
             r['numero_recibo']?.toString() ?? '',
             r['ref_grupo']?.toString() ?? '',
@@ -629,7 +630,7 @@ class _DescargarPdfMenu extends ConsumerWidget {
           rows.map((r) => [
             r['mes']?.toString() ?? '',
             r['plan_nombre']?.toString() ?? '',
-            r['metodo']?.toString() ?? '',
+            MetodoPago.fromString(r['metodo']?.toString() ?? '').label,
             r['total_monto']?.toString() ?? '0',
             r['cantidad']?.toString() ?? '0',
           ]).toList(),

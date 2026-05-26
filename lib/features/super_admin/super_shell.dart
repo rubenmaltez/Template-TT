@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 
 import '../shared/utils/shell_nav.dart';
+import '../shared/utils/sign_out_helper.dart';
 import '../shared/widgets/update_banner.dart';
 
 /// Shell del panel Super Admin (gestión cross-tenant del SaaS).
@@ -79,6 +80,11 @@ class SuperShell extends StatelessWidget {
               tooltip: 'Logs de errores',
               onPressed: () => context.closeModalsAndGo('/super/logs'),
             ),
+          IconButton(
+            icon: const Icon(Icons.logout),
+            tooltip: 'Cerrar sesión',
+            onPressed: () => confirmarSignOut(context),
+          ),
         ],
       ),
       body: Column(

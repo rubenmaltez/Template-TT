@@ -730,7 +730,7 @@ class _CuotaCard extends ConsumerWidget {
             ListTile(
               leading: const Icon(Icons.block),
               title: const Text('Anular cuota'),
-              subtitle: const Text('No se podra cobrar mas'),
+              subtitle: const Text('No se podrá cobrar más'),
               onTap: () async {
                 Navigator.pop(context);
                 await _anular(context, ref);
@@ -835,7 +835,7 @@ class _AnularCuotaDialogState extends State<_AnularCuotaDialog> {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text('Esta accion se registra en auditoria. '
+          const Text('Esta acción se registra en auditoría. '
               'Los pagos ya aplicados a esta cuota no se modifican.'),
           const SizedBox(height: 16),
           TextField(

@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../data/providers/cobrador_provider.dart';
+import '../shared/utils/sign_out_helper.dart';
 import '../../data/providers/foto_comprobante_provider.dart';
 import '../../data/providers/impresora_provider.dart';
 import '../../data/providers/sync_status_provider.dart';
@@ -80,7 +81,7 @@ class PerfilScreen extends ConsumerWidget {
         OutlinedButton.icon(
           icon: const Icon(Icons.logout),
           label: const Text('Cerrar sesión'),
-          onPressed: () => Supabase.instance.client.auth.signOut(),
+          onPressed: () => confirmarSignOut(context),
         ),
       ],
     );

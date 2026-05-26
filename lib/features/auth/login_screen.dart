@@ -283,7 +283,12 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   controller: _email,
                   keyboardType: TextInputType.emailAddress,
                   autofillHints: const [AutofillHints.email],
-                  textInputAction: TextInputAction.next,
+                  textInputAction: _modo == _Modo.login
+                      ? TextInputAction.next
+                      : TextInputAction.go,
+                  onSubmitted: _modo == _Modo.recuperar
+                      ? (_) => _busy ? null : _ejecutar()
+                      : null,
                   decoration: const InputDecoration(
                     labelText: 'Email',
                     border: OutlineInputBorder(),
