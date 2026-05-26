@@ -41,17 +41,24 @@ Future<String> _getDbDir() async {
   return dir.path;
 }
 
+/// Versión del schema local. Bumpear cuando se modifica schema.dart
+/// (nueva columna, nueva tabla). Esto fuerza una DB fresca para todos
+/// los usuarios, evitando bugs de schema cache.
+const _schemaVersion = 2;
+
 String _dbPathForUser(String userId, String basePath) {
   if (kIsWeb) {
-    return 'sitecsa_$userId.db';
+    return 'sitecsa_${userId}_v$_schemaVersion.db';
   }
-  return '$basePath/sitecsa_$userId.db';
+  return '$basePath/sitecsa_${userId}_v$_schemaVersion.db';
 }
 
 /// Abre la DB genérica (sin user). Solo para el boot inicial antes del login.
 Future<void> openDatabase() async {
   final dir = await _getDbDir();
-  final path = kIsWeb ? 'sitecsa_default.db' : '$dir/sitecsa_default.db';
+  final path = kIsWeb
+      ? 'sitecsa_default_v$_schemaVersion.db'
+      : '$dir/sitecsa_default_v$_schemaVersion.db';
   db = PowerSyncDatabase(schema: schema, path: path);
   await db.initialize();
 }
