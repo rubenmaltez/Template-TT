@@ -220,6 +220,7 @@ const schema = Schema([
     Column.text('campo'),
     Column.text('valor_anterior'),
     Column.text('valor_nuevo'),
+    Column.text('accion'),
     Column.text('user_id'),
     Column.text('user_rol'),
     Column.text('created_at'),
@@ -227,6 +228,10 @@ const schema = Schema([
     Index('by_tabla', [
       IndexedColumn('tenant_id'),
       IndexedColumn('tabla'),
+    ]),
+    Index('by_registro', [
+      IndexedColumn('registro_id'),
+      IndexedColumn('created_at'),
     ]),
     Index('by_fecha', [IndexedColumn('created_at')]),
   ]),

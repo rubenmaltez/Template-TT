@@ -61,7 +61,10 @@ begin
   (p_tenant_id, 'recibo.pie_libre',          '""'::jsonb,    'string',  'recibos', 'Texto libre al pie del recibo', 'admin'),
   (p_tenant_id, 'recibo.titulo',             '"RECIBO"'::jsonb, 'string', 'recibos', 'Título del documento en el recibo', 'admin'),
   (p_tenant_id, 'recibo.monto_en_letras',    'true'::jsonb,  'boolean', 'recibos', 'Mostrar monto en letras en el recibo', 'admin'),
-  (p_tenant_id, 'recibo.mostrar_adeudado',   'true'::jsonb,  'boolean', 'recibos', 'Mostrar tabla de meses adeudados', 'admin')
+  (p_tenant_id, 'recibo.mostrar_adeudado',   'true'::jsonb,  'boolean', 'recibos', 'Mostrar tabla de meses adeudados', 'admin'),
+
+  -- ── Auditoría ──────────────────────────────────────────────────────
+  (p_tenant_id, 'audit.visible_admin_cobranza', 'false'::jsonb, 'boolean', 'cobranza', 'Permitir a admin de cobranza ver historial de cambios', 'admin')
 
   on conflict (tenant_id, clave) do nothing;
 end;

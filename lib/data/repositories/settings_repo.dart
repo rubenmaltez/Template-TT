@@ -136,6 +136,9 @@ class AppSettings {
   String get descuentoProntoPagoTipo =>
       settingValue<String>(_map, 'cuotas.descuento_pronto_pago_tipo', 'porcentaje');
 
+  bool get auditVisibleAdminCobranza =>
+      settingValue<bool>(_map, 'audit.visible_admin_cobranza', false);
+
   int get formatoReciboMm =>
       settingValue<num>(_map, 'recibo.formato_default_mm', 80).toInt();
   String get pieRecibo => settingValue<String>(_map, 'recibo.pie_libre', '');

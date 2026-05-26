@@ -10,6 +10,7 @@ import '../../../data/repositories/pagos_repo.dart';
 import '../../../data/utils/formatters.dart';
 import '../../../powersync/db.dart' as ps;
 import '../../shared/widgets/cargar_mas_button.dart';
+import '../../shared/widgets/historial_cambios_widget.dart';
 import '../../shared/widgets/empty_state.dart';
 
 class PagosAdminScreen extends ConsumerStatefulWidget {
@@ -296,6 +297,11 @@ class _PagoCard extends ConsumerWidget {
                 ],
               ),
             ),
+            IconButton(
+              icon: const Icon(Icons.history),
+              tooltip: 'Historial de cambios',
+              onPressed: () => _verHistorial(context),
+            ),
             if (!anulado) ...[
               IconButton(
                 icon: const Icon(Icons.edit),
@@ -308,6 +314,44 @@ class _PagoCard extends ConsumerWidget {
                 onPressed: () => _anular(context, ref),
               ),
             ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _verHistorial(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (_) => DraggableScrollableSheet(
+        expand: false,
+        initialChildSize: 0.6,
+        maxChildSize: 0.9,
+        builder: (context, scrollCtrl) => Column(
+          children: [
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: Row(
+                children: [
+                  const Icon(Icons.history),
+                  const SizedBox(width: 8),
+                  Text('Historial de cambios',
+                      style: Theme.of(context).textTheme.titleMedium),
+                ],
+              ),
+            ),
+            const Divider(),
+            Expanded(
+              child: SingleChildScrollView(
+                controller: scrollCtrl,
+                child: HistorialCambiosWidget(
+                  tabla: 'pagos',
+                  registroId: row['id'] as String,
+                ),
+              ),
+            ),
           ],
         ),
       ),

@@ -4,7 +4,9 @@ class AuditEntry {
   const AuditEntry({
     required this.id,
     required this.tabla,
+    this.registroId,
     this.campo,
+    this.accion = 'update',
     this.valorAnterior,
     this.valorNuevo,
     this.userId,
@@ -16,7 +18,9 @@ class AuditEntry {
 
   final String id;
   final String tabla;
+  final String? registroId;
   final String? campo;
+  final String accion;
   /// jsonb del valor anterior — puede ser null, primitivo, o object.
   final dynamic valorAnterior;
   /// jsonb del valor nuevo — puede ser null, primitivo, o object.
@@ -44,7 +48,9 @@ class AuditEntry {
   factory AuditEntry.fromMap(Map<String, dynamic> m) => AuditEntry(
         id: m['id'] as String,
         tabla: m['tabla'] as String,
+        registroId: m['registro_id'] as String?,
         campo: m['campo'] as String?,
+        accion: m['accion'] as String? ?? 'update',
         valorAnterior: m['valor_anterior'],
         valorNuevo: m['valor_nuevo'],
         userId: m['user_id'] as String?,

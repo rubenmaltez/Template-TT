@@ -368,6 +368,7 @@ class _SettingTileState extends State<_SettingTile> {
       'cobranza.cargo_reconexion_habilitado': 'Cobrar reconexión',
       'cobranza.cargo_reconexion': 'Monto reconexión automática',
       'cobranza.monto_reconexion': 'Monto de reconexión',
+      'audit.visible_admin_cobranza': 'Admin cobranza ve historial de cambios',
       'cobranza.cobrador_edita_fecha': 'Cobrador puede editar fecha',
       'cobranza.cobrador_anula_cobros': 'Cobrador puede anular cobros',
       'cobranza.cobrador_edita_cobros': 'Cobrador puede editar cobros',
