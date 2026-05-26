@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-import '../../powersync/db.dart' as ps;
+import '../../../powersync/db.dart' as ps;
 
 /// Verifica si hay cambios locales sin sincronizar antes de cerrar sesión.
 /// Si hay pendientes, muestra un dialog de confirmación. Si no hay, hace
