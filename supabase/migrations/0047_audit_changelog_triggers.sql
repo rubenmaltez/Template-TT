@@ -70,25 +70,33 @@ DROP TRIGGER IF EXISTS trg_audit_clientes_cobrador ON public.clientes;
 DROP TRIGGER IF EXISTS trg_audit_recibos_anulacion ON public.recibos;
 
 -- Crear triggers genéricos (AFTER UPDATE captura ediciones + anulaciones).
+-- WHEN pg_trigger_depth() < 2: evita entradas fantasma por triggers en
+-- cascada (ej: pago UPDATE → trigger recalcula cuota → fire changelog
+-- de cuota con cambios no iniciados por el usuario).
 CREATE TRIGGER trg_changelog_pagos
   AFTER UPDATE ON public.pagos
-  FOR EACH ROW EXECUTE FUNCTION public.audit_changelog_trg();
+  FOR EACH ROW WHEN (pg_trigger_depth() < 2)
+  EXECUTE FUNCTION public.audit_changelog_trg();
 
 CREATE TRIGGER trg_changelog_cuotas
   AFTER UPDATE ON public.cuotas
-  FOR EACH ROW EXECUTE FUNCTION public.audit_changelog_trg();
+  FOR EACH ROW WHEN (pg_trigger_depth() < 2)
+  EXECUTE FUNCTION public.audit_changelog_trg();
 
 CREATE TRIGGER trg_changelog_clientes
   AFTER UPDATE ON public.clientes
-  FOR EACH ROW EXECUTE FUNCTION public.audit_changelog_trg();
+  FOR EACH ROW WHEN (pg_trigger_depth() < 2)
+  EXECUTE FUNCTION public.audit_changelog_trg();
 
 CREATE TRIGGER trg_changelog_contratos
   AFTER UPDATE ON public.contratos
-  FOR EACH ROW EXECUTE FUNCTION public.audit_changelog_trg();
+  FOR EACH ROW WHEN (pg_trigger_depth() < 2)
+  EXECUTE FUNCTION public.audit_changelog_trg();
 
 CREATE TRIGGER trg_changelog_recibos
   AFTER UPDATE ON public.recibos
-  FOR EACH ROW EXECUTE FUNCTION public.audit_changelog_trg();
+  FOR EACH ROW WHEN (pg_trigger_depth() < 2)
+  EXECUTE FUNCTION public.audit_changelog_trg();
 
 -- 5. RLS: permitir lectura a admin_cobranza (controlado por setting en UI).
 -- Antes solo admin podía leer. Ahora admin + admin_cobranza.

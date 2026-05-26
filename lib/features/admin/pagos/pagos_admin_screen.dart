@@ -7,6 +7,7 @@ import 'package:go_router/go_router.dart';
 import '../../../data/models/pago.dart';
 import '../../../data/providers/cobrador_provider.dart';
 import '../../../data/repositories/pagos_repo.dart';
+import '../../../data/repositories/settings_repo.dart';
 import '../../../data/utils/formatters.dart';
 import '../../../powersync/db.dart' as ps;
 import '../../shared/widgets/cargar_mas_button.dart';
@@ -204,6 +205,10 @@ class _PagoCard extends ConsumerWidget {
     final scheme = Theme.of(context).colorScheme;
     final anulado = (row['anulado'] as int? ?? 0) == 1;
     final fecha = DateTime.parse(row['fecha_pago'] as String);
+    final cobrador = ref.watch(cobradorActualProvider).valueOrNull;
+    final settings = ref.watch(appSettingsProvider);
+    final esAdmin = cobrador?.rol == 'admin';
+    final puedeVerHistorial = esAdmin || settings.auditVisibleAdminCobranza;
 
     return Card(
       color: anulado ? scheme.surfaceContainerHighest.withValues(alpha: 0.5) : null,
@@ -297,11 +302,12 @@ class _PagoCard extends ConsumerWidget {
                 ],
               ),
             ),
-            IconButton(
-              icon: const Icon(Icons.history),
-              tooltip: 'Historial de cambios',
-              onPressed: () => _verHistorial(context),
-            ),
+            if (puedeVerHistorial)
+              IconButton(
+                icon: const Icon(Icons.history),
+                tooltip: 'Historial de cambios',
+                onPressed: () => _verHistorial(context),
+              ),
             if (!anulado) ...[
               IconButton(
                 icon: const Icon(Icons.edit),

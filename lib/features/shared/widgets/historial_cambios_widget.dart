@@ -27,6 +27,14 @@ class _HistorialCambiosWidgetState extends State<HistorialCambiosWidget> {
     _stream = _buildStream();
   }
 
+  @override
+  void didUpdateWidget(HistorialCambiosWidget old) {
+    super.didUpdateWidget(old);
+    if (old.registroId != widget.registroId || old.tabla != widget.tabla) {
+      setState(() => _stream = _buildStream());
+    }
+  }
+
   Stream<List<Map<String, dynamic>>> _buildStream() {
     return ps.db.watch(
       '''
@@ -90,9 +98,13 @@ class _CambioTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    final accion = row['accion'] as String? ?? 'update';
+    final accionRaw = row['accion'] as String? ?? 'update';
     final fecha = DateTime.parse(row['created_at'] as String);
     final autor = row['user_nombre'] as String? ?? row['user_rol'] as String? ?? '—';
+
+    // Detectar anulación: el trigger guarda 'update' pero el JSONB
+    // contiene anulado: 0→1. Lo identificamos para mostrar "Anulado".
+    final accion = _detectarAccion(accionRaw, row);
 
     final (IconData icon, Color color, String label) = switch (accion) {
       'create' => (Icons.add_circle_outline, scheme.tertiary, 'Creado'),
@@ -159,14 +171,17 @@ class _CambioTile extends StatelessWidget {
       if (anterior is Map && nuevo is Map) {
         final cambios = <_CampoChange>[];
         final allKeys = {...anterior.keys, ...nuevo.keys};
-        const skip = {'id', 'tenant_id', 'client_local_id', 'created_at', 'updated_at'};
+        const skip = {
+          'id', 'tenant_id', 'client_local_id', 'created_at', 'updated_at',
+          'foto_comprobante_path', 'monto_pagado', 'cargos_neto',
+        };
         for (final key in allKeys) {
           if (skip.contains(key)) continue;
           final a = anterior[key];
           final n = nuevo[key];
           if (a != n) {
             cambios.add(_CampoChange(
-              campo: _humanize(key),
+              campo: _fieldLabel(key),
               antes: _fmt(a),
               despues: _fmt(n),
             ));
@@ -193,15 +208,69 @@ class _CambioTile extends StatelessWidget {
     }
   }
 
+  static String _detectarAccion(String accion, Map<String, dynamic> row) {
+    if (accion != 'update') return accion;
+    try {
+      final nuevoRaw = row['valor_nuevo'] as String?;
+      if (nuevoRaw == null) return accion;
+      final nuevo = jsonDecode(nuevoRaw);
+      if (nuevo is Map && nuevo['anulado'] == 1) return 'anulacion';
+    } catch (_) {}
+    return accion;
+  }
+
   static String _fmt(dynamic v) {
     if (v == null) return '—';
     if (v is bool) return v ? 'Sí' : 'No';
     if (v is num) return v.toStringAsFixed(v.truncateToDouble() == v ? 0 : 2);
-    return v.toString();
+    final s = v.toString();
+    if (s.length >= 19 && RegExp(r'^\d{4}-\d{2}-\d{2}').hasMatch(s)) {
+      final dt = DateTime.tryParse(s);
+      if (dt != null) return Fmt.fechaCorta(dt);
+    }
+    if (s.length > 30) return '${s.substring(0, 27)}…';
+    return s;
   }
 
-  static String _humanize(String raw) {
-    return raw
+  static String _fieldLabel(String raw) {
+    const labels = {
+      'monto_cordobas': 'Monto (C\$)',
+      'monto_original': 'Monto original',
+      'monto_pagado': 'Monto pagado',
+      'fecha_pago': 'Fecha de pago',
+      'fecha_vencimiento': 'Fecha vencimiento',
+      'cobrador_id': 'Cobrador',
+      'cliente_id': 'Cliente',
+      'contrato_id': 'Contrato',
+      'cuota_id': 'Cuota',
+      'plan_id': 'Plan',
+      'metodo': 'Método de pago',
+      'moneda': 'Moneda',
+      'tasa_conversion': 'Tasa de conversión',
+      'anulado': 'Anulado',
+      'anulado_en': 'Anulado en',
+      'anulado_por': 'Anulado por',
+      'motivo_anulacion': 'Motivo anulación',
+      'estado': 'Estado',
+      'monto': 'Monto',
+      'periodo': 'Período',
+      'nombre': 'Nombre',
+      'telefono': 'Teléfono',
+      'direccion': 'Dirección',
+      'cedula': 'Cédula',
+      'comunidad_id': 'Comunidad',
+      'activo': 'Activo',
+      'referencia': 'Referencia',
+      'notas': 'Notas',
+      'numero_completo': 'Número recibo',
+      'grupo_cobro': 'Cobro agrupado',
+      'cargos_neto': 'Cargos neto',
+      'lat': 'Latitud',
+      'lng': 'Longitud',
+      'dia_pago': 'Día de pago',
+      'reimpresiones': 'Reimpresiones',
+    };
+    return labels[raw] ?? raw
         .replaceAll('_', ' ')
         .replaceFirstMapped(RegExp(r'^.'), (m) => m[0]!.toUpperCase());
   }
