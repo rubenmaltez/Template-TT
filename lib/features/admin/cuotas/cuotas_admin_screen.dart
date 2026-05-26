@@ -3,7 +3,6 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../../data/providers/cobrador_provider.dart';
@@ -240,8 +239,8 @@ class _CuotasAdminScreenState extends ConsumerState<CuotasAdminScreen> {
         INSERT INTO cuotas (
           id, tenant_id, contrato_id, cliente_id,
           periodo, fecha_vencimiento, monto, monto_pagado,
-          cargos_neto, estado, created_at
-        ) VALUES (?, ?, NULL, ?, ?, ?, ?, 0, 0, 'pendiente', ?)
+          cargos_neto, estado, descripcion, tipo_cargo_manual, created_at
+        ) VALUES (?, ?, NULL, ?, ?, ?, ?, 0, 0, 'pendiente', ?, ?, ?)
         ''',
         [
           id,
@@ -250,33 +249,14 @@ class _CuotasAdminScreenState extends ConsumerState<CuotasAdminScreen> {
           result.fechaVencimiento.toIso8601String().substring(0, 10),
           result.fechaVencimiento.toIso8601String().substring(0, 10),
           result.monto,
+          result.descripcion.isEmpty ? null : result.descripcion,
+          result.tipoCargo,
           now,
         ],
       );
-      // tipo_cargo_manual + descripcion via REST directo a Supabase
-      // (bypass PowerSync CRUD upload schema cache bug).
-      try {
-        final updates = <String, dynamic>{
-          'tipo_cargo_manual': result.tipoCargo,
-        };
-        if (result.descripcion.isNotEmpty) {
-          updates['descripcion'] = result.descripcion;
-        }
-        await Supabase.instance.client
-            .from('cuotas')
-            .update(updates)
-            .eq('id', id);
-      } catch (_) {
-        if (context.mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Cuota creada, pero el tipo/descripción no se '
-                  'sincronizaron. Se completarán al volver a estar online.'),
-              duration: Duration(seconds: 4),
-            ),
-          );
-        }
-      }
+      // descripcion y tipo_cargo_manual incluidos en el INSERT directo.
+      // Si PowerSync CRUD upload rechaza estas columnas (schema cache bug),
+      // el error aparece como SnackBar pero la cuota sí se crea localmente.
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Cuota manual creada')),
