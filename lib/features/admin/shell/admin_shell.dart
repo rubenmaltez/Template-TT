@@ -404,12 +404,8 @@ class _AdminRail extends ConsumerWidget {
             ListTile(
               leading: const Icon(Icons.logout),
               title: const Text('Cerrar sesión'),
-              onTap: () {
-                Navigator.of(context).pop();
-                confirmarSignOut(context);
-              },
+              onTap: () => confirmarSignOut(context),
             ),
-            const AppVersionLabel(),
           ],
         ),
       ),
@@ -478,10 +474,7 @@ class _AdminDrawer extends ConsumerWidget {
             ListTile(
               leading: const Icon(Icons.logout),
               title: const Text('Cerrar sesión'),
-              onTap: () {
-                Navigator.of(context).pop();
-                confirmarSignOut(context);
-              },
+              onTap: () => confirmarSignOut(context),
             ),
           ],
         ),

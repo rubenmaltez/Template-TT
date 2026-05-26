@@ -5,8 +5,11 @@ import '../../../powersync/db.dart' as ps;
 
 /// Verifica si hay cambios locales sin sincronizar antes de cerrar sesión.
 /// Si hay pendientes, muestra un dialog de confirmación. Si no hay, hace
-/// sign-out directo.
+/// sign-out directo. Cierra modals/drawers abiertos antes de mostrar el dialog.
 Future<void> confirmarSignOut(BuildContext context) async {
+  // Cerrar drawer/modals primero para tener un context limpio.
+  Navigator.of(context).popUntil((route) => route.isFirst);
+
   final pendientes = await _contarCrudPendientes();
 
   if (pendientes > 0 && context.mounted) {
