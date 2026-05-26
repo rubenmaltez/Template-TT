@@ -6,6 +6,7 @@ import '../../data/providers/cobrador_provider.dart';
 import '../../data/providers/crud_error_provider.dart';
 import '../../data/providers/mora_count_provider.dart';
 import '../../data/providers/sync_status_provider.dart';
+import '../../data/repositories/settings_repo.dart';
 import '../shared/utils/shell_nav.dart';
 import '../shared/utils/sign_out_helper.dart';
 import '../shared/widgets/app_version_label.dart';
@@ -33,7 +34,9 @@ class AppShell extends ConsumerWidget {
       }
     });
 
-    final titulo = ShellTitleScope.of(context) ?? 'SITECSA CRM';
+    final empresaNombre = ref.watch(appSettingsProvider).empresaNombre;
+    final titulo = ShellTitleScope.of(context) ??
+        (empresaNombre.isNotEmpty ? empresaNombre : 'SITECSA CRM');
     return Scaffold(
       drawer: const _AppDrawer(),
       appBar: AppBar(
