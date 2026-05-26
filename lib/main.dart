@@ -16,6 +16,7 @@ import 'data/services/error_log_service.dart';
 import 'features/auth/auth_flow_provider.dart';
 import 'package:powersync/powersync.dart' show SyncStatus;
 
+import 'config/router.dart' show empresaNombreProvider, empresaNombreRowExistsProvider;
 import 'data/providers/cobrador_provider.dart';
 import 'data/providers/mora_count_provider.dart';
 import 'data/providers/sync_status_provider.dart';
@@ -287,9 +288,12 @@ Future<void> _bootstrap() async {
     // Invalidar TODOS los providers que capturan ps.db al crearse.
     // Esto se ejecuta DESPUÉS de openDatabaseForUser, así los providers
     // recreados capturan la DB correcta del nuevo usuario.
+    // DEBE incluir cada provider que use ps.db.watch() internamente.
     container.invalidate(syncStatusProvider);
     container.invalidate(cobradorActualProvider);
     container.invalidate(moraCountProvider);
+    container.invalidate(empresaNombreProvider);
+    container.invalidate(empresaNombreRowExistsProvider);
   };
 
   runApp(UncontrolledProviderScope(
