@@ -292,6 +292,52 @@ de redeployar. Sin redeploy, PowerSync no ve las columnas nuevas.
 
 **Última versión deployada**: Sync Rules version 4 (0037), deployed May 26, 2026.
 
+### Proceso mandatorio de fixes y features (lifecycle)
+
+**Fase 1 — Entender el pedido:**
+1. Leer el mensaje del usuario.
+2. Leer CLAUDE.md (contexto, stack, backlog, checklist de integridad).
+3. Leer ROADMAP.md y BULK11-PLAN.md para estado actual.
+4. Si toca tablas/columnas, verificar cadena de integridad completa.
+
+**Fase 2 — Pre-evaluación:**
+5. Investigar archivos relevantes (grep, read).
+6. Identificar qué archivos necesitan cambios.
+7. Evaluar riesgos, dependencias, trade-offs.
+8. **Presentar propuesta al usuario con opciones (OBLIGATORIO).**
+9. **Esperar aprobación antes de implementar (OBLIGATORIO).**
+
+**Fase 3 — Implementación:**
+10. Implementar cambio por cambio, committeando cada uno.
+11. Si toca tablas/columnas, seguir checklist de integridad DB ↔ Schema.
+12. Commit con mensaje descriptivo.
+
+**Fase 4 — Audit post-implementación (OBLIGATORIO):**
+13. Lanzar agentes de audit (Code + DB integrity como mínimo).
+14. **Presentar findings detallados al usuario:**
+    - Qué se encontró exactamente (archivo, línea).
+    - Por qué ocurre (causa raíz técnica).
+    - Escenario real de impacto (qué le pasa al usuario).
+    - Propuestas de solución con trade-offs.
+15. **Esperar aprobación del approach de solución (OBLIGATORIO).**
+16. Implementar fixes aprobados.
+17. Si los fixes son significativos, lanzar audit adicional.
+
+**Fase 5 — Testing:**
+18. Dar paso a paso detallado al usuario.
+19. Cada paso incluye: qué hacer, qué debería ver, qué hacer si falla.
+20. Si hay migraciones, incluir comandos exactos.
+21. Indicar si necesita redeploy de sync rules.
+
+**Documentos a leer en cada sesión:**
+- CLAUDE.md, ROADMAP.md, BULK11-PLAN.md
+- powersync/sync-rules.yaml
+- lib/powersync/schema.dart + db.dart
+- Archivos específicos del feature
+
+**NUNCA saltar fases.** El costo de seguir el proceso es minutos.
+El costo de saltarlo es horas de debugging.
+
 ### Principio de diseño: evaluar ANTES de implementar
 Antes de elegir una herramienta/servicio para un feature nuevo (ej:
 dónde hosear un archivo, qué package usar, qué API consumir), evaluar
