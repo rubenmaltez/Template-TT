@@ -139,6 +139,9 @@ class AppSettings {
   String get descuentoProntoPagoTipo =>
       settingValue<String>(_map, 'cuotas.descuento_pronto_pago_tipo', 'porcentaje');
 
+  bool get recrearPagoAnulado =>
+      settingValue<bool>(_map, 'cobranza.recrear_pago_anulado', false);
+
   bool get auditVisibleAdminCobranza =>
       settingValue<bool>(_map, 'audit.visible_admin_cobranza', false);
 

@@ -321,6 +321,12 @@ class _PagoCard extends ConsumerWidget {
                 onPressed: () => _anular(context, ref),
               ),
             ],
+            if (anulado && (esAdmin || settings.recrearPagoAnulado))
+              IconButton(
+                icon: Icon(Icons.replay, color: scheme.primary),
+                tooltip: 'Recrear pago',
+                onPressed: () => _recrear(context, ref),
+              ),
           ],
         ),
       ),
@@ -441,6 +447,55 @@ class _PagoCard extends ConsumerWidget {
 
 class _AnularDialog extends StatefulWidget {
   const _AnularDialog();
+  Future<void> _recrear(BuildContext context, WidgetRef ref) async {
+    final confirmar = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        icon: const Icon(Icons.replay),
+        title: const Text('Recrear pago'),
+        content: const Text(
+          'Se va a crear un pago nuevo con los mismos datos del original. '
+          'El pago anulado queda como registro histórico.\n\n'
+          '¿Confirmar?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Recrear'),
+          ),
+        ],
+      ),
+    );
+    if (confirmar != true || !context.mounted) return;
+
+    final me = ref.read(cobradorActualProvider).valueOrNull;
+    if (me == null || me.prefijoRecibo == null) return;
+
+    try {
+      await ref.read(pagosRepoProvider).recrearPago(
+            pagoAnuladoId: row['id'] as String,
+            tenantId: me.tenantId,
+            recreadorId: me.id,
+            prefijoRecibo: me.prefijoRecibo!,
+          );
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Pago recreado exitosamente')),
+        );
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error al recrear: $e')),
+        );
+      }
+    }
+  }
+
   @override
   State<_AnularDialog> createState() => _AnularDialogState();
 }

@@ -497,4 +497,36 @@ class PagosRepo {
   }
 }
 
+  /// Recrea un pago que fue anulado por error. Crea un pago NUEVO
+  /// (no desanula el viejo) con los mismos datos del original.
+  /// El pago anulado queda como registro histórico.
+  Future<CobroResultado> recrearPago({
+    required String pagoAnuladoId,
+    required String tenantId,
+    required String recreadorId,
+    required String prefijoRecibo,
+  }) async {
+    final original = await ps.db.getAll(
+      'SELECT * FROM pagos WHERE id = ?',
+      [pagoAnuladoId],
+    );
+    if (original.isEmpty) throw Exception('Pago no encontrado');
+    final p = original.first;
+
+    return registrarCobro(
+      tenantId: tenantId,
+      cobradorId: recreadorId,
+      prefijoRecibo: prefijoRecibo,
+      cuotaId: p['cuota_id'] as String,
+      montoCordobas: (p['monto_cordobas'] as num).toDouble(),
+      moneda: Moneda.fromString(p['moneda'] as String),
+      montoOriginal: (p['monto_original'] as num).toDouble(),
+      tasaConversion: (p['tasa_conversion'] as num).toDouble(),
+      metodo: MetodoPago.fromString(p['metodo'] as String),
+      referencia: p['referencia'] as String?,
+      notas: 'Recreado desde pago anulado $pagoAnuladoId',
+    );
+  }
+}
+
 final pagosRepoProvider = Provider((_) => PagosRepo());

@@ -60,11 +60,11 @@ class Cuota {
     required this.cargosNeto,
     required this.estado,
     this.descripcion,
+    this.tipoCargoManual,
   });
 
   final String id;
   final String tenantId;
-  /// Null para cuotas manuales (no ligadas a contrato).
   final String? contratoId;
   final String clienteId;
   final String? cobradorId;
@@ -72,12 +72,10 @@ class Cuota {
   final DateTime fechaVencimiento;
   final double monto;
   final double montoPagado;
-  /// Suma de cargos extra netos (reconexión + otro - descuentos).
-  /// Mantenido por trigger en server (migración 0023).
   final double cargosNeto;
   final CuotaEstado estado;
-  /// Descripción libre para cuotas manuales (ej: "Cargo por reconexión").
   final String? descripcion;
+  final String? tipoCargoManual;
 
   /// Indica si la cuota es manual (no generada desde contrato).
   bool get esManual => contratoId == null;
@@ -122,7 +120,8 @@ class Cuota {
           other.montoPagado == montoPagado &&
           other.cargosNeto == cargosNeto &&
           other.estado == estado &&
-          other.descripcion == descripcion;
+          other.descripcion == descripcion &&
+          other.tipoCargoManual == tipoCargoManual;
 
   @override
   int get hashCode => Object.hash(
@@ -138,6 +137,7 @@ class Cuota {
         cargosNeto,
         estado,
         descripcion,
+        tipoCargoManual,
       );
 
   factory Cuota.fromRow(Map<String, dynamic> row) => Cuota(
@@ -153,5 +153,6 @@ class Cuota {
         cargosNeto: (row['cargos_neto'] as num? ?? 0).toDouble(),
         estado: CuotaEstado.fromString(row['estado'] as String),
         descripcion: row['descripcion'] as String?,
+        tipoCargoManual: row['tipo_cargo_manual'] as String?,
       );
 }

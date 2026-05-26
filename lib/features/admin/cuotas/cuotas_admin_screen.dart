@@ -253,17 +253,20 @@ class _CuotasAdminScreenState extends ConsumerState<CuotasAdminScreen> {
           now,
         ],
       );
-      // Descripcion via REST directo a Supabase (bypass PowerSync CRUD
-      // upload que rechaza esta columna por bug de schema cache del SDK).
-      // La descripcion aparece en la UI después del próximo sync (segundos).
-      if (result.descripcion.isNotEmpty) {
-        try {
-          await Supabase.instance.client
-              .from('cuotas')
-              .update({'descripcion': result.descripcion})
-              .eq('id', id);
-        } catch (_) {}
-      }
+      // tipo_cargo_manual + descripcion via REST directo a Supabase
+      // (bypass PowerSync CRUD upload schema cache bug).
+      try {
+        final updates = <String, dynamic>{
+          'tipo_cargo_manual': result.tipoCargo,
+        };
+        if (result.descripcion.isNotEmpty) {
+          updates['descripcion'] = result.descripcion;
+        }
+        await Supabase.instance.client
+            .from('cuotas')
+            .update(updates)
+            .eq('id', id);
+      } catch (_) {}
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Cuota manual creada')),
@@ -286,11 +289,13 @@ class _CuotasAdminScreenState extends ConsumerState<CuotasAdminScreen> {
 class _CuotaManualData {
   const _CuotaManualData({
     required this.clienteId,
+    required this.tipoCargo,
     required this.descripcion,
     required this.monto,
     required this.fechaVencimiento,
   });
   final String clienteId;
+  final String tipoCargo;
   final String descripcion;
   final double monto;
   final DateTime fechaVencimiento;
@@ -311,6 +316,15 @@ class _NuevaCuotaManualDialogState extends State<_NuevaCuotaManualDialog> {
   final _montoCtrl = TextEditingController();
   final _busquedaCtrl = TextEditingController();
   DateTime _fechaVencimiento = DateTime.now();
+  String _tipoCargo = 'reconexion';
+
+  static const _tiposCargo = {
+    'reconexion': 'Reconexión',
+    'instalacion': 'Instalación',
+    'mora': 'Cargo por mora',
+    'reparacion': 'Reparación',
+    'otro': 'Otro',
+  };
 
   String? _clienteId;
   String? _clienteNombre;
@@ -375,7 +389,7 @@ class _NuevaCuotaManualDialogState extends State<_NuevaCuotaManualDialog> {
 
   bool get _formularioValido =>
       _clienteId != null &&
-      _descripcionCtrl.text.trim().isNotEmpty &&
+      _tipoCargo.isNotEmpty &&
       _montoCtrl.text.isNotEmpty &&
       (double.tryParse(_montoCtrl.text) ?? 0) > 0;
 
@@ -465,14 +479,26 @@ class _NuevaCuotaManualDialogState extends State<_NuevaCuotaManualDialog> {
               ],
               const SizedBox(height: 16),
 
-              // Descripción
+              // Tipo de cargo
+              DropdownButtonFormField<String>(
+                value: _tipoCargo,
+                decoration: const InputDecoration(labelText: 'Tipo de cargo *'),
+                items: _tiposCargo.entries
+                    .map((e) => DropdownMenuItem(value: e.key, child: Text(e.value)))
+                    .toList(),
+                onChanged: (v) {
+                  if (v != null) setState(() => _tipoCargo = v);
+                },
+              ),
+              const SizedBox(height: 16),
+
+              // Descripción / detalles
               TextField(
                 controller: _descripcionCtrl,
                 decoration: const InputDecoration(
-                  labelText: 'Descripción *',
-                  hintText: 'Ej: Cargo por reconexión, Instalación...',
+                  labelText: 'Detalles (opcional)',
+                  hintText: 'Información adicional del cargo',
                 ),
-                onChanged: (_) => setState(() {}),
               ),
               const SizedBox(height: 16),
 
@@ -519,6 +545,7 @@ class _NuevaCuotaManualDialogState extends State<_NuevaCuotaManualDialog> {
                     context,
                     _CuotaManualData(
                       clienteId: _clienteId!,
+                      tipoCargo: _tipoCargo,
                       descripcion: _descripcionCtrl.text.trim(),
                       monto: double.parse(_montoCtrl.text),
                       fechaVencimiento: _fechaVencimiento,

@@ -114,6 +114,7 @@ const schema = Schema([
     Column.text('anulada_por'),
     Column.text('motivo_anulacion'),
     Column.text('descripcion'),
+    Column.text('tipo_cargo_manual'),
     Column.text('created_at'),
   ], indexes: [
     Index('by_cobrador_estado', [
