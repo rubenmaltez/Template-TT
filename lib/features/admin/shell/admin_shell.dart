@@ -14,6 +14,7 @@ import '../../shared/widgets/update_banner.dart';
 import '../../../powersync/db.dart' as ps;
 import '../../auth/cambiar_password_dialog.dart';
 import '../../shared/utils/shell_nav.dart';
+import '../../shared/utils/sign_out_helper.dart';
 import '../../shared/widgets/offline_banner.dart';
 
 /// Shell del admin/admin_cobranza. Layout adaptativo:
@@ -403,11 +404,10 @@ class _AdminRail extends ConsumerWidget {
             ListTile(
               leading: const Icon(Icons.logout),
               title: const Text('Cerrar sesión'),
-              // closeModalsThenRun cierra dialogs abiertos antes del
-              // signOut. Sin esto, un dialog flotaba sobre /login tras
-              // el redirect — mismo bug de fondo que el resto del sprint.
-              onTap: () => context.closeModalsThenRun(
-                  () => Supabase.instance.client.auth.signOut()),
+              onTap: () {
+                Navigator.of(context).pop();
+                confirmarSignOut(context);
+              },
             ),
             const AppVersionLabel(),
           ],
@@ -478,11 +478,10 @@ class _AdminDrawer extends ConsumerWidget {
             ListTile(
               leading: const Icon(Icons.logout),
               title: const Text('Cerrar sesión'),
-              // closeModalsThenRun cierra el drawer + dialogs abiertos
-              // antes del signOut. Sin esto, un dialog podía flotar
-              // sobre /login tras el redirect del router.
-              onTap: () => context.closeModalsThenRun(
-                  () => Supabase.instance.client.auth.signOut()),
+              onTap: () {
+                Navigator.of(context).pop();
+                confirmarSignOut(context);
+              },
             ),
           ],
         ),

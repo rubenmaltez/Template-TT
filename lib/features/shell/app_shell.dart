@@ -1,14 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
-
 import '../../config/router.dart';
 import '../../data/providers/cobrador_provider.dart';
 import '../../data/providers/crud_error_provider.dart';
 import '../../data/providers/mora_count_provider.dart';
 import '../../data/providers/sync_status_provider.dart';
 import '../shared/utils/shell_nav.dart';
+import '../shared/utils/sign_out_helper.dart';
 import '../shared/widgets/app_version_label.dart';
 import '../shared/widgets/offline_banner.dart';
 import '../shared/widgets/update_banner.dart';
@@ -144,10 +143,10 @@ class _AppDrawer extends ConsumerWidget {
             ListTile(
               leading: const Icon(Icons.logout),
               title: const Text('Cerrar sesión'),
-              // Cierra el drawer + dialogs antes del signOut para que
-              // ningún modal flote sobre /login tras el redirect.
-              onTap: () => context.closeModalsThenRun(
-                  () => Supabase.instance.client.auth.signOut()),
+              onTap: () {
+                Navigator.of(context).pop();
+                confirmarSignOut(context);
+              },
             ),
             const AppVersionLabel(),
           ],
