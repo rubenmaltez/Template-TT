@@ -375,6 +375,7 @@ class _SettingTileState extends State<_SettingTile> {
       'cobranza.foto_obligatoria': 'Foto comprobante obligatoria',
       'cobranza.pago_parcial': 'Permitir pago parcial',
       'cobranza.pago_adelantado': 'Permitir pago adelantado (multi-cuota)',
+      'cobranza.dias_cuotas_visibles': 'Días de cuotas visibles al cobrador',
       'pagos.transferencia_habilitada': 'Aceptar transferencias',
       'pagos.deposito_habilitado': 'Aceptar depósitos',
       'pagos.tarjeta_habilitada': 'Aceptar tarjeta',

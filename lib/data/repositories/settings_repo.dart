@@ -128,6 +128,9 @@ class AppSettings {
   bool get pagoAdelantadoPermitido =>
       settingValue<bool>(_map, 'cobranza.pago_adelantado', true);
 
+  int get diasCuotasVisibles =>
+      settingValue<num>(_map, 'cobranza.dias_cuotas_visibles', 30).toInt();
+
   /// Valor del descuento pronto pago. 0 = deshabilitado.
   double get descuentoProntoPago =>
       settingValue<num>(_map, 'cuotas.descuento_pronto_pago', 0).toDouble();

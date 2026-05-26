@@ -16,13 +16,28 @@ class CuotasListScreen extends ConsumerStatefulWidget {
   ConsumerState<CuotasListScreen> createState() => _CuotasListScreenState();
 }
 
-class _CuotasListScreenState extends ConsumerState<CuotasListScreen> {
+class _CuotasListScreenState extends ConsumerState<CuotasListScreen>
+    with SingleTickerProviderStateMixin {
+  late TabController _tabCtrl;
   _Filtro _filtro = _Filtro.todas;
 
-  // Multi-select: cuota IDs seleccionadas + contrato_id para validar
-  // que todas sean del mismo contrato.
   final Set<String> _selected = {};
   String? _selectedContratoId;
+
+  @override
+  void initState() {
+    super.initState();
+    _tabCtrl = TabController(length: 2, vsync: this);
+    _tabCtrl.addListener(() {
+      if (!_tabCtrl.indexIsChanging) _clearSelection();
+    });
+  }
+
+  @override
+  void dispose() {
+    _tabCtrl.dispose();
+    super.dispose();
+  }
 
   Future<void> _marcarMoraComoVista() async {
     final now = DateTime.now().toUtc().toIso8601String();
@@ -34,10 +49,7 @@ class _CuotasListScreenState extends ConsumerState<CuotasListScreen> {
   }
 
   void _toggleSelect(String cuotaId, String? contratoId) {
-    // Cuotas manuales (contrato_id NULL) no se pueden multi-seleccionar
-    // porque no pertenecen a un contrato y podrían ser de clientes distintos.
     if (contratoId == null) return;
-
     setState(() {
       if (_selected.contains(cuotaId)) {
         _selected.remove(cuotaId);
@@ -64,40 +76,49 @@ class _CuotasListScreenState extends ConsumerState<CuotasListScreen> {
   Widget build(BuildContext context) {
     final settings = ref.watch(appSettingsProvider);
     final diasGracia = settings.diasGracia;
+    final diasVisibles = settings.diasCuotasVisibles;
     final multiCuotaEnabled = settings.pagoAdelantadoPermitido;
+    final scheme = Theme.of(context).colorScheme;
 
     return Stack(
       children: [
         Column(
           children: [
-            SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-              child: Row(
-                children: [
-                  for (final f in _Filtro.values) ...[
-                    FilterChip(
-                      label: Text(_label(f)),
-                      selected: _filtro == f,
-                      onSelected: (_) {
-                        setState(() => _filtro = f);
-                        _clearSelection();
-                        if (f == _Filtro.mora) _marcarMoraComoVista();
-                      },
-                    ),
-                    const SizedBox(width: 8),
-                  ],
+            Material(
+              color: scheme.surface,
+              child: TabBar(
+                controller: _tabCtrl,
+                labelColor: scheme.primary,
+                unselectedLabelColor: scheme.outline,
+                indicatorColor: scheme.primary,
+                tabs: const [
+                  Tab(icon: Icon(Icons.receipt_long, size: 18), text: 'Por cobrar'),
+                  Tab(icon: Icon(Icons.people, size: 18), text: 'Por cliente'),
                 ],
               ),
             ),
             Expanded(
-              child: _CuotasList(
-                filtro: _filtro,
-                diasGracia: diasGracia,
-                multiSelect: multiCuotaEnabled,
-                selected: _selected,
-                selectedContratoId: _selectedContratoId,
-                onToggle: _toggleSelect,
+              child: TabBarView(
+                controller: _tabCtrl,
+                children: [
+                  // Tab A: Por cobrar (con filtros)
+                  _TabPorCobrar(
+                    filtro: _filtro,
+                    diasGracia: diasGracia,
+                    diasVisibles: diasVisibles,
+                    multiSelect: multiCuotaEnabled,
+                    selected: _selected,
+                    selectedContratoId: _selectedContratoId,
+                    onToggle: _toggleSelect,
+                    onFiltroChanged: (f) {
+                      setState(() => _filtro = f);
+                      _clearSelection();
+                      if (f == _Filtro.mora) _marcarMoraComoVista();
+                    },
+                  ),
+                  // Tab B: Por cliente
+                  const _TabPorCliente(),
+                ],
               ),
             ),
           ],
@@ -132,6 +153,66 @@ class _CuotasListScreenState extends ConsumerState<CuotasListScreen> {
       ],
     );
   }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Tab A: Por cobrar
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _TabPorCobrar extends StatelessWidget {
+  const _TabPorCobrar({
+    required this.filtro,
+    required this.diasGracia,
+    required this.diasVisibles,
+    required this.multiSelect,
+    required this.selected,
+    required this.selectedContratoId,
+    required this.onToggle,
+    required this.onFiltroChanged,
+  });
+  final _Filtro filtro;
+  final int diasGracia;
+  final int diasVisibles;
+  final bool multiSelect;
+  final Set<String> selected;
+  final String? selectedContratoId;
+  final void Function(String, String?) onToggle;
+  final ValueChanged<_Filtro> onFiltroChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          child: Row(
+            children: [
+              for (final f in _Filtro.values) ...[
+                FilterChip(
+                  label: Text(_label(f)),
+                  selected: filtro == f,
+                  onSelected: (_) => onFiltroChanged(f),
+                ),
+                const SizedBox(width: 8),
+              ],
+            ],
+          ),
+        ),
+        Expanded(
+          child: _CuotasList(
+            filtro: filtro,
+            diasGracia: diasGracia,
+            diasVisibles: diasVisibles,
+            multiSelect: multiSelect,
+            selected: selected,
+            selectedContratoId: selectedContratoId,
+            onToggle: onToggle,
+          ),
+        ),
+      ],
+    );
+  }
 
   String _label(_Filtro f) => switch (f) {
         _Filtro.todas => 'Pendientes',
@@ -146,6 +227,7 @@ class _CuotasList extends StatefulWidget {
   const _CuotasList({
     required this.filtro,
     required this.diasGracia,
+    required this.diasVisibles,
     required this.multiSelect,
     required this.selected,
     required this.selectedContratoId,
@@ -153,19 +235,17 @@ class _CuotasList extends StatefulWidget {
   });
   final _Filtro filtro;
   final int diasGracia;
+  final int diasVisibles;
   final bool multiSelect;
   final Set<String> selected;
   final String? selectedContratoId;
-  final void Function(String cuotaId, String? contratoId) onToggle;
+  final void Function(String, String?) onToggle;
 
   @override
   State<_CuotasList> createState() => _CuotasListState();
 }
 
 class _CuotasListState extends State<_CuotasList> {
-  // Cacheamos el stream de PowerSync en initState para evitar que cada
-  // rebuild cree una nueva suscripción (anti-patrón ps.db.watch inline).
-  // El stream se recrea en didUpdateWidget cuando cambian filtro o diasGracia.
   late Stream<List<Map<String, dynamic>>> _cuotasStream;
 
   @override
@@ -177,17 +257,23 @@ class _CuotasListState extends State<_CuotasList> {
   @override
   void didUpdateWidget(_CuotasList old) {
     super.didUpdateWidget(old);
-    if (old.filtro != widget.filtro || old.diasGracia != widget.diasGracia) {
+    if (old.filtro != widget.filtro ||
+        old.diasGracia != widget.diasGracia ||
+        old.diasVisibles != widget.diasVisibles) {
       setState(() => _cuotasStream = _buildStream());
     }
   }
 
   Stream<List<Map<String, dynamic>>> _buildStream() {
+    // Filtro por rango: solo vencidas + próximos N días.
+    // Los filtros específicos (mora, gracia, etc.) siguen funcionando igual.
+    final rangoFilter = widget.filtro == _Filtro.todas
+        ? "AND cu.estado IN ('pendiente','parcial') "
+            "AND cu.fecha_vencimiento <= date('now', '+${widget.diasVisibles} days')"
+        : '';
+
     final (String extra, List<Object?> params) = switch (widget.filtro) {
-      _Filtro.todas => (
-          "AND cu.estado IN ('pendiente','parcial')",
-          <Object?>[],
-        ),
+      _Filtro.todas => (rangoFilter, <Object?>[]),
       _Filtro.mora => (
           "AND cu.estado IN ('pendiente','parcial') "
               "AND date(cu.fecha_vencimiento, '+' || ? || ' days') < date('now')",
@@ -207,8 +293,6 @@ class _CuotasListState extends State<_CuotasList> {
         ),
     };
 
-    // Mora: ordenar por comunidad → cliente (ruta del día: minimizar
-    // viajes agrupando por zona). Otros filtros: por vencimiento.
     final orderBy = widget.filtro == _Filtro.mora
         ? 'ORDER BY co.nombre, c.nombre'
         : 'ORDER BY cu.fecha_vencimiento ASC, c.nombre';
@@ -238,9 +322,7 @@ class _CuotasListState extends State<_CuotasList> {
       stream: _cuotasStream,
       initialData: const [],
       builder: (context, snap) {
-        if (snap.hasError) {
-          return Center(child: Text('Error: ${snap.error}'));
-        }
+        if (snap.hasError) return Center(child: Text('Error: ${snap.error}'));
         final rows = snap.data!;
         if (rows.isEmpty) {
           return const EmptyState(
@@ -250,8 +332,6 @@ class _CuotasListState extends State<_CuotasList> {
           );
         }
 
-        // Armar lista con headers de contrato intercalados.
-        // Cada "item" es un header (String) o una cuota row (Map).
         final items = <Object>[];
         String? lastContratoId;
         for (final r in rows) {
@@ -259,8 +339,6 @@ class _CuotasListState extends State<_CuotasList> {
           if (contratoId != lastContratoId) {
             final planNombre = r['plan_nombre'] as String?;
             final clienteNombre = r['cliente_nombre'] as String;
-            // Header: "Plan Internet 10Mbps — Juan Pérez" o solo el cliente
-            // si no hay plan (cuota manual).
             final header = planNombre != null
                 ? '$planNombre  —  $clienteNombre'
                 : clienteNombre;
@@ -271,13 +349,11 @@ class _CuotasListState extends State<_CuotasList> {
         }
 
         return ListView.builder(
-          padding: EdgeInsets.only(bottom: widget.selected.length >= 2 ? 80 : 16),
+          padding: EdgeInsets.only(bottom: widget.selected.isNotEmpty ? 80 : 16),
           itemCount: items.length,
           itemBuilder: (context, i) {
             final item = items[i];
-            if (item is String) {
-              return _ContratoHeader(titulo: item);
-            }
+            if (item is String) return _ContratoHeader(titulo: item);
             final row = item as Map<String, dynamic>;
             final cuotaId = row['id'] as String;
             final contratoId = row['contrato_id'] as String?;
@@ -308,6 +384,120 @@ class _CuotasListState extends State<_CuotasList> {
   }
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Tab B: Por cliente
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _TabPorCliente extends StatefulWidget {
+  const _TabPorCliente();
+
+  @override
+  State<_TabPorCliente> createState() => _TabPorClienteState();
+}
+
+class _TabPorClienteState extends State<_TabPorCliente> {
+  late Stream<List<Map<String, dynamic>>> _stream;
+
+  @override
+  void initState() {
+    super.initState();
+    _stream = ps.db.watch('''
+      SELECT c.id, c.nombre,
+             co.nombre AS comunidad,
+             COUNT(cu.id) AS cuotas_pend,
+             COALESCE(SUM(cu.monto + COALESCE(cu.cargos_neto, 0) - cu.monto_pagado), 0) AS saldo,
+             MIN(cu.fecha_vencimiento) AS vence_mas_vieja
+        FROM cuotas cu
+        JOIN clientes c ON c.id = cu.cliente_id
+   LEFT JOIN comunidades co ON co.id = c.comunidad_id
+       WHERE cu.estado IN ('pendiente','parcial')
+         AND c.activo = 1
+       GROUP BY c.id
+       ORDER BY MIN(cu.fecha_vencimiento) ASC, c.nombre
+    ''');
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return StreamBuilder<List<Map<String, dynamic>>>(
+      stream: _stream,
+      initialData: const [],
+      builder: (context, snap) {
+        if (snap.hasError) return Center(child: Text('Error: ${snap.error}'));
+        final rows = snap.data!;
+        if (rows.isEmpty) {
+          return const EmptyState(
+            icon: Icons.check_circle_outline,
+            titulo: 'Sin clientes con deuda',
+            descripcion: 'Todos los clientes están al día.',
+          );
+        }
+
+        return ListView.separated(
+          padding: const EdgeInsets.all(8),
+          itemCount: rows.length,
+          separatorBuilder: (_, __) => const SizedBox(height: 4),
+          itemBuilder: (context, i) {
+            final r = rows[i];
+            final cuotas = (r['cuotas_pend'] as num).toInt();
+            final saldo = (r['saldo'] as num).toDouble();
+            final vence = DateTime.parse(r['vence_mas_vieja'] as String);
+            final diasMora = DateTime.now().difference(vence).inDays;
+            final enMora = diasMora > 0;
+
+            return Card(
+              child: ListTile(
+                leading: CircleAvatar(
+                  backgroundColor: enMora
+                      ? scheme.errorContainer
+                      : scheme.primaryContainer,
+                  child: Icon(
+                    Icons.person,
+                    color: enMora ? scheme.error : scheme.primary,
+                  ),
+                ),
+                title: Text(r['nombre'] as String),
+                subtitle: Text(
+                  [
+                    r['comunidad'] as String? ?? 'Sin comunidad',
+                    if (enMora) '$diasMora día(s) en mora',
+                  ].join(' · '),
+                  style: TextStyle(
+                    color: enMora ? scheme.error : scheme.outline,
+                    fontSize: 12,
+                  ),
+                ),
+                trailing: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Text(Fmt.cordobas(saldo),
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          color: enMora ? scheme.error : null,
+                        )),
+                    Badge(
+                      label: Text('$cuotas'),
+                      backgroundColor: enMora ? scheme.error : scheme.primary,
+                      child: const SizedBox.shrink(),
+                    ),
+                  ],
+                ),
+                onTap: () => context.push('/clientes/${r['id']}'),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Shared widgets
+// ─────────────────────────────────────────────────────────────────────────────
+
 class _ContratoHeader extends StatelessWidget {
   const _ContratoHeader({required this.titulo});
   final String titulo;
@@ -319,8 +509,7 @@ class _ContratoHeader extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 4),
       child: Row(
         children: [
-          Icon(Icons.description_outlined,
-              size: 16, color: scheme.primary),
+          Icon(Icons.description_outlined, size: 16, color: scheme.primary),
           const SizedBox(width: 8),
           Expanded(
             child: Text(
