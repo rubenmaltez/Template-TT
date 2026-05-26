@@ -319,11 +319,17 @@ class _CuotasSectionState extends State<_CuotasSection> {
           }
 
           final total = rows.length;
+          final pagadas = rows.where((r) => r['estado'] == 'pagada').length;
           final pendientes = rows.where((r) {
             final e = r['estado'] as String;
             return e == 'pendiente' || e == 'parcial';
           }).toList();
           final pendingIds = pendientes.map((r) => r['id'] as String).toList();
+          final montoTotal = rows.fold<double>(
+              0, (s, r) => s + (r['monto'] as num).toDouble());
+          final montoPendiente = pendientes.fold<double>(
+              0, (s, r) => s + (r['monto'] as num).toDouble() -
+                  (r['monto_pagado'] as num? ?? 0).toDouble());
 
           return Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -333,17 +339,32 @@ class _CuotasSectionState extends State<_CuotasSection> {
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     Padding(
-                      padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-                      child: Row(
+                      padding: const EdgeInsets.fromLTRB(16, 16, 16, 4),
+                      child: Text('Cuotas',
+                          style: Theme.of(context).textTheme.titleMedium),
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                      child: Wrap(
+                        spacing: 16,
                         children: [
-                          Text('Cuotas',
-                              style: Theme.of(context).textTheme.titleMedium),
-                          const SizedBox(width: 8),
-                          Text('(${pendientes.length} pendientes de $total)',
+                          Text('$pagadas/$total pagadas',
                               style: TextStyle(
                                 color: Theme.of(context).colorScheme.outline,
-                                fontSize: 13,
+                                fontSize: 12,
                               )),
+                          Text('Contrato: ${Fmt.cordobas(montoTotal)}',
+                              style: TextStyle(
+                                color: Theme.of(context).colorScheme.outline,
+                                fontSize: 12,
+                              )),
+                          if (montoPendiente > 0)
+                            Text('Pendiente: ${Fmt.cordobas(montoPendiente)}',
+                                style: TextStyle(
+                                  color: Theme.of(context).colorScheme.error,
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w500,
+                                )),
                         ],
                       ),
                     ),

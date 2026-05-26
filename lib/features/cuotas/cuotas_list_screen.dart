@@ -405,7 +405,9 @@ class _TabPorClienteState extends State<_TabPorCliente> {
       SELECT c.id, c.nombre,
              co.nombre AS comunidad,
              COUNT(cu.id) AS cuotas_pend,
-             COALESCE(SUM(cu.monto + COALESCE(cu.cargos_neto, 0) - cu.monto_pagado), 0) AS saldo,
+             SUM(CASE WHEN cu.fecha_vencimiento < date('now')
+                      THEN 1 ELSE 0 END) AS cuotas_vencidas,
+             COALESCE(SUM(cu.monto + COALESCE(cu.cargos_neto, 0) - cu.monto_pagado), 0) AS saldo_pendiente,
              MIN(cu.fecha_vencimiento) AS vence_mas_vieja
         FROM cuotas cu
         JOIN clientes c ON c.id = cu.cliente_id
@@ -440,8 +442,9 @@ class _TabPorClienteState extends State<_TabPorCliente> {
           separatorBuilder: (_, __) => const SizedBox(height: 4),
           itemBuilder: (context, i) {
             final r = rows[i];
-            final cuotas = (r['cuotas_pend'] as num).toInt();
-            final saldo = (r['saldo'] as num).toDouble();
+            final cuotasPend = (r['cuotas_pend'] as num).toInt();
+            final cuotasVencidas = (r['cuotas_vencidas'] as num).toInt();
+            final saldo = (r['saldo_pendiente'] as num).toDouble();
             final vence = DateTime.parse(r['vence_mas_vieja'] as String);
             final diasMora = DateTime.now().difference(vence).inDays;
             final enMora = diasMora > 0;
@@ -458,31 +461,31 @@ class _TabPorClienteState extends State<_TabPorCliente> {
                   ),
                 ),
                 title: Text(r['nombre'] as String),
-                subtitle: Text(
-                  [
-                    r['comunidad'] as String? ?? 'Sin comunidad',
-                    if (enMora) '$diasMora día(s) en mora',
-                  ].join(' · '),
-                  style: TextStyle(
-                    color: enMora ? scheme.error : scheme.outline,
-                    fontSize: 12,
-                  ),
-                ),
-                trailing: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  crossAxisAlignment: CrossAxisAlignment.end,
+                subtitle: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(Fmt.cordobas(saldo),
-                        style: TextStyle(
-                          fontWeight: FontWeight.bold,
-                          color: enMora ? scheme.error : null,
-                        )),
-                    Badge(
-                      label: Text('$cuotas'),
-                      backgroundColor: enMora ? scheme.error : scheme.primary,
-                      child: const SizedBox.shrink(),
+                    Text(
+                      r['comunidad'] as String? ?? 'Sin comunidad',
+                      style: TextStyle(color: scheme.outline, fontSize: 12),
+                    ),
+                    Text(
+                      enMora
+                          ? '$cuotasVencidas vencida(s) · $diasMora día(s) en mora'
+                          : '$cuotasPend cuota(s) pendiente(s)',
+                      style: TextStyle(
+                        color: enMora ? scheme.error : scheme.outline,
+                        fontWeight: enMora ? FontWeight.w500 : null,
+                        fontSize: 12,
+                      ),
                     ),
                   ],
+                ),
+                trailing: Text(
+                  Fmt.cordobas(saldo),
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    color: enMora ? scheme.error : null,
+                  ),
                 ),
                 onTap: () => context.push('/clientes/${r['id']}'),
               ),
