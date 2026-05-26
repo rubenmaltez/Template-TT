@@ -17,10 +17,17 @@ final uploadErrorsController = StreamController<CrudUploadError>.broadcast();
 /// User ID de la DB actualmente abierta. null si no hay DB abierta.
 String? _currentDbUserId;
 
-/// Lock para serializar disconnect/connect.
-Future<void>? _pendingDisconnect;
+/// Lock para serializar operaciones de DB.
+Completer<void>? _pendingOp;
 
-/// Directorio base para las DBs (lazy, solo se calcula una vez).
+/// Suscripción al connector actual (para cancelar al reconectar).
+StreamSubscription<CrudUploadError>? _connectorSub;
+
+/// Callback que se invoca después de abrir una nueva DB per-user.
+/// main.dart lo usa para re-suscribir statusStream y re-invalidar providers.
+void Function(PowerSyncDatabase newDb)? onDatabaseSwitched;
+
+/// Directorio base para las DBs (lazy).
 String? _dbDirPath;
 
 Future<String> _getDbDir() async {
@@ -36,10 +43,8 @@ Future<String> _getDbDir() async {
 
 String _dbPathForUser(String userId, String basePath) {
   if (kIsWeb) {
-    // En web, IndexedDB usa el nombre como key — incluir user ID.
     return 'sitecsa_$userId.db';
   }
-  // En mobile/desktop, archivo separado por user.
   return '$basePath/sitecsa_$userId.db';
 }
 
@@ -57,40 +62,53 @@ Future<void> openDatabase() async {
 Future<void> openDatabaseForUser(String userId) async {
   if (_currentDbUserId == userId) return;
 
-  // Cerrar la DB anterior si existe.
-  try {
-    await db.disconnect();
-    await db.close();
-  } catch (_) {}
+  // Serializar con cualquier operación en vuelo.
+  if (_pendingOp != null && !_pendingOp!.isCompleted) {
+    await _pendingOp!.future;
+  }
+  final op = Completer<void>();
+  _pendingOp = op;
 
-  final dir = await _getDbDir();
-  final path = _dbPathForUser(userId, dir);
-  db = PowerSyncDatabase(schema: schema, path: path);
-  await db.initialize();
-  _currentDbUserId = userId;
+  try {
+    // Cerrar la DB anterior.
+    try { await db.disconnect(); } catch (_) {}
+    try { await db.close(); } catch (_) {}
+
+    final dir = await _getDbDir();
+    final path = _dbPathForUser(userId, dir);
+    db = PowerSyncDatabase(schema: schema, path: path);
+    await db.initialize();
+    _currentDbUserId = userId;
+
+    // Notificar a main.dart para re-suscribir statusStream y providers.
+    onDatabaseSwitched?.call(db);
+  } finally {
+    op.complete();
+  }
 }
 
 /// Conecta PowerSync usando la sesión Supabase actual.
 Future<void> connectPowerSync() async {
-  if (_pendingDisconnect != null) {
-    await _pendingDisconnect;
-    _pendingDisconnect = null;
-  }
+  // Cancelar suscripción anterior del connector.
+  await _connectorSub?.cancel();
+
   final connector = SupabaseConnector(Supabase.instance.client);
-  connector.uploadErrors.listen((error) {
+  _connectorSub = connector.uploadErrors.listen((error) {
     uploadErrorsController.add(error);
   });
   await db.connect(connector: connector);
 }
 
-/// Desconecta PowerSync sin borrar datos locales. La DB del user
-/// queda intacta para reconexión rápida la próxima vez.
+/// Desconecta PowerSync sin borrar datos locales.
 Future<void> disconnectPowerSync() async {
-  final completer = Completer<void>();
-  _pendingDisconnect = completer.future;
+  if (_pendingOp != null && !_pendingOp!.isCompleted) {
+    await _pendingOp!.future;
+  }
+  final op = Completer<void>();
+  _pendingOp = op;
   try {
     await db.disconnect();
   } finally {
-    completer.complete();
+    op.complete();
   }
 }

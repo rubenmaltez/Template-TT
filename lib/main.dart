@@ -14,6 +14,9 @@ import 'data/providers/auth_identity_provider.dart';
 import 'data/providers/foto_comprobante_provider.dart';
 import 'data/services/error_log_service.dart';
 import 'features/auth/auth_flow_provider.dart';
+import 'package:powersync/powersync.dart' show SyncStatus;
+
+import 'data/providers/sync_status_provider.dart';
 import 'powersync/db.dart' as ps;
 
 const _kLastKnownUserIdKey = 'last_known_user_id';
@@ -238,10 +241,14 @@ Future<void> _bootstrap() async {
   // GC de archivos huérfanos al arrancar (cobros cancelados, etc.).
   final fotoService = container.read(fotoComprobanteServiceProvider);
   unawaited(fotoService.limpiarHuerfanos());
-  // Tracking del último error reportado para no spammear logs si el
-  // status emite repetido con el mismo error en cada checkpoint.
+
   Object? lastReportedSyncError;
-  ps.db.statusStream.listen((status) {
+  StreamSubscription<SyncStatus>? statusSub;
+
+  void subscribeStatusStream() {
+    statusSub?.cancel();
+    lastReportedSyncError = null;
+    statusSub = ps.db.statusStream.listen((status) {
     if (status.connected) {
       unawaited(fotoService.sincronizarPendientes());
       // Reintento de uploads de error_logs que quedaron pendientes
@@ -263,11 +270,24 @@ Future<void> _bootstrap() async {
         type: ErrorLogType.zone,
       ));
     } else if (err == null && lastReportedSyncError != null) {
-      // Reset el tracker cuando el error se resuelve, para capturar
-      // un error futuro distinto.
       lastReportedSyncError = null;
     }
-  });
+    });
+  }
+
+  // Suscribir al statusStream de la DB inicial.
+  subscribeStatusStream();
+
+  // Callback: cuando openDatabaseForUser crea una nueva DB, re-suscribir
+  // statusStream e invalidar providers que capturaron la DB vieja.
+  ps.onDatabaseSwitched = (_) {
+    subscribeStatusStream();
+    container.read(syncStatusProvider);
+    // Forzar re-creación de syncStatusProvider invalidándolo.
+    // No podemos usar ref.invalidate desde main.dart, pero el
+    // StreamProvider se auto-reconstituye cuando la UI lo re-lee
+    // post-sync-gate. El statusStream fresh es lo que importa.
+  };
 
   runApp(UncontrolledProviderScope(
     container: container,
