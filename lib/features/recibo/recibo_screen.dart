@@ -44,7 +44,7 @@ class _ReciboScreenState extends ConsumerState<ReciboScreen> {
                cu.monto_pagado AS monto_pagado_cuota,
                cu.cargos_neto,
                ct.dia_pago,
-               c.nombre AS cliente_nombre, c.cedula AS cliente_cedula,
+               c.id AS cliente_id, c.nombre AS cliente_nombre, c.cedula AS cliente_cedula,
                pl.nombre AS plan_nombre,
                cu.descripcion AS cuota_descripcion,
                co.nombre AS cobrador_nombre
@@ -72,7 +72,7 @@ class _ReciboScreenState extends ConsumerState<ReciboScreen> {
                cu.monto_pagado AS monto_pagado_cuota,
                cu.cargos_neto,
                ct.dia_pago,
-               c.nombre AS cliente_nombre, c.cedula AS cliente_cedula,
+               c.id AS cliente_id, c.nombre AS cliente_nombre, c.cedula AS cliente_cedula,
                pl.nombre AS plan_nombre,
                cu.descripcion AS cuota_descripcion,
                co.nombre AS cobrador_nombre
@@ -145,6 +145,8 @@ class _ReciboScreenState extends ConsumerState<ReciboScreen> {
                   recibo: r,
                   settings: settings,
                 ),
+                const SizedBox(height: 16),
+                _PostCobroActions(clienteId: r['cliente_id'] as String?),
               ],
             );
           }
@@ -167,6 +169,8 @@ class _ReciboScreenState extends ConsumerState<ReciboScreen> {
                 recibo: r,
                 settings: settings,
               ),
+              const SizedBox(height: 16),
+              _PostCobroActions(clienteId: r['cliente_id'] as String?),
             ],
           );
         },
@@ -640,6 +644,80 @@ class _AccionesImpresionState extends ConsumerState<_AccionesImpresion> {
           textAlign: TextAlign.center,
           style: Theme.of(context).textTheme.bodySmall,
         ),
+      ],
+    );
+  }
+}
+
+class _PostCobroActions extends StatefulWidget {
+  const _PostCobroActions({required this.clienteId});
+  final String? clienteId;
+
+  @override
+  State<_PostCobroActions> createState() => _PostCobroActionsState();
+}
+
+class _PostCobroActionsState extends State<_PostCobroActions> {
+  String? _nextCuotaId;
+  bool _checked = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _buscarSiguiente();
+  }
+
+  Future<void> _buscarSiguiente() async {
+    if (widget.clienteId == null) {
+      setState(() => _checked = true);
+      return;
+    }
+    final rows = await ps.db.getAll(
+      '''
+      SELECT cu.id FROM cuotas cu
+       WHERE cu.cliente_id = ?
+         AND cu.estado IN ('pendiente','parcial')
+       ORDER BY cu.periodo ASC
+       LIMIT 1
+      ''',
+      [widget.clienteId],
+    );
+    if (mounted) {
+      setState(() {
+        _nextCuotaId = rows.isNotEmpty ? rows.first['id'] as String : null;
+        _checked = true;
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const Divider(),
+        const SizedBox(height: 8),
+        if (_checked && _nextCuotaId != null)
+          FilledButton.tonalIcon(
+            icon: const Icon(Icons.skip_next),
+            label: const Text('Cobrar siguiente cuota de este cliente'),
+            onPressed: () =>
+                context.pushReplacement('/cobro/$_nextCuotaId'),
+          ),
+        if (_checked && _nextCuotaId == null)
+          Text(
+            'No hay más cuotas pendientes de este cliente',
+            textAlign: TextAlign.center,
+            style: TextStyle(color: scheme.outline, fontSize: 13),
+          ),
+        const SizedBox(height: 8),
+        OutlinedButton.icon(
+          icon: const Icon(Icons.list),
+          label: const Text('Volver a cuotas'),
+          onPressed: () => context.go('/cuotas'),
+        ),
+        const SizedBox(height: 24),
       ],
     );
   }
