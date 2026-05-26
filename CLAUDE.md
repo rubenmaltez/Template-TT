@@ -523,6 +523,19 @@ Estos viven acá hasta que se ataquen explícitamente. NO re-flag en audits.
     - Migraciones 0043 (grupo_cobro), 0044 (descuento tipo), 0045 (seed actualizado).
     - Bluetooth print: nullable-safe para cuotas manuales (plan_nombre/dia_pago).
     - Pago model: campo grupo_cobro en Pago.fromRow.
+- **Sesión 3 — Per-user DB + Change Log + UX Sprint**:
+    - Per-user PowerSync DB: cada usuario tiene su propio SQLite (sitecsa_{uid}.db).
+      Resuelve sync gate stuck sin re-descargar data.
+    - Change Log: triggers genéricos en pagos/cuotas/clientes/contratos/recibos.
+      Widget HistorialCambiosWidget reutilizable. Migración 0047.
+    - Sign-out: confirmarSignOut() verifica CRUD pendiente antes de cerrar sesión.
+    - UX Sprint: tenant name en AppBar, cuotas tabs (por cobrar + por cliente),
+      multi-select con orden obligatorio, próximas visitas, búsqueda global,
+      post-cobro botones en recibo, dashboard sparkline.
+    - Migraciones 0043-0050 deployadas.
+    - Bug conocido: schema cache de PowerSync no detecta columna `descripcion`
+      en cuotas al crear cuota manual. Requiere limpiar IndexedDB manualmente.
+      Investigar: forzar schema version bump en PowerSync.
 - **Admin pagos sin grupo_cobro visual**: los pagos multi-cuota aparecen como N
     filas separadas en `/admin/pagos` sin indicador de agrupación. UX aceptable
     por ahora — sprint futuro si un admin lo pide.
