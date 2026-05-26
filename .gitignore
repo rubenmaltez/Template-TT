@@ -56,3 +56,4 @@ web/powersync_sync.worker.js
 web/sqlite3.wasm
 web/powersync_db.worker.js
 web/powersync_sync.worker.js
+.claude/
