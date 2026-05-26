@@ -443,10 +443,7 @@ class _PagoCard extends ConsumerWidget {
       }
     }
   }
-}
 
-class _AnularDialog extends StatefulWidget {
-  const _AnularDialog();
   Future<void> _recrear(BuildContext context, WidgetRef ref) async {
     final confirmar = await showDialog<bool>(
       context: context,
@@ -495,6 +492,10 @@ class _AnularDialog extends StatefulWidget {
       }
     }
   }
+}
+
+class _AnularDialog extends StatefulWidget {
+  const _AnularDialog();
 
   @override
   State<_AnularDialog> createState() => _AnularDialogState();

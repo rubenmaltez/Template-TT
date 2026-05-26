@@ -495,11 +495,9 @@ class PagosRepo {
     final restar = (rows.first['restar'] as num).toDouble();
     return sumar - restar;
   }
-}
 
   /// Recrea un pago que fue anulado por error. Crea un pago NUEVO
   /// (no desanula el viejo) con los mismos datos del original.
-  /// El pago anulado queda como registro histórico.
   Future<CobroResultado> recrearPago({
     required String pagoAnuladoId,
     required String tenantId,
@@ -512,6 +510,15 @@ class PagosRepo {
     );
     if (original.isEmpty) throw Exception('Pago no encontrado');
     final p = original.first;
+
+    // Guard: verificar que la cuota no esté ya pagada por otro pago.
+    final cuotaRows = await ps.db.getAll(
+      'SELECT estado FROM cuotas WHERE id = ?',
+      [p['cuota_id']],
+    );
+    if (cuotaRows.isNotEmpty && cuotaRows.first['estado'] == 'pagada') {
+      throw Exception('La cuota ya fue pagada por otro cobro');
+    }
 
     return registrarCobro(
       tenantId: tenantId,

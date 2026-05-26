@@ -266,7 +266,17 @@ class _CuotasAdminScreenState extends ConsumerState<CuotasAdminScreen> {
             .from('cuotas')
             .update(updates)
             .eq('id', id);
-      } catch (_) {}
+      } catch (_) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Cuota creada, pero el tipo/descripción no se '
+                  'sincronizaron. Se completarán al volver a estar online.'),
+              duration: Duration(seconds: 4),
+            ),
+          );
+        }
+      }
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Cuota manual creada')),

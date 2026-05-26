@@ -456,6 +456,8 @@ int _sortOrder(String clave) {
     'cobranza.descuento_max_monto': 22,
     'cobranza.descuento_max_porcentaje': 23,
     // Reconexión (toggle padre → valor)
+    'cobranza.recrear_pago_anulado': 13,
+    'cobranza.dias_cuotas_visibles': 5,
     'cobranza.cargo_reconexion_habilitado': 30,
     'cobranza.monto_reconexion': 31,
     // Pagos

@@ -33,6 +33,8 @@ begin
   (p_tenant_id, 'cobranza.pago_parcial',                  'true'::jsonb,  'boolean', 'cobranza', 'Permitir pago parcial', 'admin'),
   (p_tenant_id, 'cobranza.pago_adelantado',               'true'::jsonb,  'boolean', 'cobranza', 'Permitir pago adelantado (multi-cuota)', 'admin'),
   (p_tenant_id, 'cobranza.cargo_reconexion',              '0'::jsonb,     'number',  'cobranza', 'Cargo automático por reconexión, 0 = deshabilitado', 'admin'),
+  (p_tenant_id, 'cobranza.recrear_pago_anulado',        'false'::jsonb, 'boolean', 'cobranza', 'Permitir recrear pagos anulados por error', 'admin'),
+  (p_tenant_id, 'cobranza.dias_cuotas_visibles',        '30'::jsonb,    'number',  'cobranza', 'Días de cuotas futuras visibles para el cobrador', 'admin'),
 
   -- ── Pagos ────────────────────────────────────────────────────────
   (p_tenant_id, 'pagos.transferencia_habilitada', 'false'::jsonb, 'boolean', 'pagos', 'Habilitar pago por transferencia', 'admin'),
