@@ -132,6 +132,8 @@ Future<void> _bootstrap() async {
               .read(authIdentityProvider.notifier)
               .onSignIn(session.user.id);
           try {
+            debugPrint('[SYNC-DIAG] openDatabaseForUser starting…');
+            await ps.openDatabaseForUser(session.user.id);
             debugPrint('[SYNC-DIAG] connectPowerSync starting…');
             await ps.connectPowerSync();
             debugPrint('[SYNC-DIAG] connectPowerSync returned OK');
@@ -193,6 +195,7 @@ Future<void> _bootstrap() async {
           .read(authIdentityProvider.notifier)
           .onSignIn(restoredSession.user.id);
       try {
+        await ps.openDatabaseForUser(restoredSession.user.id);
         await ps.connectPowerSync();
         debugPrint('[SYNC-DIAG] Fallback connect returned OK');
       } catch (e, stack) {
