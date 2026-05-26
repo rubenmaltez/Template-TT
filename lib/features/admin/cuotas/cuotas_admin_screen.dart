@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../../data/providers/cobrador_provider.dart';
@@ -252,14 +253,16 @@ class _CuotasAdminScreenState extends ConsumerState<CuotasAdminScreen> {
           now,
         ],
       );
-      // UPDATE separado para descripcion: PowerSync CRUD upload rechaza
-      // la columna en INSERT (schema cache bug), pero UPDATE funciona
-      // porque solo envía columnas modificadas.
+      // Descripcion via REST directo a Supabase (bypass PowerSync CRUD
+      // upload que rechaza esta columna por bug de schema cache del SDK).
+      // La descripcion aparece en la UI después del próximo sync (segundos).
       if (result.descripcion.isNotEmpty) {
-        await ps.db.execute(
-          'UPDATE cuotas SET descripcion = ? WHERE id = ?',
-          [result.descripcion, id],
-        );
+        try {
+          await Supabase.instance.client
+              .from('cuotas')
+              .update({'descripcion': result.descripcion})
+              .eq('id', id);
+        } catch (_) {}
       }
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
