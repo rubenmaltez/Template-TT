@@ -16,6 +16,8 @@ import 'data/services/error_log_service.dart';
 import 'features/auth/auth_flow_provider.dart';
 import 'package:powersync/powersync.dart' show SyncStatus;
 
+import 'data/providers/cobrador_provider.dart';
+import 'data/providers/mora_count_provider.dart';
 import 'data/providers/sync_status_provider.dart';
 import 'powersync/db.dart' as ps;
 
@@ -282,11 +284,12 @@ Future<void> _bootstrap() async {
   // statusStream e invalidar providers que capturaron la DB vieja.
   ps.onDatabaseSwitched = (_) {
     subscribeStatusStream();
-    container.read(syncStatusProvider);
-    // Forzar re-creación de syncStatusProvider invalidándolo.
-    // No podemos usar ref.invalidate desde main.dart, pero el
-    // StreamProvider se auto-reconstituye cuando la UI lo re-lee
-    // post-sync-gate. El statusStream fresh es lo que importa.
+    // Invalidar TODOS los providers que capturan ps.db al crearse.
+    // Esto se ejecuta DESPUÉS de openDatabaseForUser, así los providers
+    // recreados capturan la DB correcta del nuevo usuario.
+    container.invalidate(syncStatusProvider);
+    container.invalidate(cobradorActualProvider);
+    container.invalidate(moraCountProvider);
   };
 
   runApp(UncontrolledProviderScope(
