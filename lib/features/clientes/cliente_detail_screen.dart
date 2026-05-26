@@ -23,6 +23,7 @@ class ClienteDetailScreen extends ConsumerStatefulWidget {
 
 class _ClienteDetailScreenState extends ConsumerState<ClienteDetailScreen> {
   final _visitasKey = GlobalKey<_VisitasSectionState>();
+  Set<String> _selectedCuotas = {};
 
   @override
   Widget build(BuildContext context) {
@@ -37,11 +38,23 @@ class _ClienteDetailScreenState extends ConsumerState<ClienteDetailScreen> {
           error: (_, __) => const Text('Cliente'),
         ),
       ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => _mostrarDialogVisita(context),
-        icon: const Icon(Icons.add_task),
-        label: const Text('Registrar visita'),
-      ),
+      floatingActionButton: _selectedCuotas.isNotEmpty
+          ? FloatingActionButton.extended(
+              onPressed: () {
+                final ids = _selectedCuotas.join(',');
+                setState(() => _selectedCuotas = {});
+                context.push('/cobro/$ids');
+              },
+              icon: const Icon(Icons.payment),
+              label: Text(_selectedCuotas.length == 1
+                  ? 'Cobrar cuota'
+                  : 'Cobrar ${_selectedCuotas.length} cuotas'),
+            )
+          : FloatingActionButton.extended(
+              onPressed: () => _mostrarDialogVisita(context),
+              icon: const Icon(Icons.add_task),
+              label: const Text('Registrar visita'),
+            ),
       body: clienteAsync.when(
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (e, _) => Center(child: Text('Error: $e')),
@@ -65,7 +78,11 @@ class _ClienteDetailScreenState extends ConsumerState<ClienteDetailScreen> {
               _ClienteInfo(cliente: cliente),
               const SizedBox(height: 8),
               _CuotasSection(
-                  clienteId: widget.clienteId, diasGracia: diasGracia),
+                  clienteId: widget.clienteId,
+                  diasGracia: diasGracia,
+                  onSelectionChanged: (sel) =>
+                      setState(() => _selectedCuotas = sel),
+              ),
               const SizedBox(height: 8),
               _PagosSection(clienteId: widget.clienteId),
               const SizedBox(height: 8),
@@ -223,9 +240,14 @@ class _ClienteInfo extends StatelessWidget {
 }
 
 class _CuotasSection extends StatefulWidget {
-  const _CuotasSection({required this.clienteId, required this.diasGracia});
+  const _CuotasSection({
+    required this.clienteId,
+    required this.diasGracia,
+    required this.onSelectionChanged,
+  });
   final String clienteId;
   final int diasGracia;
+  final ValueChanged<Set<String>> onSelectionChanged;
 
   @override
   State<_CuotasSection> createState() => _CuotasSectionState();
@@ -289,6 +311,7 @@ class _CuotasSectionState extends State<_CuotasSection> {
         }
       }
     });
+    widget.onSelectionChanged(Set.of(_selected));
   }
 
   @override
@@ -387,20 +410,7 @@ class _CuotasSectionState extends State<_CuotasSection> {
                   ],
                 ),
               ),
-              if (_selected.isNotEmpty) ...[
-                const SizedBox(height: 12),
-                FilledButton.icon(
-                  icon: const Icon(Icons.payment),
-                  label: Text(_selected.length == 1
-                      ? 'Cobrar cuota'
-                      : 'Cobrar ${_selected.length} cuotas'),
-                  onPressed: () {
-                    final ids = _selected.join(',');
-                    setState(() => _selected.clear());
-                    context.push('/cobro/$ids');
-                  },
-                ),
-              ],
+              const SizedBox(height: 4),
             ],
           );
         },
