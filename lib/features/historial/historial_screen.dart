@@ -51,12 +51,10 @@ class _HistorialScreenState extends ConsumerState<HistorialScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return StreamBuilder(
+    return StreamBuilder<List<Map<String, dynamic>>>(
       stream: _historialStream,
+      initialData: const [],
       builder: (context, snap) {
-        if (!snap.hasData) {
-          return const Center(child: CircularProgressIndicator());
-        }
         final rows = snap.data!;
         if (rows.isEmpty) {
           return const EmptyState(
