@@ -63,6 +63,9 @@ class HomeScreen extends ConsumerWidget {
             _QuickAction(icon: Icons.history, label: 'Historial', path: '/historial'),
           ],
         ),
+
+        const SizedBox(height: 24),
+        _ProximasVisitas(diasGracia: settings.diasGracia),
       ],
     );
   }
@@ -239,6 +242,110 @@ class _MetricsSkeleton extends StatelessWidget {
         padding: EdgeInsets.all(40),
         child: CircularProgressIndicator(),
       ),
+    );
+  }
+}
+
+class _ProximasVisitas extends StatefulWidget {
+  const _ProximasVisitas({required this.diasGracia});
+  final int diasGracia;
+
+  @override
+  State<_ProximasVisitas> createState() => _ProximasVisitasState();
+}
+
+class _ProximasVisitasState extends State<_ProximasVisitas> {
+  late Stream<List<Map<String, dynamic>>> _stream;
+
+  @override
+  void initState() {
+    super.initState();
+    _stream = _buildStream();
+  }
+
+  @override
+  void didUpdateWidget(_ProximasVisitas old) {
+    super.didUpdateWidget(old);
+    if (old.diasGracia != widget.diasGracia) {
+      setState(() => _stream = _buildStream());
+    }
+  }
+
+  Stream<List<Map<String, dynamic>>> _buildStream() => ps.db.watch(
+        '''
+        SELECT c.id, c.nombre,
+               co.nombre AS comunidad,
+               COUNT(cu.id) AS cuotas_pend,
+               MIN(cu.fecha_vencimiento) AS vence_mas_vieja
+          FROM cuotas cu
+          JOIN clientes c ON c.id = cu.cliente_id
+     LEFT JOIN comunidades co ON co.id = c.comunidad_id
+         WHERE cu.estado IN ('pendiente','parcial')
+           AND cu.fecha_vencimiento <= date('now')
+           AND c.activo = 1
+         GROUP BY c.id
+         ORDER BY co.nombre, c.nombre
+         LIMIT 15
+        ''',
+      );
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('Próximas visitas', style: Theme.of(context).textTheme.titleMedium),
+        const SizedBox(height: 4),
+        Text('Clientes con cuotas vencidas o por vencer hoy',
+            style: TextStyle(color: scheme.outline, fontSize: 12)),
+        const SizedBox(height: 12),
+        StreamBuilder<List<Map<String, dynamic>>>(
+          stream: _stream,
+          initialData: const [],
+          builder: (context, snap) {
+            if (snap.hasError) {
+              return Center(child: Text('Error: ${snap.error}'));
+            }
+            final rows = snap.data!;
+            if (rows.isEmpty) {
+              return Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(24),
+                  child: Center(
+                    child: Text('Sin visitas pendientes por hoy',
+                        style: TextStyle(color: scheme.outline)),
+                  ),
+                ),
+              );
+            }
+            return Column(
+              children: rows.map((r) {
+                final cuotas = (r['cuotas_pend'] as num).toInt();
+                return Card(
+                  child: ListTile(
+                    leading: CircleAvatar(
+                      backgroundColor: scheme.errorContainer,
+                      child: Icon(Icons.person, color: scheme.error),
+                    ),
+                    title: Text(r['nombre'] as String),
+                    subtitle: Text(
+                      r['comunidad'] as String? ?? 'Sin comunidad',
+                      style: TextStyle(color: scheme.outline, fontSize: 12),
+                    ),
+                    trailing: Badge(
+                      label: Text('$cuotas'),
+                      backgroundColor: scheme.error,
+                      child: const Icon(Icons.receipt_long),
+                    ),
+                    onTap: () => context.push('/clientes/${r['id']}'),
+                  ),
+                );
+              }).toList(),
+            );
+          },
+        ),
+      ],
     );
   }
 }
