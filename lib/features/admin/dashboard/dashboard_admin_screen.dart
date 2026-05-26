@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../data/providers/dashboard_providers.dart';
 import '../../../data/utils/formatters.dart';
+import '../../../powersync/db.dart' as ps;
 
 class DashboardAdminScreen extends StatelessWidget {
   const DashboardAdminScreen({super.key});
@@ -23,6 +24,8 @@ class DashboardAdminScreen extends StatelessWidget {
         ),
         const SizedBox(height: 24),
         const _CobrosKPIs(),
+        const SizedBox(height: 16),
+        const _Sparkline7d(),
         const SizedBox(height: 24),
         const _OperativoKPIs(),
         const SizedBox(height: 24),
@@ -81,6 +84,147 @@ class _CobrosKPIs extends ConsumerWidget {
       error: (_, __) => const SizedBox.shrink(),
     );
   }
+}
+
+class _Sparkline7d extends StatefulWidget {
+  const _Sparkline7d();
+  @override
+  State<_Sparkline7d> createState() => _Sparkline7dState();
+}
+
+class _Sparkline7dState extends State<_Sparkline7d> {
+  late Stream<List<Map<String, dynamic>>> _stream;
+
+  @override
+  void initState() {
+    super.initState();
+    _stream = ps.db.watch('''
+      SELECT date(fecha_pago) AS dia,
+             COALESCE(SUM(monto_cordobas), 0) AS total
+        FROM pagos
+       WHERE anulado = 0
+         AND date(fecha_pago) >= date('now', '-6 days')
+       GROUP BY date(fecha_pago)
+       ORDER BY dia
+    ''');
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.show_chart, size: 18, color: scheme.primary),
+                const SizedBox(width: 8),
+                Text('Cobros últimos 7 días',
+                    style: TextStyle(color: scheme.onSurfaceVariant)),
+              ],
+            ),
+            const SizedBox(height: 12),
+            SizedBox(
+              height: 48,
+              child: StreamBuilder<List<Map<String, dynamic>>>(
+                stream: _stream,
+                initialData: const [],
+                builder: (context, snap) {
+                  if (snap.hasError || snap.data!.isEmpty) {
+                    return Center(
+                      child: Text('Sin datos',
+                          style: TextStyle(color: scheme.outline, fontSize: 12)),
+                    );
+                  }
+                  // Llenar los 7 días con 0 donde no hay cobros.
+                  final map = <String, double>{};
+                  for (final r in snap.data!) {
+                    map[r['dia'] as String] = (r['total'] as num).toDouble();
+                  }
+                  final values = <double>[];
+                  for (var i = 6; i >= 0; i--) {
+                    final d = DateTime.now().subtract(Duration(days: i));
+                    final key = d.toIso8601String().substring(0, 10);
+                    values.add(map[key] ?? 0);
+                  }
+                  return CustomPaint(
+                    size: const Size(double.infinity, 48),
+                    painter: _SparklinePainter(
+                      values: values,
+                      color: scheme.primary,
+                    ),
+                  );
+                },
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _SparklinePainter extends CustomPainter {
+  _SparklinePainter({required this.values, required this.color});
+  final List<double> values;
+  final Color color;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (values.isEmpty) return;
+    final maxV = values.reduce((a, b) => a > b ? a : b);
+    if (maxV == 0) return;
+
+    final paint = Paint()
+      ..color = color
+      ..strokeWidth = 2
+      ..style = PaintingStyle.stroke
+      ..strokeCap = StrokeCap.round;
+
+    final fillPaint = Paint()
+      ..shader = LinearGradient(
+        begin: Alignment.topCenter,
+        end: Alignment.bottomCenter,
+        colors: [color.withValues(alpha: 0.3), color.withValues(alpha: 0.0)],
+      ).createShader(Rect.fromLTWH(0, 0, size.width, size.height));
+
+    final path = Path();
+    final fillPath = Path();
+    final stepX = size.width / (values.length - 1);
+
+    for (var i = 0; i < values.length; i++) {
+      final x = i * stepX;
+      final y = size.height - (values[i] / maxV * size.height * 0.85);
+      if (i == 0) {
+        path.moveTo(x, y);
+        fillPath.moveTo(x, size.height);
+        fillPath.lineTo(x, y);
+      } else {
+        path.lineTo(x, y);
+        fillPath.lineTo(x, y);
+      }
+    }
+    fillPath.lineTo(size.width, size.height);
+    fillPath.close();
+
+    canvas.drawPath(fillPath, fillPaint);
+    canvas.drawPath(path, paint);
+
+    // Dots en cada punto.
+    final dotPaint = Paint()..color = color;
+    for (var i = 0; i < values.length; i++) {
+      final x = i * stepX;
+      final y = size.height - (values[i] / maxV * size.height * 0.85);
+      canvas.drawCircle(Offset(x, y), 3, dotPaint);
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _SparklinePainter old) =>
+      old.values != values || old.color != color;
 }
 
 class _OperativoKPIs extends ConsumerWidget {
