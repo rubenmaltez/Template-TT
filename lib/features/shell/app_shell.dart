@@ -9,6 +9,7 @@ import '../../data/providers/sync_status_provider.dart';
 import '../../data/repositories/settings_repo.dart';
 import '../shared/utils/shell_nav.dart';
 import '../shared/utils/sign_out_helper.dart';
+import 'global_search_delegate.dart';
 import '../shared/widgets/app_version_label.dart';
 import '../shared/widgets/offline_banner.dart';
 import '../shared/widgets/update_banner.dart';
@@ -41,7 +42,18 @@ class AppShell extends ConsumerWidget {
       drawer: const _AppDrawer(),
       appBar: AppBar(
         title: Text(titulo),
-        actions: const [_SyncIndicator(), SizedBox(width: 8)],
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.search),
+            tooltip: 'Buscar',
+            onPressed: () => showSearch(
+              context: context,
+              delegate: GlobalSearchDelegate(),
+            ),
+          ),
+          const _SyncIndicator(),
+          const SizedBox(width: 8),
+        ],
       ),
       body: Column(
         children: [
