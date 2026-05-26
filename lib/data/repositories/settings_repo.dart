@@ -56,10 +56,6 @@ T settingValue<T>(Map<String, Setting>? map, String clave, T fallback) {
   final s = map[clave];
   if (s == null) return fallback;
   final v = s.valor;
-  if (T == bool) {
-    // ignore: avoid_print
-    print('[SETTING] $clave valor=$v (${v.runtimeType})');
-  }
   if (v is T) return v;
   if (T == double && v is num) return v.toDouble() as T;
   if (T == int && v is num) return v.toInt() as T;
