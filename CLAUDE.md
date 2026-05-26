@@ -244,6 +244,54 @@ Aplicar fixes convergentes. NIT individuales se anotan al backlog.
 - Migrations secuenciales, sync rules vs schema.
 - Verificar que cada archivo nuevo se usa en al menos un lugar.
 
+### Verificación de integridad DB ↔ Schema ↔ Sync Rules (OBLIGATORIO)
+**Antes de cada commit que toque tablas/columnas**, verificar la cadena completa:
+
+1. **Postgres** (Supabase): ¿la columna/tabla existe en la DB real?
+   - NO asumir que una migración se ejecutó. Verificar con query.
+   - `SELECT column_name FROM information_schema.columns WHERE table_name = 'X'`
+
+2. **PowerSync schema** (`lib/powersync/schema.dart`): ¿la columna está declarada?
+   - Cada columna de Postgres que se usa en la app DEBE estar en schema.dart.
+
+3. **Sync Rules** (`powersync/sync-rules.yaml`): ¿el `SELECT *` cubre la columna?
+   - Después de agregar columnas a Postgres, SIEMPRE redeployar sync rules.
+   - Verificar en PowerSync Dashboard que dice "Active" post-deploy.
+
+4. **Schema version** (`lib/powersync/db.dart`): ¿necesita bump?
+   - Si se agregó columna/tabla al schema.dart, bumpear `_schemaVersion`.
+   - Sin bump, las DBs locales existentes no ven la columna nueva.
+
+5. **Dart code**: ¿el código que lee/escribe la columna es consistente?
+   - INSERT, UPDATE, SELECT, fromRow() — todos deben usar el mismo nombre.
+
+**Checklist de deploy cuando se agrega una columna:**
+```
+□ Migración SQL corrida en Supabase (ALTER TABLE ADD COLUMN)
+□ Verificar en Table Editor que la columna existe
+□ schema.dart actualizado con Column.text/real/integer
+□ _schemaVersion bumpeado en db.dart
+□ Sync rules redeployadas en PowerSync Dashboard
+□ Verificar "Active" en PowerSync Dashboard post-deploy
+□ App reiniciada desde cero (q + flutter run)
+```
+
+**NUNCA asumir que algo existe — verificar siempre.** El costo de verificar
+es 30 segundos. El costo de no verificar es horas de debugging.
+
+### Estado actual de sync rules
+Las sync rules usan `SELECT *` para todas las tablas operativas.
+Esto significa que columnas nuevas se incluyen automáticamente DESPUÉS
+de redeployar. Sin redeploy, PowerSync no ve las columnas nuevas.
+
+**Tablas sincronizadas** (via `SELECT *`):
+- clientes, contratos, cuotas, pagos, recibos, cargos_extra
+- notificaciones_mora, planes, settings, audit_log
+- departamentos, municipios, comunidades (globales)
+- cobradores (campos selectivos, no `SELECT *`)
+
+**Última versión deployada**: Sync Rules version 4 (0037), deployed May 26, 2026.
+
 ### Principio de diseño: evaluar ANTES de implementar
 Antes de elegir una herramienta/servicio para un feature nuevo (ej:
 dónde hosear un archivo, qué package usar, qué API consumir), evaluar
