@@ -49,14 +49,15 @@ class _OfflineBannerState extends ConsumerState<OfflineBanner> {
   bool _show = false;
 
   // --- Flicker tracking para indicador de red inestable ---
-  // Si hay ≥_flickerThreshold cambios de estado en ≤_flickerWindow,
-  // mostramos un hint sutil de "red inestable" (distinto al banner full).
+  // Solo contamos transiciones connected→disconnected (desconexiones reales).
+  // Las transiciones internas de PowerSync (connecting, reconnecting) no cuentan.
   int _flickerCount = 0;
   DateTime? _flickerWindowStart;
-  static const _flickerThreshold = 5; // N cambios de estado
-  static const _flickerWindow = Duration(seconds: 30); // ventana de tiempo
+  static const _flickerThreshold = 3; // 3 desconexiones reales en 30s = inestable
+  static const _flickerWindow = Duration(seconds: 30);
   bool _showUnstableIndicator = false;
   Timer? _unstableResetTimer;
+  bool _lastWasConnected = true;
 
   @override
   void initState() {
@@ -90,15 +91,19 @@ class _OfflineBannerState extends ConsumerState<OfflineBanner> {
   /// - `offline=false` desde estado limpio → no-op.
   void _onStatusChange(bool offline) {
     // --- Flicker tracking ---
-    // Cada cambio de estado (en cualquier dirección) cuenta como un flicker.
-    // Si acumulamos ≥_flickerThreshold en ≤_flickerWindow, la red es inestable.
+    // Solo contamos transiciones connected→disconnected (desconexiones reales).
+    // Las transiciones internas de PowerSync (DB open, reconnect, provider
+    // invalidation) generan cambios de estado que no son desconexiones de red.
     final now = DateTime.now();
     if (_flickerWindowStart == null ||
         now.difference(_flickerWindowStart!) > _flickerWindow) {
       _flickerWindowStart = now;
       _flickerCount = 0;
     }
-    _flickerCount++;
+    if (offline && _lastWasConnected) {
+      _flickerCount++;
+    }
+    _lastWasConnected = !offline;
     if (_flickerCount >= _flickerThreshold && !_showUnstableIndicator) {
       setState(() => _showUnstableIndicator = true);
       // Auto-hide después de 60s de estabilidad (sin más flickers).
