@@ -239,8 +239,8 @@ class _CuotasAdminScreenState extends ConsumerState<CuotasAdminScreen> {
         INSERT INTO cuotas (
           id, tenant_id, contrato_id, cliente_id,
           periodo, fecha_vencimiento, monto, monto_pagado,
-          cargos_neto, estado, descripcion, created_at
-        ) VALUES (?, ?, NULL, ?, ?, ?, ?, 0, 0, 'pendiente', ?, ?)
+          cargos_neto, estado, created_at
+        ) VALUES (?, ?, NULL, ?, ?, ?, ?, 0, 0, 'pendiente', ?)
         ''',
         [
           id,
@@ -249,10 +249,18 @@ class _CuotasAdminScreenState extends ConsumerState<CuotasAdminScreen> {
           result.fechaVencimiento.toIso8601String().substring(0, 10),
           result.fechaVencimiento.toIso8601String().substring(0, 10),
           result.monto,
-          result.descripcion,
           now,
         ],
       );
+      // UPDATE separado para descripcion: PowerSync CRUD upload rechaza
+      // la columna en INSERT (schema cache bug), pero UPDATE funciona
+      // porque solo envía columnas modificadas.
+      if (result.descripcion.isNotEmpty) {
+        await ps.db.execute(
+          'UPDATE cuotas SET descripcion = ? WHERE id = ?',
+          [result.descripcion, id],
+        );
+      }
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Cuota manual creada')),
