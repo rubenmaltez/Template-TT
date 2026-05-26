@@ -59,11 +59,12 @@ class _GeografiaAdminScreenState extends State<GeografiaAdminScreen> {
           ),
         ),
         Expanded(
-          child: StreamBuilder(
+          child: StreamBuilder<List<Map<String, dynamic>>>(
             stream: _departamentos,
+            initialData: const [],
             builder: (context, snap) {
-              if (!snap.hasData) {
-                return const Center(child: CircularProgressIndicator());
+              if (snap.hasError) {
+                return Center(child: Text('Error: ${snap.error}'));
               }
               final deptos = snap.data!;
               if (deptos.isEmpty) {
@@ -173,10 +174,11 @@ class _DeptoTileState extends State<_DeptoTile> {
         // municipios en el tree), trivial en práctica.
         maintainState: true,
         children: [
-          StreamBuilder(
+          StreamBuilder<List<Map<String, dynamic>>>(
             stream: _municipios,
+            initialData: const [],
             builder: (context, snap) {
-              final municipios = snap.data ?? const [];
+              final municipios = snap.data!;
               return Column(
                 children: [
                   ...municipios.map((m) => _MunicipioTile(
@@ -261,10 +263,11 @@ class _MunicipioTileState extends State<_MunicipioTile> {
         // montado para evitar el re-listen al re-expandir.
         maintainState: true,
         children: [
-          StreamBuilder(
+          StreamBuilder<List<Map<String, dynamic>>>(
             stream: _comunidades,
+            initialData: const [],
             builder: (context, snap) {
-              final comunidades = snap.data ?? const [];
+              final comunidades = snap.data!;
               return Column(
                 children: [
                   ...comunidades.map((c) => ListTile(

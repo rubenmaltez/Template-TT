@@ -178,10 +178,14 @@ class _Selector extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return StreamBuilder(
+    return StreamBuilder<List<Map<String, dynamic>>>(
       stream: stream,
+      initialData: const [],
       builder: (context, snap) {
-        final rows = snap.data ?? const [];
+        if (snap.hasError) {
+          return Center(child: Text('Error: ${snap.error}'));
+        }
+        final rows = snap.data!;
         // Verificar que valueId sigue existiendo en la lista; si no, reset.
         final stillExists =
             valueId == null || rows.any((r) => r['id'] == valueId);

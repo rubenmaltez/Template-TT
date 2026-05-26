@@ -125,10 +125,14 @@ class _DashboardMetricsState extends State<_DashboardMetrics> {
   Widget build(BuildContext context) {
     // Una sola query para todas las métricas. Se re-emite ante cualquier
     // cambio en cuotas o pagos.
-    return StreamBuilder(
+    return StreamBuilder<List<Map<String, dynamic>>>(
       stream: _metricsStream,
+      initialData: const [],
       builder: (context, snap) {
-        if (!snap.hasData || snap.data!.isEmpty) {
+        if (snap.hasError) {
+          return Center(child: Text('Error: ${snap.error}'));
+        }
+        if (snap.data!.isEmpty) {
           return const _MetricsSkeleton();
         }
         final r = snap.data!.first;

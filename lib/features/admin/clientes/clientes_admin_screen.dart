@@ -313,10 +313,14 @@ class _CobradorChipState extends State<_CobradorChip> {
 
   @override
   Widget build(BuildContext context) {
-    return StreamBuilder(
+    return StreamBuilder<List<Map<String, dynamic>>>(
       stream: _cobradoresStream,
+      initialData: const [],
       builder: (context, snap) {
-        final rows = snap.data ?? const [];
+        if (snap.hasError) {
+          return Chip(label: Text('Error: ${snap.error}'));
+        }
+        final rows = snap.data!;
         final label = widget.seleccionado == null
             ? 'Cobrador'
             : (rows.firstWhere((r) => r['id'] == widget.seleccionado,
@@ -382,10 +386,14 @@ class _ComunidadChipState extends State<_ComunidadChip> {
 
   @override
   Widget build(BuildContext context) {
-    return StreamBuilder(
+    return StreamBuilder<List<Map<String, dynamic>>>(
       stream: _comunidadesStream,
+      initialData: const [],
       builder: (context, snap) {
-        final rows = snap.data ?? const [];
+        if (snap.hasError) {
+          return Chip(label: Text('Error: ${snap.error}'));
+        }
+        final rows = snap.data!;
         final label = widget.seleccionada == null
             ? 'Comunidad'
             : (rows.firstWhere((r) => r['id'] == widget.seleccionada,
@@ -550,11 +558,12 @@ class _Lista extends StatelessWidget {
        LIMIT ?
     ''';
 
-    return StreamBuilder(
+    return StreamBuilder<List<Map<String, dynamic>>>(
       stream: ps.db.watch(sql, parameters: params),
+      initialData: const [],
       builder: (context, snap) {
-        if (!snap.hasData) {
-          return const Center(child: CircularProgressIndicator());
+        if (snap.hasError) {
+          return Center(child: Text('Error: ${snap.error}'));
         }
         final rows = snap.data!;
         if (rows.isEmpty) {
@@ -716,12 +725,13 @@ class _SeleccionarCobradorDialogState
       title: const Text('Asignar cobrador'),
       content: SizedBox(
         width: 400,
-        child: StreamBuilder(
+        child: StreamBuilder<List<Map<String, dynamic>>>(
           stream: _cobradoresStream,
+          initialData: const [],
           builder: (context, snap) {
-            if (!snap.hasData) {
-              return const SizedBox(
-                  height: 100, child: Center(child: CircularProgressIndicator()));
+            if (snap.hasError) {
+              return SizedBox(
+                  height: 100, child: Center(child: Text('Error: ${snap.error}')));
             }
             final rows = snap.data!;
             return ListView(

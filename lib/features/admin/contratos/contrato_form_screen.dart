@@ -438,10 +438,14 @@ class _ClienteSelectorState extends State<_ClienteSelector> {
 
   @override
   Widget build(BuildContext context) {
-    return StreamBuilder(
+    return StreamBuilder<List<Map<String, dynamic>>>(
       stream: _clientesStream,
+      initialData: const [],
       builder: (context, snap) {
-        final rows = snap.data ?? const [];
+        if (snap.hasError) {
+          return Center(child: Text('Error: ${snap.error}'));
+        }
+        final rows = snap.data!;
         // Guard: si el value actual no está en los items (stream re-emit
         // durante sync), usamos null para evitar la assertion de Flutter
         // "There should be exactly one item with [DropdownButton]'s value".
@@ -494,10 +498,14 @@ class _PlanSelectorState extends State<_PlanSelector> {
 
   @override
   Widget build(BuildContext context) {
-    return StreamBuilder(
+    return StreamBuilder<List<Map<String, dynamic>>>(
       stream: _planesStream,
+      initialData: const [],
       builder: (context, snap) {
-        final rows = snap.data ?? const [];
+        if (snap.hasError) {
+          return Center(child: Text('Error: ${snap.error}'));
+        }
+        final rows = snap.data!;
         if (rows.isEmpty) {
           return Column(
             crossAxisAlignment: CrossAxisAlignment.start,

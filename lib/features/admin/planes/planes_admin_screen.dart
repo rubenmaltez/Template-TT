@@ -62,11 +62,12 @@ class _PlanesAdminScreenState extends ConsumerState<PlanesAdminScreen> {
           ),
         ),
         Expanded(
-          child: StreamBuilder(
+          child: StreamBuilder<List<Map<String, dynamic>>>(
             stream: _planesStream,
+            initialData: const [],
             builder: (context, snap) {
-              if (!snap.hasData) {
-                return const Center(child: CircularProgressIndicator());
+              if (snap.hasError) {
+                return Center(child: Text('Error: ${snap.error}'));
               }
               final rows = snap.data!;
               if (rows.isEmpty) {

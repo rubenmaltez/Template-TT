@@ -19,16 +19,14 @@ class HistorialScreen extends ConsumerStatefulWidget {
 }
 
 class _HistorialScreenState extends ConsumerState<HistorialScreen> {
-  late Stream<List<Map<String, dynamic>>> _historialStream;
+  // Cacheamos el stream de PowerSync en initState para evitar que cada
+  // rebuild cree una nueva suscripción (anti-patrón ps.db.watch inline).
+  late final Stream<List<Map<String, dynamic>>> _historialStream;
 
   @override
   void initState() {
     super.initState();
-    _historialStream = _buildStream();
-  }
-
-  Stream<List<Map<String, dynamic>>> _buildStream() {
-    return ps.db.watch(
+    _historialStream = ps.db.watch(
       '''
       SELECT p.id, p.monto_cordobas, p.moneda, p.monto_original,
              p.metodo, p.fecha_pago, p.notas,
@@ -45,16 +43,15 @@ class _HistorialScreenState extends ConsumerState<HistorialScreen> {
     );
   }
 
-  void _refresh() {
-    setState(() => _historialStream = _buildStream());
-  }
-
   @override
   Widget build(BuildContext context) {
     return StreamBuilder<List<Map<String, dynamic>>>(
       stream: _historialStream,
       initialData: const [],
       builder: (context, snap) {
+        if (snap.hasError) {
+          return Center(child: Text('Error: ${snap.error}'));
+        }
         final rows = snap.data!;
         if (rows.isEmpty) {
           return const EmptyState(
@@ -82,7 +79,6 @@ class _HistorialScreenState extends ConsumerState<HistorialScreen> {
               dia: dia,
               total: total,
               pagos: entry.value,
-              onChanged: _refresh,
             );
           },
         );
@@ -92,11 +88,10 @@ class _HistorialScreenState extends ConsumerState<HistorialScreen> {
 }
 
 class _GrupoDia extends ConsumerWidget {
-  const _GrupoDia({required this.dia, required this.total, required this.pagos, required this.onChanged});
+  const _GrupoDia({required this.dia, required this.total, required this.pagos});
   final DateTime dia;
   final double total;
   final List<Map<String, dynamic>> pagos;
-  final VoidCallback onChanged;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -145,7 +140,7 @@ class _GrupoDia extends ConsumerWidget {
                         title: Text(p['cliente_nombre'] as String),
                         subtitle: Text(
                           [
-                            MetodoPago.fromString(p['metodo'] as String).label,
+                            (p['metodo'] as String),
                             if (p['numero_completo'] != null) p['numero_completo'],
                           ].join(' · '),
                         ),
@@ -219,7 +214,6 @@ class _GrupoDia extends ConsumerWidget {
             limpiarNotas: resultado.notas == null,
           );
       if (context.mounted) {
-        onChanged();
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Pago editado')),
         );
@@ -254,7 +248,6 @@ class _GrupoDia extends ConsumerWidget {
             motivo: motivo.trim(),
           );
       if (context.mounted) {
-        onChanged();
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Pago anulado')),
         );

@@ -792,10 +792,14 @@ class _RecaudacionMensualCardState extends State<_RecaudacionMensualCard> {
             Text('Recaudación últimos 6 meses',
                 style: Theme.of(context).textTheme.titleMedium),
             const SizedBox(height: 16),
-            StreamBuilder(
+            StreamBuilder<List<Map<String, dynamic>>>(
               stream: _recaudacionStream,
+              initialData: const [],
               builder: (context, snap) {
-                if (!snap.hasData) return const SizedBox.shrink();
+                if (snap.hasError) {
+                  return Text('Error: ${snap.error}',
+                      style: TextStyle(color: Theme.of(context).colorScheme.error));
+                }
                 final rows = snap.data!;
                 if (rows.isEmpty) {
                   return Text('Sin pagos en los últimos 6 meses',
@@ -898,12 +902,18 @@ class _CobradoresMesCardState extends State<_CobradoresMesCard> {
             Text('Cobradores este mes',
                 style: Theme.of(context).textTheme.titleMedium),
             const SizedBox(height: 16),
-            StreamBuilder(
+            StreamBuilder<List<Map<String, dynamic>>>(
               stream: _cobradoresMesStream,
+              initialData: const [],
               builder: (context, snap) {
-                if (!snap.hasData) return const SizedBox.shrink();
+                if (snap.hasError) {
+                  return Text('Error: ${snap.error}',
+                      style: TextStyle(color: Theme.of(context).colorScheme.error));
+                }
+                final rows = snap.data!;
+                if (rows.isEmpty) return const SizedBox.shrink();
                 return Column(
-                  children: snap.data!.map((r) => ListTile(
+                  children: rows.map((r) => ListTile(
                         dense: true,
                         contentPadding: EdgeInsets.zero,
                         leading: CircleAvatar(
@@ -987,10 +997,14 @@ class _MoraPorComunidadCardState extends State<_MoraPorComunidadCard> {
             Text('Mora por comunidad',
                 style: Theme.of(context).textTheme.titleMedium),
             const SizedBox(height: 16),
-            StreamBuilder(
+            StreamBuilder<List<Map<String, dynamic>>>(
               stream: _moraStream,
+              initialData: const [],
               builder: (context, snap) {
-                if (!snap.hasData) return const SizedBox.shrink();
+                if (snap.hasError) {
+                  return Text('Error: ${snap.error}',
+                      style: TextStyle(color: Theme.of(context).colorScheme.error));
+                }
                 final rows = snap.data!;
                 if (rows.isEmpty) {
                   return Text('Sin mora — todos al día',
@@ -1058,12 +1072,18 @@ class _PlanesPopularesCardState extends State<_PlanesPopularesCard> {
             Text('Planes contratados',
                 style: Theme.of(context).textTheme.titleMedium),
             const SizedBox(height: 16),
-            StreamBuilder(
+            StreamBuilder<List<Map<String, dynamic>>>(
               stream: _planesStream,
+              initialData: const [],
               builder: (context, snap) {
-                if (!snap.hasData) return const SizedBox.shrink();
+                if (snap.hasError) {
+                  return Text('Error: ${snap.error}',
+                      style: TextStyle(color: Theme.of(context).colorScheme.error));
+                }
+                final rows = snap.data!;
+                if (rows.isEmpty) return const SizedBox.shrink();
                 return Column(
-                  children: snap.data!.map((r) => ListTile(
+                  children: rows.map((r) => ListTile(
                         dense: true,
                         contentPadding: EdgeInsets.zero,
                         leading: const Icon(Icons.wifi),

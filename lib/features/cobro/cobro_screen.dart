@@ -21,8 +21,8 @@ import '../shared/widgets/aplicar_cargo_dialog.dart';
 import '../shared/widgets/empty_state.dart';
 
 class CobroScreen extends ConsumerStatefulWidget {
-  const CobroScreen({super.key, required this.cuotaIds});
-  final List<String> cuotaIds;
+  const CobroScreen({super.key, required this.cuotaId});
+  final String cuotaId;
 
   @override
   ConsumerState<CobroScreen> createState() => _CobroScreenState();
@@ -38,28 +38,29 @@ class _CobroScreenState extends ConsumerState<CobroScreen> {
   MetodoPago _metodo = MetodoPago.efectivo;
   bool _enviando = false;
   String? _error;
-
-  // Multi-cuota: lista de cuotas y sus totales a cobrar.
-  final List<Cuota> _cuotas = [];
-  final List<double> _totalesACobrar = [];
+  Cuota? _cuota;
+  /// True cuando `_cargar()` terminó sin encontrar la cuota.
+  /// Evita el spinner infinito cuando la cuota no existe o fue eliminada.
+  bool _cargaFallida = false;
   Map<String, dynamic>? _clienteRow;
+  double _totalACobrar = 0;
+  // Tasa snapshot al iniciar el cobro: si el setting cambia entre el
+  // render y el submit, igual usamos la tasa que el cobrador VIO.
   double? _tasaSnapshot;
+  // Ubicación capturada en background al abrir la pantalla.
   ({double lat, double lng})? _ubicacion;
   bool _capturandoUbicacion = false;
+  // Path local de la foto del comprobante (prefijo 'local://').
   String? _fotoPath;
+  // Fecha del cobro. Default: hoy. Editable si el admin habilitó
+  // cobranza.cobrador_edita_fecha en settings.
   DateTime _fechaCobro = DateTime.now();
-
-  // C3/C4: cargos automáticos detectados.
-  final List<_CargoAutoPreview> _cargosAuto = [];
-
-  bool get _esMultiCuota => widget.cuotaIds.length > 1;
-
-  // Backward compat.
-  Cuota? get _cuota => _cuotas.isEmpty ? null : _cuotas.first;
 
   @override
   void initState() {
     super.initState();
+    // Evita 'setState() called during build' — el bool inicial se asigna
+    // directo. El setState llega cuando termina la captura (post first frame).
     _capturandoUbicacion = true;
     _cargar();
     _capturarUbicacion();
@@ -90,17 +91,11 @@ class _CobroScreenState extends ConsumerState<CobroScreen> {
 
   Future<void> _cargar() async {
     final repo = ref.read(cuotasRepoProvider);
-    final settings = ref.read(appSettingsProvider);
-    final cuotas = <Cuota>[];
-    final totales = <double>[];
-
-    for (final id in widget.cuotaIds) {
-      final cuota = await repo.getById(id);
-      if (cuota == null) continue;
-      cuotas.add(cuota);
-      totales.add(await repo.totalACobrar(id));
+    final cuota = await repo.getById(widget.cuotaId);
+    if (cuota == null) {
+      if (mounted) setState(() => _cargaFallida = true);
+      return;
     }
-    if (cuotas.isEmpty) return;
 
     final cliRows = await ps.db.getAll(
       '''
@@ -109,91 +104,18 @@ class _CobroScreenState extends ConsumerState<CobroScreen> {
    LEFT JOIN comunidades co ON co.id = c.comunidad_id
        WHERE c.id = ?
       ''',
-      [cuotas.first.clienteId],
+      [cuota.clienteId],
     );
-
-    // C3: detectar cuotas vencidas que necesitan cargo reconexión.
-    final cargos = <_CargoAutoPreview>[];
-    if (settings.reconexionHabilitada && settings.montoReconexion > 0) {
-      final diasGracia = settings.diasGracia;
-      final hoy = DateTime.now();
-      for (final cu in cuotas) {
-        final vence = cu.fechaVencimiento;
-        final diasPasados = hoy.difference(vence).inDays;
-        if (diasPasados > diasGracia &&
-            (cu.estado == CuotaEstado.pendiente || cu.estado == CuotaEstado.parcial)) {
-          // Verificar que no haya ya un cargo reconexión para esta cuota.
-          final existing = await ps.db.getAll(
-            "SELECT id FROM cargos_extra WHERE cuota_id = ? AND tipo = 'reconexion'",
-            [cu.id],
-          );
-          if (existing.isEmpty) {
-            cargos.add(_CargoAutoPreview(
-              cuotaId: cu.id,
-              tipo: 'reconexion',
-              monto: settings.montoReconexion,
-              descripcion: 'Cargo por reconexión',
-            ));
-          }
-        }
-      }
-    }
-
-    // C4: detectar pago adelantado para descuento pronto pago.
-    final descuento = settings.descuentoProntoPago;
-    if (descuento > 0) {
-      final esPorcentaje = settings.descuentoProntoPagoTipo == 'porcentaje';
-      final hoy = DateTime.now();
-      for (var i = 0; i < cuotas.length; i++) {
-        final cu = cuotas[i];
-        if (hoy.isBefore(cu.fechaVencimiento)) {
-          // Verificar que no haya ya un descuento (manual o automático).
-          final existing = await ps.db.getAll(
-            "SELECT id FROM cargos_extra WHERE cuota_id = ? AND tipo IN ('descuento_monto','descuento_porcentaje')",
-            [cu.id],
-          );
-          if (existing.isEmpty) {
-            final montoDescuento = esPorcentaje
-                ? cuotas[i].monto * descuento / 100
-                : descuento;
-            cargos.add(_CargoAutoPreview(
-              cuotaId: cu.id,
-              tipo: esPorcentaje ? 'descuento_porcentaje' : 'descuento_monto',
-              monto: montoDescuento,
-              porcentaje: esPorcentaje ? descuento : null,
-              descripcion: 'Descuento pronto pago',
-            ));
-          }
-        }
-      }
-    }
-
-    // Ajustar totales con cargos automáticos.
-    for (final cargo in cargos) {
-      final idx = cuotas.indexWhere((c) => c.id == cargo.cuotaId);
-      if (idx < 0) continue;
-      if (cargo.tipo == 'reconexion') {
-        totales[idx] += cargo.monto;
-      } else {
-        totales[idx] -= cargo.monto;
-        if (totales[idx] < 0) totales[idx] = 0;
-      }
-    }
-
-    final totalGlobal = totales.fold(0.0, (s, t) => s + t);
+    final total = await repo.totalACobrar(widget.cuotaId);
 
     if (!mounted) return;
     setState(() {
-      _cuotas.addAll(cuotas);
-      _totalesACobrar.addAll(totales);
+      _cuota = cuota;
       _clienteRow = cliRows.isEmpty ? null : cliRows.first;
-      _cargosAuto.addAll(cargos);
-      // Default: cobrar el saldo completo de todas las cuotas.
-      var saldo = 0.0;
-      for (var i = 0; i < cuotas.length; i++) {
-        saldo += (totales[i] - cuotas[i].montoPagado).clamp(0.0, double.infinity);
-      }
-      _montoCtrl.text = saldo.toStringAsFixed(2);
+      _totalACobrar = total;
+      // Default: cobrar el saldo completo.
+      final saldo = total - cuota.montoPagado;
+      _montoCtrl.text = saldo.clamp(0, total).toStringAsFixed(2);
     });
   }
 
@@ -242,16 +164,20 @@ class _CobroScreenState extends ConsumerState<CobroScreen> {
 
   Future<void> _confirmar() async {
     if (!_formKey.currentState!.validate()) return;
-    if (_cuotas.isEmpty) return;
+    final cuota = _cuota;
+    if (cuota == null) return;
     final cobrador = ref.read(cobradorActualProvider).valueOrNull;
     if (cobrador == null || cobrador.prefijoRecibo == null) {
       setState(() => _error = 'No tenés prefijo de recibo asignado. Pedile al admin que te lo configure.');
       return;
     }
     final settings = ref.read(appSettingsProvider);
+
+    final monto = double.parse(_montoCtrl.text);
     final tasa = _moneda == Moneda.usd
         ? (_tasaSnapshot ?? settings.tasaUsd)
         : 1.0;
+    final montoCordobas = monto * tasa;
 
     setState(() {
       _enviando = true;
@@ -259,97 +185,39 @@ class _CobroScreenState extends ConsumerState<CobroScreen> {
     });
 
     try {
-      final CobroResultado result;
-      if (_esMultiCuota) {
-        // Multi-cuota: distribuir el monto proporcionalmente entre cuotas.
-        final montosNIO = <double>[];
-        final montosOrig = <double>[];
-        for (var i = 0; i < _cuotas.length; i++) {
-          final saldo = (_totalesACobrar[i] - _cuotas[i].montoPagado)
-              .clamp(0.0, double.infinity);
-          montosNIO.add(saldo);
-          montosOrig.add(_moneda == Moneda.usd ? saldo / tasa : saldo);
-        }
-
-        final cargosInfo = _cargosAuto
-            .map((c) => CargoAutoInfo(
-                  cuotaId: c.cuotaId,
-                  tipo: c.tipo,
-                  monto: c.monto,
-                  porcentaje: c.porcentaje,
-                  descripcion: c.descripcion,
-                ))
-            .toList();
-
-        result = await ref.read(pagosRepoProvider).registrarCobroMultiple(
-              tenantId: cobrador.tenantId,
-              cobradorId: cobrador.id,
-              prefijoRecibo: cobrador.prefijoRecibo!,
-              cuotaIds: _cuotas.map((c) => c.id).toList(),
-              montosCordobas: montosNIO,
-              moneda: _moneda,
-              montosOriginal: montosOrig,
-              tasaConversion: tasa,
-              metodo: _metodo,
-              referencia: _referenciaCtrl.text.trim().isEmpty
-                  ? null
-                  : _referenciaCtrl.text.trim(),
-              fotoComprobantePath: _fotoPath,
-              lat: _ubicacion?.lat,
-              lng: _ubicacion?.lng,
-              notas: _notasCtrl.text.trim().isEmpty
-                  ? null
-                  : _notasCtrl.text.trim(),
-              fechaPago: _fechaCobro,
-              cargosAuto: cargosInfo.isEmpty ? null : cargosInfo,
-            );
-      } else {
-        // Single cuota: flow original.
-        final monto = double.parse(_montoCtrl.text);
-        final montoCordobas = monto * tasa;
-
-        final cargosInfo = _cargosAuto
-            .map((c) => CargoAutoInfo(
-                  cuotaId: c.cuotaId,
-                  tipo: c.tipo,
-                  monto: c.monto,
-                  porcentaje: c.porcentaje,
-                  descripcion: c.descripcion,
-                ))
-            .toList();
-
-        result = await ref.read(pagosRepoProvider).registrarCobro(
-              tenantId: cobrador.tenantId,
-              cobradorId: cobrador.id,
-              prefijoRecibo: cobrador.prefijoRecibo!,
-              cuotaId: _cuotas.first.id,
-              montoCordobas: montoCordobas,
-              moneda: _moneda,
-              montoOriginal: monto,
-              tasaConversion: tasa,
-              metodo: _metodo,
-              referencia: _referenciaCtrl.text.trim().isEmpty
-                  ? null
-                  : _referenciaCtrl.text.trim(),
-              fotoComprobantePath: _fotoPath,
-              lat: _ubicacion?.lat,
-              lng: _ubicacion?.lng,
-              notas: _notasCtrl.text.trim().isEmpty
-                  ? null
-                  : _notasCtrl.text.trim(),
-              fechaPago: _fechaCobro,
-              cargosAuto: cargosInfo.isEmpty ? null : cargosInfo,
-            );
-      }
-
+      final result = await ref.read(pagosRepoProvider).registrarCobro(
+            tenantId: cobrador.tenantId,
+            cobradorId: cobrador.id,
+            prefijoRecibo: cobrador.prefijoRecibo!,
+            cuotaId: cuota.id,
+            montoCordobas: montoCordobas,
+            moneda: _moneda,
+            montoOriginal: monto,
+            tasaConversion: tasa,
+            metodo: _metodo,
+            referencia: _referenciaCtrl.text.trim().isEmpty
+                ? null
+                : _referenciaCtrl.text.trim(),
+            fotoComprobantePath: _fotoPath,
+            lat: _ubicacion?.lat,
+            lng: _ubicacion?.lng,
+            notas: _notasCtrl.text.trim().isEmpty
+                ? null
+                : _notasCtrl.text.trim(),
+            fechaPago: _fechaCobro,
+          );
       if (!mounted) return;
-
-      if (result.esMultiCuota) {
-        // Multi-cuota: navegar al primer recibo (el screen agrupa por grupo_cobro).
-        context.pushReplacement('/recibo/${result.reciboId}?grupo=${result.grupoCobro}');
-      } else {
-        context.pushReplacement('/recibo/${result.reciboId}');
-      }
+      // TODO(B4 — Pago multi-cuota): si `settings.pagoAdelantadoPermitido`
+      // es true, antes de navegar al recibo, mostrar un prompt preguntando
+      // "¿Deseas pagar la siguiente cuota también?" con la info de la próxima
+      // cuota pendiente del mismo contrato. Si acepta, repetir el cobro con
+      // el mismo monto/método para la siguiente cuota. Cada cuota genera su
+      // propio pago + recibo (no un recibo global). El flow completo se
+      // implementará en un sprint dedicado porque requiere:
+      //   1. Query de la siguiente cuota pendiente del contrato.
+      //   2. Loop de confirmación + cobro hasta que el cobrador diga "no".
+      //   3. Navegar a una pantalla de resumen multi-recibo.
+      context.pushReplacement('/recibo/${result.reciboId}');
     } catch (e) {
       if (!mounted) return;
       setState(() => _error = e.toString());
@@ -378,13 +246,22 @@ class _CobroScreenState extends ConsumerState<CobroScreen> {
       });
     }
 
-    if (_cuotas.isEmpty) {
+    if (_cuota == null) {
       return Scaffold(
         appBar: AppBar(title: const Text('Cobrar')),
-        body: const Center(child: CircularProgressIndicator()),
+        body: _cargaFallida
+            ? const Center(
+                child: EmptyState(
+                  icon: Icons.error_outline,
+                  titulo: 'Cuota no encontrada',
+                  descripcion: 'La cuota fue eliminada o no existe.',
+                ),
+              )
+            : const Center(child: CircularProgressIndicator()),
       );
     }
 
+    // El botón confirmar requiere cobrador con prefijo asignado.
     final puedeConfirmar =
         !_enviando && cobrador != null && (cobrador.prefijoRecibo ?? '').isNotEmpty;
     final mensajeDeshabilitado = cobrador == null
@@ -393,11 +270,8 @@ class _CobroScreenState extends ConsumerState<CobroScreen> {
             ? 'Tu prefijo de recibo no está configurado. Pedile al admin que te lo asigne.'
             : null;
 
-    final cuota = _cuotas.first;
-    var saldo = 0.0;
-    for (var i = 0; i < _cuotas.length; i++) {
-      saldo += (_totalesACobrar[i] - _cuotas[i].montoPagado).clamp(0.0, double.infinity);
-    }
+    final cuota = _cuota!;
+    final saldo = (_totalACobrar - cuota.montoPagado).clamp(0.0, double.infinity);
 
     final montoEnNio = _moneda == Moneda.usd
         ? (double.tryParse(_montoCtrl.text) ?? 0) * settings.tasaUsd
@@ -407,56 +281,15 @@ class _CobroScreenState extends ConsumerState<CobroScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(_esMultiCuota
-            ? 'Cobro múltiple (${_cuotas.length} cuotas)'
-            : _clienteRow?['nombre'] ?? 'Cobrar'),
+        title: Text(_clienteRow?['nombre'] ?? 'Cobrar'),
       ),
       body: Form(
         key: _formKey,
         child: ListView(
         padding: const EdgeInsets.fromLTRB(16, 16, 16, 120),
         children: [
-          if (_esMultiCuota)
-            _MultiCuotaCard(
-              cliente: _clienteRow,
-              cuotas: _cuotas,
-              totales: _totalesACobrar,
-            )
-          else
-            _ClienteCuotaCard(cliente: _clienteRow, cuota: cuota, totalACobrar: _totalesACobrar.first),
-          // Cargos automáticos (C3/C4).
-          if (_cargosAuto.isNotEmpty) ...[
-            const SizedBox(height: 8),
-            for (final cargo in _cargosAuto)
-              Card(
-                color: cargo.tipo.startsWith('descuento')
-                    ? Theme.of(context).colorScheme.tertiaryContainer
-                    : Theme.of(context).colorScheme.errorContainer,
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                  child: Row(
-                    children: [
-                      Icon(
-                        cargo.tipo.startsWith('descuento')
-                            ? Icons.discount
-                            : Icons.add_circle_outline,
-                        size: 18,
-                        color: cargo.tipo.startsWith('descuento')
-                            ? Theme.of(context).colorScheme.onTertiaryContainer
-                            : Theme.of(context).colorScheme.onErrorContainer,
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(child: Text(cargo.descripcion)),
-                      Text(
-                        '${cargo.tipo.startsWith('descuento') ? '-' : '+'}${Fmt.cordobas(cargo.monto)}',
-                        style: const TextStyle(fontWeight: FontWeight.w600),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-          ],
-          if (!_esMultiCuota && (settings.descuentosHabilitados || settings.reconexionHabilitada)) ...[
+          _ClienteCuotaCard(cliente: _clienteRow, cuota: cuota, totalACobrar: _totalACobrar),
+          if (settings.descuentosHabilitados || settings.reconexionHabilitada) ...[
             const SizedBox(height: 8),
             OutlinedButton.icon(
               icon: const Icon(Icons.discount),
@@ -471,13 +304,14 @@ class _CobroScreenState extends ConsumerState<CobroScreen> {
                 );
                 if (aplicado == true) {
                   final repo = ref.read(cuotasRepoProvider);
-                  final nuevo = await repo.totalACobrar(_cuotas.first.id);
+                  final nuevo = await repo.totalACobrar(widget.cuotaId);
                   if (mounted) {
                     setState(() {
-                      _totalesACobrar[0] = nuevo;
-                      final s = (nuevo - cuota.montoPagado)
+                      _totalACobrar = nuevo;
+                      // Reajustar default del monto al nuevo saldo.
+                      final saldo = (nuevo - cuota.montoPagado)
                           .clamp(0.0, double.infinity);
-                      _montoCtrl.text = s.toStringAsFixed(2);
+                      _montoCtrl.text = saldo.toStringAsFixed(2);
                     });
                   }
                 }
@@ -515,7 +349,6 @@ class _CobroScreenState extends ConsumerState<CobroScreen> {
           const SizedBox(height: 8),
           TextFormField(
             controller: _montoCtrl,
-            readOnly: _esMultiCuota,
             keyboardType: const TextInputType.numberWithOptions(decimal: true),
             inputFormatters: [
               FilteringTextInputFormatter.allow(RegExp(r'[0-9.]')),
@@ -523,11 +356,8 @@ class _CobroScreenState extends ConsumerState<CobroScreen> {
             decoration: InputDecoration(
               prefixText: _moneda.symbol + ' ',
               hintText: '0.00',
-              helperText: _esMultiCuota
-                  ? 'Monto fijo: cada cuota se paga completa'
-                  : null,
             ),
-            onChanged: _esMultiCuota ? null : (_) => setState(() {}),
+            onChanged: (_) => setState(() {}),
             validator: (v) {
               if (v == null || v.isEmpty) return 'Ingresá un monto';
               final n = double.tryParse(v);
@@ -611,7 +441,6 @@ class _CobroScreenState extends ConsumerState<CobroScreen> {
             saldoActual: saldo,
             aCobrar: montoEnNio,
             esCompleto: esCompleto,
-            cantidadCuotas: _cuotas.length,
           ),
 
           if (_error != null) ...[
@@ -656,11 +485,7 @@ class _CobroScreenState extends ConsumerState<CobroScreen> {
                           child: CircularProgressIndicator(strokeWidth: 2),
                         )
                       : const Icon(Icons.check),
-                  label: Text(_enviando
-                      ? 'Procesando...'
-                      : _esMultiCuota
-                          ? 'Confirmar ${_cuotas.length} cuotas'
-                          : 'Confirmar cobro'),
+                  label: Text(_enviando ? 'Procesando...' : 'Confirmar cobro'),
                 ),
               ),
             ],
@@ -732,85 +557,6 @@ class _ClienteCuotaCard extends StatelessWidget {
                 ],
               ),
             ],
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _MultiCuotaCard extends StatelessWidget {
-  const _MultiCuotaCard({
-    required this.cliente,
-    required this.cuotas,
-    required this.totales,
-  });
-  final Map<String, dynamic>? cliente;
-  final List<Cuota> cuotas;
-  final List<double> totales;
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    var totalGeneral = 0.0;
-    for (var i = 0; i < cuotas.length; i++) {
-      totalGeneral += (totales[i] - cuotas[i].montoPagado).clamp(0.0, double.infinity);
-    }
-
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(cliente?['nombre'] ?? '—',
-                style: Theme.of(context).textTheme.titleMedium),
-            if (cliente?['comunidad'] != null)
-              Text(cliente!['comunidad'] as String,
-                  style: TextStyle(color: scheme.outline, fontSize: 12)),
-            const Divider(height: 24),
-            Text('${cuotas.length} cuotas seleccionadas',
-                style: TextStyle(
-                  color: scheme.primary,
-                  fontWeight: FontWeight.w600,
-                )),
-            const SizedBox(height: 8),
-            for (var i = 0; i < cuotas.length; i++)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 4),
-                child: Row(
-                  children: [
-                    const Icon(Icons.calendar_today, size: 14),
-                    const SizedBox(width: 6),
-                    Text(
-                      'Cuota ${Fmt.mes(cuotas[i].periodo)[0].toUpperCase()}${Fmt.mes(cuotas[i].periodo).substring(1)}',
-                      style: const TextStyle(fontSize: 13),
-                    ),
-                    const Spacer(),
-                    Text(
-                      Fmt.cordobas((totales[i] - cuotas[i].montoPagado).clamp(0.0, double.infinity)),
-                      style: const TextStyle(fontSize: 13),
-                    ),
-                  ],
-                ),
-              ),
-            const Divider(height: 16),
-            Row(
-              children: [
-                Text('Total a cobrar',
-                    style: TextStyle(
-                      fontWeight: FontWeight.w700,
-                      color: scheme.primary,
-                    )),
-                const Spacer(),
-                Text(Fmt.cordobas(totalGeneral),
-                    style: TextStyle(
-                      fontWeight: FontWeight.w700,
-                      color: scheme.primary,
-                      fontSize: 16,
-                    )),
-              ],
-            ),
           ],
         ),
       ),
@@ -1050,13 +796,11 @@ class _ResumenCard extends StatelessWidget {
     required this.saldoActual,
     required this.aCobrar,
     required this.esCompleto,
-    this.cantidadCuotas = 1,
   });
 
   final double saldoActual;
   final double aCobrar;
   final bool esCompleto;
-  final int cantidadCuotas;
 
   @override
   Widget build(BuildContext context) {
@@ -1069,8 +813,7 @@ class _ResumenCard extends StatelessWidget {
         padding: const EdgeInsets.all(16),
         child: Column(
           children: [
-            _row('Saldo total${cantidadCuotas > 1 ? ' ($cantidadCuotas cuotas)' : ''}',
-                Fmt.cordobas(saldoActual)),
+            _row('Saldo actual', Fmt.cordobas(saldoActual)),
             const SizedBox(height: 4),
             _row('A cobrar ahora', Fmt.cordobas(aCobrar), bold: true),
             if (vuelto > 0.01) ...[
@@ -1080,9 +823,7 @@ class _ResumenCard extends StatelessWidget {
             ],
             const Divider(),
             _row(
-              esCompleto
-                  ? (cantidadCuotas > 1 ? 'Cuotas completas ✓' : 'Cuota completa ✓')
-                  : 'Saldo restante',
+              esCompleto ? 'Cuota completa ✓' : 'Saldo restante',
               Fmt.cordobas(saldoFinal.toDouble()),
               color: esCompleto ? scheme.tertiary : null,
             ),
@@ -1107,19 +848,4 @@ class _ResumenCard extends StatelessWidget {
       ],
     );
   }
-}
-
-class _CargoAutoPreview {
-  const _CargoAutoPreview({
-    required this.cuotaId,
-    required this.tipo,
-    required this.monto,
-    this.porcentaje,
-    required this.descripcion,
-  });
-  final String cuotaId;
-  final String tipo;
-  final double monto;
-  final double? porcentaje;
-  final String descripcion;
 }

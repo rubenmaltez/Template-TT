@@ -267,10 +267,17 @@ class _CuotasSectionState extends State<_CuotasSection> {
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
       child: Card(
-        child: StreamBuilder(
+        child: StreamBuilder<List<Map<String, dynamic>>>(
           stream: _cuotasStream,
+          initialData: const [],
           builder: (context, snap) {
-            final rows = snap.data ?? const [];
+            if (snap.hasError) {
+              return Padding(
+                padding: const EdgeInsets.all(24),
+                child: Text('Error: ${snap.error}'),
+              );
+            }
+            final rows = snap.data!;
             if (rows.isEmpty) {
               return const Padding(
                 padding: EdgeInsets.all(24),
@@ -601,10 +608,17 @@ class _PagosSectionState extends State<_PagosSection> {
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
       child: Card(
-        child: StreamBuilder(
+        child: StreamBuilder<List<Map<String, dynamic>>>(
           stream: _pagosStream,
+          initialData: const [],
           builder: (context, snap) {
-            final rows = snap.data ?? const [];
+            if (snap.hasError) {
+              return Padding(
+                padding: const EdgeInsets.all(16),
+                child: Text('Error: ${snap.error}'),
+              );
+            }
+            final rows = snap.data!;
             if (rows.isEmpty) return const SizedBox.shrink();
             return Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,

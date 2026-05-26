@@ -64,11 +64,12 @@ class _CobradoresAdminScreenState
 
   @override
   Widget build(BuildContext context) {
-    return StreamBuilder(
+    return StreamBuilder<List<Map<String, dynamic>>>(
       stream: _cobradoresStream,
+      initialData: const [],
       builder: (context, snap) {
-        if (!snap.hasData) {
-          return const Center(child: CircularProgressIndicator());
+        if (snap.hasError) {
+          return Center(child: Text('Error: ${snap.error}'));
         }
         final rows = snap.data!;
         if (rows.isEmpty) {

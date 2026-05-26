@@ -206,10 +206,14 @@ class _ComunidadChipState extends State<_ComunidadChip> {
 
   @override
   Widget build(BuildContext context) {
-    return StreamBuilder(
+    return StreamBuilder<List<Map<String, dynamic>>>(
       stream: _comunidadesStream,
+      initialData: const [],
       builder: (context, snap) {
-        final rows = snap.data ?? const [];
+        if (snap.hasError) {
+          return Chip(label: Text('Error: ${snap.error}'));
+        }
+        final rows = snap.data!;
         final label = widget.seleccionada == null
             ? 'Comunidad'
             : (rows.firstWhere(
@@ -326,13 +330,14 @@ class _ClientesList extends StatelessWidget {
        LIMIT ?
     ''';
 
-    return StreamBuilder(
+    return StreamBuilder<List<Map<String, dynamic>>>(
       stream: ps.db.watch(sql, parameters: params),
+      initialData: const [],
       builder: (context, snap) {
-        if (snap.connectionState == ConnectionState.waiting && !snap.hasData) {
-          return const Center(child: CircularProgressIndicator());
+        if (snap.hasError) {
+          return Center(child: Text('Error: ${snap.error}'));
         }
-        final rows = snap.data ?? const [];
+        final rows = snap.data!;
         if (rows.isEmpty) {
           return EmptyState(
             icon: Icons.person_off_outlined,

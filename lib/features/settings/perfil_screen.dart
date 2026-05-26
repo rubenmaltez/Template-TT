@@ -184,10 +184,11 @@ class _FotosPendientesCardState extends ConsumerState<_FotosPendientesCard> {
 
   @override
   Widget build(BuildContext context) {
-    return StreamBuilder(
+    return StreamBuilder<List<Map<String, dynamic>>>(
       stream: _pendientesStream,
+      initialData: const [],
       builder: (context, snap) {
-        final pendientes = snap.data == null || snap.data!.isEmpty
+        final pendientes = snap.data!.isEmpty
             ? 0
             : (snap.data!.first['n'] as num).toInt();
         if (pendientes == 0 && !_ejecutando) {

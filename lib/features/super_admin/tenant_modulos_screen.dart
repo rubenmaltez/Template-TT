@@ -47,8 +47,25 @@ class TenantModulosScreen extends ConsumerWidget {
       return Center(child: Text('Error: ${modulosAsync.error}'));
     }
 
-    final tenant = tenantsAsync.value!.where((t) => t.id == tenantId).firstOrNull;
-    final modulos = modulosAsync.value!;
+    // Guard defensivo: si el value es null en un estado transitorio (ej.
+    // provider invalidado post-toggle de módulo), mostramos skeleton en
+    // vez de NPE en `.value!`. El `isLoading` de arriba no cubre este
+    // caso porque Riverpod puede tener `isLoading=false` + `value=null`
+    // brevemente durante invalidación.
+    final tenants = tenantsAsync.valueOrNull;
+    final modulos = modulosAsync.valueOrNull;
+    if (tenants == null || modulos == null) {
+      return ListView(
+        padding: const EdgeInsets.all(16),
+        children: const [
+          SkeletonCard(hasAvatar: true, hasChip: false, marginBottom: 16),
+          SizedBox(height: 8),
+          SkeletonList(count: 2, hasAvatar: false, hasChip: false),
+        ],
+      );
+    }
+
+    final tenant = tenants.where((t) => t.id == tenantId).firstOrNull;
 
     if (tenant == null) {
       return const Center(child: Text('Tenant no encontrado'));

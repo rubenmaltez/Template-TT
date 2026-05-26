@@ -110,11 +110,12 @@ class _ReciboScreenState extends ConsumerState<ReciboScreen> {
           ),
         ],
       ),
-      body: StreamBuilder(
+      body: StreamBuilder<List<Map<String, dynamic>>>(
         stream: _reciboStream,
+        initialData: const [],
         builder: (context, snap) {
-          if (!snap.hasData) {
-            return const Center(child: CircularProgressIndicator());
+          if (snap.hasError) {
+            return const Center(child: Text('Error al cargar el recibo'));
           }
           if (snap.data!.isEmpty) {
             return const EmptyState(

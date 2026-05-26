@@ -702,10 +702,14 @@ class _SelectorCobradorState extends State<_SelectorCobrador> {
 
   @override
   Widget build(BuildContext context) {
-    return StreamBuilder(
+    return StreamBuilder<List<Map<String, dynamic>>>(
       stream: _cobradoresStream,
+      initialData: const [],
       builder: (context, snap) {
-        final rows = snap.data ?? const [];
+        if (snap.hasError) {
+          return Text('Error: ${snap.error}');
+        }
+        final rows = snap.data!;
         return DropdownButtonFormField<String?>(
           value: widget.cobradorId,
           decoration: const InputDecoration(labelText: 'Cobrador asignado'),

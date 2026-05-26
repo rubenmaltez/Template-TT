@@ -69,11 +69,12 @@ class _NotificacionesMoraScreenState
           ),
         ),
         Expanded(
-          child: StreamBuilder(
+          child: StreamBuilder<List<Map<String, dynamic>>>(
             stream: _notificacionesStream,
+            initialData: const [],
             builder: (context, snap) {
-              if (!snap.hasData) {
-                return const Center(child: CircularProgressIndicator());
+              if (snap.hasError) {
+                return Center(child: Text('Error: ${snap.error}'));
               }
               final rows = snap.data!;
               if (rows.isEmpty) {
