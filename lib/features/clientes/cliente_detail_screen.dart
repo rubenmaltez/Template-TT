@@ -436,6 +436,15 @@ class _CuotaTile extends StatelessWidget {
   final bool isSelected;
   final VoidCallback? onSelect;
 
+  static String _tipoLabel(String tipo) => switch (tipo) {
+        'reconexion' => 'Reconexión',
+        'instalacion' => 'Instalación',
+        'mora' => 'Mora',
+        'reparacion' => 'Reparación',
+        'otro' => 'Otro',
+        _ => tipo,
+      };
+
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
@@ -465,7 +474,38 @@ class _CuotaTile extends StatelessWidget {
                 color: color,
               ),
             ),
-      title: Text('${Fmt.mes(cuota.periodo)[0].toUpperCase()}${Fmt.mes(cuota.periodo).substring(1)}'),
+      title: Row(
+        children: [
+          Expanded(
+            child: Text('${Fmt.mes(cuota.periodo)[0].toUpperCase()}${Fmt.mes(cuota.periodo).substring(1)}'),
+          ),
+          if (cuota.esManual) ...[
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+              decoration: BoxDecoration(
+                color: scheme.tertiaryContainer,
+                borderRadius: BorderRadius.circular(4),
+              ),
+              child: Text('Manual',
+                  style: TextStyle(fontSize: 9, color: scheme.onTertiaryContainer)),
+            ),
+            if (cuota.tipoCargoManual != null) ...[
+              const SizedBox(width: 3),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                decoration: BoxDecoration(
+                  color: scheme.primaryContainer,
+                  borderRadius: BorderRadius.circular(4),
+                ),
+                child: Text(
+                  _tipoLabel(cuota.tipoCargoManual!),
+                  style: TextStyle(fontSize: 9, color: scheme.onPrimaryContainer),
+                ),
+              ),
+            ],
+          ],
+        ],
+      ),
       subtitle: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
