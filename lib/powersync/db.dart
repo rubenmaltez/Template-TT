@@ -29,8 +29,17 @@ Future<void> openDatabase() async {
   await db.initialize();
 }
 
+/// Lock para serializar disconnect/connect y evitar race conditions
+/// cuando signedOut y signedIn llegan en rápida sucesión.
+Future<void>? _pendingDisconnect;
+
 /// Conecta PowerSync usando la sesión Supabase actual. Llamar en login.
 Future<void> connectPowerSync() async {
+  // Esperar a que cualquier disconnect en vuelo termine antes de conectar.
+  if (_pendingDisconnect != null) {
+    await _pendingDisconnect;
+    _pendingDisconnect = null;
+  }
   final connector = SupabaseConnector(Supabase.instance.client);
   connector.uploadErrors.listen((error) {
     uploadErrorsController.add(error);
@@ -38,7 +47,16 @@ Future<void> connectPowerSync() async {
   await db.connect(connector: connector);
 }
 
-/// Desconecta PowerSync. Llamar en logout.
+/// Desconecta y limpia la DB local. Llamar en logout.
+/// disconnectAndClear() elimina datos locales + cola CRUD pendiente,
+/// evitando que escrituras del usuario anterior bloqueen el checkpoint
+/// del nuevo usuario.
 Future<void> disconnectPowerSync() async {
-  await db.disconnect();
+  final completer = Completer<void>();
+  _pendingDisconnect = completer.future;
+  try {
+    await db.disconnectAndClear();
+  } finally {
+    completer.complete();
+  }
 }
