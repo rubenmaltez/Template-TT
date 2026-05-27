@@ -2,11 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../data/models/cuota.dart';
-import '../../data/models/pago.dart';
 import '../../data/providers/cobrador_provider.dart';
 import '../../data/repositories/clientes_repo.dart';
-import '../../data/repositories/settings_repo.dart';
 import '../../data/services/external_actions.dart';
 import '../../data/services/visitas_service.dart';
 import '../../data/utils/formatters.dart';
@@ -25,7 +22,6 @@ class ClienteDetailScreen extends ConsumerStatefulWidget {
 
 class _ClienteDetailScreenState extends ConsumerState<ClienteDetailScreen> {
   final _visitasKey = GlobalKey<_VisitasSectionState>();
-  Set<String> _selectedCuotas = {};
 
   void _showHistorial(BuildContext context, String tabla, String registroId) {
     showModalBottomSheet(
@@ -68,7 +64,6 @@ class _ClienteDetailScreenState extends ConsumerState<ClienteDetailScreen> {
   @override
   Widget build(BuildContext context) {
     final clienteAsync = ref.watch(clienteByIdProvider(widget.clienteId));
-    final diasGracia = ref.watch(appSettingsProvider).diasGracia;
     final cobrador = ref.watch(cobradorActualProvider).valueOrNull;
     final esAdmin = cobrador?.tieneAccesoAdmin ?? false;
     final esCobrador = cobrador?.rol == 'cobrador';
@@ -102,23 +97,11 @@ class _ClienteDetailScreenState extends ConsumerState<ClienteDetailScreen> {
             ),
         ],
       ),
-      floatingActionButton: _selectedCuotas.isNotEmpty
-          ? FloatingActionButton.extended(
-              onPressed: () {
-                final ids = _selectedCuotas.join(',');
-                setState(() => _selectedCuotas = {});
-                context.push('/cobro/$ids');
-              },
-              icon: const Icon(Icons.payment),
-              label: Text(_selectedCuotas.length == 1
-                  ? 'Cobrar cuota'
-                  : 'Cobrar ${_selectedCuotas.length} cuotas'),
-            )
-          : FloatingActionButton.extended(
-              onPressed: () => _mostrarDialogVisita(context),
-              icon: const Icon(Icons.add_task),
-              label: const Text('Registrar visita'),
-            ),
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: () => _mostrarDialogVisita(context),
+        icon: const Icon(Icons.add_task),
+        label: const Text('Registrar visita'),
+      ),
       body: clienteAsync.when(
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (e, _) => Center(child: Text('Error: $e')),
@@ -146,15 +129,6 @@ class _ClienteDetailScreenState extends ConsumerState<ClienteDetailScreen> {
                 esAdmin: esAdmin,
                 enAdminShell: enAdminShell,
               ),
-              const SizedBox(height: 8),
-              _CuotasSection(
-                  clienteId: widget.clienteId,
-                  diasGracia: diasGracia,
-                  onSelectionChanged: (sel) =>
-                      setState(() => _selectedCuotas = sel),
-              ),
-              const SizedBox(height: 8),
-              _PagosSection(clienteId: widget.clienteId),
               const SizedBox(height: 8),
               _VisitasSection(key: _visitasKey, clienteId: widget.clienteId),
             ],
@@ -535,313 +509,6 @@ class _ContratoCard extends StatelessWidget {
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Sección de cuotas (manuales)
-// ─────────────────────────────────────────────────────────────────────────────
-
-class _CuotasSection extends StatefulWidget {
-  const _CuotasSection({
-    required this.clienteId,
-    required this.diasGracia,
-    required this.onSelectionChanged,
-  });
-  final String clienteId;
-  final int diasGracia;
-  final ValueChanged<Set<String>> onSelectionChanged;
-
-  @override
-  State<_CuotasSection> createState() => _CuotasSectionState();
-}
-
-class _CuotasSectionState extends State<_CuotasSection> {
-  late Stream<List<Map<String, dynamic>>> _cuotasStream;
-  final Set<String> _selected = {};
-
-  @override
-  void initState() {
-    super.initState();
-    _cuotasStream = _buildStream();
-  }
-
-  @override
-  void didUpdateWidget(covariant _CuotasSection old) {
-    super.didUpdateWidget(old);
-    if (widget.clienteId != old.clienteId) {
-      setState(() {
-        _cuotasStream = _buildStream();
-        _selected.clear();
-      });
-    }
-  }
-
-  Stream<List<Map<String, dynamic>>> _buildStream() {
-    return ps.db.watch(
-      '''
-      SELECT cu.*, p.nombre AS plan_nombre, p.precio_mensual
-        FROM cuotas cu
-        LEFT JOIN contratos ct ON ct.id = cu.contrato_id
-        LEFT JOIN planes p     ON p.id = ct.plan_id
-       WHERE cu.cliente_id = ?
-       ORDER BY cu.periodo ASC
-      ''',
-      parameters: [widget.clienteId],
-    );
-  }
-
-  void _toggleSelect(String cuotaId, List<String> pendingIds) {
-    setState(() {
-      if (_selected.contains(cuotaId)) {
-        // Al deseleccionar, quitar este y todos los posteriores.
-        final idx = pendingIds.indexOf(cuotaId);
-        for (var i = idx; i < pendingIds.length; i++) {
-          _selected.remove(pendingIds[i]);
-        }
-      } else {
-        // Solo permitir seleccionar si es el siguiente en la secuencia.
-        final idx = pendingIds.indexOf(cuotaId);
-        if (idx == 0 || _selected.contains(pendingIds[idx - 1])) {
-          _selected.add(cuotaId);
-        } else {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Debés cobrar las cuotas anteriores primero'),
-              duration: Duration(seconds: 2),
-            ),
-          );
-        }
-      }
-    });
-    widget.onSelectionChanged(Set.of(_selected));
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-      child: StreamBuilder<List<Map<String, dynamic>>>(
-        stream: _cuotasStream,
-        initialData: const [],
-        builder: (context, snap) {
-          if (snap.hasError) {
-            return Card(
-              child: Padding(
-                padding: const EdgeInsets.all(24),
-                child: Text('Error: ${snap.error}'),
-              ),
-            );
-          }
-          final rows = snap.data!;
-          if (rows.isEmpty) {
-            return const Card(
-              child: Padding(
-                padding: EdgeInsets.all(24),
-                child: Text('No hay cuotas todavía',
-                    textAlign: TextAlign.center),
-              ),
-            );
-          }
-
-          final total = rows.length;
-          final pagadas = rows.where((r) => r['estado'] == 'pagada').length;
-          final pendientes = rows.where((r) {
-            final e = r['estado'] as String;
-            return e == 'pendiente' || e == 'parcial';
-          }).toList();
-          final pendingIds = pendientes.map((r) => r['id'] as String).toList();
-          final montoTotal = rows.fold<double>(
-              0, (s, r) => s + (r['monto'] as num).toDouble());
-          final montoPendiente = pendientes.fold<double>(
-              0, (s, r) => s + (r['monto'] as num).toDouble() -
-                  (r['monto_pagado'] as num? ?? 0).toDouble());
-
-          return Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Card(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(16, 16, 16, 4),
-                      child: Text('Cuotas',
-                          style: Theme.of(context).textTheme.titleMedium),
-                    ),
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-                      child: Wrap(
-                        spacing: 16,
-                        children: [
-                          Text('$pagadas/$total pagadas',
-                              style: TextStyle(
-                                color: Theme.of(context).colorScheme.outline,
-                                fontSize: 12,
-                              )),
-                          Text('Contrato: ${Fmt.cordobas(montoTotal)}',
-                              style: TextStyle(
-                                color: Theme.of(context).colorScheme.outline,
-                                fontSize: 12,
-                              )),
-                          if (montoPendiente > 0)
-                            Text('Pendiente: ${Fmt.cordobas(montoPendiente)}',
-                                style: TextStyle(
-                                  color: Theme.of(context).colorScheme.error,
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w500,
-                                )),
-                        ],
-                      ),
-                    ),
-                    ...rows.map((r) {
-                      final cuota = Cuota.fromRow(r);
-                      final isPending = pendingIds.contains(cuota.id);
-                      final isSelected = _selected.contains(cuota.id);
-                      return _CuotaTile(
-                        cuota: cuota,
-                        planNombre: r['plan_nombre'] as String?,
-                        diasGracia: widget.diasGracia,
-                        showCheckbox: _selected.isNotEmpty && isPending,
-                        isSelected: isSelected,
-                        onSelect: isPending
-                            ? () => _toggleSelect(cuota.id, pendingIds)
-                            : null,
-                      );
-                    }),
-                    const SizedBox(height: 8),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 4),
-            ],
-          );
-        },
-      ),
-    );
-  }
-}
-
-class _CuotaTile extends StatelessWidget {
-  const _CuotaTile({
-    required this.cuota,
-    required this.planNombre,
-    required this.diasGracia,
-    this.showCheckbox = false,
-    this.isSelected = false,
-    this.onSelect,
-  });
-
-  final Cuota cuota;
-  final String? planNombre;
-  final int diasGracia;
-  final bool showCheckbox;
-  final bool isSelected;
-  final VoidCallback? onSelect;
-
-  static String _tipoLabel(String tipo) => switch (tipo) {
-        'reconexion' => 'Reconexión',
-        'instalacion' => 'Instalación',
-        'mora' => 'Mora',
-        'reparacion' => 'Reparación',
-        'otro' => 'Otro',
-        _ => tipo,
-      };
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    final estadoVisual = cuota.estadoVisual(diasGracia);
-    final color = switch (estadoVisual) {
-      CuotaEstadoVisual.pagada => scheme.tertiary,
-      CuotaEstadoVisual.parcial => scheme.secondary,
-      CuotaEstadoVisual.enGracia => Colors.amber.shade700,
-      CuotaEstadoVisual.vencida => scheme.error,
-      CuotaEstadoVisual.anulada => scheme.outline,
-      _ => scheme.primary,
-    };
-
-    return ListTile(
-      selected: isSelected,
-      selectedTileColor: scheme.primaryContainer.withValues(alpha: 0.3),
-      leading: showCheckbox
-          ? Checkbox(value: isSelected, onChanged: (_) => onSelect?.call())
-          : CircleAvatar(
-              backgroundColor: color.withValues(alpha: 0.15),
-              child: Icon(
-                estadoVisual == CuotaEstadoVisual.pagada
-                    ? Icons.check
-                    : estadoVisual == CuotaEstadoVisual.vencida
-                        ? Icons.warning
-                        : Icons.receipt_long,
-                color: color,
-              ),
-            ),
-      title: Row(
-        children: [
-          Expanded(
-            child: Text('${Fmt.mes(cuota.periodo)[0].toUpperCase()}${Fmt.mes(cuota.periodo).substring(1)}'),
-          ),
-          if (cuota.esManual) ...[
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
-              decoration: BoxDecoration(
-                color: scheme.tertiaryContainer,
-                borderRadius: BorderRadius.circular(4),
-              ),
-              child: Text('Manual',
-                  style: TextStyle(fontSize: 9, color: scheme.onTertiaryContainer)),
-            ),
-            if (cuota.tipoCargoManual != null) ...[
-              const SizedBox(width: 3),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
-                decoration: BoxDecoration(
-                  color: scheme.primaryContainer,
-                  borderRadius: BorderRadius.circular(4),
-                ),
-                child: Text(
-                  _tipoLabel(cuota.tipoCargoManual!),
-                  style: TextStyle(fontSize: 9, color: scheme.onPrimaryContainer),
-                ),
-              ),
-            ],
-          ],
-        ],
-      ),
-      subtitle: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(planNombre ?? cuota.descripcion ?? '—',
-              maxLines: 1, overflow: TextOverflow.ellipsis),
-          Text('Vence ${Fmt.fechaCorta(cuota.fechaVencimiento)} · ${estadoVisual.label}',
-              style: TextStyle(color: color, fontSize: 12)),
-        ],
-      ),
-      trailing: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        crossAxisAlignment: CrossAxisAlignment.end,
-        children: [
-          Text(Fmt.cordobas(cuota.monto),
-              style: const TextStyle(fontWeight: FontWeight.w600)),
-          if (cuota.saldo < cuota.monto && cuota.saldo > 0)
-            Text('Saldo: ${Fmt.cordobas(cuota.saldo)}',
-                style: TextStyle(color: scheme.outline, fontSize: 11)),
-        ],
-      ),
-      onTap: estadoVisual.esCobrable
-          ? (onSelect ?? () => context.push('/cobro/${cuota.id}'))
-          : null,
-      onLongPress: onSelect,
-    );
-  }
-}
-
-class _PagosSection extends StatefulWidget {
-  const _PagosSection({required this.clienteId});
-  final String clienteId;
-
-  @override
-  State<_PagosSection> createState() => _PagosSectionState();
-}
-
 // ── Sprint D1: Registrar visita dialog + historial de visitas ──────────
 
 class _RegistrarVisitaDialog extends StatefulWidget {
@@ -1028,84 +695,3 @@ class _VisitaTile extends StatelessWidget {
 }
 
 // ── Fin Sprint D1 ──────────────────────────────────────────────────────
-
-class _PagosSectionState extends State<_PagosSection> {
-  late Stream<List<Map<String, dynamic>>> _pagosStream;
-
-  @override
-  void initState() {
-    super.initState();
-    _pagosStream = _buildStream();
-  }
-
-  @override
-  void didUpdateWidget(covariant _PagosSection old) {
-    super.didUpdateWidget(old);
-    if (widget.clienteId != old.clienteId) {
-      setState(() => _pagosStream = _buildStream());
-    }
-  }
-
-  Stream<List<Map<String, dynamic>>> _buildStream() {
-    return ps.db.watch(
-      '''
-      SELECT p.id, p.monto_cordobas, p.moneda, p.monto_original,
-             p.metodo, p.fecha_pago, p.referencia,
-             cu.periodo
-        FROM pagos p
-        JOIN cuotas cu ON cu.id = p.cuota_id
-       WHERE cu.cliente_id = ?
-       ORDER BY p.fecha_pago DESC
-       LIMIT 10
-      ''',
-      parameters: [widget.clienteId],
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-      child: Card(
-        child: StreamBuilder<List<Map<String, dynamic>>>(
-          stream: _pagosStream,
-          initialData: const [],
-          builder: (context, snap) {
-            if (snap.hasError) {
-              return Padding(
-                padding: const EdgeInsets.all(16),
-                child: Text('Error: ${snap.error}'),
-              );
-            }
-            final rows = snap.data!;
-            if (rows.isEmpty) return const SizedBox.shrink();
-            return Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
-                  child: Text('Últimos pagos',
-                      style: Theme.of(context).textTheme.titleMedium),
-                ),
-                ...rows.map((r) => ListTile(
-                      dense: true,
-                      leading: const Icon(Icons.payments_outlined),
-                      title: Text(Fmt.cordobas(r['monto_cordobas'] as num)),
-                      subtitle: Text(
-                        '${MetodoPago.fromString(r['metodo'] as String).label} · ${Fmt.fechaCorta(DateTime.parse(r['fecha_pago'] as String))}',
-                      ),
-                      trailing: (r['moneda'] as String) == 'USD'
-                          ? Text('US\$${(r['monto_original'] as num).toStringAsFixed(2)}',
-                              style: TextStyle(
-                                  color: Theme.of(context).colorScheme.outline))
-                          : null,
-                    )),
-                const SizedBox(height: 8),
-              ],
-            );
-          },
-        ),
-      ),
-    );
-  }
-}
