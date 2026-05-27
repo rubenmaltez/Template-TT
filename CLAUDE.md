@@ -618,18 +618,33 @@ Estos viven acá hasta que se ataquen explícitamente. NO re-flag en audits.
     - Bluetooth print: nullable-safe para cuotas manuales (plan_nombre/dia_pago).
     - Pago model: campo grupo_cobro en Pago.fromRow.
 - **Sesión 3 — Per-user DB + Change Log + UX Sprint**:
-    - Per-user PowerSync DB: cada usuario tiene su propio SQLite (sitecsa_{uid}.db).
-      Resuelve sync gate stuck sin re-descargar data.
+    - Per-user PowerSync DB: cada usuario tiene su propio SQLite (sitecsa_{uid}_v4.db).
+      Resuelve sync gate stuck sin re-descargar data. Schema version en filename.
     - Change Log: triggers genéricos en pagos/cuotas/clientes/contratos/recibos.
       Widget HistorialCambiosWidget reutilizable. Migración 0047.
     - Sign-out: confirmarSignOut() verifica CRUD pendiente antes de cerrar sesión.
-    - UX Sprint: tenant name en AppBar, cuotas tabs (por cobrar + por cliente),
-      multi-select con orden obligatorio, próximas visitas, búsqueda global,
-      post-cobro botones en recibo, dashboard sparkline.
-    - Migraciones 0043-0050 deployadas.
-    - Bug conocido: schema cache de PowerSync no detecta columna `descripcion`
-      en cuotas al crear cuota manual. Requiere limpiar IndexedDB manualmente.
-      Investigar: forzar schema version bump en PowerSync.
+    - UX Sprint (7 items): tenant name en AppBar, cuotas tabs (por cobrar + por
+      cliente con card-per-client), multi-select con orden obligatorio, próximas
+      visitas en home, búsqueda global, post-cobro botones en recibo, sparkline.
+    - Tipo cargo manual: dropdown (reconexión/instalación/mora/reparación/otro)
+      con columna tipo_cargo_manual + badges visuales en 3 vistas.
+    - Recrear pago anulado: botón en admin pagos, guard contra doble-pago.
+    - Colores mejorados: En gracia → ámbar (no verde).
+    - Guard correlativo: SIEMPRE consulta server MAX antes de generar recibo
+      (sync rules excluyen recibos anulados del cobrador).
+    - Boolean defense: settingValue maneja strings "true"/"false" de PowerSync.
+    - StreamBuilders: 23 archivos fixeados con initialData + hasError.
+    - Banner red inestable: solo cuenta desconexiones reales (no lifecycle).
+    - Migraciones 0043-0051 deployadas. Schema v4. Sync Rules redeployadas.
+    - Admin cuotas: orden ASC + filtro pendiente con rango de días.
+    - BULK 12 Sprint 1 completado: sidebar simplificado (6 items).
+- **BULK 12 — Rework UI/UX Admin** (en progreso):
+    - Sprint 1 ✅: sidebar simplificado.
+    - Sprint 2 pendiente: detalle cliente unificado (admin+cobrador).
+    - Sprint 3 pendiente: detalle contrato (cuotas+pagos+inmutable).
+    - Sprint 4 pendiente: fotos múltiples del cliente.
+    - Sprint 5 pendiente: polish + testing integral.
+    - Ver BULK12-PLAN.md para wireframes y decisiones confirmadas.
 - **Admin pagos sin grupo_cobro visual**: los pagos multi-cuota aparecen como N
     filas separadas en `/admin/pagos` sin indicador de agrupación. UX aceptable
     por ahora — sprint futuro si un admin lo pide.

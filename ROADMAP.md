@@ -12,21 +12,20 @@ hasta producción general y features comerciales.
 - Cuando se cierra un bulk entero, se hace audit ligero + smoke test
   del flow que ese bulk debería habilitar.
 
-**Estado actual**: BULKs 1-9 + BULK 11 completados. Nombre: SITECSA CRM.
-Tema iOS light aplicado en todos los shells. Windows (.msix) + Android
-(.apk) + Web funcionando. release.ps1 automatizado.
-Sesión inicial (2026-05-22): 34 PRs infraestructura.
-Sesión 2 (2026-05-23/24/25): 40+ PRs. BULKs 1-9 + BULK 11 completo
-(6 Fases, 25 sprints). 9 reportes PDF + CSV. Settings panel con 6
-categorías + 14 toggles. Migraciones 0036-0044 deployadas (0045 pendiente).
-3 GitHub Releases (v0.1-v0.3).
+**Estado actual**: BULKs 1-9 + BULK 11 completados. BULK 12 en progreso.
+Nombre: SITECSA CRM. Tema iOS light. Web + Windows + Android.
+Sesión 3 (2026-05-25/26/27): Per-user DB, Change Log, UX Sprint (7 items),
+tipo_cargo_manual, recrear pago, colores mejorados, card-per-client,
+guard correlativo. Migraciones 0043-0051 deployadas. Schema v4.
+Sync Rules version 4 redeployadas.
 
-**BULK 11 100% cerrado + audit integral aplicado**:
-- B4 multi-cuota, C3 reconexión, C4 pronto pago implementados.
-- Migraciones 0043 (grupo_cobro) + 0044 (descuento tipo) deployadas.
-- Migración 0045 (seed_settings_default actualizado) pendiente de deploy.
-- Audit integral: 6 fixes aplicados (cross-client guard, Bluetooth crash,
-  recibo anulados, Pago model, dead code, seed function).
+**BULK 12 — Rework UI/UX Admin** (en progreso):
+- Sprint 1 COMPLETADO: sidebar simplificado (6 items).
+- Sprint 2 PENDIENTE: detalle cliente unificado (admin+cobrador).
+- Sprint 3 PENDIENTE: detalle contrato (cuotas+pagos+inmutable).
+- Sprint 4 PENDIENTE: fotos múltiples del cliente.
+- Sprint 5 PENDIENTE: polish + testing integral.
+- Ver BULK12-PLAN.md para wireframes y decisiones.
 
 ---
 
