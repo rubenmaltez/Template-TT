@@ -450,15 +450,17 @@ class _ClienteFormScreenState extends ConsumerState<ClienteFormScreen> {
                 }),
               ),
               const SizedBox(height: 8),
-              SwitchListTile(
-                value: _activo,
-                onChanged: (v) => setState(() {
-                  _activo = v;
-                  _dirty = true;
-                }),
-                title: Text(_activo ? 'Activo' : 'Inactivo'),
-                contentPadding: EdgeInsets.zero,
-              ),
+              // Solo admin puede cambiar estado activo/inactivo.
+              if (ref.watch(cobradorActualProvider).valueOrNull?.rol == 'admin')
+                SwitchListTile(
+                  value: _activo,
+                  onChanged: (v) => setState(() {
+                    _activo = v;
+                    _dirty = true;
+                  }),
+                  title: Text(_activo ? 'Activo' : 'Inactivo'),
+                  contentPadding: EdgeInsets.zero,
+                ),
             ],
           ),
 
