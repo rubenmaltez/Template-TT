@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../data/models/cuota.dart';
 import '../../data/models/pago.dart';
+import '../../data/providers/cobrador_provider.dart';
 import '../../data/repositories/clientes_repo.dart';
 import '../../data/repositories/settings_repo.dart';
 import '../../data/services/external_actions.dart';
@@ -11,6 +12,7 @@ import '../../data/services/visitas_service.dart';
 import '../../data/utils/formatters.dart';
 import '../../powersync/db.dart' as ps;
 import '../shared/widgets/empty_state.dart';
+import '../shared/widgets/historial_cambios_widget.dart';
 
 class ClienteDetailScreen extends ConsumerStatefulWidget {
   const ClienteDetailScreen({super.key, required this.clienteId});
@@ -25,10 +27,53 @@ class _ClienteDetailScreenState extends ConsumerState<ClienteDetailScreen> {
   final _visitasKey = GlobalKey<_VisitasSectionState>();
   Set<String> _selectedCuotas = {};
 
+  void _showHistorial(BuildContext context, String tabla, String registroId) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (_) => DraggableScrollableSheet(
+        expand: false,
+        initialChildSize: 0.6,
+        maxChildSize: 0.9,
+        builder: (context, scrollCtrl) => Column(
+          children: [
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: Row(
+                children: [
+                  const Icon(Icons.history),
+                  const SizedBox(width: 8),
+                  Text('Historial de cambios',
+                      style: Theme.of(context).textTheme.titleMedium),
+                ],
+              ),
+            ),
+            const Divider(),
+            Expanded(
+              child: SingleChildScrollView(
+                controller: scrollCtrl,
+                child: HistorialCambiosWidget(
+                  tabla: tabla,
+                  registroId: registroId,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final clienteAsync = ref.watch(clienteByIdProvider(widget.clienteId));
     final diasGracia = ref.watch(appSettingsProvider).diasGracia;
+    final cobrador = ref.watch(cobradorActualProvider).valueOrNull;
+    final esAdmin = cobrador?.tieneAccesoAdmin ?? false;
+    final esCobrador = cobrador?.rol == 'cobrador';
+    final loc = GoRouterState.of(context).uri.path;
+    final enAdminShell = loc.startsWith('/admin');
 
     return Scaffold(
       appBar: AppBar(
@@ -37,6 +82,24 @@ class _ClienteDetailScreenState extends ConsumerState<ClienteDetailScreen> {
           loading: () => const Text('Cliente'),
           error: (_, __) => const Text('Cliente'),
         ),
+        actions: [
+          if (esAdmin)
+            IconButton(
+              icon: const Icon(Icons.edit),
+              tooltip: 'Editar cliente',
+              onPressed: () {
+                final editPath = enAdminShell
+                    ? '/admin/clientes/${widget.clienteId}/editar'
+                    : '/clientes/${widget.clienteId}/editar';
+                context.push(editPath);
+              },
+            ),
+          IconButton(
+            icon: const Icon(Icons.history),
+            tooltip: 'Historial de cambios',
+            onPressed: () => _showHistorial(context, 'clientes', widget.clienteId),
+          ),
+        ],
       ),
       floatingActionButton: _selectedCuotas.isNotEmpty
           ? FloatingActionButton.extended(
@@ -76,6 +139,12 @@ class _ClienteDetailScreenState extends ConsumerState<ClienteDetailScreen> {
                 longitud: cliente.longitud,
               ),
               _ClienteInfo(cliente: cliente),
+              const SizedBox(height: 8),
+              _ContratosSection(
+                clienteId: widget.clienteId,
+                esAdmin: esAdmin,
+                enAdminShell: enAdminShell,
+              ),
               const SizedBox(height: 8),
               _CuotasSection(
                   clienteId: widget.clienteId,
@@ -238,6 +307,236 @@ class _ClienteInfo extends StatelessWidget {
     );
   }
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Sección de contratos del cliente
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _ContratosSection extends StatefulWidget {
+  const _ContratosSection({
+    required this.clienteId,
+    required this.esAdmin,
+    required this.enAdminShell,
+  });
+  final String clienteId;
+  final bool esAdmin;
+  final bool enAdminShell;
+
+  @override
+  State<_ContratosSection> createState() => _ContratosSectionState();
+}
+
+class _ContratosSectionState extends State<_ContratosSection> {
+  late Stream<List<Map<String, dynamic>>> _stream;
+
+  @override
+  void initState() {
+    super.initState();
+    _stream = ps.db.watch(
+      '''
+      SELECT ct.*, p.nombre AS plan_nombre, p.precio_mensual,
+             (SELECT COUNT(*) FROM cuotas WHERE contrato_id = ct.id) AS total_cuotas,
+             (SELECT COUNT(*) FROM cuotas WHERE contrato_id = ct.id
+              AND estado IN ('pendiente','parcial')) AS cuotas_pendientes,
+             (SELECT COUNT(*) FROM cuotas WHERE contrato_id = ct.id
+              AND estado = 'pagada') AS cuotas_pagadas,
+             (SELECT COUNT(*) FROM cuotas WHERE contrato_id = ct.id
+              AND estado IN ('pendiente','parcial')
+              AND fecha_vencimiento < date('now')) AS cuotas_vencidas
+        FROM contratos ct
+   LEFT JOIN planes p ON p.id = ct.plan_id
+       WHERE ct.cliente_id = ?
+       ORDER BY ct.activo DESC, ct.created_at DESC
+      ''',
+      parameters: [widget.clienteId],
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+      child: StreamBuilder<List<Map<String, dynamic>>>(
+        stream: _stream,
+        initialData: const [],
+        builder: (context, snap) {
+          if (snap.hasError) {
+            return Card(child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Text('Error: ${snap.error}'),
+            ));
+          }
+          final rows = snap.data!;
+          final activos = rows.where((r) => (r['activo'] as int? ?? 1) == 1).toList();
+          final cancelados = rows.where((r) => (r['activo'] as int? ?? 1) != 1).toList();
+
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              // Header
+              Row(
+                children: [
+                  Text('Contratos',
+                      style: Theme.of(context).textTheme.titleMedium),
+                  const SizedBox(width: 8),
+                  Text('(${activos.length} activo${activos.length != 1 ? 's' : ''})',
+                      style: TextStyle(color: scheme.outline, fontSize: 13)),
+                  const Spacer(),
+                  if (widget.esAdmin)
+                    TextButton.icon(
+                      icon: const Icon(Icons.add, size: 18),
+                      label: const Text('Nuevo'),
+                      onPressed: () {
+                        final path = widget.enAdminShell
+                            ? '/admin/contratos/nuevo?clienteId=${widget.clienteId}'
+                            : '/contratos/nuevo?clienteId=${widget.clienteId}';
+                        context.push(path);
+                      },
+                    ),
+                ],
+              ),
+              const SizedBox(height: 8),
+
+              // Contratos activos
+              if (activos.isEmpty && cancelados.isEmpty)
+                Card(
+                  child: Padding(
+                    padding: const EdgeInsets.all(24),
+                    child: Center(
+                      child: Text('Sin contratos',
+                          style: TextStyle(color: scheme.outline)),
+                    ),
+                  ),
+                ),
+
+              ...activos.map((ct) => _ContratoCard(
+                    contrato: ct,
+                    esAdmin: widget.esAdmin,
+                    onTap: () {
+                      // Sprint 3: navegar al detalle del contrato
+                      // Por ahora no hay pantalla de detalle del contrato
+                    },
+                  )),
+
+              // Contratos cancelados (colapsable)
+              if (cancelados.isNotEmpty) ...[
+                const SizedBox(height: 8),
+                ExpansionTile(
+                  title: Text('Contratos cancelados (${cancelados.length})',
+                      style: TextStyle(color: scheme.outline, fontSize: 14)),
+                  initiallyExpanded: false,
+                  children: cancelados
+                      .map((ct) => _ContratoCard(
+                            contrato: ct,
+                            esAdmin: widget.esAdmin,
+                            cancelado: true,
+                            onTap: () {},
+                          ))
+                      .toList(),
+                ),
+              ],
+            ],
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _ContratoCard extends StatelessWidget {
+  const _ContratoCard({
+    required this.contrato,
+    required this.esAdmin,
+    this.cancelado = false,
+    required this.onTap,
+  });
+  final Map<String, dynamic> contrato;
+  final bool esAdmin;
+  final bool cancelado;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final plan = contrato['plan_nombre'] as String? ?? 'Sin plan';
+    final precio = (contrato['precio_mensual'] as num?)?.toDouble() ?? 0;
+    final totalCuotas = (contrato['total_cuotas'] as num?)?.toInt() ?? 0;
+    final pagadas = (contrato['cuotas_pagadas'] as num?)?.toInt() ?? 0;
+    final vencidas = (contrato['cuotas_vencidas'] as num?)?.toInt() ?? 0;
+    final pendientes = (contrato['cuotas_pendientes'] as num?)?.toInt() ?? 0;
+
+    return Card(
+      color: cancelado ? scheme.surfaceContainerHighest.withValues(alpha: 0.5) : null,
+      margin: const EdgeInsets.only(bottom: 8),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(12),
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Icon(Icons.description,
+                      color: cancelado ? scheme.outline : scheme.primary,
+                      size: 20),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(plan,
+                        style: TextStyle(
+                          fontWeight: FontWeight.w600,
+                          decoration: cancelado ? TextDecoration.lineThrough : null,
+                        )),
+                  ),
+                  Text(Fmt.cordobas(precio) + '/mes',
+                      style: TextStyle(
+                        color: scheme.outline,
+                        fontSize: 12,
+                      )),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 12,
+                runSpacing: 4,
+                children: [
+                  Text('$pagadas/$totalCuotas pagadas',
+                      style: TextStyle(color: scheme.outline, fontSize: 12)),
+                  if (vencidas > 0)
+                    Text('$vencidas vencida${vencidas != 1 ? 's' : ''}',
+                        style: TextStyle(
+                          color: scheme.error,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w500,
+                        )),
+                  if (vencidas == 0 && pendientes > 0)
+                    Text('Al día',
+                        style: TextStyle(
+                          color: scheme.primary,
+                          fontSize: 12,
+                        )),
+                  if (pendientes == 0 && totalCuotas > 0)
+                    Text('Completado ✓',
+                        style: TextStyle(
+                          color: scheme.tertiary,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w500,
+                        )),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Sección de cuotas (manuales)
+// ─────────────────────────────────────────────────────────────────────────────
 
 class _CuotasSection extends StatefulWidget {
   const _CuotasSection({
