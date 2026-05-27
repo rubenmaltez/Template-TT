@@ -293,22 +293,15 @@ class _SyncIndicator extends ConsumerWidget {
   }
 }
 
-/// Items del menú del panel admin.
-///   adminOnly       = sólo admin / super_admin (no admin_cobranza).
-///   superAdminOnly  = sólo super_admin (panel SaaS, cross-tenant).
+/// Items del menú del panel admin. BULK 12: sidebar simplificado.
+/// Contratos/Cuotas/Pagos viven dentro del detalle del cliente.
+/// Planes/Auditoría/Geografía viven dentro de Configuración.
 const _adminMenu = [
   _MenuItem(Icons.dashboard, 'Resumen', '/admin'),
   _MenuItem(Icons.people, 'Clientes', '/admin/clientes'),
-  _MenuItem(Icons.assignment, 'Contratos', '/admin/contratos'),
-  _MenuItem(Icons.wifi, 'Planes', '/admin/planes', adminOnly: true),
-  _MenuItem(Icons.engineering, 'Cobradores', '/admin/cobradores', adminOnly: true),
-  _MenuItem(Icons.receipt_long, 'Cuotas', '/admin/cuotas'),
-  _MenuItem(Icons.payments, 'Pagos', '/admin/pagos'),
-  _MenuItem(Icons.notification_important, 'Mora', '/admin/notificaciones'),
-  _MenuItem(Icons.map, 'Mapa', '/admin/mapa'),
+  _MenuItem(Icons.groups, 'Personal', '/admin/cobradores', adminOnly: true),
   _MenuItem(Icons.bar_chart, 'Reportes', '/admin/reportes'),
-  _MenuItem(Icons.history_edu, 'Auditoría', '/admin/audit', adminOnly: true),
-  _MenuItem(Icons.place, 'Geografía', '/admin/geografia', adminOnly: true),
+  _MenuItem(Icons.map, 'Mapa', '/admin/mapa'),
   _MenuItem(Icons.settings, 'Configuración', '/admin/settings', adminOnly: true),
   _MenuItem(Icons.shield, 'Tenants', '/super/tenants', superAdminOnly: true),
 ];
