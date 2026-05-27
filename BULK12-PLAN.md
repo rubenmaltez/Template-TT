@@ -247,35 +247,26 @@ que desactiva el contrato y sus cuotas pendientes.
 ## Sprints propuestos
 
 ### Sprint 1: Sidebar unificado + routing ✅
-- ✅ Sidebar simplificado (6 items)
-- ✅ Ruta /admin/clientes/:id → detalle unificado
-- ✅ Admin list navega al detalle (no al form)
 
-### Sprint 2: Detalle del cliente unificado (EN PROGRESO)
-- ✅ Sección contratos (activos + cancelados colapsable)
-- ✅ Botón Editar (admin only) + Historial (admin only)
-- ✅ Role detection (esAdmin, esCobrador, enAdminShell)
-- ⏳ Quitar cuotas/pagos del detalle (mover a Sprint 3)
-- ⏳ Foto del cliente visible en el detalle (no solo en edición)
-- ⏳ Filtro activos/inactivos en lista de clientes
-- ⏳ Quitar toggle activo del form del cobrador
+### Sprint 2: Detalle del cliente unificado ✅
+- ✅ 2a: Cuotas/pagos removidos del detalle cliente (412 líneas)
+- ✅ 2b: Pendiente — foto en header (Sprint 4 cubre esto con galería)
+- ✅ 2c: Filtro activos/inactivos en lista clientes admin
+- ✅ 2d: Toggle activo solo visible para admin (no admin_cobranza)
+- ✅ Sección contratos, botones Editar/Historial, role detection
 
-### Sprint 3: Detalle del contrato
-- Pantalla nueva ContratoDetailScreen
-- Cuotas del contrato con multi-select + orden obligatorio
-- Pagos del contrato con historial de cambios
-- Contrato inmutable (solo cambiar estado)
-- Navegación desde detalle cliente → contrato
+### Sprint 3: Detalle del contrato (EN PROGRESO)
+- ✅ 3a: Migración 0052: contrato.activo → contrato.estado (text)
+- ⏳ 3b: ContratoDetailScreen (pantalla nueva con cuotas + pagos)
+- ⏳ Rutas /admin/contratos/:id y /clientes/:cid/contratos/:ctid
+- ⏳ Status change dropdown (admin only)
 
-### Sprint 4: Fotos múltiples del cliente
-- Upload múltiple (max 10) a Storage
-- Galería visible en el detalle del cliente
-- Solo admin/admin_cobranza pueden subir/eliminar
+### Sprint 4: Fotos múltiples del cliente (PENDIENTE)
+- ⏳ Migración: tabla fotos_cliente nueva
+- ⏳ Widget galería (max 10 fotos)
+- ⏳ Upload/delete solo admin/admin_cobranza
 
-### Sprint 5: Polish + testing integral desde cero
-- Testing completo de todas las interfaces nuevas
-- Consistencia visual, labels, colores
-- Audit integral final
+### Sprint 5: Polish + testing integral (PENDIENTE)
 
 ---
 
