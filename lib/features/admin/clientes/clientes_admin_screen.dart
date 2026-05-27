@@ -38,6 +38,7 @@ class _ClientesAdminScreenState extends ConsumerState<ClientesAdminScreen> {
   String? _comunidadFilter;
   bool _soloMora = false;
   bool _soloSinCobrador = false;
+  bool _soloActivos = true;
   final Set<String> _seleccionados = {};
   Timer? _debounce;
   // Tamaño actual de la página. Se resetea según haya búsqueda o no
@@ -158,6 +159,11 @@ class _ClientesAdminScreenState extends ConsumerState<ClientesAdminScreen> {
             _soloSinCobrador = v;
             _resetPagination();
           }),
+          soloActivos: _soloActivos,
+          onSoloActivos: (v) => setState(() {
+            _soloActivos = v;
+            _resetPagination();
+          }),
         ),
         if (_seleccionados.isNotEmpty)
           _BulkBar(
@@ -172,6 +178,7 @@ class _ClientesAdminScreenState extends ConsumerState<ClientesAdminScreen> {
             comunidadFilter: _comunidadFilter,
             soloMora: _soloMora,
             soloSinCobrador: _soloSinCobrador,
+            soloActivos: _soloActivos,
             diasGracia: diasGracia,
             pageSize: _pageSize,
             seleccionados: _seleccionados,
@@ -246,16 +253,20 @@ class _Filtros extends StatelessWidget {
     required this.onComunidad,
     required this.onSoloMora,
     required this.onSoloSinCobrador,
+    required this.soloActivos,
+    required this.onSoloActivos,
   });
 
   final String? cobradorActual;
   final String? comunidadActual;
   final bool soloMora;
   final bool soloSinCobrador;
+  final bool soloActivos;
   final ValueChanged<String?> onCobrador;
   final ValueChanged<String?> onComunidad;
   final ValueChanged<bool> onSoloMora;
   final ValueChanged<bool> onSoloSinCobrador;
+  final ValueChanged<bool> onSoloActivos;
 
   @override
   Widget build(BuildContext context) {
@@ -279,6 +290,13 @@ class _Filtros extends StatelessWidget {
             label: const Text('Con mora'),
             selected: soloMora,
             onSelected: onSoloMora,
+          ),
+          const SizedBox(width: 8),
+          FilterChip(
+            avatar: Icon(soloActivos ? Icons.visibility : Icons.visibility_off, size: 18),
+            label: Text(soloActivos ? 'Solo activos' : 'Todos'),
+            selected: !soloActivos,
+            onSelected: (_) => onSoloActivos(!soloActivos),
           ),
         ],
       ),
@@ -476,6 +494,7 @@ class _Lista extends StatelessWidget {
     required this.comunidadFilter,
     required this.soloMora,
     required this.soloSinCobrador,
+    required this.soloActivos,
     required this.diasGracia,
     required this.pageSize,
     required this.seleccionados,
@@ -489,6 +508,7 @@ class _Lista extends StatelessWidget {
   final String? comunidadFilter;
   final bool soloMora;
   final bool soloSinCobrador;
+  final bool soloActivos;
   final int diasGracia;
   final int pageSize;
   final Set<String> seleccionados;
@@ -498,7 +518,7 @@ class _Lista extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final where = <String>['c.activo = 1'];
+    final where = <String>[if (soloActivos) 'c.activo = 1'];
     final params = <Object?>[diasGracia];
 
     if (query.isNotEmpty) {
