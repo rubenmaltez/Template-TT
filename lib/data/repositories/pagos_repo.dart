@@ -72,28 +72,22 @@ class PagosRepo {
     final now = (fechaPago ?? DateTime.now()).toIso8601String();
     final correlativoCompleter = <int>[];
 
-    // Guard: si la DB local no tiene recibos de este cobrador (DB recién
-    // creada post schema bump), consultar el MAX correlativo del server
-    // para no generar un numero_completo que ya existe.
+    // Guard correlativo: SIEMPRE consultar el server para el MAX porque
+    // los recibos anulados no se sincronizan al cobrador (sync rules
+    // filtran anulado = false), pero el server SÍ los tiene.
     int? _pisoCorrelativo;
-    final localCount = await ps.db.getAll(
-      'SELECT COUNT(*) AS cnt FROM recibos WHERE cobrador_id = ? AND prefijo = ?',
-      [cobradorId, prefijoRecibo],
-    );
-    if ((localCount.first['cnt'] as num).toInt() == 0) {
-      try {
-        final serverRows = await Supabase.instance.client
-            .from('recibos')
-            .select('correlativo')
-            .eq('cobrador_id', cobradorId)
-            .eq('prefijo', prefijoRecibo)
-            .order('correlativo', ascending: false)
-            .limit(1);
-        if (serverRows.isNotEmpty) {
-          _pisoCorrelativo = (serverRows.first['correlativo'] as num).toInt();
-        }
-      } catch (_) {}
-    }
+    try {
+      final serverRows = await Supabase.instance.client
+          .from('recibos')
+          .select('correlativo')
+          .eq('cobrador_id', cobradorId)
+          .eq('prefijo', prefijoRecibo)
+          .order('correlativo', ascending: false)
+          .limit(1);
+      if (serverRows.isNotEmpty) {
+        _pisoCorrelativo = (serverRows.first['correlativo'] as num).toInt();
+      }
+    } catch (_) {}
 
     await ps.db.writeTransaction((tx) async {
       if (cargosAuto != null) {
@@ -248,22 +242,16 @@ class PagosRepo {
 
     // Guard correlativo (mismo que registrarCobro).
     int? _pisoMulti;
-    final lcm = await ps.db.getAll(
-      'SELECT COUNT(*) AS cnt FROM recibos WHERE cobrador_id = ? AND prefijo = ?',
-      [cobradorId, prefijoRecibo],
-    );
-    if ((lcm.first['cnt'] as num).toInt() == 0) {
-      try {
-        final sr = await Supabase.instance.client
-            .from('recibos')
-            .select('correlativo')
-            .eq('cobrador_id', cobradorId)
-            .eq('prefijo', prefijoRecibo)
-            .order('correlativo', ascending: false)
-            .limit(1);
-        if (sr.isNotEmpty) _pisoMulti = (sr.first['correlativo'] as num).toInt();
-      } catch (_) {}
-    }
+    try {
+      final sr = await Supabase.instance.client
+          .from('recibos')
+          .select('correlativo')
+          .eq('cobrador_id', cobradorId)
+          .eq('prefijo', prefijoRecibo)
+          .order('correlativo', ascending: false)
+          .limit(1);
+      if (sr.isNotEmpty) _pisoMulti = (sr.first['correlativo'] as num).toInt();
+    } catch (_) {}
 
     await ps.db.writeTransaction((tx) async {
       // Insertar cargos automáticos (reconexión / pronto pago) antes de
