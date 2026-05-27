@@ -286,3 +286,67 @@ que desactiva el contrato y sus cuotas pendientes.
 4. **Personal**: El tab "Personal" incluye la funcionalidad de invitar
    nuevo personal (cobradores, admin_cobranza) con sus respectivos roles.
    Reemplaza el actual tab "Cobradores".
+
+## Decisiones Sprint 2 (detalle del cliente)
+
+### Permisos por rol
+| Acción | Admin | Admin cobranza | Cobrador |
+|--------|-------|----------------|----------|
+| Ver detalle cliente | ✅ | ✅ | ✅ |
+| Editar info cliente | ✅ | ✅ | ❌ |
+| Desactivar/reactivar cliente | ✅ | ✅ | ❌ |
+| Ver contratos | ✅ | ✅ | ✅ (solo ver) |
+| Crear contrato nuevo | ✅ | ✅ | ❌ |
+| Cambiar estado contrato | ✅ | ✅ | ❌ |
+| Ver cuotas del contrato | ✅ | ✅ | ✅ (todas con filtro) |
+| Editar cuotas | ✅ | ✅ | ❌ |
+| Cobrar cuotas | ✅ | ✅ | ✅ |
+| Registrar visita | ✅ | ✅ | ✅ |
+| Ver historial cambios | ✅ | Toggle | ❌ |
+| Subir fotos | ✅ | ✅ | ❌ |
+| Llamar/WhatsApp/Navegar | ✅ | ✅ | ✅ |
+
+### Cliente inactivo
+- Estado del cliente se edita dentro del formulario de edición.
+- La lista de clientes tiene filtro por estado (activo/inactivo).
+- Clientes inactivos se pueden reactivar.
+- Solo admin y admin_cobranza pueden cambiar estado.
+
+### Editar cliente
+- Botón "Editar" cambia la vista a modo edición inline.
+- Todos los campos se vuelven editables en la misma pantalla.
+- Botón "Guardar" / "Cancelar" al cambiar a modo edición.
+- Estado del cliente (activo/inactivo) es uno de los campos editables.
+
+### Estados del contrato
+- **Activo**: cliente tiene servicio, cuotas se generan y se cobran.
+- **Completado**: todas las cuotas pagadas (solo contratos 1-2 años, no indefinido).
+  Se marca automáticamente cuando la última cuota se paga.
+- **Cancelado**: cliente canceló el servicio. No aparece en la lista principal.
+  Visible en sección "Contratos cancelados" (colapsable).
+
+### Visualización de contratos
+- Dos secciones: "Contratos activos" arriba, "Contratos cancelados" abajo (colapsable).
+- Solo admin + admin_cobranza pueden cambiar estado.
+- El contrato NO se puede editar (es inmutable). Solo cambiar estado.
+
+### Cobrar cuotas (todos los roles)
+- Tap individual en cuota pendiente → abre cobro directo.
+- Long-press → multi-select con orden obligatorio → FAB "Cobrar N cuotas".
+- Mismo patrón que ya está implementado.
+
+### Nuevo contrato
+- En desktop: panel lateral que se abre al lado.
+- En mobile: push a pantalla completa.
+- Se accede desde botón "Nuevo contrato" en el detalle del cliente.
+
+### Historial de cambios (change log)
+- Botón de historial (🕐) por sección: info del cliente, cada contrato,
+  cada pago. Abre bottom sheet con timeline de cambios.
+- Usa el widget HistorialCambiosWidget reutilizable.
+
+### Change log automático
+- Al crear cliente: se registra toda la info inicial.
+- Al crear contrato: se registra toda la info del contrato + cuotas generadas.
+- Al editar cualquier campo: se registra qué cambió, quién y cuándo.
+- Triggers genéricos en Postgres ya capturan todo esto (migración 0047).
