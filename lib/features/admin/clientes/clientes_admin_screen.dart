@@ -624,7 +624,7 @@ class _ClienteCard extends StatelessWidget {
     return Card(
       color: selected ? scheme.primaryContainer.withValues(alpha: 0.4) : null,
       child: InkWell(
-        onTap: () => context.push('/admin/clientes/${row['id']}/editar'),
+        onTap: () => context.push('/admin/clientes/${row['id']}'),
         borderRadius: BorderRadius.circular(16),
         child: Padding(
           padding: const EdgeInsets.all(12),

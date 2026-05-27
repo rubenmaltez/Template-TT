@@ -322,6 +322,9 @@ final routerProvider = Provider<GoRouter>((ref) {
           GoRoute(path: '/admin/clientes/:id/editar',
               builder: (_, s) => _titled('Editar cliente',
                   ClienteFormScreen(clienteId: s.pathParameters['id']))),
+          GoRoute(path: '/admin/clientes/:id',
+              builder: (_, s) => ClienteDetailScreen(
+                  clienteId: s.pathParameters['id']!)),
           GoRoute(path: '/admin/contratos',
               builder: (_, s) => _titled('Contratos', const ContratosAdminScreen())),
           GoRoute(path: '/admin/contratos/nuevo',
