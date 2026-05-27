@@ -300,6 +300,7 @@ class _CuotasListState extends State<_CuotasList> {
     final sql = '''
       SELECT cu.id, cu.monto, cu.monto_pagado, cu.fecha_vencimiento,
              cu.periodo, cu.estado, cu.contrato_id,
+             cu.descripcion, cu.tipo_cargo_manual,
              c.id AS cliente_id, c.nombre AS cliente_nombre,
              co.nombre AS comunidad,
              p.nombre AS plan_nombre
@@ -549,6 +550,15 @@ class _CuotaListTile extends StatelessWidget {
   final VoidCallback onTap;
   final VoidCallback? onLongPress;
 
+  static String _tipoLabel(String tipo) => switch (tipo) {
+        'reconexion' => 'Reconexión',
+        'instalacion' => 'Instalación',
+        'mora' => 'Mora',
+        'reparacion' => 'Reparación',
+        'otro' => 'Otro',
+        _ => tipo,
+      };
+
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
@@ -582,8 +592,39 @@ class _CuotaListTile extends StatelessWidget {
               backgroundColor: color.withValues(alpha: 0.15),
               child: Icon(icon, color: color),
             ),
-      title: Text(row['cliente_nombre'] as String,
-          maxLines: 1, overflow: TextOverflow.ellipsis),
+      title: Row(
+        children: [
+          Expanded(
+            child: Text(row['cliente_nombre'] as String,
+                maxLines: 1, overflow: TextOverflow.ellipsis),
+          ),
+          if (row['contrato_id'] == null) ...[
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+              decoration: BoxDecoration(
+                color: scheme.tertiaryContainer,
+                borderRadius: BorderRadius.circular(4),
+              ),
+              child: Text('Manual',
+                  style: TextStyle(fontSize: 9, color: scheme.onTertiaryContainer)),
+            ),
+            if (row['tipo_cargo_manual'] != null) ...[
+              const SizedBox(width: 3),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                decoration: BoxDecoration(
+                  color: scheme.primaryContainer,
+                  borderRadius: BorderRadius.circular(4),
+                ),
+                child: Text(
+                  _tipoLabel(row['tipo_cargo_manual'] as String),
+                  style: TextStyle(fontSize: 9, color: scheme.onPrimaryContainer),
+                ),
+              ),
+            ],
+          ],
+        ],
+      ),
       subtitle: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
