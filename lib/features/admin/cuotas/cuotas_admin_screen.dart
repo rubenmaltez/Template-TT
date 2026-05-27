@@ -29,6 +29,7 @@ class _CuotasAdminScreenState extends ConsumerState<CuotasAdminScreen> {
   Timer? _debounce;
   late Stream<List<Map<String, dynamic>>> _cuotasStream;
   int _pageSize = _kPageSize;
+  int _diasVisibles = 90;
   bool _loadingMore = false;
   Timer? _loadingMoreTimer;
 
@@ -45,17 +46,17 @@ class _CuotasAdminScreenState extends ConsumerState<CuotasAdminScreen> {
       where.add('lower(c.nombre) LIKE ?');
       params.add('%$_query%');
     }
-    if (_estado != 'todas') {
+    if (_estado == 'pendiente') {
+      where.add("cu.estado IN ('pendiente','parcial')");
+      where.add("cu.fecha_vencimiento <= date('now', '+$_diasVisibles days')");
+    } else if (_estado != 'todas') {
       where.add('cu.estado = ?');
       params.add(_estado);
     }
     final whereSql = where.isEmpty ? '' : 'WHERE ${where.join(' AND ')}';
 
-    // LIMIT como último parámetro posicional.
     params.add(_pageSize);
 
-    // LEFT JOIN contratos y planes para que cuotas manuales (contrato_id NULL)
-    // también aparezcan en la lista.
     return ps.db.watch(
       '''
       SELECT cu.*, c.nombre AS cliente, p.nombre AS plan,
@@ -66,7 +67,7 @@ class _CuotasAdminScreenState extends ConsumerState<CuotasAdminScreen> {
    LEFT JOIN planes p ON p.id = ct.plan_id
    LEFT JOIN cobradores co ON co.id = cu.cobrador_id
        $whereSql
-       ORDER BY cu.fecha_vencimiento DESC, c.nombre
+       ORDER BY cu.fecha_vencimiento ASC, c.nombre
        LIMIT ?
       ''',
       parameters: params,
@@ -116,6 +117,12 @@ class _CuotasAdminScreenState extends ConsumerState<CuotasAdminScreen> {
   Widget build(BuildContext context) {
     final settings = ref.watch(appSettingsProvider);
     final diasGracia = settings.diasGracia;
+    if (settings.diasCuotasVisibles != _diasVisibles) {
+      _diasVisibles = settings.diasCuotasVisibles;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) setState(() => _cuotasStream = _buildStream());
+      });
+    }
     final cuotasManuales = settings.cuotasManuales;
     final cuotasEditarMonto = settings.cuotasEditarMonto;
 
