@@ -274,11 +274,15 @@ que desactiva el contrato y sus cuotas pendientes.
 
 ---
 
-## Decisiones pendientes
+## Decisiones confirmadas
 
-1. ¿Cuántas fotos máximo por cliente? (5? 10? ilimitado?)
-2. ¿El cobrador puede subir fotos del cliente o solo el admin?
-3. ¿Qué pasa con las cuotas/pagos existentes cuando se anula un contrato?
-   (marcar todas las cuotas pendientes como anuladas automáticamente?)
-4. ¿"Personal" incluye la funcionalidad de invitar nuevos cobradores o
-   eso se mueve a otra sección?
+1. **Fotos máximo por cliente**: 10. Storage bucket `fotos-clientes/{tenant}/{cliente_id}/`.
+2. **Quién sube fotos**: Solo admin y admin_cobranza. Cobrador ve las fotos
+   pero no puede subir/eliminar.
+3. **Anulación de contrato**: Al anular, todas las cuotas pendientes del
+   contrato se anulan automáticamente. El contrato queda en estado "anulado"
+   visible en un filtro "Anulados" (separado de los activos). Todo queda
+   en registros para auditoría.
+4. **Personal**: El tab "Personal" incluye la funcionalidad de invitar
+   nuevo personal (cobradores, admin_cobranza) con sus respectivos roles.
+   Reemplaza el actual tab "Cobradores".
