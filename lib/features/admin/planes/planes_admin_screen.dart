@@ -31,7 +31,7 @@ class _PlanesAdminScreenState extends ConsumerState<PlanesAdminScreen> {
       '''
       SELECT p.*,
              (SELECT COUNT(*) FROM contratos
-               WHERE plan_id = p.id AND activo = 1) AS contratos_activos
+               WHERE plan_id = p.id AND estado = 'activo') AS contratos_activos
         FROM planes p
        ORDER BY p.activo DESC, p.precio_mensual
       ''',

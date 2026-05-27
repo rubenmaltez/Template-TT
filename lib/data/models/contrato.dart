@@ -8,7 +8,7 @@ class Contrato {
     required this.diaPago,
     required this.fechaInicio,
     this.fechaFin,
-    required this.activo,
+    required this.estado,
   });
 
   final String id;
@@ -19,7 +19,9 @@ class Contrato {
   final int diaPago;
   final DateTime fechaInicio;
   final DateTime? fechaFin;
-  final bool activo;
+  final String estado;
+
+  bool get activo => estado == 'activo';
 
   /// Duración legible: '1 año', '2 años', 'Indefinido' o 'N meses'.
   String get duracionLabel {
@@ -43,7 +45,7 @@ class Contrato {
         fechaFin: row['fecha_fin'] != null
             ? DateTime.parse(row['fecha_fin'] as String)
             : null,
-        activo: (row['activo'] as int? ?? 1) == 1,
+        estado: row['estado'] as String? ?? 'activo',
       );
 }
 

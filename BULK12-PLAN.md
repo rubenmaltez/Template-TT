@@ -255,16 +255,20 @@ que desactiva el contrato y sus cuotas pendientes.
 - ✅ 2d: Toggle activo solo visible para admin (no admin_cobranza)
 - ✅ Sección contratos, botones Editar/Historial, role detection
 
-### Sprint 3: Detalle del contrato (EN PROGRESO)
+### Sprint 3: Detalle del contrato (COMPLETO)
 - ✅ 3a: Migración 0052: contrato.activo → contrato.estado (text)
-- ⏳ 3b: ContratoDetailScreen (pantalla nueva con cuotas + pagos)
-- ⏳ Rutas /admin/contratos/:id y /clientes/:cid/contratos/:ctid
-- ⏳ Status change dropdown (admin only)
+- ✅ 3b: ContratoDetailScreen (cuotas multi-select, pagos, status change)
+- ✅ Rutas /admin/contratos/:id y /contratos/:id (cobrador push)
+- ✅ Status change dropdown (admin/admin_cobranza only)
+- ✅ _ContratoCard.onTap wired en cliente_detail_screen
+- ✅ Contratos admin list onTap → detalle (antes iba directo a editar)
 
-### Sprint 4: Fotos múltiples del cliente (PENDIENTE)
-- ⏳ Migración: tabla fotos_cliente nueva
-- ⏳ Widget galería (max 10 fotos)
-- ⏳ Upload/delete solo admin/admin_cobranza
+### Sprint 4: Fotos múltiples del cliente (COMPLETO)
+- ✅ Migración 0053: tabla fotos_cliente
+- ✅ fotos_cliente en PowerSync schema.dart (schema v6)
+- ✅ fotos_cliente en sync rules (cobrador, admin, admin_cobranza, impersonated)
+- ✅ FotoGalleryWidget (max 10, upload via image_picker, delete con confirm)
+- ✅ Integrado en cliente_detail_screen (admin puede subir/eliminar, cobrador ve)
 
 ### Sprint 5: Polish + testing integral (PENDIENTE)
 

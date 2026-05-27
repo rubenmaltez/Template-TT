@@ -10,6 +10,7 @@ import '../features/admin/clientes/cliente_form_screen.dart';
 import '../features/admin/clientes/clientes_admin_screen.dart';
 import '../features/admin/cobradores/cobradores_admin_screen.dart';
 import '../features/admin/contratos/contratos_admin_screen.dart';
+import '../features/contratos/contrato_detail_screen.dart';
 import '../features/admin/cuotas/cuotas_admin_screen.dart';
 import '../features/admin/dashboard/dashboard_admin_screen.dart';
 import '../features/admin/geografia/geografia_admin_screen.dart';
@@ -330,6 +331,9 @@ final routerProvider = Provider<GoRouter>((ref) {
           GoRoute(path: '/admin/contratos/nuevo',
               builder: (_, s) => _titled('Nuevo contrato',
                   ContratoFormScreen(clienteId: s.uri.queryParameters['cliente_id']))),
+          GoRoute(path: '/admin/contratos/:id',
+              builder: (_, s) => ContratoDetailScreen(
+                  contratoId: s.pathParameters['id']!)),
           GoRoute(path: '/admin/contratos/:id/editar',
               builder: (_, s) => _titled('Editar contrato',
                   ContratoFormScreen(contratoId: s.pathParameters['id']))),
@@ -399,6 +403,11 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/clientes/:id',
         builder: (_, s) => ClienteDetailScreen(clienteId: s.pathParameters['id']!),
+      ),
+      GoRoute(
+        path: '/contratos/:id',
+        builder: (_, s) => ContratoDetailScreen(
+            contratoId: s.pathParameters['id']!),
       ),
       GoRoute(
         path: '/cobro/:cuotaId',

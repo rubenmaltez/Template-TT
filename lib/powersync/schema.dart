@@ -248,6 +248,20 @@ const schema = Schema([
     Column.integer('activo'),
   ]),
 
+  // ── Fotos del cliente (max 10 por cliente) ──────────────────────────
+  Table('fotos_cliente', [
+    Column.text('tenant_id'),
+    Column.text('cliente_id'),
+    Column.text('storage_path'),
+    Column.text('created_at'),
+    Column.text('created_by'),
+  ], indexes: [
+    Index('by_cliente', [
+      IndexedColumn('tenant_id'),
+      IndexedColumn('cliente_id'),
+    ]),
+  ]),
+
   // ── Impersonación de tenant por super_admin ──────────────────────────
   // Una sola row (o ninguna) por super_admin. Sincronizada vía el bucket
   // `impersonated_tenant` en sync-rules.yaml. Cuando existe, indica que

@@ -156,7 +156,7 @@ class _ContratoCard extends StatelessWidget {
                 visualDensity: VisualDensity.compact,
               )
             : null,
-        onTap: () => context.push('/admin/contratos/${row['id']}/editar'),
+        onTap: () => context.push('/admin/contratos/${row['id']}'),
       ),
     );
   }

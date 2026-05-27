@@ -9,6 +9,7 @@ import '../../data/services/visitas_service.dart';
 import '../../data/utils/formatters.dart';
 import '../../powersync/db.dart' as ps;
 import '../shared/widgets/empty_state.dart';
+import '../shared/widgets/foto_gallery_widget.dart';
 import '../shared/widgets/historial_cambios_widget.dart';
 
 class ClienteDetailScreen extends ConsumerStatefulWidget {
@@ -128,6 +129,15 @@ class _ClienteDetailScreenState extends ConsumerState<ClienteDetailScreen> {
                 clienteId: widget.clienteId,
                 esAdmin: esAdmin,
                 enAdminShell: enAdminShell,
+              ),
+              const SizedBox(height: 8),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: FotoGalleryWidget(
+                  clienteId: widget.clienteId,
+                  tenantId: cliente.tenantId,
+                  canEdit: esAdmin || (cobrador?.esAdminCobranza ?? false),
+                ),
               ),
               const SizedBox(height: 8),
               _VisitasSection(key: _visitasKey, clienteId: widget.clienteId),
@@ -389,8 +399,9 @@ class _ContratosSectionState extends State<_ContratosSection> {
                     contrato: ct,
                     esAdmin: widget.esAdmin,
                     onTap: () {
-                      // Sprint 3: navegar al detalle del contrato
-                      // Por ahora no hay pantalla de detalle del contrato
+                      final id = ct['id'] as String;
+                      final prefix = widget.enAdminShell ? '/admin' : '';
+                      context.push('$prefix/contratos/$id');
                     },
                   )),
 
@@ -406,7 +417,11 @@ class _ContratosSectionState extends State<_ContratosSection> {
                             contrato: ct,
                             esAdmin: widget.esAdmin,
                             cancelado: true,
-                            onTap: () {},
+                            onTap: () {
+                              final id = ct['id'] as String;
+                              final prefix = widget.enAdminShell ? '/admin' : '';
+                              context.push('$prefix/contratos/$id');
+                            },
                           ))
                       .toList(),
                 ),

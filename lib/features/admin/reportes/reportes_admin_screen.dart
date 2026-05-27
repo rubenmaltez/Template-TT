@@ -1054,7 +1054,7 @@ class _PlanesPopularesCardState extends State<_PlanesPopularesCard> {
       SELECT p.nombre, p.precio_mensual,
              COUNT(ct.id) AS contratos
         FROM planes p
-   LEFT JOIN contratos ct ON ct.plan_id = p.id AND ct.activo = 1
+   LEFT JOIN contratos ct ON ct.plan_id = p.id AND ct.estado = 'activo'
        GROUP BY p.id, p.nombre, p.precio_mensual
        ORDER BY contratos DESC
       ''',

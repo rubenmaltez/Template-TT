@@ -640,9 +640,13 @@ Estos viven acá hasta que se ataquen explícitamente. NO re-flag en audits.
     - BULK 12 Sprint 1 completado: sidebar simplificado (6 items).
 - **BULK 12 — Rework UI/UX Admin** (en progreso):
     - Sprint 1 ✅: sidebar simplificado.
-    - Sprint 2 pendiente: detalle cliente unificado (admin+cobrador).
-    - Sprint 3 pendiente: detalle contrato (cuotas+pagos+inmutable).
-    - Sprint 4 pendiente: fotos múltiples del cliente.
+    - Sprint 2 ✅: detalle cliente unificado (admin+cobrador), filtro activos,
+      sección contratos, role detection.
+    - Sprint 3 ✅: ContratoDetailScreen (cuotas multi-select, pagos, status
+      change dropdown, historial cambios). Migración 0052 (contrato.estado).
+      Rutas /admin/contratos/:id y /contratos/:id.
+    - Sprint 4 ✅: fotos múltiples (tabla fotos_cliente, FotoGalleryWidget,
+      max 10, upload via image_picker, sync rules). Migración 0053. Schema v6.
     - Sprint 5 pendiente: polish + testing integral.
     - Ver BULK12-PLAN.md para wireframes y decisiones confirmadas.
 - **Admin pagos sin grupo_cobro visual**: los pagos multi-cuota aparecen como N
