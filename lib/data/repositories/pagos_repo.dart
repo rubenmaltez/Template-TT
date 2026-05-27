@@ -1,4 +1,5 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../powersync/db.dart' as ps;
@@ -71,6 +72,29 @@ class PagosRepo {
     final now = (fechaPago ?? DateTime.now()).toIso8601String();
     final correlativoCompleter = <int>[];
 
+    // Guard: si la DB local no tiene recibos de este cobrador (DB recién
+    // creada post schema bump), consultar el MAX correlativo del server
+    // para no generar un numero_completo que ya existe.
+    int? _pisoCorrelativo;
+    final localCount = await ps.db.getAll(
+      'SELECT COUNT(*) AS cnt FROM recibos WHERE cobrador_id = ? AND prefijo = ?',
+      [cobradorId, prefijoRecibo],
+    );
+    if ((localCount.first['cnt'] as num).toInt() == 0) {
+      try {
+        final serverRows = await Supabase.instance.client
+            .from('recibos')
+            .select('correlativo')
+            .eq('cobrador_id', cobradorId)
+            .eq('prefijo', prefijoRecibo)
+            .order('correlativo', ascending: false)
+            .limit(1);
+        if (serverRows.isNotEmpty) {
+          _pisoCorrelativo = (serverRows.first['correlativo'] as num).toInt();
+        }
+      } catch (_) {}
+    }
+
     await ps.db.writeTransaction((tx) async {
       if (cargosAuto != null) {
         for (final cargo in cargosAuto) {
@@ -97,13 +121,15 @@ class PagosRepo {
       // La secuencia incluye anulados — quedan "huecos" referenciales OK.
       final rows = await tx.getAll(
         '''
-        SELECT COALESCE(MAX(correlativo), 0) + 1 AS prox
+        SELECT COALESCE(MAX(correlativo), 0) AS max_local
           FROM recibos
          WHERE cobrador_id = ? AND prefijo = ?
         ''',
         [cobradorId, prefijoRecibo],
       );
-      final correlativo = (rows.first['prox'] as num).toInt();
+      final maxLocal = (rows.first['max_local'] as num).toInt();
+      final piso = _pisoCorrelativo ?? 0;
+      final correlativo = (maxLocal > piso ? maxLocal : piso) + 1;
       correlativoCompleter.add(correlativo);
       final numeroCompleto =
           '$prefijoRecibo-${correlativo.toString().padLeft(5, '0')}';
@@ -220,6 +246,25 @@ class PagosRepo {
     final reciboIds = <String>[];
     String? primerPagoId;
 
+    // Guard correlativo (mismo que registrarCobro).
+    int? _pisoMulti;
+    final lcm = await ps.db.getAll(
+      'SELECT COUNT(*) AS cnt FROM recibos WHERE cobrador_id = ? AND prefijo = ?',
+      [cobradorId, prefijoRecibo],
+    );
+    if ((lcm.first['cnt'] as num).toInt() == 0) {
+      try {
+        final sr = await Supabase.instance.client
+            .from('recibos')
+            .select('correlativo')
+            .eq('cobrador_id', cobradorId)
+            .eq('prefijo', prefijoRecibo)
+            .order('correlativo', ascending: false)
+            .limit(1);
+        if (sr.isNotEmpty) _pisoMulti = (sr.first['correlativo'] as num).toInt();
+      } catch (_) {}
+    }
+
     await ps.db.writeTransaction((tx) async {
       // Insertar cargos automáticos (reconexión / pronto pago) antes de
       // los pagos para que el delta de cargos_extra ya los incluya.
@@ -249,13 +294,15 @@ class PagosRepo {
 
         final rows = await tx.getAll(
           '''
-          SELECT COALESCE(MAX(correlativo), 0) + 1 AS prox
+          SELECT COALESCE(MAX(correlativo), 0) AS max_local
             FROM recibos
            WHERE cobrador_id = ? AND prefijo = ?
           ''',
           [cobradorId, prefijoRecibo],
         );
-        final correlativo = (rows.first['prox'] as num).toInt();
+        final maxL = (rows.first['max_local'] as num).toInt();
+        final pisoM = _pisoMulti ?? 0;
+        final correlativo = (maxL > pisoM ? maxL : pisoM) + 1;
         final numeroCompleto =
             '$prefijoRecibo-${correlativo.toString().padLeft(5, '0')}';
 
