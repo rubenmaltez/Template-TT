@@ -246,31 +246,36 @@ que desactiva el contrato y sus cuotas pendientes.
 
 ## Sprints propuestos
 
-### Sprint 1: Sidebar unificado + routing
-- Refactor del sidebar (quitar tabs, agregar Personal)
-- Routing unificado admin/cobrador
-- Visibilidad por rol
+### Sprint 1: Sidebar unificado + routing ✅
+- ✅ Sidebar simplificado (6 items)
+- ✅ Ruta /admin/clientes/:id → detalle unificado
+- ✅ Admin list navega al detalle (no al form)
 
-### Sprint 2: Detalle del cliente unificado
-- Reescribir ClienteDetailScreen con secciones
-- Info + Fotos + Contratos + Cuotas manuales + Visitas + Pagos
-- Panel lateral en desktop, push en mobile
+### Sprint 2: Detalle del cliente unificado (EN PROGRESO)
+- ✅ Sección contratos (activos + cancelados colapsable)
+- ✅ Botón Editar (admin only) + Historial (admin only)
+- ✅ Role detection (esAdmin, esCobrador, enAdminShell)
+- ⏳ Quitar cuotas/pagos del detalle (mover a Sprint 3)
+- ⏳ Foto del cliente visible en el detalle (no solo en edición)
+- ⏳ Filtro activos/inactivos en lista de clientes
+- ⏳ Quitar toggle activo del form del cobrador
 
 ### Sprint 3: Detalle del contrato
-- Nueva pantalla ContratoDetailScreen
-- Cuotas del contrato con multi-select + orden
+- Pantalla nueva ContratoDetailScreen
+- Cuotas del contrato con multi-select + orden obligatorio
 - Pagos del contrato con historial de cambios
-- Contrato inmutable (anular, no editar)
+- Contrato inmutable (solo cambiar estado)
+- Navegación desde detalle cliente → contrato
 
 ### Sprint 4: Fotos múltiples del cliente
-- Upload múltiple a Storage
-- Galería con preview + eliminar
-- Bucket `fotos-clientes/{tenant}/{cliente_id}/`
+- Upload múltiple (max 10) a Storage
+- Galería visible en el detalle del cliente
+- Solo admin/admin_cobranza pueden subir/eliminar
 
-### Sprint 5: Polish + testing
-- Consistencia visual entre vistas
-- Testing completo de todos los flujos
-- Audit integral
+### Sprint 5: Polish + testing integral desde cero
+- Testing completo de todas las interfaces nuevas
+- Consistencia visual, labels, colores
+- Audit integral final
 
 ---
 
