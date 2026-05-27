@@ -62,7 +62,7 @@ class _ContratoFormScreenState extends ConsumerState<ContratoFormScreen> {
     _planId = r['plan_id'] as String;
     _diaPagoCtrl.text = (r['dia_pago'] as int).toString();
     _fechaInicio = DateTime.parse(r['fecha_inicio'] as String);
-    _activo = (r['activo'] as int? ?? 1) == 1;
+    _activo = (r['estado'] as String? ?? 'activo') == 'activo';
     if (r['fecha_fin'] != null) {
       final fin = DateTime.parse(r['fecha_fin'] as String);
       final meses = (fin.year - _fechaInicio.year) * 12 +
@@ -142,7 +142,7 @@ class _ContratoFormScreenState extends ConsumerState<ContratoFormScreen> {
           '''
           UPDATE contratos
              SET plan_id = ?, dia_pago = ?,
-                 fecha_inicio = ?, fecha_fin = ?, activo = ?
+                 fecha_inicio = ?, fecha_fin = ?, estado = ?
            WHERE id = ?
           ''',
           [
@@ -150,7 +150,7 @@ class _ContratoFormScreenState extends ConsumerState<ContratoFormScreen> {
             int.parse(_diaPagoCtrl.text),
             _fechaInicio.toIso8601String().substring(0, 10),
             fechaFin?.toIso8601String().substring(0, 10),
-            _activo ? 1 : 0,
+            _activo ? 'activo' : 'cancelado',
             widget.contratoId,
           ],
         );
@@ -159,8 +159,8 @@ class _ContratoFormScreenState extends ConsumerState<ContratoFormScreen> {
           '''
           INSERT INTO contratos (
             id, tenant_id, cliente_id, plan_id, dia_pago,
-            fecha_inicio, fecha_fin, activo, created_at
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?)
+            fecha_inicio, fecha_fin, estado, created_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, 'activo', ?)
           ''',
           [
             const Uuid().v4(),

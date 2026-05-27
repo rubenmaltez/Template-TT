@@ -321,7 +321,7 @@ class _ContratosSectionState extends State<_ContratosSection> {
         FROM contratos ct
    LEFT JOIN planes p ON p.id = ct.plan_id
        WHERE ct.cliente_id = ?
-       ORDER BY ct.activo DESC, ct.created_at DESC
+       ORDER BY ct.estado ASC, ct.created_at DESC
       ''',
       parameters: [widget.clienteId],
     );
@@ -343,8 +343,8 @@ class _ContratosSectionState extends State<_ContratosSection> {
             ));
           }
           final rows = snap.data!;
-          final activos = rows.where((r) => (r['activo'] as int? ?? 1) == 1).toList();
-          final cancelados = rows.where((r) => (r['activo'] as int? ?? 1) != 1).toList();
+          final activos = rows.where((r) => (r['estado'] as String? ?? 'activo') == 'activo').toList();
+          final cancelados = rows.where((r) => (r['estado'] as String? ?? 'activo') != 'activo').toList();
 
           return Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,

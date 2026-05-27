@@ -29,7 +29,7 @@ class _ContratosAdminScreenState extends ConsumerState<ContratosAdminScreen> {
     return ps.db.watch(
       '''
       SELECT ct.id, ct.dia_pago, ct.fecha_inicio, ct.fecha_fin,
-             ct.activo,
+             ct.estado,
              c.id AS cliente_id, c.nombre AS cliente,
              p.nombre AS plan, p.precio_mensual,
              co.nombre AS cobrador,
@@ -40,11 +40,11 @@ class _ContratosAdminScreenState extends ConsumerState<ContratosAdminScreen> {
         JOIN planes   p   ON p.id = ct.plan_id
    LEFT JOIN cobradores co ON co.id = ct.cobrador_id
    LEFT JOIN cuotas    cu ON cu.contrato_id = ct.id
-       WHERE ${_soloActivos ? 'ct.activo = 1' : '1=1'}
+       WHERE ${_soloActivos ? "ct.estado = 'activo'" : '1=1'}
        GROUP BY ct.id, ct.dia_pago, ct.fecha_inicio, ct.fecha_fin,
-                ct.activo, c.id, c.nombre, p.nombre, p.precio_mensual,
+                ct.estado, c.id, c.nombre, p.nombre, p.precio_mensual,
                 co.nombre
-       ORDER BY ct.activo DESC, c.nombre
+       ORDER BY ct.estado ASC, c.nombre
       ''',
     );
   }
@@ -111,7 +111,7 @@ class _ContratoCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    final activo = (row['activo'] as int? ?? 1) == 1;
+    final activo = (row['estado'] as String? ?? 'activo') == 'activo';
     final fechaInicio = DateTime.parse(row['fecha_inicio'] as String);
     final fechaFin = row['fecha_fin'] != null
         ? DateTime.parse(row['fecha_fin'] as String)

@@ -93,7 +93,7 @@ const schema = Schema([
     Column.integer('dia_pago'),
     Column.text('fecha_inicio'),
     Column.text('fecha_fin'),
-    Column.integer('activo'),
+    Column.text('estado'),
     Column.text('created_at'),
   ], indexes: [
     Index('by_cliente', [IndexedColumn('cliente_id')]),
