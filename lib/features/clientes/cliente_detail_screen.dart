@@ -389,8 +389,8 @@ class _ContratosSectionState extends State<_ContratosSection> {
                       label: const Text('Nuevo'),
                       onPressed: () {
                         final path = widget.enAdminShell
-                            ? '/admin/contratos/nuevo?clienteId=${widget.clienteId}'
-                            : '/contratos/nuevo?clienteId=${widget.clienteId}';
+                            ? '/admin/contratos/nuevo?cliente_id=${widget.clienteId}'
+                            : '/contratos/nuevo?cliente_id=${widget.clienteId}';
                         context.push(path);
                       },
                     ),
