@@ -94,11 +94,12 @@ class _ClienteDetailScreenState extends ConsumerState<ClienteDetailScreen> {
                 context.push(editPath);
               },
             ),
-          IconButton(
-            icon: const Icon(Icons.history),
-            tooltip: 'Historial de cambios',
-            onPressed: () => _showHistorial(context, 'clientes', widget.clienteId),
-          ),
+          if (esAdmin)
+            IconButton(
+              icon: const Icon(Icons.history),
+              tooltip: 'Historial de cambios',
+              onPressed: () => _showHistorial(context, 'clientes', widget.clienteId),
+            ),
         ],
       ),
       floatingActionButton: _selectedCuotas.isNotEmpty
