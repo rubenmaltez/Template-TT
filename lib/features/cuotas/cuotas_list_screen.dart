@@ -428,9 +428,6 @@ class _CuotasListState extends State<_CuotasList> {
             );
           },
         );
-            );
-          },
-        );
       },
     );
   }
