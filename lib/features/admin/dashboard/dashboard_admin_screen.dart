@@ -425,7 +425,7 @@ class _DistribucionCuotasCard extends ConsumerWidget {
                     _row('Al día', '${k.alDia}', scheme.primary, Icons.event),
                     _row('Pago parcial', '${k.parcial}', scheme.secondary,
                         Icons.hourglass_bottom),
-                    _row('En gracia', '${k.enGracia}', scheme.tertiary,
+                    _row('En gracia', '${k.enGracia}', Colors.amber.shade700,
                         Icons.schedule),
                     _row('Vencidas', '${k.vencida}', scheme.error,
                         Icons.warning),

@@ -452,7 +452,7 @@ class _CuotaTile extends StatelessWidget {
     final color = switch (estadoVisual) {
       CuotaEstadoVisual.pagada => scheme.tertiary,
       CuotaEstadoVisual.parcial => scheme.secondary,
-      CuotaEstadoVisual.enGracia => scheme.tertiary,
+      CuotaEstadoVisual.enGracia => Colors.amber.shade700,
       CuotaEstadoVisual.vencida => scheme.error,
       CuotaEstadoVisual.anulada => scheme.outline,
       _ => scheme.primary,

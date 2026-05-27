@@ -333,50 +333,101 @@ class _CuotasListState extends State<_CuotasList> {
           );
         }
 
-        final items = <Object>[];
-        String? lastContratoId;
+        // Agrupar por cliente_id para card-per-client.
+        final byClient = <String, List<Map<String, dynamic>>>{};
+        final clientOrder = <String>[];
         for (final r in rows) {
-          final contratoId = r['contrato_id'] as String?;
-          if (contratoId != lastContratoId) {
-            final planNombre = r['plan_nombre'] as String?;
-            final clienteNombre = r['cliente_nombre'] as String;
-            final header = planNombre != null
-                ? '$planNombre  —  $clienteNombre'
-                : clienteNombre;
-            items.add(header);
-            lastContratoId = contratoId;
+          final cid = r['cliente_id'] as String;
+          if (!byClient.containsKey(cid)) {
+            byClient[cid] = [];
+            clientOrder.add(cid);
           }
-          items.add(r);
+          byClient[cid]!.add(r);
         }
 
         return ListView.builder(
-          padding: EdgeInsets.only(bottom: widget.selected.isNotEmpty ? 80 : 16),
-          itemCount: items.length,
+          padding: EdgeInsets.only(
+            left: 8, right: 8, top: 8,
+            bottom: widget.selected.isNotEmpty ? 80 : 16,
+          ),
+          itemCount: clientOrder.length,
           itemBuilder: (context, i) {
-            final item = items[i];
-            if (item is String) return _ContratoHeader(titulo: item);
-            final row = item as Map<String, dynamic>;
-            final cuotaId = row['id'] as String;
-            final contratoId = row['contrato_id'] as String?;
-            final isSelected = widget.selected.contains(cuotaId);
-            final canSelect = widget.multiSelect &&
-                (widget.selected.isEmpty || contratoId == widget.selectedContratoId);
-            return _CuotaListTile(
-              row: row,
-              diasGracia: widget.diasGracia,
-              isSelected: isSelected,
-              canSelect: canSelect && widget.multiSelect,
-              showCheckbox: widget.selected.isNotEmpty,
-              onTap: () {
-                if (widget.selected.isNotEmpty) {
-                  widget.onToggle(cuotaId, contratoId);
-                } else {
-                  context.push('/cobro/$cuotaId');
-                }
-              },
-              onLongPress: widget.multiSelect
-                  ? () => widget.onToggle(cuotaId, contratoId)
-                  : null,
+            final cid = clientOrder[i];
+            final cuotas = byClient[cid]!;
+            final first = cuotas.first;
+            final clienteNombre = first['cliente_nombre'] as String;
+            final comunidad = first['comunidad'] as String?;
+
+            return Card(
+              margin: const EdgeInsets.only(bottom: 8),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Header del cliente
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+                    child: Row(
+                      children: [
+                        Icon(Icons.person, size: 18,
+                            color: Theme.of(context).colorScheme.primary),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(clienteNombre,
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.w600,
+                                    fontSize: 14,
+                                  )),
+                              if (comunidad != null)
+                                Text(comunidad,
+                                    style: TextStyle(
+                                      color: Theme.of(context).colorScheme.outline,
+                                      fontSize: 11,
+                                    )),
+                            ],
+                          ),
+                        ),
+                        Text('${cuotas.length} cuota(s)',
+                            style: TextStyle(
+                              color: Theme.of(context).colorScheme.outline,
+                              fontSize: 11,
+                            )),
+                      ],
+                    ),
+                  ),
+                  const Divider(height: 1),
+                  // Cuotas compactas
+                  ...cuotas.map((row) {
+                    final cuotaId = row['id'] as String;
+                    final contratoId = row['contrato_id'] as String?;
+                    final isSelected = widget.selected.contains(cuotaId);
+                    final canSelect = widget.multiSelect &&
+                        (widget.selected.isEmpty ||
+                            contratoId == widget.selectedContratoId);
+                    return _CuotaCompactRow(
+                      row: row,
+                      diasGracia: widget.diasGracia,
+                      isSelected: isSelected,
+                      showCheckbox: widget.selected.isNotEmpty,
+                      onTap: () {
+                        if (widget.selected.isNotEmpty) {
+                          widget.onToggle(cuotaId, contratoId);
+                        } else {
+                          context.push('/cobro/$cuotaId');
+                        }
+                      },
+                      onLongPress: widget.multiSelect && canSelect
+                          ? () => widget.onToggle(cuotaId, contratoId)
+                          : null,
+                    );
+                  }),
+                ],
+              ),
+            );
+          },
+        );
             );
           },
         );
@@ -502,6 +553,135 @@ class _TabPorClienteState extends State<_TabPorCliente> {
 // Shared widgets
 // ─────────────────────────────────────────────────────────────────────────────
 
+class _CuotaCompactRow extends StatelessWidget {
+  const _CuotaCompactRow({
+    required this.row,
+    required this.diasGracia,
+    required this.isSelected,
+    required this.showCheckbox,
+    required this.onTap,
+    this.onLongPress,
+  });
+  final Map<String, dynamic> row;
+  final int diasGracia;
+  final bool isSelected;
+  final bool showCheckbox;
+  final VoidCallback onTap;
+  final VoidCallback? onLongPress;
+
+  static String _tipoLabel(String tipo) => switch (tipo) {
+        'reconexion' => 'Reconexión',
+        'instalacion' => 'Instalación',
+        'mora' => 'Mora',
+        'reparacion' => 'Reparación',
+        'otro' => 'Otro',
+        _ => tipo,
+      };
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final vence = DateTime.parse(row['fecha_vencimiento'] as String);
+    final periodo = DateTime.parse(row['periodo'] as String);
+    final saldo = (row['monto'] as num).toDouble() -
+        (row['monto_pagado'] as num? ?? 0).toDouble();
+    final diasFromVence =
+        DateTime(DateTime.now().year, DateTime.now().month, DateTime.now().day)
+            .difference(DateTime(vence.year, vence.month, vence.day))
+            .inDays;
+    final esManual = row['contrato_id'] == null;
+
+    final (label, color) = diasFromVence > diasGracia
+        ? ('Vencida ${diasFromVence - diasGracia}d', scheme.error)
+        : diasFromVence > 0
+            ? ('Gracia', Colors.amber.shade700)
+            : diasFromVence == 0
+                ? ('Hoy', scheme.primary)
+                : ('${-diasFromVence}d', scheme.outline);
+
+    final mesLabel = '${Fmt.mes(periodo)[0].toUpperCase()}${Fmt.mes(periodo).substring(1)}';
+
+    return InkWell(
+      onTap: onTap,
+      onLongPress: onLongPress,
+      child: Container(
+        color: isSelected ? scheme.primaryContainer.withValues(alpha: 0.3) : null,
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        child: Row(
+          children: [
+            if (showCheckbox)
+              Checkbox(
+                value: isSelected,
+                onChanged: (_) => onTap(),
+                visualDensity: VisualDensity.compact,
+              )
+            else
+              SizedBox(
+                width: 8,
+                child: Container(
+                  width: 4,
+                  height: 24,
+                  decoration: BoxDecoration(
+                    color: color,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+              ),
+            const SizedBox(width: 8),
+            // Mes
+            SizedBox(
+              width: 90,
+              child: Text(mesLabel,
+                  style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500)),
+            ),
+            // Estado
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+              decoration: BoxDecoration(
+                color: color.withValues(alpha: 0.15),
+                borderRadius: BorderRadius.circular(4),
+              ),
+              child: Text(label,
+                  style: TextStyle(color: color, fontSize: 10, fontWeight: FontWeight.w600)),
+            ),
+            // Badges manuales
+            if (esManual) ...[
+              const SizedBox(width: 4),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                decoration: BoxDecoration(
+                  color: scheme.tertiaryContainer,
+                  borderRadius: BorderRadius.circular(4),
+                ),
+                child: Text('Manual',
+                    style: TextStyle(fontSize: 9, color: scheme.onTertiaryContainer)),
+              ),
+              if (row['tipo_cargo_manual'] != null) ...[
+                const SizedBox(width: 3),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                  decoration: BoxDecoration(
+                    color: scheme.primaryContainer,
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                  child: Text(
+                    _tipoLabel(row['tipo_cargo_manual'] as String),
+                    style: TextStyle(fontSize: 9, color: scheme.onPrimaryContainer),
+                  ),
+                ),
+              ],
+            ],
+            const Spacer(),
+            // Monto
+            Text(Fmt.cordobas(saldo),
+                style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class _ContratoHeader extends StatelessWidget {
   const _ContratoHeader({required this.titulo});
   final String titulo;
@@ -574,7 +754,7 @@ class _CuotaListTile extends StatelessWidget {
         ? ('Vencida hace ${diasFromVence - diasGracia} día(s)', scheme.error,
             Icons.warning)
         : diasFromVence > 0
-            ? ('En gracia', scheme.tertiary, Icons.schedule)
+            ? ('En gracia', Colors.amber.shade700, Icons.schedule)
             : diasFromVence == 0
                 ? ('Vence hoy', scheme.primary, Icons.event)
                 : ('Vence en ${-diasFromVence} día(s)', scheme.outline,

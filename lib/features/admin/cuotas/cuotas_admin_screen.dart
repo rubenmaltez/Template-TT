@@ -759,7 +759,7 @@ class _CuotaCard extends ConsumerWidget {
     if (estado == 'anulada') return (s.outline, 'Anulada');
     final diff = DateTime.now().difference(vence).inDays;
     if (diff > dg) return (s.error, 'Vencida hace ${diff - dg} día(s)');
-    if (diff > 0) return (s.tertiary, 'En gracia');
+    if (diff > 0) return (Colors.amber.shade700, 'En gracia');
     if (diff == 0) return (s.primary, 'Vence hoy');
     return (s.outline, 'Al día');
   }
