@@ -48,18 +48,39 @@ class _CuotasListScreenState extends ConsumerState<CuotasListScreen>
     ''', [now]);
   }
 
-  void _toggleSelect(String cuotaId, String? contratoId) {
+  void _toggleSelect(String cuotaId, String? contratoId, [List<String>? orderedIds]) {
     if (contratoId == null) return;
     setState(() {
       if (_selected.contains(cuotaId)) {
-        _selected.remove(cuotaId);
+        if (orderedIds != null) {
+          final idx = orderedIds.indexOf(cuotaId);
+          for (var i = idx; i < orderedIds.length; i++) {
+            _selected.remove(orderedIds[i]);
+          }
+        } else {
+          _selected.remove(cuotaId);
+        }
         if (_selected.isEmpty) _selectedContratoId = null;
       } else {
         if (_selected.isEmpty) {
           _selectedContratoId = contratoId;
           _selected.add(cuotaId);
         } else if (contratoId == _selectedContratoId) {
-          _selected.add(cuotaId);
+          if (orderedIds != null) {
+            final idx = orderedIds.indexOf(cuotaId);
+            if (idx == 0 || (idx > 0 && _selected.contains(orderedIds[idx - 1]))) {
+              _selected.add(cuotaId);
+            } else {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('Debés cobrar las cuotas anteriores primero'),
+                  duration: Duration(seconds: 2),
+                ),
+              );
+            }
+          } else {
+            _selected.add(cuotaId);
+          }
         }
       }
     });
@@ -176,7 +197,7 @@ class _TabPorCobrar extends StatelessWidget {
   final bool multiSelect;
   final Set<String> selected;
   final String? selectedContratoId;
-  final void Function(String, String?) onToggle;
+  final void Function(String cuotaId, String? contratoId, [List<String>? orderedIds]) onToggle;
   final ValueChanged<_Filtro> onFiltroChanged;
 
   @override
@@ -239,7 +260,7 @@ class _CuotasList extends StatefulWidget {
   final bool multiSelect;
   final Set<String> selected;
   final String? selectedContratoId;
-  final void Function(String, String?) onToggle;
+  final void Function(String cuotaId, String? contratoId, [List<String>? orderedIds]) onToggle;
 
   @override
   State<_CuotasList> createState() => _CuotasListState();
@@ -398,30 +419,47 @@ class _CuotasListState extends State<_CuotasList> {
                     ),
                   ),
                   const Divider(height: 1),
-                  // Cuotas compactas
-                  ...cuotas.map((row) {
-                    final cuotaId = row['id'] as String;
-                    final contratoId = row['contrato_id'] as String?;
-                    final isSelected = widget.selected.contains(cuotaId);
-                    final canSelect = widget.multiSelect &&
-                        (widget.selected.isEmpty ||
-                            contratoId == widget.selectedContratoId);
-                    return _CuotaCompactRow(
-                      row: row,
-                      diasGracia: widget.diasGracia,
-                      isSelected: isSelected,
-                      showCheckbox: widget.selected.isNotEmpty,
-                      onTap: () {
-                        if (widget.selected.isNotEmpty) {
-                          widget.onToggle(cuotaId, contratoId);
-                        } else {
-                          context.push('/cobro/$cuotaId');
-                        }
-                      },
-                      onLongPress: widget.multiSelect && canSelect
-                          ? () => widget.onToggle(cuotaId, contratoId)
-                          : null,
-                    );
+                  // Cuotas compactas — computar IDs pendientes ordenados
+                  // para validar orden de pago por contrato.
+                  ...() {
+                    // Agrupar cuotas pendientes por contrato para orden.
+                    final pendingByContrato = <String?, List<String>>{};
+                    for (final c in cuotas) {
+                      final e = c['estado'] as String;
+                      if (e == 'pendiente' || e == 'parcial') {
+                        final ctId = c['contrato_id'] as String?;
+                        pendingByContrato.putIfAbsent(ctId, () => []);
+                        pendingByContrato[ctId]!.add(c['id'] as String);
+                      }
+                    }
+
+                    return cuotas.map((row) {
+                      final cuotaId = row['id'] as String;
+                      final contratoId = row['contrato_id'] as String?;
+                      final isSelected = widget.selected.contains(cuotaId);
+                      final pendingIds = pendingByContrato[contratoId] ?? [];
+                      final canSelect = widget.multiSelect &&
+                          (widget.selected.isEmpty ||
+                              contratoId == widget.selectedContratoId);
+
+                      return _CuotaCompactRow(
+                        row: row,
+                        diasGracia: widget.diasGracia,
+                        isSelected: isSelected,
+                        showCheckbox: widget.selected.isNotEmpty,
+                        onTap: () {
+                          if (widget.selected.isNotEmpty) {
+                            widget.onToggle(cuotaId, contratoId, pendingIds);
+                          } else {
+                            context.push('/cobro/$cuotaId');
+                          }
+                        },
+                        onLongPress: widget.multiSelect && canSelect
+                            ? () => widget.onToggle(cuotaId, contratoId, pendingIds)
+                            : null,
+                      );
+                    });
+                  }(),
                   }),
                 ],
               ),
@@ -625,11 +663,18 @@ class _CuotaCompactRow extends StatelessWidget {
                 ),
               ),
             const SizedBox(width: 8),
-            // Mes
+            // Mes + fecha
             SizedBox(
               width: 90,
-              child: Text(mesLabel,
-                  style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500)),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(mesLabel,
+                      style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500)),
+                  Text(Fmt.fechaCorta(vence),
+                      style: TextStyle(fontSize: 10, color: scheme.outline)),
+                ],
+              ),
             ),
             // Estado
             Container(
