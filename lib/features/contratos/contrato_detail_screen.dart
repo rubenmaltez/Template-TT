@@ -672,7 +672,7 @@ class _DetailChip extends StatelessWidget {
 // Seccion de cuotas
 // ---------------------------------------------------------------------------
 
-enum _CuotaFiltro { todas, pendientes, pagadas }
+enum _CuotaFiltro { todas, pendientes, pagadas, manuales }
 
 class _CuotasSection extends StatelessWidget {
   const _CuotasSection({
@@ -716,24 +716,7 @@ class _CuotasSection extends StatelessWidget {
           ],
         ),
         const SizedBox(height: 8),
-        // Filter chips
-        SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
-          child: Row(
-            children: [
-              for (final f in _CuotaFiltro.values) ...[
-                FilterChip(
-                  label: Text(_filtroLabel(f)),
-                  selected: filtro == f,
-                  onSelected: (_) => onFiltroChanged(f),
-                ),
-                const SizedBox(width: 8),
-              ],
-            ],
-          ),
-        ),
-        const SizedBox(height: 8),
-        // Stream de cuotas
+        // Stream de cuotas — engloba chips + lista para poder contar
         StreamBuilder<List<Map<String, dynamic>>>(
           stream: cuotasStream,
           initialData: const [],
@@ -743,7 +726,47 @@ class _CuotasSection extends StatelessWidget {
             }
             final allRows = snap.data!;
 
-            // Filtrar segun chip activo
+            // Contadores por filtro (incluyendo 'manuales' = sin contrato_id NO,
+            // todas son del contrato actual aquí — 'manuales' = tipo_cargo_manual != null).
+            int countTodas = allRows.length;
+            int countPendientes = 0;
+            int countPagadas = 0;
+            int countManuales = 0;
+            for (final r in allRows) {
+              final estado = r['estado'] as String? ?? 'pendiente';
+              if (estado == 'pendiente' || estado == 'parcial') countPendientes++;
+              if (estado == 'pagada') countPagadas++;
+              if (r['tipo_cargo_manual'] != null) countManuales++;
+            }
+
+            int countFor(_CuotaFiltro f) => switch (f) {
+                  _CuotaFiltro.todas => countTodas,
+                  _CuotaFiltro.pendientes => countPendientes,
+                  _CuotaFiltro.pagadas => countPagadas,
+                  _CuotaFiltro.manuales => countManuales,
+                };
+
+            // Filter chips con contador.
+            final chips = SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                children: [
+                  for (final f in _CuotaFiltro.values) ...[
+                    // 'manuales' solo se muestra si hay al menos uno.
+                    if (f != _CuotaFiltro.manuales || countManuales > 0) ...[
+                      FilterChip(
+                        label: Text('${_filtroLabel(f)} (${countFor(f)})'),
+                        selected: filtro == f,
+                        onSelected: (_) => onFiltroChanged(f),
+                      ),
+                      const SizedBox(width: 8),
+                    ],
+                  ],
+                ],
+              ),
+            );
+
+            // Filtrar según chip activo
             final rows = allRows.where((r) {
               final estado = r['estado'] as String? ?? 'pendiente';
               return switch (filtro) {
@@ -751,16 +774,24 @@ class _CuotasSection extends StatelessWidget {
                 _CuotaFiltro.pendientes =>
                   estado == 'pendiente' || estado == 'parcial',
                 _CuotaFiltro.pagadas => estado == 'pagada',
+                _CuotaFiltro.manuales => r['tipo_cargo_manual'] != null,
               };
             }).toList();
 
             if (rows.isEmpty) {
-              return Padding(
-                padding: const EdgeInsets.symmetric(vertical: 24),
-                child: Center(
-                  child: Text('Sin cuotas',
-                      style: TextStyle(color: scheme.outline)),
-                ),
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  chips,
+                  const SizedBox(height: 8),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 24),
+                    child: Center(
+                      child: Text('Sin cuotas',
+                          style: TextStyle(color: scheme.outline)),
+                    ),
+                  ),
+                ],
               );
             }
 
@@ -773,15 +804,20 @@ class _CuotasSection extends StatelessWidget {
                 .map((r) => r['id'] as String)
                 .toList();
 
-            return Card(
-              clipBehavior: Clip.antiAlias,
-              child: Column(
-                children: [
-                  for (var i = 0; i < rows.length; i++) ...[
-                    if (i > 0) const Divider(height: 1),
-                    _CuotaRow(
-                      row: rows[i],
-                      diasGracia: diasGracia,
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                chips,
+                const SizedBox(height: 8),
+                Card(
+                  clipBehavior: Clip.antiAlias,
+                  child: Column(
+                    children: [
+                      for (var i = 0; i < rows.length; i++) ...[
+                        if (i > 0) const Divider(height: 1),
+                        _CuotaRow(
+                          row: rows[i],
+                          diasGracia: diasGracia,
                       isSelected: selected.contains(rows[i]['id'] as String),
                       showCheckbox: selected.isNotEmpty,
                       onTap: () {
@@ -807,6 +843,8 @@ class _CuotasSection extends StatelessWidget {
                   ],
                 ],
               ),
+            ),
+              ],
             );
           },
         ),
@@ -821,6 +859,7 @@ class _CuotasSection extends StatelessWidget {
         _CuotaFiltro.todas => 'Todas',
         _CuotaFiltro.pendientes => 'Pendientes',
         _CuotaFiltro.pagadas => 'Pagadas',
+        _CuotaFiltro.manuales => 'Manuales',
       };
 }
 
