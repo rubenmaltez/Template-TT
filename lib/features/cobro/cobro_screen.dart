@@ -265,15 +265,29 @@ class _CobroScreenState extends ConsumerState<CobroScreen> {
     try {
       final CobroResultado result;
       if (_esMultiCuota) {
-        // Multi-cuota: distribuir el monto proporcionalmente entre cuotas.
+        // Multi-cuota: cada cuota recibe su saldo completo. Si el monto
+        // entregado supera el total a cobrar, el excedente queda como
+        // vuelto en el último pago del grupo (ver registrarCobroMultiple).
         final montosNIO = <double>[];
         final montosOrig = <double>[];
+        var totalSaldoNIO = 0.0;
         for (var i = 0; i < _cuotas.length; i++) {
           final saldo = (_totalesACobrar[i] - _cuotas[i].montoPagado)
               .clamp(0.0, double.infinity);
           montosNIO.add(saldo);
           montosOrig.add(_moneda == Moneda.usd ? saldo / tasa : saldo);
+          totalSaldoNIO += saldo;
         }
+
+        // entregado = lo que el cliente puso en mano (en córdobas).
+        final entregado = double.parse(_montoCtrl.text);
+        final entregadoCordobas = entregado * tasa;
+        // aplicado = min(entregado, totalSaldo); vuelto = exceso.
+        // En el flow actual el campo es read-only = totalSaldo, así que
+        // vuelto será 0 — pero dejamos la fórmula correcta para futuro.
+        final vueltoCordobas = entregadoCordobas > totalSaldoNIO
+            ? entregadoCordobas - totalSaldoNIO
+            : 0.0;
 
         final cargosInfo = _cargosAuto
             .map((c) => CargoAutoInfo(
@@ -291,6 +305,7 @@ class _CobroScreenState extends ConsumerState<CobroScreen> {
               prefijoRecibo: cobrador.prefijoRecibo!,
               cuotaIds: _cuotas.map((c) => c.id).toList(),
               montosCordobas: montosNIO,
+              vueltoCordobas: vueltoCordobas,
               moneda: _moneda,
               montosOriginal: montosOrig,
               tasaConversion: tasa,
@@ -308,9 +323,22 @@ class _CobroScreenState extends ConsumerState<CobroScreen> {
               cargosAuto: cargosInfo.isEmpty ? null : cargosInfo,
             );
       } else {
-        // Single cuota: flow original.
-        final monto = double.parse(_montoCtrl.text);
-        final montoCordobas = monto * tasa;
+        // Single cuota: el field _montoCtrl tiene lo ENTREGADO por el cliente.
+        // El aplicado a la cuota se trunca al saldo real (sin vuelto se
+        // inflaba recaudado del ISP). El exceso se guarda como vuelto.
+        final entregado = double.parse(_montoCtrl.text);
+        final entregadoCordobas = entregado * tasa;
+
+        final saldoCuota = (_totalesACobrar.first - _cuotas.first.montoPagado)
+            .clamp(0.0, double.infinity);
+        final aplicadoCordobas = entregadoCordobas > saldoCuota
+            ? saldoCuota
+            : entregadoCordobas;
+        final vueltoCordobas = entregadoCordobas - aplicadoCordobas;
+        // montoOriginal en la moneda elegida (USD/NIO) corresponde al APLICADO.
+        final montoOriginalAplicado = _moneda == Moneda.usd
+            ? aplicadoCordobas / tasa
+            : aplicadoCordobas;
 
         final cargosInfo = _cargosAuto
             .map((c) => CargoAutoInfo(
@@ -327,9 +355,10 @@ class _CobroScreenState extends ConsumerState<CobroScreen> {
               cobradorId: cobrador.id,
               prefijoRecibo: cobrador.prefijoRecibo!,
               cuotaId: _cuotas.first.id,
-              montoCordobas: montoCordobas,
+              montoCordobas: aplicadoCordobas,
+              vueltoCordobas: vueltoCordobas,
               moneda: _moneda,
-              montoOriginal: monto,
+              montoOriginal: montoOriginalAplicado,
               tasaConversion: tasa,
               metodo: _metodo,
               referencia: _referenciaCtrl.text.trim().isEmpty

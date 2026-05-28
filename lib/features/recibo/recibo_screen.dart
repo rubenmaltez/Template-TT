@@ -57,7 +57,7 @@ class _ReciboScreenState extends ConsumerState<ReciboScreen> {
         '''
         SELECT r.id, r.numero_completo, r.prefijo, r.correlativo,
                r.created_at, r.impreso_en, r.reimpresiones,
-               p.monto_cordobas, p.moneda, p.monto_original,
+               p.monto_cordobas, p.vuelto_cordobas, p.moneda, p.monto_original,
                p.tasa_conversion, p.metodo, p.referencia, p.fecha_pago,
                p.foto_comprobante_path, p.grupo_cobro,
                cu.periodo, cu.monto AS cuota_monto,
@@ -85,7 +85,7 @@ class _ReciboScreenState extends ConsumerState<ReciboScreen> {
         '''
         SELECT r.id, r.numero_completo, r.prefijo, r.correlativo,
                r.created_at, r.impreso_en, r.reimpresiones,
-               p.monto_cordobas, p.moneda, p.monto_original,
+               p.monto_cordobas, p.vuelto_cordobas, p.moneda, p.monto_original,
                p.tasa_conversion, p.metodo, p.referencia, p.fecha_pago,
                p.foto_comprobante_path,
                cu.periodo, cu.monto AS cuota_monto,
