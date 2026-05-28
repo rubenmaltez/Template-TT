@@ -241,18 +241,38 @@ class _CuotasAdminScreenState extends ConsumerState<CuotasAdminScreen> {
     try {
       final id = const Uuid().v4();
       final now = DateTime.now().toIso8601String();
+
+      // Fetch cobrador_id desde el cliente. Postgres tiene trigger
+      // `trg_set_cobrador_id_cuotas` que rellena cobrador_id desde
+      // clientes.cobrador_id, pero ese trigger NO corre en SQLite local.
+      // Sin cobrador_id explícito, la cuota no aparece en el bucket
+      // por_cobrador del cobrador asignado hasta que sincronice con el
+      // server. Denormalizamos manualmente en el INSERT local.
+      String? cobradorId;
+      try {
+        final cliRow = await ps.db.getOptional(
+          'SELECT cobrador_id FROM clientes WHERE id = ?',
+          [result.clienteId],
+        );
+        cobradorId = cliRow?['cobrador_id'] as String?;
+      } catch (_) {
+        cobradorId = null;
+      }
+
       await ps.db.execute(
         '''
         INSERT INTO cuotas (
-          id, tenant_id, contrato_id, cliente_id,
+          id, tenant_id, contrato_id, cliente_id, cobrador_id,
           periodo, fecha_vencimiento, monto, monto_pagado,
           cargos_neto, estado, descripcion, tipo_cargo_manual, created_at
-        ) VALUES (?, ?, NULL, ?, ?, ?, ?, 0, 0, 'pendiente', ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, 0, 'pendiente', ?, ?, ?)
         ''',
         [
           id,
           tenantId,
+          result.contratoId,
           result.clienteId,
+          cobradorId,
           result.fechaVencimiento.toIso8601String().substring(0, 10),
           result.fechaVencimiento.toIso8601String().substring(0, 10),
           result.monto,
@@ -286,12 +306,14 @@ class _CuotasAdminScreenState extends ConsumerState<CuotasAdminScreen> {
 class _CuotaManualData {
   const _CuotaManualData({
     required this.clienteId,
+    required this.contratoId,
     required this.tipoCargo,
     required this.descripcion,
     required this.monto,
     required this.fechaVencimiento,
   });
   final String clienteId;
+  final String? contratoId;
   final String tipoCargo;
   final String descripcion;
   final double monto;
@@ -331,6 +353,11 @@ class _NuevaCuotaManualDialogState extends State<_NuevaCuotaManualDialog> {
   bool _buscando = false;
   Timer? _debounce;
 
+  // Contratos activos del cliente seleccionado.
+  String? _contratoId;
+  List<Map<String, dynamic>> _contratos = [];
+  bool _cargandoContratos = false;
+
   @override
   void dispose() {
     _descripcionCtrl.dispose();
@@ -369,6 +396,39 @@ class _NuevaCuotaManualDialogState extends State<_NuevaCuotaManualDialog> {
         if (mounted) setState(() => _buscando = false);
       }
     });
+  }
+
+  Future<void> _loadContratos(String clienteId) async {
+    if (!mounted) return;
+    setState(() {
+      _cargandoContratos = true;
+      _contratos = [];
+      _contratoId = null;
+    });
+    try {
+      final rows = await ps.db.getAll(
+        '''
+        SELECT ct.id, p.nombre AS plan_nombre, p.precio_mensual
+          FROM contratos ct
+          JOIN planes p ON p.id = ct.plan_id
+         WHERE ct.cliente_id = ? AND ct.estado = 'activo'
+         ORDER BY p.nombre
+        ''',
+        [clienteId],
+      );
+      if (!mounted) return;
+      setState(() {
+        _contratos = rows;
+        // Auto-select si el cliente tiene exactamente un contrato activo.
+        if (rows.length == 1) {
+          _contratoId = rows.first['id'] as String;
+        }
+      });
+    } catch (_) {
+      // Silenciamos — el dropdown muestra "sin contratos" si falla.
+    } finally {
+      if (mounted) setState(() => _cargandoContratos = false);
+    }
   }
 
   Future<void> _seleccionarFecha() async {
@@ -443,12 +503,14 @@ class _NuevaCuotaManualDialogState extends State<_NuevaCuotaManualDialog> {
                               ? Text(c['telefono'] as String)
                               : null,
                           onTap: () {
+                            final cid = c['id'] as String;
                             setState(() {
-                              _clienteId = c['id'] as String;
+                              _clienteId = cid;
                               _clienteNombre = c['nombre'] as String;
                               _clientes = [];
                               _busquedaCtrl.clear();
                             });
+                            _loadContratos(cid);
                           },
                         );
                       },
@@ -468,11 +530,70 @@ class _NuevaCuotaManualDialogState extends State<_NuevaCuotaManualDialog> {
                         onPressed: () => setState(() {
                           _clienteId = null;
                           _clienteNombre = null;
+                          _contratoId = null;
+                          _contratos = [];
                         }),
                       ),
                     ],
                   ),
                 ),
+              ],
+
+              // Contrato (solo si hay cliente seleccionado).
+              if (_clienteId != null) ...[
+                const SizedBox(height: 16),
+                if (_cargandoContratos)
+                  const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 8),
+                    child: Row(
+                      children: [
+                        SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        ),
+                        SizedBox(width: 8),
+                        Text('Cargando contratos…'),
+                      ],
+                    ),
+                  )
+                else if (_contratos.isEmpty)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 4),
+                    child: Text(
+                      'Este cliente no tiene contratos activos. '
+                      'La cuota no quedará asociada a un contrato.',
+                      style: TextStyle(
+                        color: Theme.of(context).colorScheme.error,
+                        fontSize: 12,
+                      ),
+                    ),
+                  )
+                else
+                  DropdownButtonFormField<String?>(
+                    value: _contratoId,
+                    decoration: const InputDecoration(
+                      labelText: 'Contrato (opcional)',
+                    ),
+                    items: <DropdownMenuItem<String?>>[
+                      const DropdownMenuItem<String?>(
+                        value: null,
+                        child: Text('— Sin contrato —'),
+                      ),
+                      ..._contratos.map((c) {
+                        final planNombre = c['plan_nombre'] as String? ?? '?';
+                        final precio = (c['precio_mensual'] as num?)?.toDouble() ?? 0;
+                        return DropdownMenuItem<String?>(
+                          value: c['id'] as String,
+                          child: Text(
+                            '$planNombre (${Fmt.cordobas(precio)}/mes)',
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        );
+                      }),
+                    ],
+                    onChanged: (v) => setState(() => _contratoId = v),
+                  ),
               ],
               const SizedBox(height: 16),
 
@@ -542,6 +663,7 @@ class _NuevaCuotaManualDialogState extends State<_NuevaCuotaManualDialog> {
                     context,
                     _CuotaManualData(
                       clienteId: _clienteId!,
+                      contratoId: _contratoId,
                       tipoCargo: _tipoCargo,
                       descripcion: _descripcionCtrl.text.trim(),
                       monto: double.parse(_montoCtrl.text),

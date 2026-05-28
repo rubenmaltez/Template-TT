@@ -758,7 +758,7 @@ class _VisitaTile extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            '${Fmt.fechaCorta(visita.fecha.toLocal())} · ${Fmt.fechaRelativa(visita.fecha)}',
+            '${Fmt.fechaCorta(visita.fecha.toLocal())} · ${Fmt.fechaRelativa(visita.fecha.toLocal())}',
             style: TextStyle(color: scheme.outline, fontSize: 11),
           ),
           if (hasNotas) ...[

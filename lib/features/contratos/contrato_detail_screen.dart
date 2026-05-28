@@ -28,6 +28,9 @@ class _ContratoDetailScreenState extends ConsumerState<ContratoDetailScreen> {
   late Stream<List<Map<String, dynamic>>> _contratoStream;
   late Stream<List<Map<String, dynamic>>> _cuotasStream;
   late Stream<List<Map<String, dynamic>>> _pagosStream;
+  // Stream para el resumen — agrega SUM de todos los pagos NO anulados del
+  // contrato (incluye pagos a cuotas regulares Y a cargos manuales).
+  late Stream<List<Map<String, dynamic>>> _resumenStream;
 
   // --- multi-select ---
   final Set<String> _selected = {};
@@ -39,6 +42,7 @@ class _ContratoDetailScreenState extends ConsumerState<ContratoDetailScreen> {
     _contratoStream = _buildContratoStream();
     _cuotasStream = _buildCuotasStream();
     _pagosStream = _buildPagosStream();
+    _resumenStream = _buildResumenStream();
   }
 
   @override
@@ -49,6 +53,7 @@ class _ContratoDetailScreenState extends ConsumerState<ContratoDetailScreen> {
         _contratoStream = _buildContratoStream();
         _cuotasStream = _buildCuotasStream();
         _pagosStream = _buildPagosStream();
+        _resumenStream = _buildResumenStream();
         _selected.clear();
       });
     }
@@ -96,6 +101,21 @@ class _ContratoDetailScreenState extends ConsumerState<ContratoDetailScreen> {
        WHERE cu.contrato_id = ?
        ORDER BY pa.fecha_pago DESC
        LIMIT 20
+      ''',
+      parameters: [widget.contratoId],
+    ).asBroadcastStream();
+  }
+
+  // Resumen: SUM(monto_pagado) de pagos NO anulados del contrato.
+  // Incluye pagos a cuotas regulares Y a cargos manuales del mismo contrato.
+  Stream<List<Map<String, dynamic>>> _buildResumenStream() {
+    return ps.db.watch(
+      '''
+      SELECT COALESCE(SUM(pa.monto_cordobas), 0) AS recaudado
+        FROM pagos pa
+        JOIN cuotas cu ON cu.id = pa.cuota_id
+       WHERE cu.contrato_id = ?
+         AND pa.anulado = 0
       ''',
       parameters: [widget.contratoId],
     ).asBroadcastStream();
@@ -196,7 +216,7 @@ class _ContratoDetailScreenState extends ConsumerState<ContratoDetailScreen> {
                     contrato: contrato,
                     esAdmin: esAdmin,
                     onEstadoChanged: esAdmin ? _cambiarEstado : null,
-                    cuotasStream: _cuotasStream,
+                    resumenStream: _resumenStream,
                   ),
                   const SizedBox(height: 24),
                   _CuotasSection(
@@ -295,12 +315,12 @@ class _ContratoHeader extends StatelessWidget {
   const _ContratoHeader({
     required this.contrato,
     required this.esAdmin,
-    required this.cuotasStream,
+    required this.resumenStream,
     this.onEstadoChanged,
   });
   final Map<String, dynamic> contrato;
   final bool esAdmin;
-  final Stream<List<Map<String, dynamic>>> cuotasStream;
+  final Stream<List<Map<String, dynamic>>> resumenStream;
   final ValueChanged<String>? onEstadoChanged;
 
   @override
@@ -421,7 +441,7 @@ class _ContratoHeader extends StatelessWidget {
               ],
             ),
             const Divider(height: 20),
-            // Detalle inferior
+            // Detalle inferior — fila 1: fechas + día pago
             Row(
               children: [
                 _DetailChip(
@@ -431,9 +451,9 @@ class _ContratoHeader extends StatelessWidget {
                 ),
                 const SizedBox(width: 16),
                 _DetailChip(
-                  icon: Icons.timelapse,
-                  label: 'Duración',
-                  value: _duracionLabel(fechaInicio, fechaFin),
+                  icon: Icons.event,
+                  label: 'Fin',
+                  value: fechaFin != null ? Fmt.fechaCorta(fechaFin) : 'Indefinido',
                 ),
                 const SizedBox(width: 16),
                 _DetailChip(
@@ -444,9 +464,14 @@ class _ContratoHeader extends StatelessWidget {
               ],
             ),
             const SizedBox(height: 12),
-            // Resumen financiero del contrato — se computa desde cuotas.
+            // Resumen financiero del contrato.
+            // Total = precio_mensual × meses (lo definido al crear).
+            // Recaudado = SUM(pagos no anulados) del contrato.
+            // Pendiente = Total - Recaudado.
             _ContratoResumen(
-              cuotasStream: cuotasStream,
+              resumenStream: resumenStream,
+              precioMensual: precio,
+              fechaInicio: fechaInicio,
               fechaFin: fechaFin,
             ),
           ],
@@ -473,32 +498,42 @@ class _ContratoHeader extends StatelessWidget {
 
 class _ContratoResumen extends StatelessWidget {
   const _ContratoResumen({
-    required this.cuotasStream,
+    required this.resumenStream,
+    required this.precioMensual,
+    required this.fechaInicio,
     required this.fechaFin,
   });
-  final Stream<List<Map<String, dynamic>>> cuotasStream;
+  final Stream<List<Map<String, dynamic>>> resumenStream;
+  final double precioMensual;
+  final DateTime fechaInicio;
   final DateTime? fechaFin;
+
+  /// Total contrato = precio_mensual × meses (definido al crear).
+  /// Para contratos indefinidos retorna null.
+  double? _calcularTotalContrato() {
+    if (fechaFin == null) return null;
+    final meses = (fechaFin!.year - fechaInicio.year) * 12 +
+        (fechaFin!.month - fechaInicio.month);
+    if (meses <= 0) return null;
+    return precioMensual * meses;
+  }
 
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
+    final totalContrato = _calcularTotalContrato();
+    final esIndefinido = totalContrato == null;
     return StreamBuilder<List<Map<String, dynamic>>>(
-      stream: cuotasStream,
+      stream: resumenStream,
       initialData: const [],
       builder: (context, snap) {
         if (snap.hasError) return const SizedBox.shrink();
         final rows = snap.data!;
-        // Calcular totales (excluyendo anuladas para no inflar el total).
-        double totalContrato = 0;
-        double recaudado = 0;
-        for (final r in rows) {
-          final estado = r['estado'] as String? ?? 'pendiente';
-          if (estado == 'anulada') continue;
-          totalContrato += (r['monto'] as num? ?? 0).toDouble();
-          recaudado += (r['monto_pagado'] as num? ?? 0).toDouble();
-        }
-        final pendiente = totalContrato - recaudado;
-        final esIndefinido = fechaFin == null;
+        final recaudado = rows.isEmpty
+            ? 0.0
+            : ((rows.first['recaudado'] as num?) ?? 0).toDouble();
+        final pendiente =
+            esIndefinido ? 0.0 : (totalContrato - recaudado).clamp(0, double.infinity).toDouble();
 
         return Container(
           padding: const EdgeInsets.all(12),
@@ -508,7 +543,6 @@ class _ContratoResumen extends StatelessWidget {
           ),
           child: Row(
             children: [
-              // Indefinido: solo Recaudado. Fijo: Total + Recaudado + Pendiente.
               if (esIndefinido) ...[
                 Expanded(
                   child: _ResumenItem(
