@@ -70,7 +70,7 @@ class _ContratoDetailScreenState extends ConsumerState<ContratoDetailScreen> {
        LIMIT 1
       ''',
       parameters: [widget.contratoId],
-    );
+    ).asBroadcastStream();
   }
 
   Stream<List<Map<String, dynamic>>> _buildCuotasStream() {
@@ -84,7 +84,7 @@ class _ContratoDetailScreenState extends ConsumerState<ContratoDetailScreen> {
        ORDER BY cu.periodo ASC
       ''',
       parameters: [widget.contratoId],
-    );
+    ).asBroadcastStream();
   }
 
   Stream<List<Map<String, dynamic>>> _buildPagosStream() {
@@ -98,7 +98,7 @@ class _ContratoDetailScreenState extends ConsumerState<ContratoDetailScreen> {
        LIMIT 20
       ''',
       parameters: [widget.contratoId],
-    );
+    ).asBroadcastStream();
   }
 
   // --- multi-select helpers ---

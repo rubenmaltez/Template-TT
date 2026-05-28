@@ -34,7 +34,7 @@ class _ContratosAdminScreenState extends ConsumerState<ContratosAdminScreen> {
              p.nombre AS plan, p.precio_mensual,
              co.nombre AS cobrador,
              COUNT(cu.id) AS total_cuotas,
-             COUNT(cu.id) FILTER (WHERE cu.estado = 'pagada') AS cuotas_pagadas
+             COALESCE(SUM(CASE WHEN cu.estado = 'pagada' THEN 1 ELSE 0 END), 0) AS cuotas_pagadas
         FROM contratos ct
         JOIN clientes c   ON c.id = ct.cliente_id
         JOIN planes   p   ON p.id = ct.plan_id

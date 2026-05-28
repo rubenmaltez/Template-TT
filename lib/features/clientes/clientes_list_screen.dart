@@ -310,11 +310,10 @@ class _ClientesList extends StatelessWidget {
         co.nombre  AS comunidad,
         m.nombre   AS municipio,
         c.latitud, c.longitud,
-        COUNT(cu.id) FILTER (WHERE cu.estado IN ('pendiente','parcial')) AS cuotas_pendientes,
-        COUNT(cu.id) FILTER (
-          WHERE cu.estado IN ('pendiente','parcial')
+        COALESCE(SUM(CASE WHEN cu.estado IN ('pendiente','parcial') THEN 1 ELSE 0 END), 0) AS cuotas_pendientes,
+        COALESCE(SUM(CASE WHEN cu.estado IN ('pendiente','parcial')
             AND date(cu.fecha_vencimiento, '+' || ? || ' days') < date('now')
-        ) AS cuotas_vencidas,
+          THEN 1 ELSE 0 END), 0) AS cuotas_vencidas,
         COALESCE(SUM(CASE WHEN cu.estado IN ('pendiente','parcial')
                           THEN cu.monto + COALESCE(cu.cargos_neto, 0) - cu.monto_pagado
                           ELSE 0 END), 0) AS saldo

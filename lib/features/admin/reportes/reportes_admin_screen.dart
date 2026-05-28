@@ -273,7 +273,7 @@ class _DescargarPdfMenu extends ConsumerWidget {
       } else if (tipo == 'clientes') {
         final rows = await ps.db.getAll('''
           SELECT c.nombre, co.nombre AS comunidad,
-                 COUNT(cu.id) FILTER (WHERE cu.estado IN ('pendiente','parcial'))
+                 COALESCE(SUM(CASE WHEN cu.estado IN ('pendiente','parcial') THEN 1 ELSE 0 END), 0)
                    AS pendientes,
                  COALESCE(SUM(CASE WHEN cu.estado IN ('pendiente','parcial')
                    THEN cu.monto + COALESCE(cu.cargos_neto, 0) - cu.monto_pagado
@@ -584,7 +584,7 @@ class _DescargarPdfMenu extends ConsumerWidget {
       case 'clientes':
         final rows = await ps.db.getAll('''
           SELECT c.nombre, co.nombre AS comunidad,
-                 COUNT(cu.id) FILTER (WHERE cu.estado IN ('pendiente','parcial'))
+                 COALESCE(SUM(CASE WHEN cu.estado IN ('pendiente','parcial') THEN 1 ELSE 0 END), 0)
                    AS pendientes,
                  COALESCE(SUM(CASE WHEN cu.estado IN ('pendiente','parcial')
                    THEN cu.monto + COALESCE(cu.cargos_neto, 0) - cu.monto_pagado

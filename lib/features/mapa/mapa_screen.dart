@@ -28,11 +28,10 @@ class _MapaScreenState extends ConsumerState<MapaScreen> {
       ps.db.watch(
         '''
         SELECT c.id, c.nombre, c.latitud, c.longitud,
-               COUNT(cu.id) FILTER (WHERE cu.estado IN ('pendiente','parcial')) AS pendientes,
-               COUNT(cu.id) FILTER (
-                 WHERE cu.estado IN ('pendiente','parcial')
+               COALESCE(SUM(CASE WHEN cu.estado IN ('pendiente','parcial') THEN 1 ELSE 0 END), 0) AS pendientes,
+               COALESCE(SUM(CASE WHEN cu.estado IN ('pendiente','parcial')
                    AND date(cu.fecha_vencimiento, '+' || ? || ' days') < date('now')
-               ) AS vencidas
+                 THEN 1 ELSE 0 END), 0) AS vencidas
           FROM clientes c
      LEFT JOIN cuotas cu ON cu.cliente_id = c.id
          WHERE c.activo = 1
