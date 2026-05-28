@@ -94,6 +94,7 @@ const schema = Schema([
     Column.text('fecha_inicio'),
     Column.text('fecha_fin'),
     Column.text('estado'),
+    Column.text('documento_path'),
     Column.text('created_at'),
   ], indexes: [
     Index('by_cliente', [IndexedColumn('cliente_id')]),

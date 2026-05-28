@@ -115,36 +115,43 @@ class _ClienteDetailScreenState extends ConsumerState<ClienteDetailScreen> {
               titulo: 'Cliente no encontrado',
             );
           }
-          return ListView(
-            padding: const EdgeInsets.only(bottom: 80),
-            children: [
-              _ClienteHeader(
-                nombre: cliente.nombre,
-                telefono: cliente.telefono,
-                tieneUbicacion: cliente.tieneUbicacion,
-                latitud: cliente.latitud,
-                longitud: cliente.longitud,
+          // Aprovechar espacio en pantallas grandes: maxWidth 1100,
+          // centrado. Mobile usa todo el ancho disponible.
+          return Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 1100),
+              child: ListView(
+                padding: const EdgeInsets.only(bottom: 80),
+                children: [
+                  _ClienteHeader(
+                    nombre: cliente.nombre,
+                    telefono: cliente.telefono,
+                    tieneUbicacion: cliente.tieneUbicacion,
+                    latitud: cliente.latitud,
+                    longitud: cliente.longitud,
+                  ),
+                  _ClienteInfo(cliente: cliente),
+                  const SizedBox(height: 8),
+                  _ContratosSection(
+                    clienteId: widget.clienteId,
+                    clienteCobradorId: cliente.cobradorId,
+                    esAdmin: esAdmin,
+                    enAdminShell: enAdminShell,
+                  ),
+                  const SizedBox(height: 8),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    child: FotoGalleryWidget(
+                      clienteId: widget.clienteId,
+                      tenantId: cliente.tenantId,
+                      canEdit: esAdmin || (cobrador?.esAdminCobranza ?? false),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  _VisitasSection(key: _visitasKey, clienteId: widget.clienteId),
+                ],
               ),
-              _ClienteInfo(cliente: cliente),
-              const SizedBox(height: 8),
-              _ContratosSection(
-                clienteId: widget.clienteId,
-                clienteCobradorId: cliente.cobradorId,
-                esAdmin: esAdmin,
-                enAdminShell: enAdminShell,
-              ),
-              const SizedBox(height: 8),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                child: FotoGalleryWidget(
-                  clienteId: widget.clienteId,
-                  tenantId: cliente.tenantId,
-                  canEdit: esAdmin || (cobrador?.esAdminCobranza ?? false),
-                ),
-              ),
-              const SizedBox(height: 8),
-              _VisitasSection(key: _visitasKey, clienteId: widget.clienteId),
-            ],
+            ),
           );
         },
       ),

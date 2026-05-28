@@ -1,6 +1,9 @@
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:url_launcher/url_launcher_string.dart';
 
 import '../../data/models/pago.dart';
 import '../../data/providers/cobrador_provider.dart';
@@ -66,8 +69,9 @@ class _ContratoDetailScreenState extends ConsumerState<ContratoDetailScreen> {
   Stream<List<Map<String, dynamic>>> _buildContratoStream() {
     return ps.db.watch(
       '''
-      SELECT ct.id, ct.dia_pago, ct.fecha_inicio, ct.fecha_fin,
+      SELECT ct.id, ct.tenant_id, ct.dia_pago, ct.fecha_inicio, ct.fecha_fin,
              ct.estado, ct.cliente_id, ct.cobrador_id,
+             ct.documento_path,
              p.nombre AS plan_nombre, p.precio_mensual,
              c.nombre AS cliente_nombre
         FROM contratos ct
@@ -208,7 +212,13 @@ class _ContratoDetailScreenState extends ConsumerState<ContratoDetailScreen> {
 
           return Stack(
             children: [
-              ListView(
+              // En pantallas anchas centramos el contenido con un maxWidth
+              // razonable (no estira la lectura infinitamente). Mobile/tablet
+              // chico usan el ancho completo.
+              Center(
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 1100),
+                  child: ListView(
                 padding: EdgeInsets.only(
                   left: 16, right: 16, top: 16,
                   bottom: _selected.isNotEmpty ? 96 : 16,
@@ -239,11 +249,20 @@ class _ContratoDetailScreenState extends ConsumerState<ContratoDetailScreen> {
                         : null,
                   ),
                   const SizedBox(height: 24),
+                  _DocumentoContratoSection(
+                    contratoId: widget.contratoId,
+                    documentoPath: contrato['documento_path'] as String?,
+                    tenantId: contrato['tenant_id'] as String? ?? '',
+                    esAdmin: esAdmin,
+                  ),
+                  const SizedBox(height: 24),
                   _PagosSection(
                     pagosStream: _pagosStream,
                     esAdmin: esAdmin,
                   ),
                 ],
+              ),
+                ),
               ),
               // FAB multi-cobro
               if (_selected.isNotEmpty)
@@ -1553,6 +1572,301 @@ class _AnularPagoDialogState extends State<_AnularPagoDialog> {
           ),
           child: const Text('Anular'),
         ),
+      ],
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Sección Documento del Contrato
+// ---------------------------------------------------------------------------
+// Admin/admin_cobranza pueden adjuntar/reemplazar/eliminar documento del
+// contrato (PDF, Word, foto). Storage bucket: contratos-documentos.
+// Path scheme: {tenant_id}/{contrato_id}/{timestamp}.{ext}
+
+class _DocumentoContratoSection extends StatefulWidget {
+  const _DocumentoContratoSection({
+    required this.contratoId,
+    required this.documentoPath,
+    required this.tenantId,
+    required this.esAdmin,
+  });
+  final String contratoId;
+  final String? documentoPath;
+  final String tenantId;
+  final bool esAdmin;
+
+  @override
+  State<_DocumentoContratoSection> createState() =>
+      _DocumentoContratoSectionState();
+}
+
+class _DocumentoContratoSectionState extends State<_DocumentoContratoSection> {
+  static const _bucket = 'contratos-documentos';
+  bool _trabajando = false;
+
+  Future<void> _subir({required bool reemplazar}) async {
+    if (_trabajando) return;
+
+    final picked = await FilePicker.platform.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: ['pdf', 'jpg', 'jpeg', 'png', 'doc', 'docx'],
+      withData: true,
+    );
+    if (picked == null || picked.files.isEmpty) return;
+    final file = picked.files.single;
+    final bytes = file.bytes;
+    if (bytes == null) return;
+
+    setState(() => _trabajando = true);
+    try {
+      final ext = (file.extension ?? 'bin').toLowerCase();
+      final mime = _mimeFor(ext);
+      final storagePath =
+          '${widget.tenantId}/${widget.contratoId}/${DateTime.now().millisecondsSinceEpoch}.$ext';
+
+      // Si estamos reemplazando, borrar el archivo viejo del bucket
+      // (la row queda actualizada con el nuevo path).
+      if (reemplazar && widget.documentoPath != null) {
+        try {
+          await Supabase.instance.client.storage
+              .from(_bucket)
+              .remove([widget.documentoPath!]);
+        } catch (_) {
+          // No bloquea — si falla la limpieza queda huérfano pero
+          // el upload del nuevo sigue.
+        }
+      }
+
+      await Supabase.instance.client.storage
+          .from(_bucket)
+          .uploadBinary(storagePath, bytes,
+              fileOptions: FileOptions(contentType: mime));
+
+      await ps.db.execute(
+        'UPDATE contratos SET documento_path = ? WHERE id = ?',
+        [storagePath, widget.contratoId],
+      );
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+              content: Text(reemplazar
+                  ? 'Documento reemplazado'
+                  : 'Documento adjuntado')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error: $e')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _trabajando = false);
+    }
+  }
+
+  Future<void> _eliminar() async {
+    if (_trabajando || widget.documentoPath == null) return;
+    final confirmar = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Eliminar documento'),
+        content: const Text('Esta acción no se puede deshacer.'),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancelar')),
+          FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Eliminar')),
+        ],
+      ),
+    );
+    if (confirmar != true || !mounted) return;
+
+    setState(() => _trabajando = true);
+    try {
+      // DB primero (consistente con FotoGalleryWidget).
+      await ps.db.execute(
+        'UPDATE contratos SET documento_path = NULL WHERE id = ?',
+        [widget.contratoId],
+      );
+      try {
+        await Supabase.instance.client.storage
+            .from(_bucket)
+            .remove([widget.documentoPath!]);
+      } catch (_) {
+        // Orphan en Storage es inofensivo (la row ya no apunta).
+      }
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Documento eliminado')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error al eliminar: $e')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _trabajando = false);
+    }
+  }
+
+  Future<void> _ver() async {
+    if (widget.documentoPath == null) return;
+    try {
+      final url = await Supabase.instance.client.storage
+          .from(_bucket)
+          .createSignedUrl(widget.documentoPath!, 3600);
+      if (!mounted) return;
+      // Abre en pestaña nueva en web. El navegador maneja la descarga
+      // o preview según el MIME type.
+      final ok = await launchUrlString(url, mode: LaunchMode.externalApplication);
+      if (!ok && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('No se pudo abrir el documento')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error al abrir: $e')),
+        );
+      }
+    }
+  }
+
+  String _mimeFor(String ext) => switch (ext) {
+        'pdf' => 'application/pdf',
+        'jpg' || 'jpeg' => 'image/jpeg',
+        'png' => 'image/png',
+        'doc' => 'application/msword',
+        'docx' =>
+          'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        _ => 'application/octet-stream',
+      };
+
+  IconData _iconFor(String? path) {
+    if (path == null) return Icons.attach_file;
+    final ext = path.split('.').last.toLowerCase();
+    return switch (ext) {
+      'pdf' => Icons.picture_as_pdf,
+      'jpg' || 'jpeg' || 'png' => Icons.image,
+      'doc' || 'docx' => Icons.description,
+      _ => Icons.insert_drive_file,
+    };
+  }
+
+  String _nombreCorto(String path) {
+    final parts = path.split('/');
+    return parts.isNotEmpty ? parts.last : path;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final hayDoc = widget.documentoPath != null;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Icon(Icons.folder_open, size: 20, color: scheme.primary),
+            const SizedBox(width: 8),
+            Text('Documento del contrato',
+                style: Theme.of(context)
+                    .textTheme
+                    .titleSmall
+                    ?.copyWith(fontWeight: FontWeight.bold)),
+          ],
+        ),
+        const SizedBox(height: 8),
+        if (!hayDoc) ...[
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: Row(
+                children: [
+                  Icon(Icons.attach_file, size: 28, color: scheme.outline),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      widget.esAdmin
+                          ? 'Adjuntá el contrato firmado (PDF, Word o foto).'
+                          : 'Sin documento adjunto.',
+                      style: TextStyle(color: scheme.outline),
+                    ),
+                  ),
+                  if (widget.esAdmin)
+                    FilledButton.icon(
+                      icon: _trabajando
+                          ? const SizedBox(
+                              width: 16,
+                              height: 16,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Icon(Icons.upload_file),
+                      label: Text(_trabajando ? 'Subiendo...' : 'Adjuntar'),
+                      onPressed:
+                          _trabajando ? null : () => _subir(reemplazar: false),
+                    ),
+                ],
+              ),
+            ),
+          ),
+        ] else ...[
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: Row(
+                children: [
+                  Icon(_iconFor(widget.documentoPath), size: 32, color: scheme.primary),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('Documento adjunto',
+                            style: TextStyle(
+                                fontWeight: FontWeight.w600,
+                                color: scheme.onSurface)),
+                        Text(_nombreCorto(widget.documentoPath!),
+                            style: TextStyle(
+                                fontSize: 11,
+                                color: scheme.outline),
+                            overflow: TextOverflow.ellipsis),
+                      ],
+                    ),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.open_in_new),
+                    tooltip: 'Ver / Descargar',
+                    onPressed: _trabajando ? null : _ver,
+                  ),
+                  if (widget.esAdmin) ...[
+                    IconButton(
+                      icon: const Icon(Icons.refresh),
+                      tooltip: 'Reemplazar',
+                      onPressed: _trabajando
+                          ? null
+                          : () => _subir(reemplazar: true),
+                    ),
+                    IconButton(
+                      icon: Icon(Icons.delete_outline, color: scheme.error),
+                      tooltip: 'Eliminar',
+                      onPressed: _trabajando ? null : _eliminar,
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ),
+        ],
       ],
     );
   }
