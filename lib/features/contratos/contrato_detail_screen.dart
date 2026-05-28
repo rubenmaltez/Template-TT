@@ -316,6 +316,17 @@ class _ContratoDetailScreenState extends ConsumerState<ContratoDetailScreen> {
 // Header del contrato
 // ---------------------------------------------------------------------------
 
+String _duracionLabelHelper(DateTime inicio, DateTime? fin) {
+  if (fin == null) return 'Indefinido';
+  final meses = (fin.year - inicio.year) * 12 + (fin.month - inicio.month);
+  if (meses <= 0) return '—';
+  if (meses == 1) return '1 mes';
+  if (meses == 12) return '1 año';
+  if (meses == 24) return '2 años';
+  if (meses % 12 == 0) return '${meses ~/ 12} años';
+  return '$meses meses';
+}
+
 class _ContratoHeader extends StatelessWidget {
   const _ContratoHeader({
     required this.contrato,
@@ -443,6 +454,16 @@ class _ContratoHeader extends StatelessWidget {
                       fontWeight: FontWeight.w600,
                       color: scheme.onSurfaceVariant,
                     )),
+              ],
+            ),
+            // Duración (legible: 1 año / 2 años / N meses / Indefinido)
+            const SizedBox(height: 4),
+            Row(
+              children: [
+                Icon(Icons.timelapse, size: 16, color: scheme.outline),
+                const SizedBox(width: 6),
+                Text('Duración: ${_duracionLabelHelper(fechaInicio, fechaFin)}',
+                    style: TextStyle(color: scheme.onSurfaceVariant)),
               ],
             ),
             const Divider(height: 20),

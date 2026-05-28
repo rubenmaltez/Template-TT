@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:http/http.dart' as http;
 import 'package:printing/printing.dart';
 
 import '../../data/models/pago.dart';
@@ -32,7 +33,10 @@ class _ReciboScreenState extends ConsumerState<ReciboScreen> {
   // Vista preview: si está activa, el body del recibo se constraine al
   // ancho visual de la tira térmica (según `cobranza.formato_recibo_mm`).
   // Útil en web para que el admin "vea" cómo va a quedar el ticket.
-  bool _vistaPreview = false;
+  // Default ON: el recibo se muestra siempre simulando el ancho real
+  // del papel térmico (80mm/57mm). El toggle permite expandir a vista
+  // amplia si el admin quiere copiar texto.
+  bool _vistaPreview = true;
 
   bool get _esMultiCuota => widget.grupoCobro != null;
 
@@ -173,6 +177,7 @@ class _ReciboScreenState extends ConsumerState<ReciboScreen> {
                       reciboId: widget.reciboId,
                       recibo: r,
                       settings: settings,
+                      logoUrl: logoUrl,
                       multiRows: rows,
                     ),
                     const SizedBox(height: 16),

@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 
@@ -20,9 +22,13 @@ double _anchoPuntos(int mm) {
 }
 
 /// PDF para un recibo individual (cuota única).
+///
+/// [logoBytes] opcional: si se provee, se renderiza el logo de la empresa
+/// centrado horizontalmente arriba del nombre de la empresa.
 Future<pw.Document> buildReciboPdf({
   required Map<String, dynamic> row,
   required AppSettings settings,
+  Uint8List? logoBytes,
 }) async {
   final doc = pw.Document();
   final ancho = _anchoPuntos(settings.formatoReciboMm);
@@ -43,6 +49,12 @@ Future<pw.Document> buildReciboPdf({
         crossAxisAlignment: pw.CrossAxisAlignment.center,
         mainAxisSize: pw.MainAxisSize.min,
         children: [
+          if (logoBytes != null)
+            pw.Padding(
+              padding: const pw.EdgeInsets.only(bottom: 4),
+              child: pw.Image(pw.MemoryImage(logoBytes),
+                  height: 50, fit: pw.BoxFit.contain),
+            ),
           if (settings.empresaNombre.isNotEmpty)
             pw.Text(
               settings.empresaNombre.toUpperCase(),
@@ -149,9 +161,13 @@ Future<pw.Document> buildReciboPdf({
 }
 
 /// PDF para cobro múltiple (varios pagos agrupados).
+///
+/// [logoBytes] opcional: si se provee, se renderiza el logo de la empresa
+/// centrado horizontalmente arriba del nombre de la empresa.
 Future<pw.Document> buildMultiReciboPdf({
   required List<Map<String, dynamic>> rows,
   required AppSettings settings,
+  Uint8List? logoBytes,
 }) async {
   final doc = pw.Document();
   final ancho = _anchoPuntos(settings.formatoReciboMm);
@@ -170,6 +186,12 @@ Future<pw.Document> buildMultiReciboPdf({
         crossAxisAlignment: pw.CrossAxisAlignment.center,
         mainAxisSize: pw.MainAxisSize.min,
         children: [
+          if (logoBytes != null)
+            pw.Padding(
+              padding: const pw.EdgeInsets.only(bottom: 4),
+              child: pw.Image(pw.MemoryImage(logoBytes),
+                  height: 50, fit: pw.BoxFit.contain),
+            ),
           if (settings.empresaNombre.isNotEmpty)
             pw.Text(
               settings.empresaNombre.toUpperCase(),
