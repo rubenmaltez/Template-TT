@@ -151,6 +151,61 @@ para `auth.admin.*` y rollbacks.
    onboarding de tenants. Cualquier feature que asuma "envía email" debe
    tener fallback no-email con password generada server-side.
 
+### Invariantes de dinero (NUNCA violar — la base del negocio)
+
+El control de dinero es la razón de ser del producto. Estas reglas son
+inviolables. Cualquier cambio que toque `pagos`, `cuotas`, `recibos`,
+`contratos`, `cargos_extra` o flujos de cobro DEBE respetarlas, y el audit
+DEBE verificarlas explícitamente:
+
+1. **`pagos.monto_cordobas` = lo APLICADO a la cuota** (lo que entra a la
+   caja del ISP). NUNCA lo entregado por el cliente.
+2. **`pagos.vuelto_cordobas` = lo devuelto al cliente, SIEMPRE en córdobas.**
+   El cliente puede pagar en USD, pero el vuelto nunca se da en USD — solo
+   el ISP recibe dólares como efectivo.
+3. **`pagos.monto_original` = lo ENTREGADO en la moneda original** (US$30 si
+   pagó 30 dólares). Invariante: `monto_original × tasa_conversion ≈
+   monto_cordobas + vuelto_cordobas`.
+4. **`recaudado` de un contrato = `SUM(pagos.monto_cordobas)` no anulados.**
+   NUNCA sumar lo entregado ni incluir vuelto.
+5. **Total de un contrato fijo = `precio_mensual × meses`** (lo definido al
+   crear). NUNCA la suma de cuotas (las cuotas manuales/anuladas la
+   distorsionan). `pendiente = total − recaudado`.
+6. **Contratos indefinidos**: solo se reporta "total recaudado" acumulado;
+   no hay "pendiente" porque no hay fin definido.
+7. **`cuota.monto_pagado` = `SUM(pagos aplicados no anulados)`** de esa cuota.
+   Lo mantiene un trigger server-side. El cliente NUNCA lo calcula a mano.
+8. **Anular un pago restaura** `cuota.monto_pagado` y el estado de la cuota
+   (trigger). El pago anulado se PRESERVA en DB (audit trail), no se borra.
+9. **Cargos manuales (reconexión, etc.) se asocian al contrato** que provee
+   el servicio. Cuentan para el recaudado pero NO para el total fijo del
+   contrato.
+10. **Consistencia cross-pantalla**: el saldo/recaudado de un cliente debe
+    dar idéntico en lista de clientes, detalle de contrato, y reportes. Si
+    dos pantallas calculan distinto, una está mal — investigar antes de
+    seguir.
+
+**Verificación**: `supabase/tests/invariantes_dinero.sql` corre todas estas
+reglas contra la data real. Correr DESPUÉS de cada deploy que toque dinero.
+Toda fila debe dar `violaciones = 0`.
+
+### Trazabilidad / audit log (obligatorio para toda entidad)
+
+Toda creación, edición o eliminación de cualquier entidad operativa
+(clientes, contratos, cuotas, pagos, recibos, visitas, fotos, cargos) DEBE
+generar una fila en `audit_log` vía los triggers genéricos
+(`audit_changelog_trg`, migración 0047 + 0062). Reglas:
+
+1. **Creación** → row con `accion='create'`, `valor_anterior=NULL`,
+   `valor_nuevo=` snapshot completo. El historial de toda entidad arranca
+   con su fila de creación (quién, cuándo, con qué datos).
+2. **Edición** → `accion='update'` con `valor_anterior` + `valor_nuevo`.
+3. **Eliminación** → `accion='delete'` con snapshot en `valor_anterior`.
+4. Al crear una tabla operativa nueva, SIEMPRE agregar su trigger
+   `AFTER INSERT OR UPDATE OR DELETE` con el guard `pg_trigger_depth() < 2`.
+5. El `HistorialCambiosWidget` renderiza los 3 casos. Verificar que toda
+   entidad nueva tenga su historial accesible desde la UI.
+
 
 | Capa | Tecnología |
 |---|---|
@@ -417,6 +472,32 @@ Items que no bloquean pero son anti-patterns para sprint futuro
 pull/testing. El usuario debe ver exactamente qué se encontró, por qué
 pasaba, y cómo se corrigió. Sin este reporte, el sprint no se considera
 auditado.
+
+### Modelo de testing de 4 capas (defensa en profundidad)
+
+Los audits estáticos (agentes que leen código) atrapan sintaxis, imports,
+SQL incompatible, RLS faltante. NO atrapan bugs de comportamiento con data
+real (ej: "el recaudado da 1000 cuando debería dar 500"). Por eso usamos
+4 capas complementarias:
+
+| Capa | Qué es | Atrapa | Cuándo correr |
+|---|---|---|---|
+| **1. Audit estático** | Agentes en paralelo leen código | Sintaxis, imports, SQL Postgres-only, RLS, null safety | Post-implementación, antes del pull |
+| **2. Invariantes SQL** | `supabase/tests/invariantes_dinero.sql` | Bugs contables, data corrupta, sobrepagos, recibos huérfanos | Después de cada deploy que toque dinero |
+| **3. Tests de repo** | `flutter test` sobre `pagos_repo` y lógica crítica | Lógica de cobro/vuelto/anular/recrear | En cada cambio + CI |
+| **4. Manual (Rubén)** | Testing en browser con escenarios reales | UX, flujos completos, percepción visual | Antes de cerrar el sprint |
+
+**Regla:** cualquier cambio que toque dinero (`pagos`, `cuotas`, `recibos`,
+`contratos`, cobro, reportes) DEBE pasar por las capas 1, 2 y 3 antes del
+testing manual. Las capas 2 y 3 son las que atrapan los bugs que el audit
+estático no puede ver.
+
+**Por qué se escaparon bugs históricamente** (lecciones documentadas):
+- Bug del vuelto (recaudado inflado): capa 2 lo hubiera atrapado (INV1/INV4).
+- Triggers audit solo en UPDATE: requería cruzar `CREATE TRIGGER` con la
+  función — el audit ahora verifica explícitamente los eventos suscritos.
+- Pagos recientes vacío: solo se ve en runtime — capa 3 (test de la query)
+  lo hubiera atrapado.
 
 ### Principio de diseño: evaluar ANTES de implementar
 Antes de elegir una herramienta/servicio para un feature nuevo (ej:

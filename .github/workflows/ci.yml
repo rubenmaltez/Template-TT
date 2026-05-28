@@ -1,0 +1,73 @@
+name: CI
+
+# Corre en cada push y PR a las ramas de trabajo. Tres capas de defensa:
+#   1. SQL compat: grep de sintaxis Postgres-only que SQLite/PowerSync rechaza
+#   2. flutter analyze: errores de compilación + lints
+#   3. flutter test: unit tests (CobroCalculo, Pago, formatters, validators...)
+#
+# Objetivo: nunca más pushear código que no compila o con SQL incompatible.
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+    branches: ['**']
+
+jobs:
+  sql-compat:
+    name: SQL compatible con SQLite
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Patrones Postgres-only prohibidos en lib/ (SQLite no los soporta)
+        run: |
+          set -e
+          echo "Buscando sintaxis Postgres-only en queries SQLite locales..."
+          FOUND=0
+
+          check() {
+            local pattern="$1"
+            local label="$2"
+            # Buscamos solo en archivos .dart (queries locales PowerSync/SQLite).
+            if grep -rn --include="*.dart" -E "$pattern" lib/ ; then
+              echo "❌ Patrón prohibido encontrado: $label"
+              FOUND=1
+            fi
+          }
+
+          check 'FILTER[[:space:]]*\(WHERE' 'FILTER (WHERE ...) — usar SUM(CASE WHEN...)'
+          check '::(text|int|integer|uuid|jsonb|timestamp|boolean|numeric|date|bigint)' 'cast ::tipo — usar CAST(x AS tipo)'
+          check '\bILIKE\b' 'ILIKE — SQLite LIKE ya es case-insensitive en ASCII'
+          check '\bdate_trunc\b' 'date_trunc — usar strftime'
+          check "[^a-z_]INTERVAL[[:space:]]'" "INTERVAL '...' — usar date(x, '+N days')"
+
+          if [ "$FOUND" -eq 1 ]; then
+            echo ""
+            echo "Hay sintaxis Postgres-only en queries que corren en SQLite local."
+            echo "Ver CLAUDE.md → Checklist de audit → Compatibilidad SQL."
+            exit 1
+          fi
+          echo "✅ Sin sintaxis Postgres-only en queries SQLite."
+
+  analyze-test:
+    name: Analyze + Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.24.0'
+          channel: stable
+
+      - name: flutter pub get
+        run: flutter pub get
+
+      - name: flutter analyze
+        # --no-fatal-infos: no fallar por lints informativos, solo por
+        # errores y warnings reales. Los errores de compilación SÍ fallan.
+        run: flutter analyze --no-fatal-infos
+
+      - name: flutter test
+        run: flutter test

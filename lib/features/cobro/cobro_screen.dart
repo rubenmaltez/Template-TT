@@ -15,6 +15,7 @@ import '../../data/repositories/cuotas_repo.dart';
 import '../../data/repositories/pagos_repo.dart';
 import '../../data/repositories/settings_repo.dart';
 import '../../data/services/gps_service.dart';
+import '../../data/utils/cobro_calculo.dart';
 import '../../data/utils/formatters.dart';
 import '../../powersync/db.dart' as ps;
 import '../shared/widgets/aplicar_cargo_dialog.dart';
@@ -280,14 +281,15 @@ class _CobroScreenState extends ConsumerState<CobroScreen> {
         }
 
         // entregado = lo que el cliente puso en mano (en córdobas).
-        final entregado = double.parse(_montoCtrl.text);
-        final entregadoCordobas = entregado * tasa;
         // aplicado = min(entregado, totalSaldo); vuelto = exceso.
         // En el flow actual el campo es read-only = totalSaldo, así que
         // vuelto será 0 — pero dejamos la fórmula correcta para futuro.
-        final vueltoCordobas = entregadoCordobas > totalSaldoNIO
-            ? entregadoCordobas - totalSaldoNIO
-            : 0.0;
+        // Misma matemática pura que single-cuota (CobroCalculo).
+        final entregado = double.parse(_montoCtrl.text);
+        final vueltoCordobas = CobroCalculo.calcular(
+          entregadoCordobas: CobroCalculo.aCordobas(entregado, tasa),
+          saldoCordobas: totalSaldoNIO,
+        ).vueltoCordobas;
 
         final cargosInfo = _cargosAuto
             .map((c) => CargoAutoInfo(
@@ -329,15 +331,16 @@ class _CobroScreenState extends ConsumerState<CobroScreen> {
         // Regla de negocio: el vuelto SIEMPRE se da en córdobas, incluso
         // si el cliente pagó en USD. monto_original preserva lo entregado
         // en la moneda original (US$30 si pagó 30 dólares), no el aplicado.
+        // La matemática vive en CobroCalculo (puro + testeado).
         final entregado = double.parse(_montoCtrl.text);
-        final entregadoCordobas = entregado * tasa;
-
         final saldoCuota = (_totalesACobrar.first - _cuotas.first.montoPagado)
             .clamp(0.0, double.infinity);
-        final aplicadoCordobas = entregadoCordobas > saldoCuota
-            ? saldoCuota
-            : entregadoCordobas;
-        final vueltoCordobas = entregadoCordobas - aplicadoCordobas;
+        final dist = CobroCalculo.calcular(
+          entregadoCordobas: CobroCalculo.aCordobas(entregado, tasa),
+          saldoCordobas: saldoCuota,
+        );
+        final aplicadoCordobas = dist.aplicadoCordobas;
+        final vueltoCordobas = dist.vueltoCordobas;
         // monto_original = lo entregado en la moneda original (NO el aplicado).
         // Invariante: monto_original * tasa ≈ monto_cordobas + vuelto_cordobas.
         final montoOriginalEntregado = entregado;
