@@ -106,6 +106,23 @@ class _ClienteFormScreenState extends ConsumerState<ClienteFormScreen> {
       return;
     }
 
+    // Guard cliente-side: si el admin intenta desasignar cobrador en un
+    // cliente existente que tiene contratos activos, bloquear con error
+    // claro antes de pegarle a la DB. El trigger 0058 lo refuerza server-side.
+    if (widget.clienteId != null && _cobradorId == null) {
+      final activos = await ps.db.getAll(
+        "SELECT COUNT(*) AS n FROM contratos WHERE cliente_id = ? AND estado = 'activo'",
+        [widget.clienteId],
+      );
+      final n = (activos.first['n'] as int? ?? 0);
+      if (n > 0) {
+        setState(() => _error =
+            'No se puede desasignar el cobrador: el cliente tiene $n contrato(s) activo(s). '
+            'Reasigne primero a otro cobrador.');
+        return;
+      }
+    }
+
     setState(() {
       _guardando = true;
       _error = null;

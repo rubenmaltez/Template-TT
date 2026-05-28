@@ -129,6 +129,7 @@ class _ClienteDetailScreenState extends ConsumerState<ClienteDetailScreen> {
               const SizedBox(height: 8),
               _ContratosSection(
                 clienteId: widget.clienteId,
+                clienteCobradorId: cliente.cobradorId,
                 esAdmin: esAdmin,
                 enAdminShell: enAdminShell,
               ),
@@ -308,10 +309,12 @@ class _ClienteInfo extends StatelessWidget {
 class _ContratosSection extends StatefulWidget {
   const _ContratosSection({
     required this.clienteId,
+    required this.clienteCobradorId,
     required this.esAdmin,
     required this.enAdminShell,
   });
   final String clienteId;
+  final String? clienteCobradorId;
   final bool esAdmin;
   final bool enAdminShell;
 
@@ -377,15 +380,22 @@ class _ContratosSectionState extends State<_ContratosSection> {
                       style: TextStyle(color: scheme.outline, fontSize: 13)),
                   const Spacer(),
                   if (widget.esAdmin)
-                    TextButton.icon(
-                      icon: const Icon(Icons.add, size: 18),
-                      label: const Text('Nuevo'),
-                      onPressed: () {
-                        final path = widget.enAdminShell
-                            ? '/admin/contratos/nuevo?cliente_id=${widget.clienteId}'
-                            : '/contratos/nuevo?cliente_id=${widget.clienteId}';
-                        context.push(path);
-                      },
+                    Tooltip(
+                      message: widget.clienteCobradorId == null
+                          ? 'Asigna un cobrador al cliente antes de crear contratos'
+                          : '',
+                      child: TextButton.icon(
+                        icon: const Icon(Icons.add, size: 18),
+                        label: const Text('Nuevo'),
+                        onPressed: widget.clienteCobradorId == null
+                            ? null
+                            : () {
+                                final path = widget.enAdminShell
+                                    ? '/admin/contratos/nuevo?cliente_id=${widget.clienteId}'
+                                    : '/contratos/nuevo?cliente_id=${widget.clienteId}';
+                                context.push(path);
+                              },
+                      ),
                     ),
                 ],
               ),
