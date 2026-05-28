@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -208,6 +210,7 @@ class _ReciboScreenState extends ConsumerState<ReciboScreen> {
                     reciboId: widget.reciboId,
                     recibo: r,
                     settings: settings,
+                    logoUrl: logoUrl,
                   ),
                   const SizedBox(height: 16),
                   _PostCobroActions(clienteId: r['cliente_id'] as String?),
@@ -555,11 +558,17 @@ class _AccionesImpresion extends ConsumerStatefulWidget {
     required this.reciboId,
     required this.recibo,
     required this.settings,
+    this.logoUrl,
     this.multiRows,
   });
   final String reciboId;
   final Map<String, dynamic> recibo;
   final AppSettings settings;
+
+  /// URL firmada del logo de la empresa. Si está presente, el PDF se
+  /// genera con el logo embebido. Si falla el fetch, el PDF se genera
+  /// sin logo (no rompe la descarga).
+  final String? logoUrl;
 
   /// Si está presente, genera el PDF en modo cobro múltiple usando todas
   /// las filas. Caso contrario, recibo individual.
@@ -576,11 +585,31 @@ class _AccionesImpresionState extends ConsumerState<_AccionesImpresion> {
   Future<void> _descargarPdf() async {
     setState(() => _descargandoPdf = true);
     try {
+      // Fetch del logo (best-effort). Si falla, el PDF se genera sin logo
+      // — no rompemos la descarga por un error de red en una imagen.
+      Uint8List? logoBytes;
+      final logoUrl = widget.logoUrl;
+      if (logoUrl != null && logoUrl.isNotEmpty) {
+        try {
+          final response = await http.get(Uri.parse(logoUrl));
+          if (response.statusCode == 200) {
+            logoBytes = response.bodyBytes;
+          }
+        } catch (_) {
+          // Silenciado a propósito: el PDF se genera sin logo.
+          logoBytes = null;
+        }
+      }
+
       final doc = widget.multiRows != null
           ? await buildMultiReciboPdf(
-              rows: widget.multiRows!, settings: widget.settings)
+              rows: widget.multiRows!,
+              settings: widget.settings,
+              logoBytes: logoBytes)
           : await buildReciboPdf(
-              row: widget.recibo, settings: widget.settings);
+              row: widget.recibo,
+              settings: widget.settings,
+              logoBytes: logoBytes);
       final bytes = await doc.save();
       final numero = (widget.recibo['numero_completo'] as String?) ?? widget.reciboId;
       final filename =
