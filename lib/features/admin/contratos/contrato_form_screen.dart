@@ -155,17 +155,42 @@ class _ContratoFormScreenState extends ConsumerState<ContratoFormScreen> {
           ],
         );
       } else {
+        // Denormalizamos cobrador_id desde clientes en el INSERT local.
+        // Postgres tiene trigger que lo llenaría server-side, pero ese
+        // trigger no corre en SQLite local — sin esto, el contrato local
+        // queda con cobrador_id NULL hasta sync, lo que lo hace invisible
+        // al bucket por_cobrador.
+        final clienteRow = await ps.db.getOptional(
+          'SELECT cobrador_id FROM clientes WHERE id = ?',
+          [_clienteId],
+        );
+        final cobradorId = clienteRow?['cobrador_id'] as String?;
+
+        // Guard: si no podemos determinar el cobrador (cliente no
+        // sincronizado, o sin cobrador asignado), bloqueamos. Sin esto
+        // el contrato se crea invisible al cobrador hasta el sync server.
+        if (cobradorId == null) {
+          setState(() {
+            _error = clienteRow == null
+                ? 'No se pudo cargar el cliente. Verificá que esté sincronizado.'
+                : 'El cliente no tiene cobrador asignado. Asignale uno antes de crear el contrato.';
+            _guardando = false;
+          });
+          return;
+        }
+
         await ps.db.execute(
           '''
           INSERT INTO contratos (
-            id, tenant_id, cliente_id, plan_id, dia_pago,
+            id, tenant_id, cliente_id, cobrador_id, plan_id, dia_pago,
             fecha_inicio, fecha_fin, estado, created_at
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, 'activo', ?)
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'activo', ?)
           ''',
           [
             const Uuid().v4(),
             tenantId,
             _clienteId,
+            cobradorId,
             _planId,
             int.parse(_diaPagoCtrl.text),
             _fechaInicio.toIso8601String().substring(0, 10),

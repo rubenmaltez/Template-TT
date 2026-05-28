@@ -29,7 +29,7 @@ class _ContratosAdminScreenState extends ConsumerState<ContratosAdminScreen> {
     return ps.db.watch(
       '''
       SELECT ct.id, ct.dia_pago, ct.fecha_inicio, ct.fecha_fin,
-             ct.estado,
+             ct.estado, ct.documento_path,
              c.id AS cliente_id, c.nombre AS cliente,
              p.nombre AS plan, p.precio_mensual,
              co.nombre AS cobrador,
@@ -42,8 +42,8 @@ class _ContratosAdminScreenState extends ConsumerState<ContratosAdminScreen> {
    LEFT JOIN cuotas    cu ON cu.contrato_id = ct.id
        WHERE ${_soloActivos ? "ct.estado = 'activo'" : '1=1'}
        GROUP BY ct.id, ct.dia_pago, ct.fecha_inicio, ct.fecha_fin,
-                ct.estado, c.id, c.nombre, p.nombre, p.precio_mensual,
-                co.nombre
+                ct.estado, ct.documento_path, c.id, c.nombre,
+                p.nombre, p.precio_mensual, co.nombre
        ORDER BY ct.estado ASC, c.nombre
       ''',
     );
@@ -149,13 +149,25 @@ class _ContratoCard extends StatelessWidget {
             ),
           ],
         ),
-        trailing: row['cobrador'] != null
-            ? Chip(
+        trailing: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (row['documento_path'] != null)
+              Tooltip(
+                message: 'Tiene documento adjunto',
+                child: Icon(Icons.folder_zip,
+                    size: 18, color: scheme.primary),
+              ),
+            if (row['documento_path'] != null && row['cobrador'] != null)
+              const SizedBox(width: 8),
+            if (row['cobrador'] != null)
+              Chip(
                 label: Text(row['cobrador'] as String,
                     style: const TextStyle(fontSize: 12)),
                 visualDensity: VisualDensity.compact,
-              )
-            : null,
+              ),
+          ],
+        ),
         onTap: () => context.push('/admin/contratos/${row['id']}'),
       ),
     );

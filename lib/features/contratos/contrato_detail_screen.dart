@@ -1758,8 +1758,38 @@ class _DocumentoContratoSectionState extends State<_DocumentoContratoSection> {
           .from(_bucket)
           .createSignedUrl(widget.documentoPath!, 3600);
       if (!mounted) return;
-      // Abre en pestaña nueva en web. El navegador maneja la descarga
-      // o preview según el MIME type.
+
+      // Imágenes: preview inline en Dialog con Image.network + zoom.
+      // PDF/Word: abre en pestaña nueva (el navegador maneja preview o
+      // descarga según MIME type — DOC/DOCX descargan, PDF se renderiza).
+      if (_esImagen(widget.documentoPath!)) {
+        await showDialog<void>(
+          context: context,
+          builder: (ctx) => Dialog(
+            backgroundColor: Colors.black,
+            insetPadding: const EdgeInsets.all(16),
+            child: Stack(
+              children: [
+                Center(
+                  child: InteractiveViewer(
+                    child: Image.network(url, fit: BoxFit.contain),
+                  ),
+                ),
+                Positioned(
+                  top: 8,
+                  right: 8,
+                  child: IconButton(
+                    icon: const Icon(Icons.close, color: Colors.white),
+                    onPressed: () => Navigator.pop(ctx),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+        return;
+      }
+
       final ok = await launchUrlString(url, mode: LaunchMode.externalApplication);
       if (!ok && mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -1800,6 +1830,23 @@ class _DocumentoContratoSectionState extends State<_DocumentoContratoSection> {
       'doc' || 'docx' => Icons.description,
       _ => Icons.insert_drive_file,
     };
+  }
+
+  String _tipoLabel(String path) {
+    final ext = path.split('.').last.toLowerCase();
+    return switch (ext) {
+      'pdf' => 'PDF',
+      'jpg' || 'jpeg' => 'JPG',
+      'png' => 'PNG',
+      'doc' => 'DOC',
+      'docx' => 'DOCX',
+      _ => ext.toUpperCase(),
+    };
+  }
+
+  bool _esImagen(String path) {
+    final ext = path.split('.').last.toLowerCase();
+    return ext == 'jpg' || ext == 'jpeg' || ext == 'png';
   }
 
   String _nombreCorto(String path) {
@@ -1872,10 +1919,31 @@ class _DocumentoContratoSectionState extends State<_DocumentoContratoSection> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text('Documento adjunto',
-                            style: TextStyle(
-                                fontWeight: FontWeight.w600,
-                                color: scheme.onSurface)),
+                        Row(
+                          children: [
+                            Text('Documento adjunto',
+                                style: TextStyle(
+                                    fontWeight: FontWeight.w600,
+                                    color: scheme.onSurface)),
+                            const SizedBox(width: 8),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 6, vertical: 2),
+                              decoration: BoxDecoration(
+                                color: scheme.primaryContainer,
+                                borderRadius: BorderRadius.circular(4),
+                              ),
+                              child: Text(
+                                _tipoLabel(widget.documentoPath!),
+                                style: TextStyle(
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w700,
+                                  color: scheme.onPrimaryContainer,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
                         Text(_nombreCorto(widget.documentoPath!),
                             style: TextStyle(
                                 fontSize: 11,
@@ -1886,7 +1954,9 @@ class _DocumentoContratoSectionState extends State<_DocumentoContratoSection> {
                   ),
                   IconButton(
                     icon: const Icon(Icons.open_in_new),
-                    tooltip: 'Ver / Descargar',
+                    tooltip: _esImagen(widget.documentoPath!)
+                        ? 'Ver imagen'
+                        : 'Abrir / Descargar',
                     onPressed: _trabajando ? null : _ver,
                   ),
                   if (widget.esAdmin) ...[
