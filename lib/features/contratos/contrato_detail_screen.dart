@@ -484,17 +484,6 @@ class _ContratoHeader extends StatelessWidget {
       ),
     );
   }
-
-  static String _duracionLabel(DateTime inicio, DateTime? fin) {
-    if (fin == null) return 'Indefinido';
-    final meses = (fin.year - inicio.year) * 12 + (fin.month - inicio.month);
-    if (meses <= 0) return '—';
-    if (meses == 1) return '1 mes';
-    if (meses == 12) return '1 año';
-    if (meses == 24) return '2 años';
-    if (meses % 12 == 0) return '${meses ~/ 12} años';
-    return '$meses meses';
-  }
 }
 
 // ---------------------------------------------------------------------------
@@ -1281,30 +1270,32 @@ class _PagoDetalleSheetState extends ConsumerState<_PagoDetalleSheet> {
               const Divider(),
 
               // Acciones
-              if (widget.esAdmin) ...[
-                if (_cargandoExtras)
-                  const Padding(
-                    padding: EdgeInsets.symmetric(vertical: 8),
-                    child: Center(
-                      child: SizedBox(
-                        width: 18,
-                        height: 18,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      ),
+              if (_cargandoExtras)
+                const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 8),
+                  child: Center(
+                    child: SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2),
                     ),
-                  )
-                else ...[
-                  // Ver recibo (siempre visible si hay recibo asociado).
-                  FilledButton.icon(
-                    icon: const Icon(Icons.receipt_long),
-                    label: const Text('Reimprimir / Ver recibo'),
-                    onPressed: (_reciboId == null || _ejecutandoAccion)
-                        ? null
-                        : () {
-                            Navigator.of(context).pop();
-                            context.push('/recibo/$_reciboId');
-                          },
                   ),
+                )
+              else ...[
+                // Reimprimir/Ver recibo: visible para TODOS los roles
+                // (cobrador necesita reimprimir su propio recibo).
+                FilledButton.icon(
+                  icon: const Icon(Icons.receipt_long),
+                  label: const Text('Reimprimir / Ver recibo'),
+                  onPressed: (_reciboId == null || _ejecutandoAccion)
+                      ? null
+                      : () {
+                          Navigator.of(context).pop();
+                          context.push('/recibo/$_reciboId');
+                        },
+                ),
+                // Acciones destructivas: solo admin/admin_cobranza.
+                if (widget.esAdmin) ...[
                   const SizedBox(height: 8),
                   if (puedeAnular)
                     OutlinedButton.icon(

@@ -713,7 +713,7 @@ class _AccionesImpresionState extends ConsumerState<_AccionesImpresion> {
                 : const Icon(Icons.picture_as_pdf),
             label: Text(_descargandoPdf
                 ? 'Generando PDF...'
-                : 'Descargar PDF ${widget.settings.formatoReciboMm}mm'),
+                : 'Imprimir / Descargar PDF ${widget.settings.formatoReciboMm}mm'),
             onPressed: _descargandoPdf ? null : _descargarPdf,
           ),
         ],
