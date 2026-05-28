@@ -38,7 +38,7 @@ class _ClientesAdminScreenState extends ConsumerState<ClientesAdminScreen> {
   String? _comunidadFilter;
   bool _soloMora = false;
   bool _soloSinCobrador = false;
-  bool _soloActivos = true;
+  _FiltroEstado _filtroEstado = _FiltroEstado.activos;
   final Set<String> _seleccionados = {};
   Timer? _debounce;
   // Tamaño actual de la página. Se resetea según haya búsqueda o no
@@ -159,9 +159,9 @@ class _ClientesAdminScreenState extends ConsumerState<ClientesAdminScreen> {
             _soloSinCobrador = v;
             _resetPagination();
           }),
-          soloActivos: _soloActivos,
-          onSoloActivos: (v) => setState(() {
-            _soloActivos = v;
+          filtroEstado: _filtroEstado,
+          onFiltroEstado: (v) => setState(() {
+            _filtroEstado = v;
             _resetPagination();
           }),
         ),
@@ -178,7 +178,7 @@ class _ClientesAdminScreenState extends ConsumerState<ClientesAdminScreen> {
             comunidadFilter: _comunidadFilter,
             soloMora: _soloMora,
             soloSinCobrador: _soloSinCobrador,
-            soloActivos: _soloActivos,
+            filtroEstado: _filtroEstado,
             diasGracia: diasGracia,
             pageSize: _pageSize,
             seleccionados: _seleccionados,
@@ -253,20 +253,20 @@ class _Filtros extends StatelessWidget {
     required this.onComunidad,
     required this.onSoloMora,
     required this.onSoloSinCobrador,
-    required this.soloActivos,
-    required this.onSoloActivos,
+    required this.filtroEstado,
+    required this.onFiltroEstado,
   });
 
   final String? cobradorActual;
   final String? comunidadActual;
   final bool soloMora;
   final bool soloSinCobrador;
-  final bool soloActivos;
+  final _FiltroEstado filtroEstado;
   final ValueChanged<String?> onCobrador;
   final ValueChanged<String?> onComunidad;
   final ValueChanged<bool> onSoloMora;
   final ValueChanged<bool> onSoloSinCobrador;
-  final ValueChanged<bool> onSoloActivos;
+  final ValueChanged<_FiltroEstado> onFiltroEstado;
 
   @override
   Widget build(BuildContext context) {
@@ -292,11 +292,9 @@ class _Filtros extends StatelessWidget {
             onSelected: onSoloMora,
           ),
           const SizedBox(width: 8),
-          FilterChip(
-            avatar: Icon(soloActivos ? Icons.visibility : Icons.visibility_off, size: 18),
-            label: Text(soloActivos ? 'Solo activos' : 'Todos'),
-            selected: !soloActivos,
-            onSelected: (_) => onSoloActivos(!soloActivos),
+          _EstadoFilterChip(
+            value: filtroEstado,
+            onChanged: onFiltroEstado,
           ),
         ],
       ),
@@ -494,7 +492,7 @@ class _Lista extends StatelessWidget {
     required this.comunidadFilter,
     required this.soloMora,
     required this.soloSinCobrador,
-    required this.soloActivos,
+    required this.filtroEstado,
     required this.diasGracia,
     required this.pageSize,
     required this.seleccionados,
@@ -508,7 +506,7 @@ class _Lista extends StatelessWidget {
   final String? comunidadFilter;
   final bool soloMora;
   final bool soloSinCobrador;
-  final bool soloActivos;
+  final _FiltroEstado filtroEstado;
   final int diasGracia;
   final int pageSize;
   final Set<String> seleccionados;
@@ -518,7 +516,10 @@ class _Lista extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final where = <String>[if (soloActivos) 'c.activo = 1'];
+    final where = <String>[
+      if (filtroEstado == _FiltroEstado.activos) 'c.activo = 1',
+      if (filtroEstado == _FiltroEstado.inactivos) 'c.activo = 0',
+    ];
     final params = <Object?>[diasGracia];
 
     if (query.isNotEmpty) {
@@ -555,7 +556,7 @@ class _Lista extends StatelessWidget {
 
     final sql = '''
       SELECT c.id, c.nombre, c.telefono, c.direccion_referencia,
-             c.cobrador_id,
+             c.cobrador_id, c.activo,
              co.nombre AS cobrador_nombre,
              cm.nombre AS comunidad, m.nombre AS municipio,
              COALESCE(SUM(CASE WHEN cu.estado IN ('pendiente','parcial')
@@ -571,7 +572,7 @@ class _Lista extends StatelessWidget {
    LEFT JOIN cuotas      cu ON cu.cliente_id = c.id
        WHERE ${where.isEmpty ? '1=1' : where.join(' AND ')}
        GROUP BY c.id, c.nombre, c.telefono, c.direccion_referencia,
-                c.cobrador_id, co.nombre, cm.nombre, m.nombre
+                c.cobrador_id, c.activo, co.nombre, cm.nombre, m.nombre
        $having
        ORDER BY c.nombre
        LIMIT ?
@@ -639,6 +640,7 @@ class _ClienteCard extends StatelessWidget {
     final vencidas = row['vencidas'] as int? ?? 0;
     final saldo = (row['saldo'] as num? ?? 0).toDouble();
     final sinCobrador = row['cobrador_id'] == null;
+    final inactivo = (row['activo'] as int? ?? 1) == 0;
 
     return Card(
       color: selected ? scheme.primaryContainer.withValues(alpha: 0.4) : null,
@@ -657,8 +659,33 @@ class _ClienteCard extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(row['nombre'] as String,
-                        style: const TextStyle(fontWeight: FontWeight.w600)),
+                    Row(
+                      children: [
+                        Flexible(
+                          child: Text(row['nombre'] as String,
+                              style: TextStyle(
+                                fontWeight: FontWeight.w600,
+                                color: inactivo ? scheme.outline : null,
+                                decoration: inactivo ? TextDecoration.lineThrough : null,
+                              )),
+                        ),
+                        if (inactivo) ...[
+                          const SizedBox(width: 6),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: scheme.surfaceContainerHighest,
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: Text('Inactivo',
+                                style: TextStyle(
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.w600,
+                                    color: scheme.outline)),
+                          ),
+                        ],
+                      ],
+                    ),
                     if (row['comunidad'] != null)
                       Text('${row['comunidad']} · ${row['municipio'] ?? ''}',
                           style: TextStyle(color: scheme.outline, fontSize: 12)),
@@ -789,3 +816,50 @@ class _SeleccionarCobradorDialogState
   }
 }
 
+
+
+enum _FiltroEstado { activos, inactivos, todos }
+
+extension _FiltroEstadoLabel on _FiltroEstado {
+  String get label => switch (this) {
+        _FiltroEstado.activos => "Solo activos",
+        _FiltroEstado.inactivos => "Solo inactivos",
+        _FiltroEstado.todos => "Todos",
+      };
+  IconData get icon => switch (this) {
+        _FiltroEstado.activos => Icons.visibility,
+        _FiltroEstado.inactivos => Icons.visibility_off,
+        _FiltroEstado.todos => Icons.all_inclusive,
+      };
+}
+
+class _EstadoFilterChip extends StatelessWidget {
+  const _EstadoFilterChip({required this.value, required this.onChanged});
+  final _FiltroEstado value;
+  final ValueChanged<_FiltroEstado> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return PopupMenuButton<_FiltroEstado>(
+      onSelected: onChanged,
+      itemBuilder: (_) => _FiltroEstado.values
+          .map((e) => PopupMenuItem(
+                value: e,
+                child: Row(
+                  children: [
+                    Icon(e.icon, size: 18),
+                    const SizedBox(width: 8),
+                    Text(e.label),
+                  ],
+                ),
+              ))
+          .toList(),
+      child: Chip(
+        avatar: Icon(value.icon, size: 18),
+        label: Text(value.label),
+        deleteIcon: const Icon(Icons.arrow_drop_down, size: 18),
+        onDeleted: () {},
+      ),
+    );
+  }
+}

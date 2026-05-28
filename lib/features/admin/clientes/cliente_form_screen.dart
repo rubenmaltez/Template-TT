@@ -530,8 +530,15 @@ class _SelectorCobradorState extends State<_SelectorCobrador> {
           return Text('Error: ${snap.error}');
         }
         final rows = snap.data!;
+        // Si el value del cobrador no está aún en la lista de items
+        // (primer frame con initialData vacío), pasamos null al dropdown
+        // para evitar el assertion de Flutter "no item matches value".
+        final ids = rows.map((r) => r['id'] as String).toSet();
+        final safeValue = widget.cobradorId != null && ids.contains(widget.cobradorId)
+            ? widget.cobradorId
+            : null;
         return DropdownButtonFormField<String?>(
-          value: widget.cobradorId,
+          value: safeValue,
           decoration: const InputDecoration(labelText: 'Cobrador asignado'),
           items: [
             const DropdownMenuItem<String?>(
