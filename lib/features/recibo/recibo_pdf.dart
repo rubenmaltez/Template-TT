@@ -123,10 +123,11 @@ Future<pw.Document> buildReciboPdf({
                   '(tasa ${(row['tasa_conversion'] as num).toStringAsFixed(2)})',
             ),
           pw.SizedBox(height: 6),
+          // COBRADO = monto aplicado a la cuota (lo que entra a la caja).
           pw.Row(
             mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
             children: [
-              pw.Text('PAGADO',
+              pw.Text('COBRADO',
                   style: pw.TextStyle(
                       fontWeight: pw.FontWeight.bold, fontSize: 11)),
               pw.Text(
@@ -136,7 +137,7 @@ Future<pw.Document> buildReciboPdf({
               ),
             ],
           ),
-          // Vuelto si aplica.
+          // VUELTO + PAGADO si hubo vuelto.
           ..._vueltoIfNeeded(row),
 
           if (settings.pieRecibo.isNotEmpty) ...[
@@ -173,10 +174,13 @@ Future<pw.Document> buildMultiReciboPdf({
   final ancho = _anchoPuntos(settings.formatoReciboMm);
   final first = rows.first;
   final emision = DateTime.parse(first['fecha_pago'] as String);
-  var totalPagado = 0.0;
+  var totalCobrado = 0.0;
+  var totalVuelto = 0.0;
   for (final r in rows) {
-    totalPagado += (r['monto_cordobas'] as num).toDouble();
+    totalCobrado += (r['monto_cordobas'] as num).toDouble();
+    totalVuelto += (r['vuelto_cordobas'] as num? ?? 0).toDouble();
   }
+  final totalEntregado = totalCobrado + totalVuelto;
 
   doc.addPage(
     pw.Page(
@@ -259,7 +263,8 @@ Future<pw.Document> buildMultiReciboPdf({
             pw.Padding(
               padding: const pw.EdgeInsets.symmetric(vertical: 4),
               child: pw.Text(
-                montoALetras(totalPagado,
+                // Monto en letras = COBRADO (lo que entró a caja).
+                montoALetras(totalCobrado,
                     moneda: (first['moneda'] as String?) ?? 'NIO'),
                 textAlign: pw.TextAlign.center,
                 style: pw.TextStyle(
@@ -271,14 +276,44 @@ Future<pw.Document> buildMultiReciboPdf({
           pw.Row(
             mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
             children: [
-              pw.Text('TOTAL PAGADO',
+              pw.Text('TOTAL COBRADO',
                   style: pw.TextStyle(
                       fontWeight: pw.FontWeight.bold, fontSize: 11)),
-              pw.Text(Fmt.cordobas(totalPagado),
+              pw.Text(Fmt.cordobas(totalCobrado),
                   style: pw.TextStyle(
                       fontWeight: pw.FontWeight.bold, fontSize: 11)),
             ],
           ),
+          if (totalVuelto > 0.01) ...[
+            pw.Padding(
+              padding: const pw.EdgeInsets.only(top: 4),
+              child: pw.Row(
+                mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                children: [
+                  pw.Text('VUELTO',
+                      style: pw.TextStyle(
+                          fontWeight: pw.FontWeight.bold, fontSize: 9)),
+                  pw.Text(Fmt.cordobas(totalVuelto),
+                      style: pw.TextStyle(
+                          fontWeight: pw.FontWeight.bold, fontSize: 9)),
+                ],
+              ),
+            ),
+            pw.Padding(
+              padding: const pw.EdgeInsets.only(top: 2),
+              child: pw.Row(
+                mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                children: [
+                  pw.Text('PAGADO',
+                      style: pw.TextStyle(
+                          fontWeight: pw.FontWeight.bold, fontSize: 10)),
+                  pw.Text(Fmt.cordobas(totalEntregado),
+                      style: pw.TextStyle(
+                          fontWeight: pw.FontWeight.bold, fontSize: 10)),
+                ],
+              ),
+            ),
+          ],
 
           if (settings.pieRecibo.isNotEmpty) ...[
             _pdfDivider(),
@@ -324,12 +359,12 @@ pw.Widget _pdfDivider() => pw.Padding(
     );
 
 List<pw.Widget> _vueltoIfNeeded(Map<String, dynamic> row) {
-  final montoPagado = (row['monto_cordobas'] as num).toDouble();
-  final cuotaBase = (row['cuota_monto'] as num).toDouble();
-  final cargosNeto = (row['cargos_neto'] as num?)?.toDouble() ?? 0;
-  final saldoTotal = cuotaBase + cargosNeto;
-  final vuelto = montoPagado - saldoTotal;
+  // Lee el vuelto del pago directamente (columna vuelto_cordobas).
+  // Defensivo para rows legacy (pre-migración 0061): 0 si no existe.
+  final vuelto = (row['vuelto_cordobas'] as num? ?? 0).toDouble();
   if (vuelto <= 0.01) return const [];
+  final cobrado = (row['monto_cordobas'] as num).toDouble();
+  final entregado = cobrado + vuelto;
   return [
     pw.Padding(
       padding: const pw.EdgeInsets.only(top: 4),
@@ -342,6 +377,20 @@ List<pw.Widget> _vueltoIfNeeded(Map<String, dynamic> row) {
           pw.Text(Fmt.cordobas(vuelto),
               style: pw.TextStyle(
                   fontWeight: pw.FontWeight.bold, fontSize: 9)),
+        ],
+      ),
+    ),
+    pw.Padding(
+      padding: const pw.EdgeInsets.only(top: 2),
+      child: pw.Row(
+        mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+        children: [
+          pw.Text('PAGADO',
+              style: pw.TextStyle(
+                  fontWeight: pw.FontWeight.bold, fontSize: 10)),
+          pw.Text(Fmt.cordobas(entregado),
+              style: pw.TextStyle(
+                  fontWeight: pw.FontWeight.bold, fontSize: 10)),
         ],
       ),
     ),

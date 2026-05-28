@@ -196,7 +196,12 @@ class ImpresoraService {
         periodoLabel[0].toUpperCase() + periodoLabel.substring(1)));
 
     final cuotaMonto = (recibo['cuota_monto'] as num).toDouble();
-    final pagado = (recibo['monto_cordobas'] as num).toDouble();
+    // cobrado = monto aplicado a la cuota (lo que entra a la caja).
+    // vuelto = lo que se le devolvió al cliente (0 si no hubo).
+    // entregado = cobrado + vuelto (lo que físicamente puso el cliente).
+    final cobrado = (recibo['monto_cordobas'] as num).toDouble();
+    final vuelto = (recibo['vuelto_cordobas'] as num? ?? 0).toDouble();
+    final entregado = cobrado + vuelto;
     bytes.addAll(_doblColumna(gen, anchoMm, 'Cuota base',
         Fmt.cordobas(cuotaMonto)));
     bytes.addAll(gen.hr());
@@ -210,16 +215,16 @@ class ImpresoraService {
     }
     bytes.addAll(gen.feed(1));
 
-    // Total pagado — destacado.
+    // COBRADO — destacado (es lo que entra a la caja del ISP).
     bytes.addAll(gen.row([
       PosColumn(
-        text: 'PAGADO',
+        text: 'COBRADO',
         width: 6,
         styles: const PosStyles(
             bold: true, height: PosTextSize.size2, codeTable: _codeTable),
       ),
       PosColumn(
-        text: Fmt.cordobas(pagado),
+        text: Fmt.cordobas(cobrado),
         width: 6,
         styles: const PosStyles(
             bold: true,
@@ -228,6 +233,36 @@ class ImpresoraService {
             codeTable: _codeTable),
       ),
     ]));
+
+    // VUELTO + PAGADO si hubo vuelto.
+    if (vuelto > 0.01) {
+      bytes.addAll(gen.row([
+        PosColumn(
+          text: 'VUELTO',
+          width: 6,
+          styles: const PosStyles(bold: true, codeTable: _codeTable),
+        ),
+        PosColumn(
+          text: Fmt.cordobas(vuelto),
+          width: 6,
+          styles: const PosStyles(
+              bold: true, align: PosAlign.right, codeTable: _codeTable),
+        ),
+      ]));
+      bytes.addAll(gen.row([
+        PosColumn(
+          text: 'PAGADO',
+          width: 6,
+          styles: const PosStyles(bold: true, codeTable: _codeTable),
+        ),
+        PosColumn(
+          text: Fmt.cordobas(entregado),
+          width: 6,
+          styles: const PosStyles(
+              bold: true, align: PosAlign.right, codeTable: _codeTable),
+        ),
+      ]));
+    }
 
     // Si fue en USD, mostrar equivalencia DESPUÉS del PAGADO (córdobas es
     // la moneda principal; lo otro es informativo).
@@ -244,7 +279,7 @@ class ImpresoraService {
     // crea que la cuota está al día.
     final cargosNeto = (recibo['cargos_neto'] as num? ?? 0).toDouble();
     final totalReal = (cuotaMonto + cargosNeto).clamp(0.0, double.infinity);
-    final montoPagadoAcum = (recibo['monto_pagado_cuota'] as num? ?? pagado).toDouble();
+    final montoPagadoAcum = (recibo['monto_pagado_cuota'] as num? ?? cobrado).toDouble();
     final saldo = totalReal - montoPagadoAcum;
     if (saldo > 0.01) {
       bytes.addAll(gen.feed(1));

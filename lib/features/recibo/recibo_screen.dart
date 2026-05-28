@@ -337,10 +337,11 @@ class _ReciboTicket extends StatelessWidget {
                     '(tasa ${(row['tasa_conversion'] as num).toStringAsFixed(2)})',
               ),
             const SizedBox(height: 8),
+            // COBRADO = monto aplicado a la cuota (lo que entra a la caja).
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                const Text('PAGADO',
+                const Text('COBRADO',
                     style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
                 Text(
                   Fmt.cordobas(row['monto_cordobas'] as num),
@@ -348,38 +349,60 @@ class _ReciboTicket extends StatelessWidget {
                 ),
               ],
             ),
-            // Vuelto: si el monto pagado excede el saldo real de la cuota
-            // (monto + cargos - ya pagado), mostrar la diferencia como
-            // vuelto. Usa saldo ajustado (no cuota_monto base) para
-            // que cargos extra no distorsionen el cálculo.
+            // VUELTO + PAGADO: si hubo vuelto, mostrar ambos. Si no, solo
+            // COBRADO es suficiente (PAGADO == COBRADO en ese caso).
             Builder(builder: (_) {
-              final montoPagado = (row['monto_cordobas'] as num).toDouble();
-              final cuotaBase = (row['cuota_monto'] as num).toDouble();
-              final cargosNeto = (row['cargos_neto'] as num?)?.toDouble() ?? 0;
-              final saldoTotal = cuotaBase + cargosNeto;
-              final vuelto = montoPagado - saldoTotal;
+              final vuelto =
+                  (row['vuelto_cordobas'] as num? ?? 0).toDouble();
               if (vuelto <= 0.01) return const SizedBox.shrink();
-              return Padding(
-                padding: const EdgeInsets.only(top: 4),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text('VUELTO',
-                        style: TextStyle(
-                          fontWeight: FontWeight.w600,
-                          fontSize: 13,
-                          color: Theme.of(context).colorScheme.primary,
-                        )),
-                    Text(
-                      Fmt.cordobas(vuelto),
-                      style: TextStyle(
-                        fontWeight: FontWeight.w600,
-                        fontSize: 13,
-                        color: Theme.of(context).colorScheme.primary,
-                      ),
+              final cobrado = (row['monto_cordobas'] as num).toDouble();
+              final entregado = cobrado + vuelto;
+              final scheme = Theme.of(context).colorScheme;
+              return Column(
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.only(top: 4),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text('VUELTO',
+                            style: TextStyle(
+                              fontWeight: FontWeight.w600,
+                              fontSize: 13,
+                              color: scheme.primary,
+                            )),
+                        Text(
+                          Fmt.cordobas(vuelto),
+                          style: TextStyle(
+                            fontWeight: FontWeight.w600,
+                            fontSize: 13,
+                            color: scheme.primary,
+                          ),
+                        ),
+                      ],
                     ),
-                  ],
-                ),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.only(top: 4),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text('PAGADO',
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 14,
+                            )),
+                        Text(
+                          Fmt.cordobas(entregado),
+                          style: const TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 14,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
               );
             }),
 
@@ -426,10 +449,13 @@ class _MultiReciboTicket extends StatelessWidget {
     final scheme = Theme.of(context).colorScheme;
     final first = rows.first;
     final emision = DateTime.parse(first['fecha_pago'] as String);
-    var totalPagado = 0.0;
+    var totalCobrado = 0.0;
+    var totalVuelto = 0.0;
     for (final r in rows) {
-      totalPagado += (r['monto_cordobas'] as num).toDouble();
+      totalCobrado += (r['monto_cordobas'] as num).toDouble();
+      totalVuelto += (r['vuelto_cordobas'] as num? ?? 0).toDouble();
     }
+    final totalEntregado = totalCobrado + totalVuelto;
 
     return Container(
       decoration: BoxDecoration(
@@ -514,7 +540,9 @@ class _MultiReciboTicket extends StatelessWidget {
               Padding(
                 padding: const EdgeInsets.symmetric(vertical: 4),
                 child: Text(
-                  montoALetras(totalPagado,
+                  // Monto en letras corresponde al COBRADO (lo que entró
+                  // a la caja del ISP), no a lo entregado por el cliente.
+                  montoALetras(totalCobrado,
                       moneda: (first['moneda'] as String?) ?? 'NIO'),
                   textAlign: TextAlign.center,
                   style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600),
@@ -525,12 +553,42 @@ class _MultiReciboTicket extends StatelessWidget {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                const Text('TOTAL PAGADO',
+                const Text('TOTAL COBRADO',
                     style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
-                Text(Fmt.cordobas(totalPagado),
+                Text(Fmt.cordobas(totalCobrado),
                     style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
               ],
             ),
+            if (totalVuelto > 0.01) ...[
+              const SizedBox(height: 4),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text('VUELTO',
+                      style: TextStyle(
+                        fontWeight: FontWeight.w600,
+                        fontSize: 13,
+                        color: scheme.primary,
+                      )),
+                  Text(Fmt.cordobas(totalVuelto),
+                      style: TextStyle(
+                        fontWeight: FontWeight.w600,
+                        fontSize: 13,
+                        color: scheme.primary,
+                      )),
+                ],
+              ),
+              const SizedBox(height: 4),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text('PAGADO',
+                      style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                  Text(Fmt.cordobas(totalEntregado),
+                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                ],
+              ),
+            ],
 
             if (settings.pieRecibo.isNotEmpty) ...[
               const Divider(),
