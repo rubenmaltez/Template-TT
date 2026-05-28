@@ -569,7 +569,7 @@ class _Lista extends StatelessWidget {
    LEFT JOIN comunidades cm ON cm.id = c.comunidad_id
    LEFT JOIN municipios  m  ON m.id = cm.municipio_id
    LEFT JOIN cuotas      cu ON cu.cliente_id = c.id
-       WHERE ${where.join(' AND ')}
+       WHERE ${where.isEmpty ? '1=1' : where.join(' AND ')}
        GROUP BY c.id, c.nombre, c.telefono, c.direccion_referencia,
                 c.cobrador_id, co.nombre, cm.nombre, m.nombre
        $having

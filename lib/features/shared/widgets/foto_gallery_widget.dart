@@ -250,62 +250,68 @@ class _FotoThumbnailState extends State<_FotoThumbnail> {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    const size = 100.0;
+    const size = 140.0;
 
-    return GestureDetector(
-      onTap: _url != null ? () => _showFullScreen(context, _url!) : null,
-      child: SizedBox(
-        width: size,
-        height: size,
-        child: Stack(
-          children: [
-            ClipRRect(
-              borderRadius: BorderRadius.circular(8),
-              child: _loading
-                  ? Container(
-                      color: scheme.surfaceContainerHighest,
-                      child: const Center(
-                          child: SizedBox(
-                              width: 20,
-                              height: 20,
-                              child: CircularProgressIndicator(strokeWidth: 2))),
-                    )
-                  : _url != null
-                      ? Image.network(
-                          _url!,
-                          width: size,
-                          height: size,
-                          fit: BoxFit.cover,
-                          errorBuilder: (_, __, ___) => Container(
+    return MouseRegion(
+      cursor: _url != null ? SystemMouseCursors.click : SystemMouseCursors.basic,
+      child: GestureDetector(
+        onTap: _url != null ? () => _showFullScreen(context, _url!) : null,
+        child: SizedBox(
+          width: size,
+          height: size,
+          child: Stack(
+            children: [
+              ClipRRect(
+                borderRadius: BorderRadius.circular(8),
+                child: _loading
+                    ? Container(
+                        color: scheme.surfaceContainerHighest,
+                        child: const Center(
+                            child: SizedBox(
+                                width: 20,
+                                height: 20,
+                                child: CircularProgressIndicator(strokeWidth: 2))),
+                      )
+                    : _url != null
+                        ? Image.network(
+                            _url!,
+                            width: size,
+                            height: size,
+                            fit: BoxFit.cover,
+                            errorBuilder: (_, __, ___) => Container(
+                              color: scheme.surfaceContainerHighest,
+                              child: Icon(Icons.broken_image,
+                                  color: scheme.outline),
+                            ),
+                          )
+                        : Container(
                             color: scheme.surfaceContainerHighest,
                             child: Icon(Icons.broken_image,
                                 color: scheme.outline),
                           ),
-                        )
-                      : Container(
-                          color: scheme.surfaceContainerHighest,
-                          child: Icon(Icons.broken_image,
-                              color: scheme.outline),
+              ),
+              if (widget.canDelete)
+                Positioned(
+                  top: 4,
+                  right: 4,
+                  child: MouseRegion(
+                    cursor: SystemMouseCursors.click,
+                    child: GestureDetector(
+                      onTap: widget.onDelete,
+                      child: Container(
+                        padding: const EdgeInsets.all(3),
+                        decoration: BoxDecoration(
+                          color: scheme.error,
+                          shape: BoxShape.circle,
                         ),
-            ),
-            if (widget.canDelete)
-              Positioned(
-                top: 2,
-                right: 2,
-                child: GestureDetector(
-                  onTap: widget.onDelete,
-                  child: Container(
-                    padding: const EdgeInsets.all(2),
-                    decoration: BoxDecoration(
-                      color: scheme.error,
-                      shape: BoxShape.circle,
+                        child: Icon(Icons.close,
+                            size: 16, color: scheme.onError),
+                      ),
                     ),
-                    child: Icon(Icons.close,
-                        size: 14, color: scheme.onError),
                   ),
                 ),
-              ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -347,11 +353,13 @@ class _AddFotoButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    return GestureDetector(
-      onTap: uploading ? null : onTap,
-      child: Container(
-        width: 100,
-        height: 100,
+    return MouseRegion(
+      cursor: uploading ? SystemMouseCursors.basic : SystemMouseCursors.click,
+      child: GestureDetector(
+        onTap: uploading ? null : onTap,
+        child: Container(
+        width: 140,
+        height: 140,
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(8),
           border: Border.all(color: scheme.outline, width: 1),
@@ -372,6 +380,7 @@ class _AddFotoButton extends StatelessWidget {
                       style: TextStyle(fontSize: 11, color: scheme.primary)),
                 ],
               ),
+      ),
       ),
     );
   }
