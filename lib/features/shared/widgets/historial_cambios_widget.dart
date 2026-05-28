@@ -163,6 +163,9 @@ class _CambioTile extends StatelessWidget {
   static const _skipKeys = {
     'id', 'tenant_id', 'client_local_id', 'created_at', 'updated_at',
     'foto_comprobante_path', 'monto_pagado', 'cargos_neto',
+    // Campos de anulación/auditoría que cargan la UI con nulls
+    // cuando se muestra una creación o snapshot de delete.
+    'anulado_en', 'anulado_por', 'motivo_anulacion',
   };
 
   List<_CampoChange> _extraerCambios(Map<String, dynamic> row) {

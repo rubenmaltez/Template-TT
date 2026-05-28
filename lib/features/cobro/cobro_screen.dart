@@ -551,7 +551,12 @@ class _CobroScreenState extends ConsumerState<CobroScreen> {
             children: [
               Text('Monto', style: Theme.of(context).textTheme.titleMedium),
               const Spacer(),
-              if (settings.usdHabilitado) _MonedaToggle(
+              // En multi-cuota el campo de monto es readOnly (siempre cobra
+              // el saldo exacto). Si dejamos el toggle USD, al pulsarlo
+              // _cambiarMoneda limpia el campo y el cobro queda bloqueado
+              // (no se puede re-tipear). Lo ocultamos hasta que el flow
+              // soporte editar el monto en multi-cuota.
+              if (settings.usdHabilitado && !_esMultiCuota) _MonedaToggle(
                 actual: _moneda,
                 onChanged: (m) => _cambiarMoneda(m, settings),
               ),

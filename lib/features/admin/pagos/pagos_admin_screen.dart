@@ -56,7 +56,7 @@ class _PagosAdminScreenState extends ConsumerState<PagosAdminScreen> {
 
     return ps.db.watch(
       '''
-      SELECT p.id, p.monto_cordobas, p.moneda, p.monto_original,
+      SELECT p.id, p.monto_cordobas, p.vuelto_cordobas, p.moneda, p.monto_original,
              p.metodo, p.fecha_pago, p.referencia, p.notas,
              p.anulado, p.anulado_en, p.motivo_anulacion,
              p.grupo_cobro,
@@ -243,12 +243,23 @@ class _PagoCard extends ConsumerWidget {
                           ),
                         ),
                       ),
-                      Text(
-                        Fmt.cordobas(row['monto_cordobas'] as num),
-                        style: TextStyle(
-                          fontWeight: FontWeight.bold,
-                          decoration: anulado ? TextDecoration.lineThrough : null,
-                        ),
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: [
+                          Text(
+                            Fmt.cordobas(row['monto_cordobas'] as num),
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              decoration: anulado ? TextDecoration.lineThrough : null,
+                            ),
+                          ),
+                          if (((row['vuelto_cordobas'] as num?) ?? 0) > 0)
+                            Text(
+                              '+ vuelto ${Fmt.cordobas(row['vuelto_cordobas'] as num)}',
+                              style: TextStyle(
+                                  color: scheme.outline, fontSize: 11),
+                            ),
+                        ],
                       ),
                     ],
                   ),
