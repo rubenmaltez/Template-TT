@@ -44,7 +44,7 @@ Future<String> _getDbDir() async {
 /// Versión del schema local. Bumpear cuando se modifica schema.dart
 /// (nueva columna, nueva tabla). Esto fuerza una DB fresca para todos
 /// los usuarios, evitando bugs de schema cache.
-const _schemaVersion = 6;
+const _schemaVersion = 7;
 
 String _dbPathForUser(String userId, String basePath) {
   if (kIsWeb) {

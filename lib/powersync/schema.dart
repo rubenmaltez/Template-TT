@@ -252,6 +252,7 @@ const schema = Schema([
   Table('fotos_cliente', [
     Column.text('tenant_id'),
     Column.text('cliente_id'),
+    Column.text('cobrador_id'),
     Column.text('storage_path'),
     Column.text('created_at'),
     Column.text('created_by'),
@@ -259,6 +260,10 @@ const schema = Schema([
     Index('by_cliente', [
       IndexedColumn('tenant_id'),
       IndexedColumn('cliente_id'),
+    ]),
+    Index('by_cobrador', [
+      IndexedColumn('tenant_id'),
+      IndexedColumn('cobrador_id'),
     ]),
   ]),
 
