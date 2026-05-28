@@ -3,14 +3,11 @@ import 'package:flutter/services.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:image_picker/image_picker.dart';
 import 'package:latlong2/latlong.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../../data/providers/cobrador_provider.dart';
 import '../../../data/providers/form_dirty_provider.dart';
-import '../../../data/services/foto_cliente_service.dart';
 import '../../../data/utils/validators.dart';
 import '../../../powersync/db.dart' as ps;
 import '../../shared/widgets/confirm_discard_dialog.dart';
@@ -45,9 +42,10 @@ class _ClienteFormScreenState extends ConsumerState<ClienteFormScreen> {
   bool _cargando = true;
   bool _guardando = false;
   String? _error;
-  // Foto del cliente: path remoto en BD + URL firmada para preview.
+  // Foto legacy del cliente (campo viejo). Se preserva al guardar pero
+  // ya no se setea desde el form — las fotos múltiples viven en
+  // FotoGalleryWidget en la pantalla de detalle del cliente.
   String? _fotoPath;
-  bool _subiendoFoto = false;
 
   @override
   void initState() {
@@ -81,47 +79,7 @@ class _ClienteFormScreenState extends ConsumerState<ClienteFormScreen> {
     setState(() => _cargando = false);
   }
 
-  /// Captura foto y la sube. Para clientes nuevos, primero genera el id
-  /// del cliente para usarlo en el path remoto.
-  Future<void> _capturarFoto(ImageSource source) async {
-    final tenantId = ref.read(tenantIdProvider);
-    if (tenantId == null) return;
-    setState(() => _subiendoFoto = true);
-    try {
-      final service = FotoClienteService(Supabase.instance.client);
-      // Si es nuevo, asignamos id ahora (se reusa en el INSERT).
-      _clienteIdAsignado ??= widget.clienteId ?? const Uuid().v4();
-      final path = await service.capturarYSubir(
-        source: source,
-        tenantId: tenantId,
-        clienteId: _clienteIdAsignado!,
-      );
-      if (path == null) return;
-      // Generar URL firmada para preview inmediato.
-      final url = await service.urlFirmada(path);
-      if (mounted) {
-        setState(() {
-          _fotoPath = path;
-          _urlFirmadaPreview = url;
-          // Form.onChanged solo dispara para FormField descendants; los
-          // cambios de foto/geo/dropdown/switch deben marcar dirty
-          // manualmente sino el PopScope deja escapar sin confirm.
-          _dirty = true;
-        });
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('No se pudo subir foto: $e')),
-        );
-      }
-    } finally {
-      if (mounted) setState(() => _subiendoFoto = false);
-    }
-  }
-
   String? _clienteIdAsignado;
-  String? _urlFirmadaPreview;
 
   @override
   void dispose() {
@@ -300,24 +258,6 @@ class _ClienteFormScreenState extends ConsumerState<ClienteFormScreen> {
         child: ListView(
         padding: const EdgeInsets.all(24),
         children: [
-          // ── Foto ──────────────────────────────────────────────────────
-          _Section(
-            titulo: 'Foto',
-            children: [
-              _FotoClienteWidget(
-                urlFirmada: _urlFirmadaPreview,
-                pathRemoto: _fotoPath,
-                cargando: _subiendoFoto,
-                onCapturar: _capturarFoto,
-                onQuitar: () => setState(() {
-                  _fotoPath = null;
-                  _urlFirmadaPreview = null;
-                  _dirty = true;
-                }),
-              ),
-            ],
-          ),
-
           // ── Datos personales ──────────────────────────────────────────
           _Section(
             titulo: 'Datos personales',
@@ -449,20 +389,29 @@ class _ClienteFormScreenState extends ConsumerState<ClienteFormScreen> {
                   _dirty = true;
                 }),
               ),
-              const SizedBox(height: 8),
-              // Solo admin puede cambiar estado activo/inactivo.
-              if (ref.watch(cobradorActualProvider).valueOrNull?.rol == 'admin')
+            ],
+          ),
+
+          // ── Estado del cliente ────────────────────────────────────────
+          // Solo admin puede cambiar estado activo/inactivo.
+          if (ref.watch(cobradorActualProvider).valueOrNull?.rol == 'admin')
+            _Section(
+              titulo: 'Estado',
+              children: [
                 SwitchListTile(
                   value: _activo,
                   onChanged: (v) => setState(() {
                     _activo = v;
                     _dirty = true;
                   }),
-                  title: Text(_activo ? 'Activo' : 'Inactivo'),
+                  title: Text(_activo ? 'Cliente activo' : 'Cliente inactivo'),
+                  subtitle: Text(_activo
+                      ? 'El cliente aparece en la lista del cobrador y se generan cuotas.'
+                      : 'El cliente se oculta del cobrador y NO se generan nuevas cuotas.'),
                   contentPadding: EdgeInsets.zero,
                 ),
-            ],
-          ),
+              ],
+            ),
 
           if (_error != null)
             Padding(
@@ -510,137 +459,6 @@ class _ClienteFormScreenState extends ConsumerState<ClienteFormScreen> {
         ],
         ),
       ),
-    );
-  }
-}
-
-class _FotoClienteWidget extends StatefulWidget {
-  const _FotoClienteWidget({
-    required this.urlFirmada,
-    required this.pathRemoto,
-    required this.cargando,
-    required this.onCapturar,
-    required this.onQuitar,
-  });
-
-  final String? urlFirmada;
-  final String? pathRemoto;
-  final bool cargando;
-  final Future<void> Function(ImageSource source) onCapturar;
-  final VoidCallback onQuitar;
-
-  @override
-  State<_FotoClienteWidget> createState() => _FotoClienteWidgetState();
-}
-
-class _FotoClienteWidgetState extends State<_FotoClienteWidget> {
-  String? _urlResuelta;
-
-  @override
-  void didUpdateWidget(covariant _FotoClienteWidget old) {
-    super.didUpdateWidget(old);
-    if (widget.urlFirmada != old.urlFirmada) {
-      _urlResuelta = widget.urlFirmada;
-    }
-  }
-
-  @override
-  void initState() {
-    super.initState();
-    _urlResuelta = widget.urlFirmada;
-    if (_urlResuelta == null && widget.pathRemoto != null) {
-      _resolverUrl();
-    }
-  }
-
-  Future<void> _resolverUrl() async {
-    final url = await FotoClienteService(Supabase.instance.client)
-        .urlFirmada(widget.pathRemoto!);
-    if (mounted) setState(() => _urlResuelta = url);
-  }
-
-  void _mostrarFuente() {
-    showModalBottomSheet(
-      context: context,
-      showDragHandle: true,
-      builder: (ctx) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ListTile(
-              leading: const Icon(Icons.camera_alt),
-              title: const Text('Tomar foto'),
-              onTap: () {
-                Navigator.pop(ctx);
-                widget.onCapturar(ImageSource.camera);
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.photo_library),
-              title: const Text('Elegir de galería'),
-              onTap: () {
-                Navigator.pop(ctx);
-                widget.onCapturar(ImageSource.gallery);
-              },
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    if (widget.cargando) {
-      return const SizedBox(
-        height: 180,
-        child: Center(child: CircularProgressIndicator()),
-      );
-    }
-    if (widget.pathRemoto != null && _urlResuelta != null) {
-      return Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          ClipRRect(
-            borderRadius: BorderRadius.circular(12),
-            child: Image.network(
-              _urlResuelta!,
-              height: 180,
-              fit: BoxFit.cover,
-              errorBuilder: (_, __, ___) => Container(
-                height: 180,
-                color: Theme.of(context).colorScheme.surfaceContainerHighest,
-                child: const Center(child: Icon(Icons.broken_image)),
-              ),
-            ),
-          ),
-          const SizedBox(height: 8),
-          Row(
-            children: [
-              Expanded(
-                child: OutlinedButton.icon(
-                  icon: const Icon(Icons.refresh),
-                  label: const Text('Cambiar'),
-                  onPressed: _mostrarFuente,
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: OutlinedButton.icon(
-                  icon: const Icon(Icons.delete_outline),
-                  label: const Text('Quitar'),
-                  onPressed: widget.onQuitar,
-                ),
-              ),
-            ],
-          ),
-        ],
-      );
-    }
-    return OutlinedButton.icon(
-      icon: const Icon(Icons.add_a_photo),
-      label: const Text('Agregar foto del cliente'),
-      onPressed: _mostrarFuente,
     );
   }
 }
