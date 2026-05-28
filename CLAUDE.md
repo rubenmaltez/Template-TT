@@ -374,6 +374,50 @@ específicos que han causado bugs en producción:
    - `grep -rn 'tabla_modificada' lib/ --include="*.dart"` para cada
      tabla que haya cambiado de schema.
 
+**5. Rutas GoRouter completas:**
+   - Si un widget usa `context.push('/ruta')` o `context.go('/ruta')`,
+     esa ruta DEBE existir en `router.dart`.
+   - Especial atención a rutas condicionales tipo
+     `enAdminShell ? '/admin/x' : '/x'` — ambas variantes deben existir.
+   - `grep -rn "context.push\|context.go" lib/ --include="*.dart"` →
+     cruzar cada path con las rutas declaradas en router.dart.
+
+**6. Denormalización completa en INSERTs:**
+   - Si una tabla tiene columnas denormalizadas (cobrador_id copiado
+     de otra tabla), el INSERT desde Dart DEBE incluirlas. Los triggers
+     de Postgres NO corren en SQLite local.
+   - Verificar cada `INSERT INTO` y comparar columnas con schema.dart.
+
+### Formato obligatorio del reporte de audit
+
+Después de cada audit, presentar un reporte con esta estructura:
+
+```
+## REPORTE DE AUDIT — [nombre del sprint/feature]
+
+### Metodología
+- Cuántos agentes, qué scope tenía cada uno, cuántos archivos escanearon
+
+### Findings que requieren fix
+| # | Severidad | Archivo:línea | Problema | Impacto en usuario |
+Para cada finding:
+1. **Encontrado por:** qué agente
+2. **El error:** código antes (snippet)
+3. **Cómo afectaba al usuario:** paso a paso del escenario real
+4. **Cómo funciona ahora:** código después (snippet)
+
+### Clean — Sin problemas
+Tabla con cada categoría auditada y resultado
+
+### Backlog
+Items que no bloquean pero son anti-patterns para sprint futuro
+```
+
+**El reporte NO es opcional.** Se presenta al usuario ANTES de hacer
+pull/testing. El usuario debe ver exactamente qué se encontró, por qué
+pasaba, y cómo se corrigió. Sin este reporte, el sprint no se considera
+auditado.
+
 ### Principio de diseño: evaluar ANTES de implementar
 Antes de elegir una herramienta/servicio para un feature nuevo (ej:
 dónde hosear un archivo, qué package usar, qué API consumir), evaluar
