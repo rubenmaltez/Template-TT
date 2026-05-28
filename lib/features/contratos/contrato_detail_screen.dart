@@ -665,7 +665,7 @@ class _CuotaRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final estado = row['estado'] as String? ?? 'pendiente';
-    final monto = (row['monto'] as num).toDouble();
+    final monto = (row['monto'] as num? ?? 0).toDouble();
     final montoPagado = (row['monto_pagado'] as num? ?? 0).toDouble();
     final saldo = monto - montoPagado;
     final periodo = DateTime.parse(row['periodo'] as String);

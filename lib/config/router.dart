@@ -405,6 +405,15 @@ final routerProvider = Provider<GoRouter>((ref) {
         builder: (_, s) => ClienteDetailScreen(clienteId: s.pathParameters['id']!),
       ),
       GoRoute(
+        path: '/clientes/:id/editar',
+        builder: (_, s) => ClienteFormScreen(clienteId: s.pathParameters['id']),
+      ),
+      GoRoute(
+        path: '/contratos/nuevo',
+        builder: (_, s) => ContratoFormScreen(
+            clienteId: s.uri.queryParameters['cliente_id']),
+      ),
+      GoRoute(
         path: '/contratos/:id',
         builder: (_, s) => ContratoDetailScreen(
             contratoId: s.pathParameters['id']!),

@@ -77,10 +77,15 @@ class _FotoGalleryWidgetState extends ConsumerState<FotoGalleryWidget> {
 
       final user = Supabase.instance.client.auth.currentUser;
       final now = DateTime.now().toUtc().toIso8601String();
+      final clienteRow = await ps.db.getOptional(
+        'SELECT cobrador_id FROM clientes WHERE id = ?',
+        [widget.clienteId],
+      );
+      final cobradorId = clienteRow?['cobrador_id'] as String?;
       await ps.db.execute(
-        'INSERT INTO fotos_cliente (id, tenant_id, cliente_id, storage_path, created_at, created_by) '
-        'VALUES (?, ?, ?, ?, ?, ?)',
-        [const Uuid().v4(), widget.tenantId, widget.clienteId, storagePath, now, user?.id],
+        'INSERT INTO fotos_cliente (id, tenant_id, cliente_id, cobrador_id, storage_path, created_at, created_by) '
+        'VALUES (?, ?, ?, ?, ?, ?, ?)',
+        [const Uuid().v4(), widget.tenantId, widget.clienteId, cobradorId, storagePath, now, user?.id],
       );
 
       if (mounted) {
