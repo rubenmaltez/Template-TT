@@ -361,17 +361,23 @@ pw.Widget _pdfDivider() => pw.Padding(
 List<pw.Widget> _vueltoIfNeeded(Map<String, dynamic> row) {
   // Lee el vuelto del pago directamente (columna vuelto_cordobas).
   // Defensivo para rows legacy (pre-migración 0061): 0 si no existe.
+  // Regla de negocio: el vuelto SIEMPRE se da en córdobas, incluso si
+  // el cliente pagó en USD. El label refleja eso para evitar confusión.
   final vuelto = (row['vuelto_cordobas'] as num? ?? 0).toDouble();
   if (vuelto <= 0.01) return const [];
   final cobrado = (row['monto_cordobas'] as num).toDouble();
   final entregado = cobrado + vuelto;
+  final esUsd = (row['moneda'] as String) == 'USD';
+  final pagadoLabel = esUsd
+      ? 'US\$${(row['monto_original'] as num).toStringAsFixed(2)} = ${Fmt.cordobas(entregado)}'
+      : Fmt.cordobas(entregado);
   return [
     pw.Padding(
       padding: const pw.EdgeInsets.only(top: 4),
       child: pw.Row(
         mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
         children: [
-          pw.Text('VUELTO',
+          pw.Text(esUsd ? 'VUELTO (en C\$)' : 'VUELTO',
               style: pw.TextStyle(
                   fontWeight: pw.FontWeight.bold, fontSize: 9)),
           pw.Text(Fmt.cordobas(vuelto),
@@ -388,7 +394,7 @@ List<pw.Widget> _vueltoIfNeeded(Map<String, dynamic> row) {
           pw.Text('PAGADO',
               style: pw.TextStyle(
                   fontWeight: pw.FontWeight.bold, fontSize: 10)),
-          pw.Text(Fmt.cordobas(entregado),
+          pw.Text(pagadoLabel,
               style: pw.TextStyle(
                   fontWeight: pw.FontWeight.bold, fontSize: 10)),
         ],

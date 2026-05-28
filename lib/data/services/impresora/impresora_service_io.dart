@@ -235,10 +235,13 @@ class ImpresoraService {
     ]));
 
     // VUELTO + PAGADO si hubo vuelto.
+    // Regla de negocio: el vuelto SIEMPRE se da en córdobas, incluso si
+    // el cliente pagó en USD. El label refleja eso para evitar confusión.
     if (vuelto > 0.01) {
+      final esUsd = (recibo['moneda'] as String) == 'USD';
       bytes.addAll(gen.row([
         PosColumn(
-          text: 'VUELTO',
+          text: esUsd ? 'VUELTO (C\$)' : 'VUELTO',
           width: 6,
           styles: const PosStyles(bold: true, codeTable: _codeTable),
         ),
@@ -249,6 +252,9 @@ class ImpresoraService {
               bold: true, align: PosAlign.right, codeTable: _codeTable),
         ),
       ]));
+      final pagadoText = esUsd
+          ? 'US\$${(recibo['monto_original'] as num).toStringAsFixed(2)}=${Fmt.cordobas(entregado)}'
+          : Fmt.cordobas(entregado);
       bytes.addAll(gen.row([
         PosColumn(
           text: 'PAGADO',
@@ -256,7 +262,7 @@ class ImpresoraService {
           styles: const PosStyles(bold: true, codeTable: _codeTable),
         ),
         PosColumn(
-          text: Fmt.cordobas(entregado),
+          text: pagadoText,
           width: 6,
           styles: const PosStyles(
               bold: true, align: PosAlign.right, codeTable: _codeTable),

@@ -358,6 +358,7 @@ class _ReciboTicket extends StatelessWidget {
               final cobrado = (row['monto_cordobas'] as num).toDouble();
               final entregado = cobrado + vuelto;
               final scheme = Theme.of(context).colorScheme;
+              final esUsd = (row['moneda'] as String) == 'USD';
               return Column(
                 children: [
                   Padding(
@@ -365,12 +366,14 @@ class _ReciboTicket extends StatelessWidget {
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        Text('VUELTO',
-                            style: TextStyle(
-                              fontWeight: FontWeight.w600,
-                              fontSize: 13,
-                              color: scheme.primary,
-                            )),
+                        Text(
+                          esUsd ? 'VUELTO (en C\$)' : 'VUELTO',
+                          style: TextStyle(
+                            fontWeight: FontWeight.w600,
+                            fontSize: 13,
+                            color: scheme.primary,
+                          ),
+                        ),
                         Text(
                           Fmt.cordobas(vuelto),
                           style: TextStyle(
@@ -393,7 +396,9 @@ class _ReciboTicket extends StatelessWidget {
                               fontSize: 14,
                             )),
                         Text(
-                          Fmt.cordobas(entregado),
+                          esUsd
+                              ? 'US\$${(row['monto_original'] as num).toStringAsFixed(2)} = ${Fmt.cordobas(entregado)}'
+                              : Fmt.cordobas(entregado),
                           style: const TextStyle(
                             fontWeight: FontWeight.bold,
                             fontSize: 14,

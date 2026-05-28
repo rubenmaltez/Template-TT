@@ -326,6 +326,9 @@ class _CobroScreenState extends ConsumerState<CobroScreen> {
         // Single cuota: el field _montoCtrl tiene lo ENTREGADO por el cliente.
         // El aplicado a la cuota se trunca al saldo real (sin vuelto se
         // inflaba recaudado del ISP). El exceso se guarda como vuelto.
+        // Regla de negocio: el vuelto SIEMPRE se da en córdobas, incluso
+        // si el cliente pagó en USD. monto_original preserva lo entregado
+        // en la moneda original (US$30 si pagó 30 dólares), no el aplicado.
         final entregado = double.parse(_montoCtrl.text);
         final entregadoCordobas = entregado * tasa;
 
@@ -335,10 +338,9 @@ class _CobroScreenState extends ConsumerState<CobroScreen> {
             ? saldoCuota
             : entregadoCordobas;
         final vueltoCordobas = entregadoCordobas - aplicadoCordobas;
-        // montoOriginal en la moneda elegida (USD/NIO) corresponde al APLICADO.
-        final montoOriginalAplicado = _moneda == Moneda.usd
-            ? aplicadoCordobas / tasa
-            : aplicadoCordobas;
+        // monto_original = lo entregado en la moneda original (NO el aplicado).
+        // Invariante: monto_original * tasa ≈ monto_cordobas + vuelto_cordobas.
+        final montoOriginalEntregado = entregado;
 
         final cargosInfo = _cargosAuto
             .map((c) => CargoAutoInfo(
@@ -358,7 +360,7 @@ class _CobroScreenState extends ConsumerState<CobroScreen> {
               montoCordobas: aplicadoCordobas,
               vueltoCordobas: vueltoCordobas,
               moneda: _moneda,
-              montoOriginal: montoOriginalAplicado,
+              montoOriginal: montoOriginalEntregado,
               tasaConversion: tasa,
               metodo: _metodo,
               referencia: _referenciaCtrl.text.trim().isEmpty
