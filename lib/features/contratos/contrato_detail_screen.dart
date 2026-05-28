@@ -265,31 +265,41 @@ class _ContratoDetailScreenState extends ConsumerState<ContratoDetailScreen> {
                 ),
               ),
               // FAB multi-cobro
+              // FAB multi-cobro: respeta el mismo maxWidth (1100) que el
+              // contenido para no estirarse en pantallas anchas.
               if (_selected.isNotEmpty)
                 Positioned(
-                  left: 16, right: 16, bottom: 16,
-                  child: Row(
-                    children: [
-                      IconButton.filledTonal(
-                        icon: const Icon(Icons.close),
-                        onPressed: _clearSelection,
-                        tooltip: 'Cancelar selección',
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: FilledButton.icon(
-                          icon: const Icon(Icons.payment),
-                          label: Text(_selected.length == 1
-                              ? 'Cobrar cuota'
-                              : 'Cobrar ${_selected.length} cuotas'),
-                          onPressed: () {
-                            final ids = _selected.join(',');
-                            _clearSelection();
-                            context.push('/cobro/$ids');
-                          },
+                  left: 0, right: 0, bottom: 16,
+                  child: Center(
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 1100),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 16),
+                        child: Row(
+                          children: [
+                            IconButton.filledTonal(
+                              icon: const Icon(Icons.close),
+                              onPressed: _clearSelection,
+                              tooltip: 'Cancelar selección',
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: FilledButton.icon(
+                                icon: const Icon(Icons.payment),
+                                label: Text(_selected.length == 1
+                                    ? 'Cobrar cuota'
+                                    : 'Cobrar ${_selected.length} cuotas'),
+                                onPressed: () {
+                                  final ids = _selected.join(',');
+                                  _clearSelection();
+                                  context.push('/cobro/$ids');
+                                },
+                              ),
+                            ),
+                          ],
                         ),
                       ),
-                    ],
+                    ),
                   ),
                 ),
             ],
@@ -1603,7 +1613,18 @@ class _DocumentoContratoSection extends StatefulWidget {
 
 class _DocumentoContratoSectionState extends State<_DocumentoContratoSection> {
   static const _bucket = 'contratos-documentos';
+  static const _maxSizeBytes = 10 * 1024 * 1024; // 10 MB
   bool _trabajando = false;
+
+  @override
+  void didUpdateWidget(_DocumentoContratoSection old) {
+    super.didUpdateWidget(old);
+    // Reset el flag de trabajo si cambió el contrato (defensa contra
+    // estado stale en navegación profunda).
+    if (old.contratoId != widget.contratoId) {
+      setState(() => _trabajando = false);
+    }
+  }
 
   Future<void> _subir({required bool reemplazar}) async {
     if (_trabajando) return;
@@ -1617,6 +1638,20 @@ class _DocumentoContratoSectionState extends State<_DocumentoContratoSection> {
     final file = picked.files.single;
     final bytes = file.bytes;
     if (bytes == null) return;
+
+    // Guard de tamaño: el bucket también lo enforza server-side, pero
+    // hacemos check local para dar feedback inmediato + evitar carga
+    // grande a memoria/red.
+    if (bytes.length > _maxSizeBytes) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+              content: Text(
+                  'El archivo supera el límite de ${_maxSizeBytes ~/ (1024 * 1024)} MB')),
+        );
+      }
+      return;
+    }
 
     setState(() => _trabajando = true);
     try {
@@ -1733,8 +1768,14 @@ class _DocumentoContratoSectionState extends State<_DocumentoContratoSection> {
       }
     } catch (e) {
       if (mounted) {
+        final esRed = e.toString().contains('SocketException') ||
+            e.toString().contains('Failed host lookup') ||
+            e.toString().contains('NetworkException');
+        final mensaje = esRed
+            ? 'Necesitás conexión para ver el documento.'
+            : 'No se pudo abrir el documento. Intentá más tarde.';
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error al abrir: $e')),
+          SnackBar(content: Text(mensaje)),
         );
       }
     }
