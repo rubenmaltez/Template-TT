@@ -51,6 +51,7 @@ class Pago {
     required this.cuotaId,
     required this.cobradorId,
     required this.montoCordobas,
+    this.vueltoCordobas = 0,
     required this.moneda,
     required this.montoOriginal,
     required this.tasaConversion,
@@ -73,7 +74,12 @@ class Pago {
   final String tenantId;
   final String cuotaId;
   final String cobradorId;
+  /// Monto APLICADO a la cuota (lo que entra a la caja del ISP).
+  /// Para un cobro con vuelto, esto = entregado - vuelto.
   final double montoCordobas;
+  /// Vuelto que se le devolvió al cliente (en córdobas).
+  /// Si > 0, significa que el cliente entregó más de lo que debía.
+  final double vueltoCordobas;
   final Moneda moneda;
   final double montoOriginal;
   final double tasaConversion;
@@ -91,12 +97,18 @@ class Pago {
   final String? grupoCobro;
   final String? clientLocalId;
 
+  /// Lo que el cliente físicamente entregó en mano (aplicado + vuelto).
+  double get entregadoCordobas => montoCordobas + vueltoCordobas;
+
   factory Pago.fromRow(Map<String, dynamic> row) => Pago(
         id: row['id'] as String,
         tenantId: row['tenant_id'] as String,
         cuotaId: row['cuota_id'] as String,
         cobradorId: row['cobrador_id'] as String,
         montoCordobas: (row['monto_cordobas'] as num).toDouble(),
+        // Defensivo: rows legacy (pre-migración 0061) no tienen la columna.
+        // En ese caso, vuelto = 0 (asumimos que no hubo vuelto histórico).
+        vueltoCordobas: (row['vuelto_cordobas'] as num? ?? 0).toDouble(),
         moneda: Moneda.fromString(row['moneda'] as String),
         montoOriginal: (row['monto_original'] as num).toDouble(),
         tasaConversion: (row['tasa_conversion'] as num).toDouble(),

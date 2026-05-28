@@ -142,6 +142,13 @@ class AppSettings {
   bool get recrearPagoAnulado =>
       settingValue<bool>(_map, 'cobranza.recrear_pago_anulado', false);
 
+  /// Feature flag: gestión de caja chica del cobrador (asignación diaria
+  /// y reconciliación de efectivo al cierre). Default false. Migración 0063
+  /// agrega el toggle; la feature real (tabla cajas_chicas + UI) está
+  /// pendiente — usar este getter cuando se implemente para gatear la UI.
+  bool get cajaChicaHabilitada =>
+      settingValue<bool>(_map, 'caja_chica.habilitada', false);
+
   bool get auditVisibleAdminCobranza =>
       settingValue<bool>(_map, 'audit.visible_admin_cobranza', false);
 

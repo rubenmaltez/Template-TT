@@ -223,7 +223,11 @@ class _SettingTileState extends State<_SettingTile> {
   Widget build(BuildContext context) {
     final s = widget.setting;
     final label = _label(s.clave);
-    final desc = s.descripcion;
+    // Override de descripción para settings con copy específico de UI.
+    // El descripcion de la DB se usa por default, pero algunos toggles
+    // necesitan copy más amigable (ej. caja_chica marca "Feature en desarrollo"
+    // mientras la implementación real está pendiente — ver migración 0063).
+    final desc = _descripcionOverride(s.clave) ?? s.descripcion;
 
     return Card(
       child: Padding(
@@ -350,6 +354,17 @@ class _SettingTileState extends State<_SettingTile> {
     );
   }
 
+  // Overrides de descripción cuando el copy de la DB no alcanza
+  // (ej. feature flags pendientes de implementación).
+  String? _descripcionOverride(String clave) {
+    return switch (clave) {
+      'caja_chica.habilitada' =>
+        'Permite asignar caja chica diaria al cobrador y reconciliar '
+            'efectivo al final del día. (Feature en desarrollo)',
+      _ => null,
+    };
+  }
+
   // Etiquetas legibles para las claves más comunes.
   String _label(String clave) {
     const labels = <String, String>{
@@ -369,6 +384,7 @@ class _SettingTileState extends State<_SettingTile> {
       'cobranza.cargo_reconexion': 'Monto reconexión automática',
       'cobranza.monto_reconexion': 'Monto de reconexión',
       'cobranza.recrear_pago_anulado': 'Permitir recrear pagos anulados',
+      'caja_chica.habilitada': 'Caja chica del cobrador',
       'audit.visible_admin_cobranza': 'Admin cobranza ve historial de cambios',
       'cobranza.cobrador_edita_fecha': 'Cobrador puede editar fecha',
       'cobranza.cobrador_anula_cobros': 'Cobrador puede anular cobros',
@@ -460,6 +476,8 @@ int _sortOrder(String clave) {
     'cobranza.dias_cuotas_visibles': 5,
     'cobranza.cargo_reconexion_habilitado': 30,
     'cobranza.monto_reconexion': 31,
+    // Feature flag — feature real pendiente (ver migración 0063).
+    'caja_chica.habilitada': 40,
     // Pagos
     'pagos.metodo_efectivo': 0,
     'pagos.metodo_transferencia': 1,

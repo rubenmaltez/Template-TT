@@ -101,9 +101,16 @@ class _ContratoDetailScreenState extends ConsumerState<ContratoDetailScreen> {
   Stream<List<Map<String, dynamic>>> _buildPagosStream() {
     return ps.db.watch(
       '''
-      SELECT pa.*, cu.periodo
+      SELECT pa.id, pa.tenant_id, pa.cuota_id, pa.cobrador_id,
+             pa.monto_cordobas, pa.vuelto_cordobas, pa.moneda,
+             pa.monto_original, pa.tasa_conversion, pa.metodo,
+             pa.referencia, pa.foto_comprobante_path,
+             pa.lat, pa.lng, pa.notas, pa.fecha_pago,
+             pa.anulado, pa.anulado_en, pa.anulado_por,
+             pa.motivo_anulacion, pa.grupo_cobro, pa.client_local_id,
+             cu.periodo
         FROM pagos pa
-        JOIN cuotas cu ON cu.id = pa.cuota_id
+        INNER JOIN cuotas cu ON cu.id = pa.cuota_id
        WHERE cu.contrato_id = ?
        ORDER BY pa.fecha_pago DESC
        LIMIT 20

@@ -159,6 +159,12 @@ class _CambioTile extends StatelessWidget {
     );
   }
 
+  // Columnas computadas / auto que se omiten en cualquier snapshot.
+  static const _skipKeys = {
+    'id', 'tenant_id', 'client_local_id', 'created_at', 'updated_at',
+    'foto_comprobante_path', 'monto_pagado', 'cargos_neto',
+  };
+
   List<_CampoChange> _extraerCambios(Map<String, dynamic> row) {
     final anteriorRaw = row['valor_anterior'] as String?;
     final nuevoRaw = row['valor_nuevo'] as String?;
@@ -168,15 +174,12 @@ class _CambioTile extends StatelessWidget {
       final anterior = anteriorRaw != null ? jsonDecode(anteriorRaw) : null;
       final nuevo = nuevoRaw != null ? jsonDecode(nuevoRaw) : null;
 
+      // UPDATE: ambos snapshots → diff campo por campo.
       if (anterior is Map && nuevo is Map) {
         final cambios = <_CampoChange>[];
         final allKeys = {...anterior.keys, ...nuevo.keys};
-        const skip = {
-          'id', 'tenant_id', 'client_local_id', 'created_at', 'updated_at',
-          'foto_comprobante_path', 'monto_pagado', 'cargos_neto',
-        };
         for (final key in allKeys) {
-          if (skip.contains(key)) continue;
+          if (_skipKeys.contains(key)) continue;
           final a = anterior[key];
           final n = nuevo[key];
           if (a != n) {
@@ -188,6 +191,18 @@ class _CambioTile extends StatelessWidget {
           }
         }
         return cambios;
+      }
+
+      // CREATE: solo valor_nuevo. Mostramos los valores iniciales no nulos
+      // como "— → valor".
+      if (anterior == null && nuevo is Map) {
+        return _snapshotAsCambios(nuevo, isCreate: true);
+      }
+
+      // DELETE: solo valor_anterior. Mostramos los valores eliminados
+      // como "valor → —".
+      if (nuevo == null && anterior is Map) {
+        return _snapshotAsCambios(anterior, isCreate: false);
       }
 
       return [
@@ -206,6 +221,28 @@ class _CambioTile extends StatelessWidget {
         ),
       ];
     }
+  }
+
+  // Convierte un snapshot completo (create/delete) en una lista de cambios
+  // que el ExpansionTile pueda renderizar con el mismo widget que update.
+  // - isCreate true:  "— → valor"  (campos del row inicial)
+  // - isCreate false: "valor → —"  (campos del row eliminado)
+  List<_CampoChange> _snapshotAsCambios(Map snap, {required bool isCreate}) {
+    final cambios = <_CampoChange>[];
+    for (final entry in snap.entries) {
+      final key = entry.key as String;
+      if (_skipKeys.contains(key)) continue;
+      final v = entry.value;
+      // Omitir nulls y vacíos del snapshot (no aportan info).
+      if (v == null) continue;
+      if (v is String && v.isEmpty) continue;
+      cambios.add(_CampoChange(
+        campo: _fieldLabel(key),
+        antes: isCreate ? '—' : _fmt(v),
+        despues: isCreate ? _fmt(v) : '—',
+      ));
+    }
+    return cambios;
   }
 
   static String _detectarAccion(String accion, Map<String, dynamic> row) {
@@ -237,8 +274,11 @@ class _CambioTile extends StatelessWidget {
       'monto_cordobas': 'Monto (C\$)',
       'monto_original': 'Monto original',
       'monto_pagado': 'Monto pagado',
+      'vuelto_cordobas': 'Vuelto (C\$)',
       'fecha_pago': 'Fecha de pago',
       'fecha_vencimiento': 'Fecha vencimiento',
+      'fecha_inicio': 'Fecha inicio',
+      'fecha_fin': 'Fecha fin',
       'cobrador_id': 'Cobrador',
       'cliente_id': 'Cliente',
       'contrato_id': 'Contrato',
@@ -259,9 +299,12 @@ class _CambioTile extends StatelessWidget {
       'direccion': 'Dirección',
       'cedula': 'Cédula',
       'comunidad_id': 'Comunidad',
+      'departamento_id': 'Departamento',
+      'municipio_id': 'Municipio',
       'activo': 'Activo',
       'referencia': 'Referencia',
       'notas': 'Notas',
+      'descripcion': 'Descripción',
       'numero_completo': 'Número recibo',
       'grupo_cobro': 'Cobro agrupado',
       'cargos_neto': 'Cargos neto',
@@ -269,6 +312,17 @@ class _CambioTile extends StatelessWidget {
       'lng': 'Longitud',
       'dia_pago': 'Día de pago',
       'reimpresiones': 'Reimpresiones',
+      'documento_path': 'Documento adjunto',
+      'precio_mensual': 'Precio mensual',
+      'tipo_cargo_manual': 'Tipo de cargo',
+      'pago_id': 'Pago',
+      'recibo_id': 'Recibo',
+      'numero': 'Número',
+      'prefijo': 'Prefijo',
+      'serie': 'Serie',
+      'rol': 'Rol',
+      'email': 'Email',
+      'prefijo_recibo': 'Prefijo recibo',
     };
     return labels[raw] ?? raw
         .replaceAll('_', ' ')

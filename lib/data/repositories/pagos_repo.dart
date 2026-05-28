@@ -53,6 +53,7 @@ class PagosRepo {
     required String prefijoRecibo,
     required String cuotaId,
     required double montoCordobas,
+    double vueltoCordobas = 0,
     required Moneda moneda,
     required double montoOriginal,
     required double tasaConversion,
@@ -132,10 +133,10 @@ class PagosRepo {
         '''
         INSERT INTO pagos (
           id, tenant_id, cuota_id, cobrador_id,
-          monto_cordobas, moneda, monto_original, tasa_conversion,
+          monto_cordobas, vuelto_cordobas, moneda, monto_original, tasa_conversion,
           metodo, referencia, foto_comprobante_path,
           lat, lng, notas, fecha_pago, anulado, client_local_id
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?)
         ''',
         [
           pagoId,
@@ -143,6 +144,7 @@ class PagosRepo {
           cuotaId,
           cobradorId,
           montoCordobas,
+          vueltoCordobas,
           moneda.value,
           montoOriginal,
           tasaConversion,
@@ -220,6 +222,7 @@ class PagosRepo {
     required String prefijoRecibo,
     required List<String> cuotaIds,
     required List<double> montosCordobas,
+    double vueltoCordobas = 0,
     required Moneda moneda,
     required List<double> montosOriginal,
     required double tasaConversion,
@@ -294,18 +297,23 @@ class PagosRepo {
         final numeroCompleto =
             '$prefijoRecibo-${correlativo.toString().padLeft(5, '0')}';
 
+        // El vuelto sólo se asigna al ÚLTIMO pago del grupo (simplifica el
+        // recibo: una sola línea de vuelto). Los demás pagos van con 0.
+        final esUltimo = i == cuotaIds.length - 1;
+        final vueltoPago = esUltimo ? vueltoCordobas : 0.0;
+
         await tx.execute(
           '''
           INSERT INTO pagos (
             id, tenant_id, cuota_id, cobrador_id,
-            monto_cordobas, moneda, monto_original, tasa_conversion,
+            monto_cordobas, vuelto_cordobas, moneda, monto_original, tasa_conversion,
             metodo, referencia, foto_comprobante_path,
             lat, lng, notas, fecha_pago, anulado, grupo_cobro, client_local_id
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)
           ''',
           [
             pagoId, tenantId, cuotaIds[i], cobradorId,
-            montosCordobas[i], moneda.value, montosOriginal[i], tasaConversion,
+            montosCordobas[i], vueltoPago, moneda.value, montosOriginal[i], tasaConversion,
             metodo.value, referencia, fotoComprobantePath,
             lat, lng, notas, now, grupoCobro, _uuid.v4(),
           ],
@@ -561,6 +569,9 @@ class PagosRepo {
       prefijoRecibo: prefijoRecibo,
       cuotaId: p['cuota_id'] as String,
       montoCordobas: (p['monto_cordobas'] as num).toDouble(),
+      // Preservar el vuelto original: el pago recreado representa la misma
+      // operación con el cliente (entregó X, se le devolvió Y).
+      vueltoCordobas: (p['vuelto_cordobas'] as num? ?? 0).toDouble(),
       moneda: Moneda.fromString(p['moneda'] as String),
       montoOriginal: (p['monto_original'] as num).toDouble(),
       tasaConversion: (p['tasa_conversion'] as num).toDouble(),
