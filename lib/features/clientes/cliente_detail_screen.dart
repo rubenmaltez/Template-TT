@@ -598,54 +598,89 @@ class _RegistrarVisitaDialogState extends State<_RegistrarVisitaDialog> {
   }
 }
 
-class _VisitasSection extends StatefulWidget {
+class _VisitasSection extends ConsumerStatefulWidget {
   const _VisitasSection({super.key, required this.clienteId});
   final String clienteId;
 
   @override
-  State<_VisitasSection> createState() => _VisitasSectionState();
+  ConsumerState<_VisitasSection> createState() => _VisitasSectionState();
 }
 
-class _VisitasSectionState extends State<_VisitasSection> {
-  late Future<List<Visita>> _visitasFuture;
-  final _service = VisitasService();
+class _VisitasSectionState extends ConsumerState<_VisitasSection> {
+  late Stream<List<Visita>> _stream;
 
   @override
   void initState() {
     super.initState();
-    _visitasFuture = _service.listar(widget.clienteId);
+    _stream = ref.read(visitasServiceProvider).watch(widget.clienteId);
   }
 
   @override
   void didUpdateWidget(covariant _VisitasSection old) {
     super.didUpdateWidget(old);
     if (widget.clienteId != old.clienteId) {
-      setState(() => _visitasFuture = _service.listar(widget.clienteId));
+      setState(() {
+        _stream = ref.read(visitasServiceProvider).watch(widget.clienteId);
+      });
     }
   }
 
-  /// Permite al parent forzar un rebuild (tras registrar una visita nueva).
-  void recargar() {
-    setState(() => _visitasFuture = _service.listar(widget.clienteId));
-  }
+  /// API compat con el código viejo — el stream ya emite cambios automáticamente,
+  /// pero algunos callers llaman recargar() después de registrar visita.
+  void recargar() {}
 
   @override
   Widget build(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
       child: Card(
-        child: FutureBuilder<List<Visita>>(
-          future: _visitasFuture,
+        child: StreamBuilder<List<Visita>>(
+          stream: _stream,
+          initialData: const [],
           builder: (context, snap) {
-            final visitas = snap.data ?? const [];
-            if (visitas.isEmpty) return const SizedBox.shrink();
+            if (snap.hasError) {
+              return Padding(
+                padding: const EdgeInsets.all(16),
+                child: Text('Error: ${snap.error}'),
+              );
+            }
+            final visitas = snap.data!;
+            if (visitas.isEmpty) {
+              return Padding(
+                padding: const EdgeInsets.all(16),
+                child: Row(
+                  children: [
+                    Icon(Icons.history,
+                        size: 18,
+                        color: Theme.of(context).colorScheme.outline),
+                    const SizedBox(width: 8),
+                    Text('Sin visitas registradas',
+                        style: TextStyle(
+                            color: Theme.of(context).colorScheme.outline)),
+                  ],
+                ),
+              );
+            }
             return Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 Padding(
                   padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
-                  child: Text('Visitas recientes',
-                      style: Theme.of(context).textTheme.titleMedium),
+                  child: Row(
+                    children: [
+                      Icon(Icons.history,
+                          size: 20,
+                          color: Theme.of(context).colorScheme.primary),
+                      const SizedBox(width: 8),
+                      Text('Historial de visitas',
+                          style: Theme.of(context).textTheme.titleMedium),
+                      const SizedBox(width: 8),
+                      Text('(${visitas.length})',
+                          style: TextStyle(
+                              color: Theme.of(context).colorScheme.outline,
+                              fontSize: 13)),
+                    ],
+                  ),
                 ),
                 ...visitas.take(10).map((v) => _VisitaTile(visita: v)),
                 if (visitas.length > 10)
@@ -694,16 +729,38 @@ class _VisitaTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final color = _color(scheme);
+    final hasNotas = visita.notas != null && visita.notas!.isNotEmpty;
+    final cobrador = visita.cobradorNombre ?? '—';
     return ListTile(
       dense: true,
-      leading: Icon(_icon, color: color, size: 20),
-      title: Text(visita.resultado.label),
-      subtitle: visita.notas != null && visita.notas!.isNotEmpty
-          ? Text(visita.notas!, maxLines: 2, overflow: TextOverflow.ellipsis)
-          : null,
-      trailing: Text(
-        Fmt.fechaRelativa(visita.fecha),
-        style: TextStyle(color: scheme.outline, fontSize: 11),
+      leading: Icon(_icon, color: color, size: 22),
+      title: Row(
+        children: [
+          Text(visita.resultado.label,
+              style: TextStyle(fontWeight: FontWeight.w600, color: color)),
+          const SizedBox(width: 8),
+          Flexible(
+            child: Text('· $cobrador',
+                style: TextStyle(color: scheme.outline, fontSize: 12),
+                overflow: TextOverflow.ellipsis),
+          ),
+        ],
+      ),
+      subtitle: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            '${Fmt.fechaCorta(visita.fecha.toLocal())} · ${Fmt.fechaRelativa(visita.fecha)}',
+            style: TextStyle(color: scheme.outline, fontSize: 11),
+          ),
+          if (hasNotas) ...[
+            const SizedBox(height: 4),
+            Text(visita.notas!,
+                maxLines: 3,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(fontSize: 13)),
+          ],
+        ],
       ),
     );
   }

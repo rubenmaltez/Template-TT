@@ -267,6 +267,25 @@ const schema = Schema([
     ]),
   ]),
 
+  // ── Visitas registradas por el cobrador ─────────────────────────────
+  Table('visitas', [
+    Column.text('tenant_id'),
+    Column.text('cliente_id'),
+    Column.text('cobrador_id'),
+    Column.text('resultado'),
+    Column.text('notas'),
+    Column.text('fecha'),
+  ], indexes: [
+    Index('by_cliente', [
+      IndexedColumn('tenant_id'),
+      IndexedColumn('cliente_id'),
+    ]),
+    Index('by_cobrador', [
+      IndexedColumn('tenant_id'),
+      IndexedColumn('cobrador_id'),
+    ]),
+  ]),
+
   // ── Impersonación de tenant por super_admin ──────────────────────────
   // Una sola row (o ninguna) por super_admin. Sincronizada vía el bucket
   // `impersonated_tenant` en sync-rules.yaml. Cuando existe, indica que

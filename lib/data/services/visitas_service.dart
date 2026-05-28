@@ -1,9 +1,10 @@
-import 'dart:convert';
-
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:shared_preferences/shared_preferences.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:uuid/uuid.dart';
 
-/// Resultado de una visita de campo del cobrador.
+import '../../powersync/db.dart' as ps;
+import '../providers/cobrador_provider.dart';
+
 enum VisitaResultado {
   cobrado('Cobrado'),
   noEstaba('No estaba'),
@@ -31,86 +32,81 @@ enum VisitaResultado {
       };
 }
 
-/// Registro de una visita a un cliente.
 class Visita {
   const Visita({
+    required this.id,
     required this.fecha,
     required this.resultado,
+    required this.cobradorId,
+    this.cobradorNombre,
     this.notas,
   });
 
+  final String id;
   final DateTime fecha;
   final VisitaResultado resultado;
+  final String cobradorId;
+  final String? cobradorNombre;
   final String? notas;
 
-  Map<String, dynamic> toJson() => {
-        'fecha': fecha.toIso8601String(),
-        'resultado': resultado.value,
-        if (notas != null && notas!.isNotEmpty) 'notas': notas,
-      };
-
-  factory Visita.fromJson(Map<String, dynamic> json) => Visita(
-        fecha: DateTime.parse(json['fecha'] as String),
-        resultado: VisitaResultado.fromString(json['resultado'] as String),
-        notas: json['notas'] as String?,
+  factory Visita.fromRow(Map<String, dynamic> row) => Visita(
+        id: row['id'] as String,
+        fecha: DateTime.parse(row['fecha'] as String),
+        resultado: VisitaResultado.fromString(row['resultado'] as String),
+        cobradorId: row['cobrador_id'] as String,
+        cobradorNombre: row['cobrador_nombre'] as String?,
+        notas: row['notas'] as String?,
       );
 }
 
-/// Servicio de visitas local (SharedPreferences).
-///
-/// Almacena las visitas como un JSON array bajo la clave
-/// `visitas_{clienteId}`. Cada cliente tiene su lista independiente.
-/// Máximo 50 visitas por cliente (FIFO — las más viejas se descartan).
-///
-/// Nota: esta data es per-device y no sincroniza entre dispositivos.
-/// En un sprint futuro se puede migrar a una tabla `visitas` en
-/// Postgres/PowerSync para habilitar sync + visibilidad del admin.
 class VisitasService {
-  static const _maxVisitas = 50;
-  static String _key(String clienteId) => 'visitas_$clienteId';
+  VisitasService(this._ref);
+  final Ref _ref;
 
-  /// Registra una visita para el cliente dado.
   Future<void> registrar({
     required String clienteId,
     required VisitaResultado resultado,
     String? notas,
   }) async {
-    final prefs = await SharedPreferences.getInstance();
-    final visitas = await listar(clienteId);
-    visitas.insert(
-      0,
-      Visita(
-        fecha: DateTime.now(),
-        resultado: resultado,
-        notas: notas,
-      ),
-    );
+    final cobrador = _ref.read(cobradorActualProvider).valueOrNull;
+    final user = Supabase.instance.client.auth.currentUser;
+    if (cobrador == null || user == null) {
+      throw StateError('Usuario no autenticado');
+    }
 
-    // Mantener solo las últimas _maxVisitas
-    final trimmed = visitas.length > _maxVisitas
-        ? visitas.sublist(0, _maxVisitas)
-        : visitas;
-
-    await prefs.setString(
-      _key(clienteId),
-      jsonEncode(trimmed.map((v) => v.toJson()).toList()),
+    await ps.db.execute(
+      '''
+      INSERT INTO visitas (id, tenant_id, cliente_id, cobrador_id,
+                           resultado, notas, fecha)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+      ''',
+      [
+        const Uuid().v4(),
+        cobrador.tenantId,
+        clienteId,
+        user.id,
+        resultado.value,
+        notas?.trim().isEmpty ?? true ? null : notas?.trim(),
+        DateTime.now().toUtc().toIso8601String(),
+      ],
     );
   }
 
-  /// Lista las visitas del cliente, ordenadas por fecha descendente.
-  Future<List<Visita>> listar(String clienteId) async {
-    final prefs = await SharedPreferences.getInstance();
-    final raw = prefs.getString(_key(clienteId));
-    if (raw == null || raw.isEmpty) return [];
-    try {
-      final list = jsonDecode(raw) as List<dynamic>;
-      return list
-          .map((e) => Visita.fromJson(e as Map<String, dynamic>))
-          .toList();
-    } catch (_) {
-      return [];
-    }
+  Stream<List<Visita>> watch(String clienteId) {
+    return ps.db.watch(
+      '''
+      SELECT v.id, v.fecha, v.resultado, v.cobrador_id, v.notas,
+             co.nombre AS cobrador_nombre
+        FROM visitas v
+   LEFT JOIN cobradores co ON co.id = v.cobrador_id
+       WHERE v.cliente_id = ?
+       ORDER BY v.fecha DESC
+       LIMIT 50
+      ''',
+      parameters: [clienteId],
+    ).map((rows) => rows.map(Visita.fromRow).toList()).asBroadcastStream();
   }
 }
 
-final visitasServiceProvider = Provider((_) => VisitasService());
+final visitasServiceProvider =
+    Provider((ref) => VisitasService(ref));

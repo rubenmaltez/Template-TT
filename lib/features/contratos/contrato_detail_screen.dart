@@ -196,6 +196,7 @@ class _ContratoDetailScreenState extends ConsumerState<ContratoDetailScreen> {
                     contrato: contrato,
                     esAdmin: esAdmin,
                     onEstadoChanged: esAdmin ? _cambiarEstado : null,
+                    cuotasStream: _cuotasStream,
                   ),
                   const SizedBox(height: 24),
                   _CuotasSection(
@@ -294,10 +295,12 @@ class _ContratoHeader extends StatelessWidget {
   const _ContratoHeader({
     required this.contrato,
     required this.esAdmin,
+    required this.cuotasStream,
     this.onEstadoChanged,
   });
   final Map<String, dynamic> contrato;
   final bool esAdmin;
+  final Stream<List<Map<String, dynamic>>> cuotasStream;
   final ValueChanged<String>? onEstadoChanged;
 
   @override
@@ -428,9 +431,9 @@ class _ContratoHeader extends StatelessWidget {
                 ),
                 const SizedBox(width: 16),
                 _DetailChip(
-                  icon: Icons.event,
-                  label: 'Fin',
-                  value: fechaFin != null ? Fmt.fechaCorta(fechaFin) : 'Indefinido',
+                  icon: Icons.timelapse,
+                  label: 'Duración',
+                  value: _duracionLabel(fechaInicio, fechaFin),
                 ),
                 const SizedBox(width: 16),
                 _DetailChip(
@@ -440,9 +443,141 @@ class _ContratoHeader extends StatelessWidget {
                 ),
               ],
             ),
+            const SizedBox(height: 12),
+            // Resumen financiero del contrato — se computa desde cuotas.
+            _ContratoResumen(
+              cuotasStream: cuotasStream,
+              fechaFin: fechaFin,
+              precioMensual: precio,
+            ),
           ],
         ),
       ),
+    );
+  }
+
+  static String _duracionLabel(DateTime inicio, DateTime? fin) {
+    if (fin == null) return 'Indefinido';
+    final meses = (fin.year - inicio.year) * 12 + (fin.month - inicio.month);
+    if (meses == 12) return '1 año';
+    if (meses == 24) return '2 años';
+    if (meses % 12 == 0) return '${meses ~/ 12} años';
+    return '$meses meses';
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Resumen financiero del contrato
+// ---------------------------------------------------------------------------
+
+class _ContratoResumen extends StatelessWidget {
+  const _ContratoResumen({
+    required this.cuotasStream,
+    required this.fechaFin,
+    required this.precioMensual,
+  });
+  final Stream<List<Map<String, dynamic>>> cuotasStream;
+  final DateTime? fechaFin;
+  final double precioMensual;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return StreamBuilder<List<Map<String, dynamic>>>(
+      stream: cuotasStream,
+      initialData: const [],
+      builder: (context, snap) {
+        if (snap.hasError) return const SizedBox.shrink();
+        final rows = snap.data!;
+        // Calcular totales (excluyendo anuladas para no inflar el total).
+        double totalContrato = 0;
+        double recaudado = 0;
+        for (final r in rows) {
+          final estado = r['estado'] as String? ?? 'pendiente';
+          if (estado == 'anulada') continue;
+          totalContrato += (r['monto'] as num? ?? 0).toDouble();
+          recaudado += (r['monto_pagado'] as num? ?? 0).toDouble();
+        }
+        final pendiente = totalContrato - recaudado;
+        final esIndefinido = fechaFin == null;
+
+        return Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: scheme.primaryContainer.withValues(alpha: 0.3),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Row(
+            children: [
+              // Indefinido: solo Recaudado. Fijo: Total + Recaudado + Pendiente.
+              if (esIndefinido) ...[
+                Expanded(
+                  child: _ResumenItem(
+                    label: 'Total recaudado',
+                    value: Fmt.cordobas(recaudado),
+                    color: Colors.green.shade700,
+                  ),
+                ),
+              ] else ...[
+                Expanded(
+                  child: _ResumenItem(
+                    label: 'Total contrato',
+                    value: Fmt.cordobas(totalContrato),
+                    color: scheme.onSurface,
+                  ),
+                ),
+                Container(
+                    width: 1, height: 36, color: scheme.outline.withValues(alpha: 0.3)),
+                Expanded(
+                  child: _ResumenItem(
+                    label: 'Recaudado',
+                    value: Fmt.cordobas(recaudado),
+                    color: Colors.green.shade700,
+                  ),
+                ),
+                Container(
+                    width: 1, height: 36, color: scheme.outline.withValues(alpha: 0.3)),
+                Expanded(
+                  child: _ResumenItem(
+                    label: 'Pendiente',
+                    value: Fmt.cordobas(pendiente),
+                    color: pendiente > 0 ? scheme.error : scheme.outline,
+                  ),
+                ),
+              ],
+            ],
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _ResumenItem extends StatelessWidget {
+  const _ResumenItem({
+    required this.label,
+    required this.value,
+    required this.color,
+  });
+  final String label;
+  final String value;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        Text(label,
+            style: TextStyle(fontSize: 10, color: scheme.outline),
+            textAlign: TextAlign.center),
+        const SizedBox(height: 2),
+        Text(value,
+            style: TextStyle(
+                fontWeight: FontWeight.w700, fontSize: 13, color: color),
+            textAlign: TextAlign.center),
+      ],
     );
   }
 }
