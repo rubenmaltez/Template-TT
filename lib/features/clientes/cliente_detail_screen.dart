@@ -98,11 +98,13 @@ class _ClienteDetailScreenState extends ConsumerState<ClienteDetailScreen> {
             ),
         ],
       ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => _mostrarDialogVisita(context),
-        icon: const Icon(Icons.add_task),
-        label: const Text('Registrar visita'),
-      ),
+      floatingActionButton: clienteAsync.valueOrNull != null
+          ? FloatingActionButton.extended(
+              onPressed: () => _mostrarDialogVisita(context),
+              icon: const Icon(Icons.add_task),
+              label: const Text('Registrar visita'),
+            )
+          : null,
       body: clienteAsync.when(
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (e, _) => Center(child: Text('Error: $e')),
@@ -157,17 +159,23 @@ class _ClienteDetailScreenState extends ConsumerState<ClienteDetailScreen> {
     if (resultado == null || !context.mounted) return;
 
     final service = ref.read(visitasServiceProvider);
-    await service.registrar(
-      clienteId: widget.clienteId,
-      resultado: resultado.resultado,
-      notas: resultado.notas,
-    );
-    if (context.mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Visita registrada')),
+    try {
+      await service.registrar(
+        clienteId: widget.clienteId,
+        resultado: resultado.resultado,
+        notas: resultado.notas,
       );
-      // Fuerza recarga de la sección de visitas via GlobalKey.
-      _visitasKey.currentState?.recargar();
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Visita registrada')),
+        );
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error al registrar visita: $e')),
+        );
+      }
     }
   }
 }

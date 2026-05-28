@@ -448,7 +448,6 @@ class _ContratoHeader extends StatelessWidget {
             _ContratoResumen(
               cuotasStream: cuotasStream,
               fechaFin: fechaFin,
-              precioMensual: precio,
             ),
           ],
         ),
@@ -459,6 +458,8 @@ class _ContratoHeader extends StatelessWidget {
   static String _duracionLabel(DateTime inicio, DateTime? fin) {
     if (fin == null) return 'Indefinido';
     final meses = (fin.year - inicio.year) * 12 + (fin.month - inicio.month);
+    if (meses <= 0) return '—';
+    if (meses == 1) return '1 mes';
     if (meses == 12) return '1 año';
     if (meses == 24) return '2 años';
     if (meses % 12 == 0) return '${meses ~/ 12} años';
@@ -474,11 +475,9 @@ class _ContratoResumen extends StatelessWidget {
   const _ContratoResumen({
     required this.cuotasStream,
     required this.fechaFin,
-    required this.precioMensual,
   });
   final Stream<List<Map<String, dynamic>>> cuotasStream;
   final DateTime? fechaFin;
-  final double precioMensual;
 
   @override
   Widget build(BuildContext context) {
