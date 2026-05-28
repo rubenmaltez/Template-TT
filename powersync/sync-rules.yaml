@@ -75,9 +75,6 @@ bucket_definitions:
       - SELECT * FROM notificaciones_mora
         WHERE tenant_id = bucket.tenant_id AND cobrador_id = bucket.cobrador_id
 
-      - SELECT * FROM fotos_cliente
-        WHERE tenant_id = bucket.tenant_id
-
   # ── Vista global para admin (panel web con sync opcional) ──────────────
   todo_tenant_admin:
     parameters: |
