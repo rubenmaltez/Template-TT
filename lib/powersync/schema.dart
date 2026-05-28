@@ -131,6 +131,7 @@ const schema = Schema([
     Column.text('cuota_id'),
     Column.text('cobrador_id'),
     Column.real('monto_cordobas'),
+    Column.real('vuelto_cordobas'),
     Column.text('moneda'),
     Column.real('monto_original'),
     Column.real('tasa_conversion'),
