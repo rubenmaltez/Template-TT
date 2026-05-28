@@ -135,7 +135,8 @@ void main() {
             closeTo(entregadoEsperado, 0.001),
             reason: 'entregado=${c[0]} saldo=${c[1]}');
         // aplicado nunca excede el saldo.
-        expect(d.aplicadoCordobas, lessThanOrEqualTo(c[1] < 0 ? 0.0 : c[1]) + 0.001);
+        final saldoMax = (c[1] < 0 ? 0.0 : c[1]) + 0.001;
+        expect(d.aplicadoCordobas, lessThanOrEqualTo(saldoMax));
         // nunca negativos.
         expect(d.aplicadoCordobas, greaterThanOrEqualTo(0));
         expect(d.vueltoCordobas, greaterThanOrEqualTo(0));
