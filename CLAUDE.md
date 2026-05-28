@@ -338,6 +338,42 @@ de redeployar. Sin redeploy, PowerSync no ve las columnas nuevas.
 **NUNCA saltar fases.** El costo de seguir el proceso es minutos.
 El costo de saltarlo es horas de debugging.
 
+### Checklist de audit obligatorio (post-implementación)
+
+Además de correctness/security/QA, el audit DEBE incluir estos checks
+específicos que han causado bugs en producción:
+
+**1. Compatibilidad SQL SQLite vs Postgres (CRÍTICO):**
+   - `grep -rn 'FILTER' lib/ --include="*.dart"` → NO debe haber
+     `FILTER (WHERE ...)` en NINGÚN archivo. Es sintaxis Postgres,
+     SQLite no la soporta. Reemplazar con `SUM(CASE WHEN...THEN 1 ELSE 0 END)`.
+   - `grep -rn 'RETURNING\|::text\|::int\|::uuid\|::jsonb' lib/` →
+     casts `::tipo` son Postgres-only. SQLite usa `CAST(x AS tipo)`.
+   - `grep -rn 'ILIKE\|ANY(\|ARRAY\[' lib/` → funciones Postgres-only.
+   - **Scope: TODO el codebase**, no solo archivos modificados.
+
+**2. Stream lifecycle con Riverpod (CRÍTICO):**
+   - Si un widget es `ConsumerStatefulWidget` y usa `ref.watch()` en
+     `build()`, los streams creados en `initState()` DEBEN ser
+     `.asBroadcastStream()`. Sin esto, un rebuild por cambio de provider
+     causa "Bad state: Stream has already been listened to".
+   - **Scope: TODO archivo que combine ConsumerStatefulWidget + StreamBuilder.**
+
+**3. Regresión full-codebase (OBLIGATORIO):**
+   - El audit NO se limita a archivos modificados. Debe escanear el
+     codebase completo para patrones rotos conocidos:
+     - SQL incompatible con SQLite
+     - Imports rotos (archivos que importan algo que se movió/renombró)
+     - Referencias a columnas droppeadas (ej: `contratos.activo`)
+     - Providers huérfanos o dead code
+   - Usar grep/find para verificar, no confiar en análisis manual.
+
+**4. Cadena de integridad DB ampliada:**
+   - Verificar no solo los archivos modificados sino TODAS las queries
+     SQL del codebase que referencien las tablas tocadas.
+   - `grep -rn 'tabla_modificada' lib/ --include="*.dart"` para cada
+     tabla que haya cambiado de schema.
+
 ### Principio de diseño: evaluar ANTES de implementar
 Antes de elegir una herramienta/servicio para un feature nuevo (ej:
 dónde hosear un archivo, qué package usar, qué API consumir), evaluar
