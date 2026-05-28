@@ -3,6 +3,11 @@
 Contexto persistente del proyecto **Cobranza ISP** para sesiones futuras de Claude Code.
 Si estás abriendo este repo por primera vez en esta sesión, leé este archivo primero.
 
+> **Leé también `ESTADO-APP.md`** — es el snapshot del estado real de la app
+> (findings abiertos, cobertura de features y tests, próximos pasos). CLAUDE.md
+> tiene las REGLAS y el PROCESO; ESTADO-APP.md tiene el "dónde estamos parados
+> hoy". Los dos juntos dan el contexto completo para continuar.
+
 ---
 
 ## Producto
