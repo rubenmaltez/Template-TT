@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:printing/printing.dart';
 
 import '../../data/models/pago.dart';
 import '../../data/providers/impresora_provider.dart';
@@ -12,6 +13,7 @@ import '../../data/utils/monto_a_letras.dart';
 import '../../powersync/db.dart' as ps;
 import '../shared/widgets/empty_state.dart';
 import '../shared/widgets/foto_comprobante_view.dart';
+import 'recibo_pdf.dart';
 
 /// Preview visual del recibo + acción para imprimir.
 /// La impresión Bluetooth real se conecta en una iteración siguiente.
@@ -27,7 +29,19 @@ class ReciboScreen extends ConsumerStatefulWidget {
 class _ReciboScreenState extends ConsumerState<ReciboScreen> {
   late final Stream<List<Map<String, dynamic>>> _reciboStream;
 
+  // Vista preview: si está activa, el body del recibo se constraine al
+  // ancho visual de la tira térmica (según `cobranza.formato_recibo_mm`).
+  // Útil en web para que el admin "vea" cómo va a quedar el ticket.
+  bool _vistaPreview = false;
+
   bool get _esMultiCuota => widget.grupoCobro != null;
+
+  /// Ancho en píxeles para simular la tira térmica.
+  /// 80mm ≈ 300px, 57mm ≈ 215px.
+  double _previewWidthPx(int formatoMm) {
+    if (formatoMm == 57) return 215;
+    return 300;
+  }
 
   @override
   void initState() {
@@ -100,10 +114,21 @@ class _ReciboScreenState extends ConsumerState<ReciboScreen> {
         ? ref.watch(logoEmpresaUrlProvider).valueOrNull
         : null;
 
+    final maxWidth = _vistaPreview
+        ? _previewWidthPx(settings.formatoReciboMm)
+        : double.infinity;
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('Recibo'),
         actions: [
+          IconButton(
+            icon: Icon(_vistaPreview ? Icons.crop_free : Icons.crop_din),
+            tooltip: _vistaPreview
+                ? 'Vista normal'
+                : 'Vista preview de la tira térmica',
+            onPressed: () => setState(() => _vistaPreview = !_vistaPreview),
+          ),
           IconButton(
             icon: const Icon(Icons.home),
             onPressed: () => context.go('/'),
@@ -127,51 +152,63 @@ class _ReciboScreenState extends ConsumerState<ReciboScreen> {
           final r = rows.first;
 
           if (_esMultiCuota && rows.length > 1) {
-            return ListView(
-              padding: const EdgeInsets.all(16),
-              children: [
-                _MultiReciboTicket(rows: rows, settings: settings, logoUrl: logoUrl),
-                if (r['foto_comprobante_path'] != null) ...[
-                  const SizedBox(height: 16),
-                  Text('Comprobante adjunto',
-                      style: Theme.of(context).textTheme.titleSmall),
-                  const SizedBox(height: 8),
-                  FotoComprobanteView(
-                      path: r['foto_comprobante_path'] as String?),
-                ],
-                const SizedBox(height: 24),
-                _AccionesImpresion(
-                  reciboId: widget.reciboId,
-                  recibo: r,
-                  settings: settings,
+            return Center(
+              child: ConstrainedBox(
+                constraints: BoxConstraints(maxWidth: maxWidth),
+                child: ListView(
+                  padding: const EdgeInsets.all(16),
+                  children: [
+                    _MultiReciboTicket(
+                        rows: rows, settings: settings, logoUrl: logoUrl),
+                    if (r['foto_comprobante_path'] != null) ...[
+                      const SizedBox(height: 16),
+                      Text('Comprobante adjunto',
+                          style: Theme.of(context).textTheme.titleSmall),
+                      const SizedBox(height: 8),
+                      FotoComprobanteView(
+                          path: r['foto_comprobante_path'] as String?),
+                    ],
+                    const SizedBox(height: 24),
+                    _AccionesImpresion(
+                      reciboId: widget.reciboId,
+                      recibo: r,
+                      settings: settings,
+                      multiRows: rows,
+                    ),
+                    const SizedBox(height: 16),
+                    _PostCobroActions(clienteId: r['cliente_id'] as String?),
+                  ],
                 ),
-                const SizedBox(height: 16),
-                _PostCobroActions(clienteId: r['cliente_id'] as String?),
-              ],
+              ),
             );
           }
 
-          return ListView(
-            padding: const EdgeInsets.all(16),
-            children: [
-              _ReciboTicket(row: r, settings: settings, logoUrl: logoUrl),
-              if (r['foto_comprobante_path'] != null) ...[
-                const SizedBox(height: 16),
-                Text('Comprobante adjunto',
-                    style: Theme.of(context).textTheme.titleSmall),
-                const SizedBox(height: 8),
-                FotoComprobanteView(
-                    path: r['foto_comprobante_path'] as String?),
-              ],
-              const SizedBox(height: 24),
-              _AccionesImpresion(
-                reciboId: widget.reciboId,
-                recibo: r,
-                settings: settings,
+          return Center(
+            child: ConstrainedBox(
+              constraints: BoxConstraints(maxWidth: maxWidth),
+              child: ListView(
+                padding: const EdgeInsets.all(16),
+                children: [
+                  _ReciboTicket(row: r, settings: settings, logoUrl: logoUrl),
+                  if (r['foto_comprobante_path'] != null) ...[
+                    const SizedBox(height: 16),
+                    Text('Comprobante adjunto',
+                        style: Theme.of(context).textTheme.titleSmall),
+                    const SizedBox(height: 8),
+                    FotoComprobanteView(
+                        path: r['foto_comprobante_path'] as String?),
+                  ],
+                  const SizedBox(height: 24),
+                  _AccionesImpresion(
+                    reciboId: widget.reciboId,
+                    recibo: r,
+                    settings: settings,
+                  ),
+                  const SizedBox(height: 16),
+                  _PostCobroActions(clienteId: r['cliente_id'] as String?),
+                ],
               ),
-              const SizedBox(height: 16),
-              _PostCobroActions(clienteId: r['cliente_id'] as String?),
-            ],
+            ),
           );
         },
       ),
@@ -513,10 +550,15 @@ class _AccionesImpresion extends ConsumerStatefulWidget {
     required this.reciboId,
     required this.recibo,
     required this.settings,
+    this.multiRows,
   });
   final String reciboId;
   final Map<String, dynamic> recibo;
   final AppSettings settings;
+
+  /// Si está presente, genera el PDF en modo cobro múltiple usando todas
+  /// las filas. Caso contrario, recibo individual.
+  final List<Map<String, dynamic>>? multiRows;
 
   @override
   ConsumerState<_AccionesImpresion> createState() => _AccionesImpresionState();
@@ -524,6 +566,36 @@ class _AccionesImpresion extends ConsumerStatefulWidget {
 
 class _AccionesImpresionState extends ConsumerState<_AccionesImpresion> {
   bool _imprimiendo = false;
+  bool _descargandoPdf = false;
+
+  Future<void> _descargarPdf() async {
+    setState(() => _descargandoPdf = true);
+    try {
+      final doc = widget.multiRows != null
+          ? await buildMultiReciboPdf(
+              rows: widget.multiRows!, settings: widget.settings)
+          : await buildReciboPdf(
+              row: widget.recibo, settings: widget.settings);
+      final bytes = await doc.save();
+      final numero = (widget.recibo['numero_completo'] as String?) ?? widget.reciboId;
+      final filename =
+          'recibo_${numero.replaceAll(RegExp(r'[^A-Za-z0-9_-]'), '_')}.pdf';
+      await Printing.sharePdf(bytes: bytes, filename: filename);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('PDF generado')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error al generar PDF: $e')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _descargandoPdf = false);
+    }
+  }
 
   Future<void> _imprimir() async {
     final favState = ref.read(impresoraFavoritaProvider);
@@ -628,6 +700,23 @@ class _AccionesImpresionState extends ConsumerState<_AccionesImpresion> {
                 : 'Imprimir ${widget.settings.formatoReciboMm}mm'),
             onPressed: _imprimiendo || !puedeImprimir ? null : _imprimir,
           ),
+        // PDF download — solo visible en web. En mobile usan la impresora
+        // Bluetooth térmica, así que el PDF no aporta nada.
+        if (kIsWeb) ...[
+          const SizedBox(height: 8),
+          FilledButton.icon(
+            icon: _descargandoPdf
+                ? const SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2))
+                : const Icon(Icons.picture_as_pdf),
+            label: Text(_descargandoPdf
+                ? 'Generando PDF...'
+                : 'Descargar PDF ${widget.settings.formatoReciboMm}mm'),
+            onPressed: _descargandoPdf ? null : _descargarPdf,
+          ),
+        ],
         const SizedBox(height: 8),
         if (!kIsWeb)
           OutlinedButton.icon(
