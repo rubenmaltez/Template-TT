@@ -4,13 +4,14 @@
 > JUNTO con `CLAUDE.md` al abrir una sesión nueva de Claude Code, para
 > continuar exactamente desde acá sin re-descubrir el contexto.
 >
-> **Última actualización**: 2026-05-28 (commit `8b241f0`, branch
+> **Última actualización**: 2026-05-28 (commit `0bb3254`, branch
 > `claude/powersync-sdk-setup-KZF1R`).
 >
 > Generado por un audit exhaustivo de 5 agentes en paralelo (backend/DB,
 > dinero/contabilidad, frontend code quality, QA funcional por rol,
-> seguridad). Cuando se cierre un sprint que cambie el estado, **actualizar
-> este archivo**.
+> seguridad). **Los 6 findings MEDIUM del audit ya fueron corregidos**
+> (migraciones 0066-0068 + fixes Dart). Cuando se cierre un sprint que
+> cambie el estado, **actualizar este archivo**.
 
 ---
 
@@ -37,8 +38,8 @@ con vuelto) están resueltos (migraciones 0061/0064/0065).
 | Métrica | Valor |
 |---|---|
 | Archivos Dart (`lib/`) | ~131 (~35k LOC) |
-| Migraciones SQL | 65 (0001 → 0065) |
-| Funciones server-side (RPC/triggers) | ~51 |
+| Migraciones SQL | 68 (0001 → 0068) |
+| Funciones server-side (RPC/triggers) | ~52 |
 | Edge Functions (Deno) | 6 |
 | Schema version (PowerSync) | v10 |
 | Storage buckets | 4 (comprobantes-pago, fotos-clientes, logos-empresa, contratos-documentos) |
@@ -48,18 +49,18 @@ con vuelto) están resueltos (migraciones 0061/0064/0065).
 
 ## 3. Findings abiertos (prioridad para próximos sprints)
 
-### 🟡 MEDIUM (atacar pronto)
+### ✅ RESUELTOS — los 6 MEDIUM del audit (2026-05-28, commits 06b0135→0bb3254)
 
-| ID | Área | Archivo | Problema |
-|---|---|---|---|
-| **M1-SEC** | Seguridad | `cobradores` (RLS 0013/0026) | Falta trigger que congele `rol`. Un admin podría auto-escalar a `super_admin` vía REST directo (`UPDATE cobradores SET rol='super_admin'`). La app usa RPC (seguro), pero RLS no lo previene. Fix: trigger `BEFORE UPDATE/INSERT` que rechace `rol='super_admin'` y mutación de `rol`/`tenant_id` salvo `is_super_admin()`. |
-| **M2-DB** | Backend | geo tables (0003/0016) | `departamentos/municipios/comunidades` sin policy UPDATE/DELETE. Si `/admin/geografia` expone editar/borrar, falla silenciosamente. Verificar UI y agregar policies. |
-| **M3-MONEY** | Dinero | `pagos_repo.dart:206`, `cobro_screen.dart:177` | `cargos_neto` no se actualiza en SQLite local al aplicar cargo offline (solo lo hace el trigger Postgres al sync). Saldo en lista clientes/dashboard/mora queda desfasado hasta sincronizar. Transitorio, no corrompe datos. |
-| **M4-MONEY** | Dinero | `pagos_repo.dart:436`, `pagos_admin_screen.dart:405` | `editarPago` no recalcula `vuelto_cordobas` ni respeta el invariante de moneda. Editar un pago con vuelto rompe INV (visualmente); recaudado sigue OK. |
-| **M5-FE** | Frontend | `clientes_admin_screen.dart:582` | `_Lista` llama `ps.db.watch()` inline en `build()` (anti-patrón). Funciona por el cache de PowerSync, pero re-suscribe en cada rebuild. Único callsite vivo del anti-patrón. Fix: StatefulWidget + `late Stream` en initState. |
-| **M6-DB** | Backend | `clientes` (0020 + 0055) | Dos triggers de cascada de reasignación de cobrador independientes (uno → contratos/cuotas/notif/cargos, otro → fotos). Riesgo de desincronización si se edita uno sin el otro. |
+| ID | Cómo se resolvió |
+|---|---|
+| **M1-SEC** | Migración 0066: trigger `cobradores_freeze_rol` bloquea escalación a super_admin + mutación de rol/tenant_id por escritura directa de no-super_admins. |
+| **M2-DB** | Migración 0067: policies UPDATE/DELETE para geo (admin puede editar/borrar — decisión del producto). |
+| **M3-MONEY** | `pagos_repo`: registrarCobro/Multiple actualizan `cargos_neto` local en la transacción (vía `_deltaCargosExtra`, replica el trigger). Saldo offline correcto. |
+| **M4-MONEY** | Opción B: bloquear editar pago con vuelto>0. UI (botón disabled + snackbar) + repo (guard que lanza excepción). |
+| **M5-FE** | `_Lista` → StatefulWidget con stream en initState/didUpdateWidget. Cierra el item de backlog "watch inline en build()". |
+| **M6-DB** | Migración 0068: cascada de reasignación consolidada en una función (incluye fotos_cliente). Trigger separado eliminado. |
 
-### 🟢 LOW / NIT
+### 🟢 LOW / NIT (abiertos)
 
 - **L1**: "Pendiente de contrato" (precio×meses) vs "Saldo de cuotas" (suma per-cuota) son números legítimamente distintos pero un admin podría compararlos. Documentar la distinción en UI.
 - **L2**: `_CuotaRow` (detalle contrato) muestra saldo sin `cargos_neto` (cosmético).
@@ -140,17 +141,17 @@ contables) cubre la correctitud de la DATA aunque no del CÓDIGO. Correr post-de
 
 ## 7. Próximos pasos sugeridos (orden de ROI)
 
-1. **M1-SEC**: trigger de congelamiento de `rol` en `cobradores` (cierra el único
-   vector de escalación de privilegios).
-2. **Tests de `pagos_repo`** (P0): el dinero merece tests de repo, no solo de la
-   matemática pura.
-3. **M3/M4-MONEY**: cargos_neto local offline + editarPago con vuelto.
-4. **Decidir destino de los flags**: implementar o quitar `modo_ruta` y `caja_chica`
+> Los 6 MEDIUM (M1-M6) ya están resueltos. Lo que queda:
+
+1. **Tests de `pagos_repo`** (P0): el dinero merece tests de repo, no solo de la
+   matemática pura. El gap más importante que queda.
+2. **Decidir destino de los flags**: implementar o quitar `modo_ruta` y `caja_chica`
    (hoy prometen algo que no hacen).
-5. **M5-FE**: arreglar el último `watch`-in-`build` (`_Lista`).
-6. **Limpieza**: borrar los 3 archivos dead code + corregir copy "Reasignar".
-7. **Refactor god files** (no urgente): `reportes_admin_screen` y `cuotas_admin_screen`
+3. **Limpieza**: borrar los 3 archivos dead code + corregir copy "Reasignar".
+4. **Refactor god files** (no urgente): `reportes_admin_screen` y `cuotas_admin_screen`
    son los mejores candidatos (varios componentes independientes en un archivo).
+5. **LOW/NIT** pendientes (sección 3): documentar distinción saldo vs pendiente,
+   cargos_neto en mora report, etc.
 
 ---
 
