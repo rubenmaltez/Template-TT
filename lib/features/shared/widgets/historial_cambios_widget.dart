@@ -160,13 +160,10 @@ class _CambioTile extends StatelessWidget {
     final (IconData icon, Color color, String label) =
         _labelFor(evento.accion, evento.tabla, scheme);
 
-    // El evento principal usa su propia acción para el render. Las extraLineas
-    // (cuota/update absorbidas por un pago/create) SIEMPRE son updates →
-    // mantienen el "antes → después" aunque el evento sea create.
-    final principales = evento.cambios
-        .map((c) => (c: c, accion: evento.accion));
-    final extras = evento.extraLineas.map((c) => (c: c, accion: 'update'));
-    final filas = [...principales, ...extras].toList();
+    // El historial muestra SIEMPRE "atributo: estado anterior → nuevo" para
+    // que el log sea consistente, sin importar el tipo de acción. En creaciones
+    // el anterior es "—"; en eliminaciones el nuevo es "—".
+    final filas = [...evento.cambios, ...evento.extraLineas];
 
     return ExpansionTile(
       leading: Icon(icon, color: color, size: 20),
@@ -184,14 +181,14 @@ class _CambioTile extends StatelessWidget {
                 style: TextStyle(color: scheme.outline, fontSize: 12)),
           )
         else
-          ...filas.map((f) => Padding(
+          ...filas.map((c) => Padding(
                 padding: const EdgeInsets.fromLTRB(56, 0, 16, 8),
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     SizedBox(
                       width: 100,
-                      child: Text(f.c.campo,
+                      child: Text(c.campo,
                           style: TextStyle(
                             color: scheme.outline,
                             fontSize: 12,
@@ -199,37 +196,16 @@ class _CambioTile extends StatelessWidget {
                           )),
                     ),
                     Expanded(
-                      child: _textoCambio(f.c, f.accion, scheme),
+                      child: Text(
+                        '${c.antes} → ${c.despues}',
+                        style: const TextStyle(fontSize: 12),
+                      ),
                     ),
                   ],
                 ),
               )),
         const SizedBox(height: 4),
       ],
-    );
-  }
-
-  // Render del valor según la acción del evento:
-  // - create: "valor" (sin "— →"; no había estado previo).
-  // - delete: "valor (eliminado)" tachado.
-  // - update / anulacion: "antes → después".
-  Widget _textoCambio(CampoChange c, String accion, ColorScheme scheme) {
-    if (accion == 'create') {
-      return Text(c.despues, style: const TextStyle(fontSize: 12));
-    }
-    if (accion == 'delete') {
-      return Text(
-        '${c.antes} (eliminado)',
-        style: TextStyle(
-          fontSize: 12,
-          color: scheme.outline,
-          decoration: TextDecoration.lineThrough,
-        ),
-      );
-    }
-    return Text(
-      '${c.antes} → ${c.despues}',
-      style: const TextStyle(fontSize: 12),
     );
   }
 
