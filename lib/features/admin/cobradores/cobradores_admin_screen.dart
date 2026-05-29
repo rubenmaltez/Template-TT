@@ -4,6 +4,8 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../../data/providers/cobrador_provider.dart';
+import '../../../data/repositories/super_admin_repo.dart';
 import '../../../data/utils/edge_functions.dart';
 import '../../../data/utils/formatters.dart';
 import '../../../data/utils/validators.dart';
@@ -552,6 +554,11 @@ class _EditarCobradorDialogState extends ConsumerState<_EditarCobradorDialog> {
   String? _error;
   bool _guardando = false;
 
+  // El dropdown de rol solo es editable para el super_admin (el backend lo
+  // restringe a la RPC super_admin-only vía el trigger cobradores_freeze_rol).
+  bool get _puedeCambiarRol =>
+      ref.watch(cobradorActualProvider).valueOrNull?.esSuperAdmin ?? false;
+
   @override
   void initState() {
     super.initState();
@@ -618,34 +625,42 @@ class _EditarCobradorDialogState extends ConsumerState<_EditarCobradorDialog> {
       _error = null;
     });
     try {
+      // prefijo_recibo no aplica a roles no-cobrador (espeja lo que hace la
+      // RPC set_cobrador_rol, para que no diverjan).
+      final prefijoFinal =
+          (_rol == 'cobrador' && prefijo.isNotEmpty) ? prefijo : null;
+      // nombre/teléfono/prefijo/activo: UPDATE local directo. NO incluye `rol`:
+      // el trigger cobradores_freeze_rol (0066) rechaza el write directo de rol
+      // (la UI mostraría éxito falso y el sync se rechazaría). El rol va por RPC.
       await ps.db.execute(
         '''
         UPDATE cobradores
-           SET nombre = ?, telefono = ?, rol = ?,
-               prefijo_recibo = ?, activo = ?
+           SET nombre = ?, telefono = ?, prefijo_recibo = ?, activo = ?
          WHERE id = ?
         ''',
         [
           _nombreCtrl.text.trim(),
           PhoneTextField.sanitized(_telCtrl),
-          _rol,
-          prefijo.isEmpty ? null : prefijo,
+          prefijoFinal,
           _activo ? 1 : 0,
           widget.row['id'],
         ],
       );
+      // Cambio de rol (solo super_admin; el dropdown está locked para el
+      // resto): server-side vía RPC, que valida y escribe el audit_log.
+      if (cambiaRol) {
+        await ref.read(superAdminRepoProvider).setCobradorRol(
+              cobradorId: widget.row['id'] as String,
+              nuevoRol: _rol,
+            );
+      }
       if (mounted) Navigator.pop(context);
     } catch (e) {
-      setState(() => _error = e.toString());
+      if (mounted) setState(() => _error = e.toString());
     } finally {
       if (mounted) setState(() => _guardando = false);
     }
   }
-
-  // El dropdown de rol solo es editable para el super_admin (el backend lo
-  // restringe a la RPC super_admin-only). Para el admin común queda en lock.
-  bool get _puedeCambiarRol =>
-      ref.watch(cobradorActualProvider).valueOrNull?.esSuperAdmin ?? false;
 
   @override
   Widget build(BuildContext context) {
@@ -666,13 +681,20 @@ class _EditarCobradorDialogState extends ConsumerState<_EditarCobradorDialog> {
               const SizedBox(height: 12),
               DropdownButtonFormField<String>(
                 value: _rol,
-                decoration: const InputDecoration(labelText: 'Rol'),
+                decoration: InputDecoration(
+                  labelText: 'Rol',
+                  helperText: _puedeCambiarRol
+                      ? null
+                      : 'Solo el super_admin puede cambiar el rol',
+                ),
                 items: const [
                   DropdownMenuItem(value: 'admin', child: Text('Administrador')),
                   DropdownMenuItem(value: 'admin_cobranza', child: Text('Admin de cobranza')),
                   DropdownMenuItem(value: 'cobrador', child: Text('Cobrador')),
                 ],
-                onChanged: (v) => setState(() => _rol = v ?? _rol),
+                onChanged: _puedeCambiarRol
+                    ? (v) => setState(() => _rol = v ?? _rol)
+                    : null,
               ),
               const SizedBox(height: 12),
               TextField(
