@@ -1,9 +1,21 @@
 part of 'contrato_detail_screen.dart';
 
-class _PagosSection extends StatelessWidget {
-  const _PagosSection({required this.pagosStream, required this.esAdmin});
-  final Stream<List<Map<String, dynamic>>> pagosStream;
+// Sección "Historial de pagos". Visible para TODOS los roles (cobrador
+// incluido) — las acciones destructivas (anular/recrear) siguen gateadas a
+// admin dentro del `_PagoDetalleSheet`. Consume `contratoPagosProvider` vía
+// Riverpod (mismo patrón que el resto del detalle, ver contrato_providers.dart).
+class _PagosSection extends ConsumerStatefulWidget {
+  const _PagosSection({required this.contratoId, required this.esAdmin});
+  final String contratoId;
   final bool esAdmin;
+
+  @override
+  ConsumerState<_PagosSection> createState() => _PagosSectionState();
+}
+
+class _PagosSectionState extends ConsumerState<_PagosSection> {
+  // true = más nuevos primero (el orden DESC que viene del provider).
+  bool _masNuevosPrimero = true;
 
   @override
   Widget build(BuildContext context) {
@@ -16,22 +28,41 @@ class _PagosSection extends StatelessWidget {
           children: [
             Icon(Icons.payments, size: 20, color: scheme.primary),
             const SizedBox(width: 8),
-            Text('Pagos recientes',
-                style: Theme.of(context)
-                    .textTheme
-                    .titleSmall
-                    ?.copyWith(fontWeight: FontWeight.bold)),
+            Expanded(
+              child: Text('Historial de pagos',
+                  style: Theme.of(context)
+                      .textTheme
+                      .titleSmall
+                      ?.copyWith(fontWeight: FontWeight.bold)),
+            ),
+            // Toggle de orden: Más nuevos / Más antiguos.
+            SegmentedButton<bool>(
+              segments: const [
+                ButtonSegment(value: true, label: Text('Más nuevos')),
+                ButtonSegment(value: false, label: Text('Más antiguos')),
+              ],
+              selected: {_masNuevosPrimero},
+              showSelectedIcon: false,
+              style: ButtonStyle(
+                visualDensity: VisualDensity.compact,
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                textStyle: WidgetStatePropertyAll(
+                  Theme.of(context).textTheme.labelSmall,
+                ),
+              ),
+              onSelectionChanged: (sel) =>
+                  setState(() => _masNuevosPrimero = sel.first),
+            ),
           ],
         ),
         const SizedBox(height: 8),
-        StreamBuilder<List<Map<String, dynamic>>>(
-          stream: pagosStream,
-          initialData: const [],
-          builder: (context, snap) {
-            if (snap.hasError) {
-              return Center(child: Text('Error: ${snap.error}'));
-            }
-            final rows = snap.data!;
+        ref.watch(contratoPagosProvider(widget.contratoId)).when(
+          loading: () => const Padding(
+            padding: EdgeInsets.symmetric(vertical: 24),
+            child: Center(child: CircularProgressIndicator()),
+          ),
+          error: (e, _) => Center(child: Text('Error: $e')),
+          data: (rows) {
             if (rows.isEmpty) {
               return Padding(
                 padding: const EdgeInsets.symmetric(vertical: 24),
@@ -42,13 +73,19 @@ class _PagosSection extends StatelessWidget {
               );
             }
 
+            // El provider trae DESC (más nuevos primero). Si el user pide
+            // "más antiguos", invertimos client-side la lista ya traída.
+            final ordenadas = _masNuevosPrimero
+                ? rows
+                : rows.reversed.toList();
+
             return Card(
               clipBehavior: Clip.antiAlias,
               child: Column(
                 children: [
-                  for (var i = 0; i < rows.length; i++) ...[
+                  for (var i = 0; i < ordenadas.length; i++) ...[
                     if (i > 0) const Divider(height: 1),
-                    _PagoTile(row: rows[i], esAdmin: esAdmin),
+                    _PagoTile(row: ordenadas[i], esAdmin: widget.esAdmin),
                   ],
                 ],
               ),

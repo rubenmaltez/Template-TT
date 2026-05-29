@@ -15,12 +15,12 @@ class _ContratoHeader extends StatelessWidget {
   const _ContratoHeader({
     required this.contrato,
     required this.esAdmin,
-    required this.resumenStream,
+    required this.contratoId,
     this.onEstadoChanged,
   });
   final Map<String, dynamic> contrato;
   final bool esAdmin;
-  final Stream<List<Map<String, dynamic>>> resumenStream;
+  final String contratoId;
   final ValueChanged<String>? onEstadoChanged;
 
   @override
@@ -179,7 +179,7 @@ class _ContratoHeader extends StatelessWidget {
             // Recaudado = SUM(pagos no anulados) del contrato.
             // Pendiente = Total - Recaudado.
             _ContratoResumen(
-              resumenStream: resumenStream,
+              contratoId: contratoId,
               precioMensual: precio,
               fechaInicio: fechaInicio,
               fechaFin: fechaFin,
@@ -195,14 +195,14 @@ class _ContratoHeader extends StatelessWidget {
 // Resumen financiero del contrato
 // ---------------------------------------------------------------------------
 
-class _ContratoResumen extends StatelessWidget {
+class _ContratoResumen extends ConsumerWidget {
   const _ContratoResumen({
-    required this.resumenStream,
+    required this.contratoId,
     required this.precioMensual,
     required this.fechaInicio,
     required this.fechaFin,
   });
-  final Stream<List<Map<String, dynamic>>> resumenStream;
+  final String contratoId;
   final double precioMensual;
   final DateTime fechaInicio;
   final DateTime? fechaFin;
@@ -218,16 +218,14 @@ class _ContratoResumen extends StatelessWidget {
   }
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final scheme = Theme.of(context).colorScheme;
     final totalContrato = _calcularTotalContrato();
     final esIndefinido = totalContrato == null;
-    return StreamBuilder<List<Map<String, dynamic>>>(
-      stream: resumenStream,
-      initialData: const [],
-      builder: (context, snap) {
-        if (snap.hasError) return const SizedBox.shrink();
-        final rows = snap.data!;
+    return ref.watch(contratoRecaudadoProvider(contratoId)).when(
+      loading: () => const SizedBox.shrink(),
+      error: (_, __) => const SizedBox.shrink(),
+      data: (rows) {
         final recaudado = rows.isEmpty
             ? 0.0
             : ((rows.first['recaudado'] as num?) ?? 0).toDouble();

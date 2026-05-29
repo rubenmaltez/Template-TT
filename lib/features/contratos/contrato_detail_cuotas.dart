@@ -2,9 +2,9 @@ part of 'contrato_detail_screen.dart';
 
 enum _CuotaFiltro { todas, pendientes, pagadas, manuales }
 
-class _CuotasSection extends StatelessWidget {
+class _CuotasSection extends ConsumerWidget {
   const _CuotasSection({
-    required this.cuotasStream,
+    required this.contratoId,
     required this.diasGracia,
     required this.multiSelect,
     required this.selected,
@@ -14,7 +14,7 @@ class _CuotasSection extends StatelessWidget {
     required this.onTapCuota,
     this.onLongPressCuota,
   });
-  final Stream<List<Map<String, dynamic>>> cuotasStream;
+  final String contratoId;
   final int diasGracia;
   final bool multiSelect;
   final Set<String> selected;
@@ -25,7 +25,7 @@ class _CuotasSection extends StatelessWidget {
   final void Function(String cuotaId, List<String> orderedIds)? onLongPressCuota;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final scheme = Theme.of(context).colorScheme;
 
     return Column(
@@ -45,14 +45,13 @@ class _CuotasSection extends StatelessWidget {
         ),
         const SizedBox(height: 8),
         // Stream de cuotas — engloba chips + lista para poder contar
-        StreamBuilder<List<Map<String, dynamic>>>(
-          stream: cuotasStream,
-          initialData: const [],
-          builder: (context, snap) {
-            if (snap.hasError) {
-              return Center(child: Text('Error: ${snap.error}'));
-            }
-            final allRows = snap.data!;
+        ref.watch(contratoCuotasProvider(contratoId)).when(
+          loading: () => const Padding(
+            padding: EdgeInsets.symmetric(vertical: 24),
+            child: Center(child: CircularProgressIndicator()),
+          ),
+          error: (e, _) => Center(child: Text('Error: $e')),
+          data: (allRows) {
 
             // Contadores por filtro (incluyendo 'manuales' = sin contrato_id NO,
             // todas son del contrato actual aquí — 'manuales' = tipo_cargo_manual != null).
