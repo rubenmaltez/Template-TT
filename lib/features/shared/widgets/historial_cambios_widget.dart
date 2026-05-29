@@ -39,7 +39,7 @@ class _HistorialCambiosWidgetState extends State<HistorialCambiosWidget> {
       '''
       SELECT a.id, a.accion, a.campo,
              a.valor_anterior, a.valor_nuevo,
-             a.user_id, a.user_rol, a.created_at,
+             a.user_id, a.user_rol, a.created_at, a.ocurrido_en,
              c.nombre AS user_nombre
         FROM audit_log a
    LEFT JOIN cobradores c ON c.id = a.user_id
@@ -134,8 +134,12 @@ class _CambioTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final row = evento.row;
-    // created_at viene en UTC del server: convertir a hora local del device.
-    final fecha = DateTime.parse(row['created_at'] as String).toLocal();
+    // ocurrido_en = hora REAL del dispositivo cuando ocurrió la acción
+    // (offline-first). Fallback a created_at (hora server al sincronizar)
+    // para filas viejas previas a la Fase B. Ambas en UTC → toLocal().
+    final fecha = DateTime.parse(
+      (row['ocurrido_en'] ?? row['created_at']) as String,
+    ).toLocal();
     final autor =
         row['user_nombre'] as String? ?? row['user_rol'] as String? ?? '—';
 
@@ -259,7 +263,7 @@ class _HistorialCuotaWidgetState extends State<HistorialCuotaWidget> {
       '''
       SELECT a.id, a.tabla, a.accion, a.campo,
              a.valor_anterior, a.valor_nuevo,
-             a.user_id, a.user_rol, a.created_at,
+             a.user_id, a.user_rol, a.created_at, a.ocurrido_en,
              c.nombre AS user_nombre
         FROM audit_log a
    LEFT JOIN cobradores c ON c.id = a.user_id
@@ -332,9 +336,12 @@ class _HistorialCuotaWidgetState extends State<HistorialCuotaWidget> {
   List<_EventoVisual> _construirEventos(List<Map<String, dynamic>> rows) {
     const ventana = Duration(seconds: 3);
 
-    // Parseamos created_at una vez para el matching de ventana.
+    // Parseamos la hora de la acción una vez para el matching de ventana.
+    // Usamos ocurrido_en (hora de dispositivo) con fallback a created_at:
+    // es la que ahora marca el orden real del cobro offline-first.
     final parsed = rows.map((r) {
-      final dt = DateTime.tryParse(r['created_at'] as String? ?? '');
+      final raw = (r['ocurrido_en'] ?? r['created_at']) as String? ?? '';
+      final dt = DateTime.tryParse(raw);
       return (row: r, ts: dt);
     }).toList();
 

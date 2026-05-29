@@ -79,9 +79,11 @@ class _ContratoDetailScreenState extends ConsumerState<ContratoDetailScreen> {
   // --- estado del contrato ---
 
   Future<void> _cambiarEstado(String nuevoEstado) async {
+    // Hora REAL del dispositivo (UTC) para el change log — offline-first.
+    final ocurridoEn = DateTime.now().toUtc().toIso8601String();
     await ps.db.execute(
-      'UPDATE contratos SET estado = ? WHERE id = ?',
-      [nuevoEstado, widget.contratoId],
+      'UPDATE contratos SET estado = ?, ocurrido_en = ? WHERE id = ?',
+      [nuevoEstado, ocurridoEn, widget.contratoId],
     );
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(

@@ -71,6 +71,8 @@ class PagosRepo {
     final clientLocalIdPago = _uuid.v4();
     final clientLocalIdRecibo = _uuid.v4();
     final now = (fechaPago ?? DateTime.now()).toIso8601String();
+    // Hora REAL del dispositivo (UTC) para el change log — offline-first.
+    final ocurridoEn = DateTime.now().toUtc().toIso8601String();
     final correlativoCompleter = <int>[];
 
     // Guard correlativo: SIEMPRE consultar el server para el MAX porque
@@ -97,13 +99,15 @@ class PagosRepo {
             '''
             INSERT INTO cargos_extra (
               id, tenant_id, cuota_id, cobrador_id, tipo, monto,
-              porcentaje, descripcion, aplicado_por, aplicado_en, client_local_id
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+              porcentaje, descripcion, aplicado_por, aplicado_en, client_local_id,
+              ocurrido_en
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ''',
             [
               _uuid.v4(), tenantId, cargo.cuotaId, cobradorId,
               cargo.tipo, cargo.monto, cargo.porcentaje,
               cargo.descripcion, cobradorId, now, _uuid.v4(),
+              ocurridoEn,
             ],
           );
         }
@@ -135,8 +139,8 @@ class PagosRepo {
           id, tenant_id, cuota_id, cobrador_id,
           monto_cordobas, vuelto_cordobas, moneda, monto_original, tasa_conversion,
           metodo, referencia, foto_comprobante_path,
-          lat, lng, notas, fecha_pago, anulado, client_local_id
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?)
+          lat, lng, notas, fecha_pago, anulado, client_local_id, ocurrido_en
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)
         ''',
         [
           pagoId,
@@ -156,6 +160,7 @@ class PagosRepo {
           notas,
           now,
           clientLocalIdPago,
+          ocurridoEn,
         ],
       );
 
@@ -164,8 +169,8 @@ class PagosRepo {
         INSERT INTO recibos (
           id, tenant_id, pago_id, cobrador_id,
           prefijo, correlativo, numero_completo,
-          reimpresiones, anulado, created_at, client_local_id
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, 0, 0, ?, ?)
+          reimpresiones, anulado, created_at, client_local_id, ocurrido_en
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, 0, 0, ?, ?, ?)
         ''',
         [
           reciboId,
@@ -177,6 +182,7 @@ class PagosRepo {
           numeroCompleto,
           now,
           clientLocalIdRecibo,
+          ocurridoEn,
         ],
       );
 
@@ -203,8 +209,8 @@ class PagosRepo {
         // efecto localmente. `delta` ya es exactamente cargos_neto
         // (reconexion/otro suman, descuento_* restan).
         await tx.execute(
-          'UPDATE cuotas SET cargos_neto = ? WHERE id = ?',
-          [delta, cuotaId],
+          'UPDATE cuotas SET cargos_neto = ?, ocurrido_en = ? WHERE id = ?',
+          [delta, ocurridoEn, cuotaId],
         );
         final nuevoEstado = calcularEstadoCuota(
           estadoActual: estadoActual,
@@ -213,8 +219,8 @@ class PagosRepo {
           deltaCargosExtra: delta,
         );
         await tx.execute(
-          'UPDATE cuotas SET monto_pagado = ?, estado = ? WHERE id = ?',
-          [pagadoNuevo, nuevoEstado, cuotaId],
+          'UPDATE cuotas SET monto_pagado = ?, estado = ?, ocurrido_en = ? WHERE id = ?',
+          [pagadoNuevo, nuevoEstado, ocurridoEn, cuotaId],
         );
       }
     });
@@ -249,6 +255,8 @@ class PagosRepo {
 
     final grupoCobro = _uuid.v4();
     final now = (fechaPago ?? DateTime.now()).toIso8601String();
+    // Hora REAL del dispositivo (UTC) para el change log — offline-first.
+    final ocurridoEn = DateTime.now().toUtc().toIso8601String();
     final reciboIds = <String>[];
     String? primerPagoId;
 
@@ -274,13 +282,15 @@ class PagosRepo {
             '''
             INSERT INTO cargos_extra (
               id, tenant_id, cuota_id, cobrador_id, tipo, monto,
-              porcentaje, descripcion, aplicado_por, aplicado_en, client_local_id
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+              porcentaje, descripcion, aplicado_por, aplicado_en, client_local_id,
+              ocurrido_en
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ''',
             [
               _uuid.v4(), tenantId, cargo.cuotaId, cobradorId,
               cargo.tipo, cargo.monto, cargo.porcentaje,
               cargo.descripcion, cobradorId, now, _uuid.v4(),
+              ocurridoEn,
             ],
           );
         }
@@ -317,14 +327,16 @@ class PagosRepo {
             id, tenant_id, cuota_id, cobrador_id,
             monto_cordobas, vuelto_cordobas, moneda, monto_original, tasa_conversion,
             metodo, referencia, foto_comprobante_path,
-            lat, lng, notas, fecha_pago, anulado, grupo_cobro, client_local_id
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)
+            lat, lng, notas, fecha_pago, anulado, grupo_cobro, client_local_id,
+            ocurrido_en
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?)
           ''',
           [
             pagoId, tenantId, cuotaIds[i], cobradorId,
             montosCordobas[i], vueltoPago, moneda.value, montosOriginal[i], tasaConversion,
             metodo.value, referencia, fotoComprobantePath,
             lat, lng, notas, now, grupoCobro, _uuid.v4(),
+            ocurridoEn,
           ],
         );
 
@@ -333,12 +345,13 @@ class PagosRepo {
           INSERT INTO recibos (
             id, tenant_id, pago_id, cobrador_id,
             prefijo, correlativo, numero_completo,
-            reimpresiones, anulado, created_at, client_local_id
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, 0, 0, ?, ?)
+            reimpresiones, anulado, created_at, client_local_id, ocurrido_en
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, 0, 0, ?, ?, ?)
           ''',
           [
             reciboId, tenantId, pagoId, cobradorId,
             prefijoRecibo, correlativo, numeroCompleto, now, _uuid.v4(),
+            ocurridoEn,
           ],
         );
 
@@ -359,8 +372,8 @@ class PagosRepo {
           // descuento_* restan). Sin esto el saldo offline queda stale
           // hasta el sync.
           await tx.execute(
-            'UPDATE cuotas SET cargos_neto = ? WHERE id = ?',
-            [delta, cuotaIds[i]],
+            'UPDATE cuotas SET cargos_neto = ?, ocurrido_en = ? WHERE id = ?',
+            [delta, ocurridoEn, cuotaIds[i]],
           );
           final nuevoEstado = calcularEstadoCuota(
             estadoActual: estadoActual,
@@ -369,8 +382,8 @@ class PagosRepo {
             deltaCargosExtra: delta,
           );
           await tx.execute(
-            'UPDATE cuotas SET monto_pagado = ?, estado = ? WHERE id = ?',
-            [pagadoNuevo, nuevoEstado, cuotaIds[i]],
+            'UPDATE cuotas SET monto_pagado = ?, estado = ?, ocurrido_en = ? WHERE id = ?',
+            [pagadoNuevo, nuevoEstado, ocurridoEn, cuotaIds[i]],
           );
         }
       }
@@ -392,6 +405,8 @@ class PagosRepo {
     required String motivo,
   }) async {
     final now = DateTime.now().toIso8601String();
+    // Hora REAL del dispositivo (UTC) para el change log — offline-first.
+    final ocurridoEn = DateTime.now().toUtc().toIso8601String();
     await ps.db.writeTransaction((tx) async {
       // Snapshot del monto antes de marcar anulado, para ajustar cuota local.
       final pagoRows = await tx.getAll(
@@ -405,19 +420,20 @@ class PagosRepo {
       await tx.execute(
         '''
         UPDATE pagos
-           SET anulado = 1, anulado_en = ?, anulado_por = ?, motivo_anulacion = ?
+           SET anulado = 1, anulado_en = ?, anulado_por = ?, motivo_anulacion = ?,
+               ocurrido_en = ?
          WHERE id = ?
         ''',
-        [now, anuladoPorId, motivo, pagoId],
+        [now, anuladoPorId, motivo, ocurridoEn, pagoId],
       );
 
       await tx.execute(
         '''
         UPDATE recibos
-           SET anulado = 1, anulado_en = ?, anulado_por = ?
+           SET anulado = 1, anulado_en = ?, anulado_por = ?, ocurrido_en = ?
          WHERE pago_id = ? AND anulado = 0
         ''',
-        [now, anuladoPorId, pagoId],
+        [now, anuladoPorId, ocurridoEn, pagoId],
       );
 
       // Reflejar localmente el recálculo del trigger server, considerando
@@ -440,8 +456,8 @@ class PagosRepo {
           deltaCargosExtra: delta,
         );
         await tx.execute(
-          'UPDATE cuotas SET monto_pagado = ?, estado = ? WHERE id = ?',
-          [pagadoNuevo, nuevoEstado, cuotaId],
+          'UPDATE cuotas SET monto_pagado = ?, estado = ?, ocurrido_en = ? WHERE id = ?',
+          [pagadoNuevo, nuevoEstado, ocurridoEn, cuotaId],
         );
       }
     });
@@ -460,6 +476,8 @@ class PagosRepo {
     /// Pasar true para limpiar notas (null = no tocar).
     bool limpiarNotas = false,
   }) async {
+    // Hora REAL del dispositivo (UTC) para el change log — offline-first.
+    final ocurridoEn = DateTime.now().toUtc().toIso8601String();
     await ps.db.writeTransaction((tx) async {
       // Leer el pago actual para obtener cuota_id y monto previo.
       final pagoRows = await tx.getAll(
@@ -510,6 +528,10 @@ class PagosRepo {
 
       if (sets.isEmpty) return;
 
+      // Estampar la hora de dispositivo de esta edición (solo si hubo cambios).
+      sets.add('ocurrido_en = ?');
+      params.add(ocurridoEn);
+
       params.add(pagoId);
       await tx.execute(
         'UPDATE pagos SET ${sets.join(', ')} WHERE id = ?',
@@ -539,8 +561,8 @@ class PagosRepo {
             deltaCargosExtra: delta,
           );
           await tx.execute(
-            'UPDATE cuotas SET monto_pagado = ?, estado = ? WHERE id = ?',
-            [pagadoNuevo, nuevoEstado, cuotaId],
+            'UPDATE cuotas SET monto_pagado = ?, estado = ?, ocurrido_en = ? WHERE id = ?',
+            [pagadoNuevo, nuevoEstado, ocurridoEn, cuotaId],
           );
         }
       }

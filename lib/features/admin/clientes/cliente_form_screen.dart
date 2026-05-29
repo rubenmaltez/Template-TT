@@ -130,6 +130,8 @@ class _ClienteFormScreenState extends ConsumerState<ClienteFormScreen> {
 
     try {
       final now = DateTime.now().toIso8601String();
+      // Hora REAL del dispositivo (UTC) para el change log — offline-first.
+      final ocurridoEn = DateTime.now().toUtc().toIso8601String();
       final lat = double.tryParse(_lat.text);
       final lng = double.tryParse(_lng.text);
 
@@ -142,8 +144,8 @@ class _ClienteFormScreenState extends ConsumerState<ClienteFormScreen> {
           INSERT INTO clientes (
             id, tenant_id, cobrador_id, comunidad_id, nombre, cedula,
             telefono, direccion, direccion_referencia, latitud, longitud,
-            foto_path, activo, created_at, updated_at
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            foto_path, activo, created_at, updated_at, ocurrido_en
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
           ''',
           [
             id, tenantId, _cobradorId, _comunidadId,
@@ -154,7 +156,7 @@ class _ClienteFormScreenState extends ConsumerState<ClienteFormScreen> {
             _referencia.text.trim().isEmpty ? null : _referencia.text.trim(),
             lat, lng,
             _fotoPath,
-            _activo ? 1 : 0, now, now,
+            _activo ? 1 : 0, now, now, ocurridoEn,
           ],
         );
       } else {
@@ -164,7 +166,7 @@ class _ClienteFormScreenState extends ConsumerState<ClienteFormScreen> {
              SET cobrador_id = ?, comunidad_id = ?, nombre = ?, cedula = ?,
                  telefono = ?, direccion = ?, direccion_referencia = ?,
                  latitud = ?, longitud = ?, foto_path = ?,
-                 activo = ?, updated_at = ?
+                 activo = ?, updated_at = ?, ocurrido_en = ?
            WHERE id = ?
           ''',
           [
@@ -175,7 +177,7 @@ class _ClienteFormScreenState extends ConsumerState<ClienteFormScreen> {
             _referencia.text.trim().isEmpty ? null : _referencia.text.trim(),
             lat, lng,
             _fotoPath,
-            _activo ? 1 : 0, now,
+            _activo ? 1 : 0, now, ocurridoEn,
             widget.clienteId,
           ],
         );

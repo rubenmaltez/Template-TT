@@ -84,9 +84,11 @@ class _DocumentoContratoSectionState extends State<_DocumentoContratoSection> {
           .uploadBinary(storagePath, bytes,
               fileOptions: FileOptions(contentType: mime));
 
+      // Hora REAL del dispositivo (UTC) para el change log — offline-first.
+      final ocurridoEn = DateTime.now().toUtc().toIso8601String();
       await ps.db.execute(
-        'UPDATE contratos SET documento_path = ? WHERE id = ?',
-        [storagePath, widget.contratoId],
+        'UPDATE contratos SET documento_path = ?, ocurrido_en = ? WHERE id = ?',
+        [storagePath, ocurridoEn, widget.contratoId],
       );
 
       if (mounted) {
@@ -130,9 +132,11 @@ class _DocumentoContratoSectionState extends State<_DocumentoContratoSection> {
     setState(() => _trabajando = true);
     try {
       // DB primero (consistente con FotoGalleryWidget).
+      // Hora REAL del dispositivo (UTC) para el change log — offline-first.
+      final ocurridoEn = DateTime.now().toUtc().toIso8601String();
       await ps.db.execute(
-        'UPDATE contratos SET documento_path = NULL WHERE id = ?',
-        [widget.contratoId],
+        'UPDATE contratos SET documento_path = NULL, ocurrido_en = ? WHERE id = ?',
+        [ocurridoEn, widget.contratoId],
       );
       try {
         await Supabase.instance.client.storage

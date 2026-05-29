@@ -77,6 +77,7 @@ const schema = Schema([
     Column.integer('activo'),
     Column.text('created_at'),
     Column.text('updated_at'),
+    Column.text('ocurrido_en'),
   ], indexes: [
     Index('by_cobrador', [
       IndexedColumn('tenant_id'),
@@ -96,6 +97,7 @@ const schema = Schema([
     Column.text('estado'),
     Column.text('documento_path'),
     Column.text('created_at'),
+    Column.text('ocurrido_en'),
   ], indexes: [
     Index('by_cliente', [IndexedColumn('cliente_id')]),
   ]),
@@ -117,6 +119,7 @@ const schema = Schema([
     Column.text('descripcion'),
     Column.text('tipo_cargo_manual'),
     Column.text('created_at'),
+    Column.text('ocurrido_en'),
   ], indexes: [
     Index('by_cobrador_estado', [
       IndexedColumn('cobrador_id'),
@@ -148,6 +151,7 @@ const schema = Schema([
     Column.text('motivo_anulacion'),
     Column.text('grupo_cobro'),
     Column.text('client_local_id'),
+    Column.text('ocurrido_en'),
   ], indexes: [
     Index('by_cuota', [IndexedColumn('cuota_id')]),
     Index('by_fecha', [IndexedColumn('fecha_pago')]),
@@ -173,6 +177,7 @@ const schema = Schema([
     Column.text('anulado_por'),
     Column.text('created_at'),
     Column.text('client_local_id'),
+    Column.text('ocurrido_en'),
   ], indexes: [
     Index('by_correlativo', [
       IndexedColumn('cobrador_id'),
@@ -192,6 +197,7 @@ const schema = Schema([
     Column.text('aplicado_por'),
     Column.text('aplicado_en'),
     Column.text('client_local_id'),
+    Column.text('ocurrido_en'),
   ], indexes: [
     Index('by_cuota', [IndexedColumn('cuota_id')]),
   ]),
@@ -227,6 +233,7 @@ const schema = Schema([
     Column.text('user_id'),
     Column.text('user_rol'),
     Column.text('created_at'),
+    Column.text('ocurrido_en'),
   ], indexes: [
     Index('by_tabla', [
       IndexedColumn('tenant_id'),
@@ -258,6 +265,7 @@ const schema = Schema([
     Column.text('storage_path'),
     Column.text('created_at'),
     Column.text('created_by'),
+    Column.text('ocurrido_en'),
   ], indexes: [
     Index('by_cliente', [
       IndexedColumn('tenant_id'),
@@ -277,6 +285,7 @@ const schema = Schema([
     Column.text('resultado'),
     Column.text('notas'),
     Column.text('fecha'),
+    Column.text('ocurrido_en'),
   ], indexes: [
     Index('by_cliente', [
       IndexedColumn('tenant_id'),

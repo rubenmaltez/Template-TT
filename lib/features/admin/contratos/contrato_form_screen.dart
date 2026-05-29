@@ -137,12 +137,14 @@ class _ContratoFormScreenState extends ConsumerState<ContratoFormScreen> {
 
     try {
       final fechaFin = _fechaFin();
+      // Hora REAL del dispositivo (UTC) para el change log — offline-first.
+      final ocurridoEn = DateTime.now().toUtc().toIso8601String();
       if (_esEdicion) {
         await ps.db.execute(
           '''
           UPDATE contratos
              SET plan_id = ?, dia_pago = ?,
-                 fecha_inicio = ?, fecha_fin = ?, estado = ?
+                 fecha_inicio = ?, fecha_fin = ?, estado = ?, ocurrido_en = ?
            WHERE id = ?
           ''',
           [
@@ -151,6 +153,7 @@ class _ContratoFormScreenState extends ConsumerState<ContratoFormScreen> {
             _fechaInicio.toIso8601String().substring(0, 10),
             fechaFin?.toIso8601String().substring(0, 10),
             _activo ? 'activo' : 'cancelado',
+            ocurridoEn,
             widget.contratoId,
           ],
         );
@@ -183,8 +186,8 @@ class _ContratoFormScreenState extends ConsumerState<ContratoFormScreen> {
           '''
           INSERT INTO contratos (
             id, tenant_id, cliente_id, cobrador_id, plan_id, dia_pago,
-            fecha_inicio, fecha_fin, estado, created_at
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'activo', ?)
+            fecha_inicio, fecha_fin, estado, created_at, ocurrido_en
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'activo', ?, ?)
           ''',
           [
             const Uuid().v4(),
@@ -196,6 +199,7 @@ class _ContratoFormScreenState extends ConsumerState<ContratoFormScreen> {
             _fechaInicio.toIso8601String().substring(0, 10),
             fechaFin?.toIso8601String().substring(0, 10),
             DateTime.now().toIso8601String(),
+            ocurridoEn,
           ],
         );
       }

@@ -226,11 +226,13 @@ class _ClientesAdminScreenState extends ConsumerState<ClientesAdminScreen> {
     if (confirmar != true || !context.mounted) return;
 
     final now = DateTime.now().toIso8601String();
+    // Hora REAL del dispositivo (UTC) para el change log — offline-first.
+    final ocurridoEn = DateTime.now().toUtc().toIso8601String();
     await ps.db.writeTransaction((tx) async {
       for (final id in ids) {
         await tx.execute(
-          'UPDATE clientes SET cobrador_id = ?, updated_at = ? WHERE id = ?',
-          [seleccion.id, now, id],
+          'UPDATE clientes SET cobrador_id = ?, updated_at = ?, ocurrido_en = ? WHERE id = ?',
+          [seleccion.id, now, ocurridoEn, id],
         );
       }
     });

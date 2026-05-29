@@ -142,12 +142,14 @@ class _AplicarCargoDialogState extends ConsumerState<AplicarCargoDialog> {
           ? cobrador.id
           : (cuotaRows.first['cobrador_id'] as String? ?? cobrador.id);
 
+      // Hora REAL del dispositivo (UTC) para el change log — offline-first.
+      final ocurridoEn = DateTime.now().toUtc().toIso8601String();
       await ps.db.execute(
         '''
         INSERT INTO cargos_extra (
           id, tenant_id, cuota_id, cobrador_id, tipo, monto, porcentaje,
-          descripcion, aplicado_por, aplicado_en, client_local_id
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          descripcion, aplicado_por, aplicado_en, client_local_id, ocurrido_en
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ''',
         [
           const Uuid().v4(),
@@ -161,6 +163,7 @@ class _AplicarCargoDialogState extends ConsumerState<AplicarCargoDialog> {
           cobrador.id,
           DateTime.now().toIso8601String(),
           const Uuid().v4(),
+          ocurridoEn,
         ],
       );
       if (mounted) Navigator.pop(context, true);

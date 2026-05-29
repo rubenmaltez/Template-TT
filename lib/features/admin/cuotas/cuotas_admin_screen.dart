@@ -241,6 +241,8 @@ class _CuotasAdminScreenState extends ConsumerState<CuotasAdminScreen> {
     try {
       final id = const Uuid().v4();
       final now = DateTime.now().toIso8601String();
+      // Hora REAL del dispositivo (UTC) para el change log — offline-first.
+      final ocurridoEn = DateTime.now().toUtc().toIso8601String();
 
       // Fetch cobrador_id desde el cliente. Postgres tiene trigger
       // `trg_set_cobrador_id_cuotas` que rellena cobrador_id desde
@@ -264,8 +266,9 @@ class _CuotasAdminScreenState extends ConsumerState<CuotasAdminScreen> {
         INSERT INTO cuotas (
           id, tenant_id, contrato_id, cliente_id, cobrador_id,
           periodo, fecha_vencimiento, monto, monto_pagado,
-          cargos_neto, estado, descripcion, tipo_cargo_manual, created_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, 0, 'pendiente', ?, ?, ?)
+          cargos_neto, estado, descripcion, tipo_cargo_manual, created_at,
+          ocurrido_en
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, 0, 'pendiente', ?, ?, ?, ?)
         ''',
         [
           id,
@@ -279,6 +282,7 @@ class _CuotasAdminScreenState extends ConsumerState<CuotasAdminScreen> {
           result.descripcion.isEmpty ? null : result.descripcion,
           result.tipoCargo,
           now,
+          ocurridoEn,
         ],
       );
       // descripcion y tipo_cargo_manual incluidos en el INSERT directo.
@@ -937,9 +941,11 @@ class _CuotaCard extends ConsumerWidget {
     }
 
     try {
+      // Hora REAL del dispositivo (UTC) para el change log — offline-first.
+      final ocurridoEn = DateTime.now().toUtc().toIso8601String();
       await ps.db.execute(
-        'UPDATE cuotas SET monto = ? WHERE id = ?',
-        [nuevoMonto, row['id']],
+        'UPDATE cuotas SET monto = ?, ocurrido_en = ? WHERE id = ?',
+        [nuevoMonto, ocurridoEn, row['id']],
       );
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -970,16 +976,25 @@ class _CuotaCard extends ConsumerWidget {
     if (me == null) return;
 
     try {
+      // Hora REAL del dispositivo (UTC) para el change log — offline-first.
+      final ocurridoEn = DateTime.now().toUtc().toIso8601String();
       await ps.db.execute(
         '''
         UPDATE cuotas
            SET estado = 'anulada',
                anulada_en = ?,
                anulada_por = ?,
-               motivo_anulacion = ?
+               motivo_anulacion = ?,
+               ocurrido_en = ?
          WHERE id = ?
         ''',
-        [DateTime.now().toIso8601String(), me.id, motivo.trim(), row['id']],
+        [
+          DateTime.now().toIso8601String(),
+          me.id,
+          motivo.trim(),
+          ocurridoEn,
+          row['id'],
+        ],
       );
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(

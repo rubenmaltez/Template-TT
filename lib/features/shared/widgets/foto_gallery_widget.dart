@@ -82,10 +82,12 @@ class _FotoGalleryWidgetState extends ConsumerState<FotoGalleryWidget> {
         [widget.clienteId],
       );
       final cobradorId = clienteRow?['cobrador_id'] as String?;
+      // ocurrido_en = hora REAL del dispositivo (UTC) para el change log.
+      // `now` ya es UTC: lo reusamos como hora de la acción.
       await ps.db.execute(
-        'INSERT INTO fotos_cliente (id, tenant_id, cliente_id, cobrador_id, storage_path, created_at, created_by) '
-        'VALUES (?, ?, ?, ?, ?, ?, ?)',
-        [const Uuid().v4(), widget.tenantId, widget.clienteId, cobradorId, storagePath, now, user?.id],
+        'INSERT INTO fotos_cliente (id, tenant_id, cliente_id, cobrador_id, storage_path, created_at, created_by, ocurrido_en) '
+        'VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+        [const Uuid().v4(), widget.tenantId, widget.clienteId, cobradorId, storagePath, now, user?.id, now],
       );
 
       if (mounted) {

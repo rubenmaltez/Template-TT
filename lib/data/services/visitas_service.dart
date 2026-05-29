@@ -74,11 +74,14 @@ class VisitasService {
       throw StateError('Usuario no autenticado');
     }
 
+    // ocurrido_en = hora REAL del dispositivo (UTC) para el change log.
+    // Coincide con `fecha` (también device time UTC).
+    final ocurridoEn = DateTime.now().toUtc().toIso8601String();
     await ps.db.execute(
       '''
       INSERT INTO visitas (id, tenant_id, cliente_id, cobrador_id,
-                           resultado, notas, fecha)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
+                           resultado, notas, fecha, ocurrido_en)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
       ''',
       [
         const Uuid().v4(),
@@ -87,7 +90,8 @@ class VisitasService {
         user.id,
         resultado.value,
         notas?.trim().isEmpty ?? true ? null : notas?.trim(),
-        DateTime.now().toUtc().toIso8601String(),
+        ocurridoEn,
+        ocurridoEn,
       ],
     );
   }
