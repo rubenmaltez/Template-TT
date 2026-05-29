@@ -1,0 +1,381 @@
+import 'dart:convert';
+
+import '../models/pago.dart';
+import 'formatters.dart';
+
+/// Un cambio individual de un campo dentro de un evento del audit log.
+/// Se renderiza como "campo: antes → después".
+class CampoChange {
+  const CampoChange({
+    required this.campo,
+    required this.antes,
+    required this.despues,
+  });
+  final String campo;
+  final String antes;
+  final String despues;
+}
+
+// ---------------------------------------------------------------------------
+// Catálogo curado por entidad (allowlist). SOLO estos campos se muestran en
+// el historial. Si la tabla NO está en el map, el comportamiento es permisivo
+// (se muestran todos los campos que no estén en `kAuditSkipKeys`).
+//
+// La Fase C reemplazará estos defaults por un setting per-tenant; por eso
+// `auditExtraerCambios` acepta un parámetro `camposVisibles` opcional.
+// ---------------------------------------------------------------------------
+const Map<String, Set<String>> kAuditCamposVisiblesDefault = {
+  'pagos': {
+    'monto_cordobas',
+    'vuelto_cordobas',
+    'metodo',
+    'notas',
+    'referencia',
+    'anulado',
+  },
+  'cuotas': {
+    'estado',
+    'monto',
+    'monto_pagado',
+    'periodo',
+    'fecha_vencimiento',
+    'tipo_cargo_manual',
+    'descripcion',
+  },
+  'clientes': {
+    'nombre',
+    'telefono',
+    'direccion',
+    'cedula',
+    'referencia',
+    'notas',
+    'activo',
+  },
+  'contratos': {
+    'estado',
+    'precio_mensual',
+    'dia_pago',
+    'fecha_inicio',
+    'fecha_fin',
+    'duracion_meses',
+  },
+  'recibos': {
+    'numero_completo',
+    'anulado',
+    'reimpresiones',
+  },
+  'cargos_extra': {
+    'monto',
+    'tipo',
+    'descripcion',
+  },
+  'visitas': {
+    'estado',
+    'notas',
+    'resultado',
+  },
+  'fotos_cliente': {
+    'descripcion',
+  },
+};
+
+// Columnas computadas / auto que se omiten en cualquier snapshot, además del
+// allowlist. Esto evita filtrar ids/FKs/geo aunque la tabla caiga al fallback
+// permisivo (tabla no presente en el map de arriba).
+const Set<String> kAuditSkipKeys = {
+  'id', 'tenant_id', 'client_local_id', 'created_at', 'updated_at',
+  'foto_comprobante_path',
+  // Campos de anulación/auditoría que cargan la UI con nulls
+  // cuando se muestra una creación o snapshot de delete.
+  'anulado_en', 'anulado_por', 'motivo_anulacion',
+  // FK ids: son UUIDs sin valor para el usuario (se ven como data
+  // corrupta). El actor del cambio ya se muestra resuelto a nombre.
+  'cobrador_id', 'cliente_id', 'contrato_id', 'cuota_id', 'plan_id',
+  'pago_id', 'recibo_id', 'comunidad_id', 'departamento_id',
+  'municipio_id', 'grupo_cobro', 'user_id',
+  // Geo del cobro: deprecado (ya no se captura ubicación al cobrar).
+  'lat', 'lng',
+};
+
+// Campos de dinero que se muestran formateados como córdobas (C$X.XX).
+const Set<String> kAuditMoneyKeys = {
+  'monto', 'monto_pagado', 'monto_cordobas', 'vuelto_cordobas',
+  'cargos_neto', 'monto_original', 'precio_mensual',
+};
+
+/// Detecta la acción real del evento. El trigger guarda 'update' para las
+/// anulaciones, pero el JSONB nuevo contiene `anulado: 1`. Lo identificamos
+/// para etiquetar el evento como 'anulacion'.
+String auditDetectarAccion(Map<String, dynamic> row) {
+  final accion = row['accion'] as String? ?? 'update';
+  if (accion != 'update') return accion;
+  try {
+    final nuevoRaw = row['valor_nuevo'] as String?;
+    if (nuevoRaw == null) return accion;
+    final nuevo = jsonDecode(nuevoRaw);
+    if (nuevo is Map && nuevo['anulado'] == 1) return 'anulacion';
+  } catch (_) {}
+  return accion;
+}
+
+/// Devuelve `true` si el campo `key` debe mostrarse para la tabla `tabla`,
+/// aplicando: skip global + allowlist (con fallback permisivo si la tabla no
+/// está en el catálogo).
+bool _campoVisible(String key, String? tabla, Set<String>? camposVisibles) {
+  if (kAuditSkipKeys.contains(key)) return false;
+  final allow = camposVisibles ?? kAuditCamposVisiblesDefault[tabla];
+  // Fallback permisivo: tabla desconocida sin allowlist → mostrar todos los
+  // campos no-skip.
+  if (allow == null) return true;
+  return allow.contains(key);
+}
+
+/// Reglas SMART que filtran un campo según su VALOR (no solo su nombre).
+/// Devuelve `true` si el campo debe omitirse.
+/// - `vuelto_cordobas`: solo si el valor relevante es > 0.
+/// - `anulado`: solo cuando el valor nuevo es true/1 (no "Anulado: No").
+bool _smartOmit(String key, dynamic valorRelevante) {
+  if (key == 'vuelto_cordobas') {
+    final n = _asNum(valorRelevante);
+    if (n == null || n <= 0) return true;
+  }
+  if (key == 'anulado') {
+    final esTrue = valorRelevante == true ||
+        valorRelevante == 1 ||
+        valorRelevante == '1' ||
+        valorRelevante == 'true';
+    if (!esTrue) return true;
+  }
+  return false;
+}
+
+num? _asNum(dynamic v) {
+  if (v == null) return null;
+  if (v is num) return v;
+  return num.tryParse(v.toString());
+}
+
+/// Extrae la lista curada de cambios de una fila del audit_log.
+///
+/// - UPDATE (valor_anterior + valor_nuevo Maps): diff campo por campo.
+/// - CREATE (solo valor_nuevo): "— → valor".
+/// - DELETE (solo valor_anterior): "valor → —".
+///
+/// Aplica: skip global + allowlist (default por tabla si `camposVisibles` es
+/// null) + reglas SMART por valor. En CREATE se omiten montos en cero y
+/// nulls/vacíos.
+List<CampoChange> auditExtraerCambios(
+  Map<String, dynamic> row, {
+  Set<String>? camposVisibles,
+}) {
+  final tabla = row['tabla'] as String?;
+  final anteriorRaw = row['valor_anterior'] as String?;
+  final nuevoRaw = row['valor_nuevo'] as String?;
+  if (anteriorRaw == null && nuevoRaw == null) return [];
+
+  try {
+    final anterior = anteriorRaw != null ? jsonDecode(anteriorRaw) : null;
+    final nuevo = nuevoRaw != null ? jsonDecode(nuevoRaw) : null;
+
+    // UPDATE: ambos snapshots → diff campo por campo.
+    if (anterior is Map && nuevo is Map) {
+      final cambios = <CampoChange>[];
+      final allKeys = {...anterior.keys, ...nuevo.keys};
+      for (final key in allKeys.cast<String>()) {
+        if (!_campoVisible(key, tabla, camposVisibles)) continue;
+        final a = anterior[key];
+        final n = nuevo[key];
+        if (a == n) continue;
+        // Reglas SMART: en update el valor relevante es el nuevo.
+        if (_smartOmit(key, n)) continue;
+        cambios.add(CampoChange(
+          campo: auditFieldLabel(key),
+          antes: _fmtField(key, a),
+          despues: _fmtField(key, n),
+        ));
+      }
+      return cambios;
+    }
+
+    // CREATE: solo valor_nuevo. Valores iniciales no nulos como "— → valor".
+    if (anterior == null && nuevo is Map) {
+      return _snapshotAsCambios(
+        nuevo,
+        isCreate: true,
+        tabla: tabla,
+        camposVisibles: camposVisibles,
+      );
+    }
+
+    // DELETE: solo valor_anterior. Valores eliminados como "valor → —".
+    if (nuevo == null && anterior is Map) {
+      return _snapshotAsCambios(
+        anterior,
+        isCreate: false,
+        tabla: tabla,
+        camposVisibles: camposVisibles,
+      );
+    }
+
+    final campo = row['campo'] as String? ?? 'valor';
+    if (!_campoVisible(campo, tabla, camposVisibles)) return [];
+    return [
+      CampoChange(
+        campo: auditFieldLabel(campo),
+        antes: _fmt(anterior),
+        despues: _fmt(nuevo),
+      ),
+    ];
+  } catch (_) {
+    final campo = row['campo'] as String? ?? 'valor';
+    if (!_campoVisible(campo, tabla, camposVisibles)) return [];
+    return [
+      CampoChange(
+        campo: auditFieldLabel(campo),
+        antes: anteriorRaw ?? '—',
+        despues: nuevoRaw ?? '—',
+      ),
+    ];
+  }
+}
+
+// Convierte un snapshot completo (create/delete) en una lista de cambios.
+// - isCreate true:  "— → valor"  (campos del row inicial)
+// - isCreate false: "valor → —"  (campos del row eliminado)
+List<CampoChange> _snapshotAsCambios(
+  Map snap, {
+  required bool isCreate,
+  required String? tabla,
+  required Set<String>? camposVisibles,
+}) {
+  final cambios = <CampoChange>[];
+  for (final entry in snap.entries) {
+    final key = entry.key as String;
+    if (!_campoVisible(key, tabla, camposVisibles)) continue;
+    final v = entry.value;
+    // Omitir nulls y vacíos del snapshot (no aportan info).
+    if (v == null) continue;
+    if (v is String && v.isEmpty) continue;
+    // En creaciones, omitir montos en cero (ruido tipo "— → C$0.00"; toda
+    // cuota arranca con monto_pagado 0).
+    if (isCreate && kAuditMoneyKeys.contains(key)) {
+      final n = _asNum(v);
+      if (n != null && n == 0) continue;
+    }
+    // Reglas SMART: el valor relevante del snapshot es el propio `v`.
+    if (_smartOmit(key, v)) continue;
+    cambios.add(CampoChange(
+      campo: auditFieldLabel(key),
+      antes: isCreate ? '—' : _fmtField(key, v),
+      despues: isCreate ? _fmtField(key, v) : '—',
+    ));
+  }
+  return cambios;
+}
+
+// Formatea un valor teniendo en cuenta el nombre del campo: los campos de
+// dinero se renderizan con `Fmt.cordobas` (C$500.00); enums con su label
+// humano; el resto cae al formateo genérico de `_fmt`.
+String _fmtField(String key, dynamic v) {
+  if (kAuditMoneyKeys.contains(key)) {
+    if (v == null) return '—';
+    if (v is num) return Fmt.cordobas(v);
+    final n = num.tryParse(v.toString());
+    if (n != null) return Fmt.cordobas(n);
+  }
+  // Enums: mostrar el label humano que usa el resto de la app, no el slug.
+  if (key == 'metodo' && v is String && v.isNotEmpty) {
+    return MetodoPago.fromString(v).label;
+  }
+  if (key == 'tipo_cargo_manual' && v is String && v.isNotEmpty) {
+    return _tipoCargoLabel(v);
+  }
+  return _fmt(v);
+}
+
+String _tipoCargoLabel(String t) => switch (t) {
+      'reconexion' => 'Reconexión',
+      'instalacion' => 'Instalación',
+      'mora' => 'Mora',
+      'reparacion' => 'Reparación',
+      'otro' => 'Otro',
+      _ => t,
+    };
+
+String _fmt(dynamic v) {
+  if (v == null) return '—';
+  if (v is bool) return v ? 'Sí' : 'No';
+  if (v is num) return v.toStringAsFixed(v.truncateToDouble() == v ? 0 : 2);
+  final s = v.toString();
+  if (s.length >= 19 && RegExp(r'^\d{4}-\d{2}-\d{2}').hasMatch(s)) {
+    final dt = DateTime.tryParse(s);
+    if (dt != null) return Fmt.fechaCorta(dt);
+  }
+  if (s.length > 30) return '${s.substring(0, 27)}…';
+  return s;
+}
+
+/// Label humano para una columna del audit_log.
+String auditFieldLabel(String raw) {
+  const labels = {
+    'monto_cordobas': 'Monto',
+    'monto_original': 'Monto original',
+    'monto_pagado': 'Monto pagado',
+    'vuelto_cordobas': 'Vuelto',
+    'fecha_pago': 'Fecha de pago',
+    'fecha_vencimiento': 'Fecha vencimiento',
+    'fecha_inicio': 'Fecha inicio',
+    'fecha_fin': 'Fecha fin',
+    'cobrador_id': 'Cobrador',
+    'cliente_id': 'Cliente',
+    'contrato_id': 'Contrato',
+    'cuota_id': 'Cuota',
+    'plan_id': 'Plan',
+    'metodo': 'Método de pago',
+    'moneda': 'Moneda',
+    'tasa_conversion': 'Tasa de conversión',
+    'anulado': 'Anulado',
+    'anulado_en': 'Anulado en',
+    'anulado_por': 'Anulado por',
+    'motivo_anulacion': 'Motivo anulación',
+    'estado': 'Estado',
+    'monto': 'Monto',
+    'periodo': 'Período',
+    'nombre': 'Nombre',
+    'telefono': 'Teléfono',
+    'direccion': 'Dirección',
+    'cedula': 'Cédula',
+    'comunidad_id': 'Comunidad',
+    'departamento_id': 'Departamento',
+    'municipio_id': 'Municipio',
+    'activo': 'Activo',
+    'referencia': 'Referencia',
+    'notas': 'Notas',
+    'descripcion': 'Descripción',
+    'numero_completo': 'Número recibo',
+    'grupo_cobro': 'Cobro agrupado',
+    'cargos_neto': 'Cargos neto',
+    'lat': 'Latitud',
+    'lng': 'Longitud',
+    'dia_pago': 'Día de pago',
+    'reimpresiones': 'Reimpresiones',
+    'documento_path': 'Documento adjunto',
+    'precio_mensual': 'Precio mensual',
+    'tipo_cargo_manual': 'Tipo de cargo',
+    'pago_id': 'Pago',
+    'recibo_id': 'Recibo',
+    'numero': 'Número',
+    'prefijo': 'Prefijo',
+    'serie': 'Serie',
+    'rol': 'Rol',
+    'email': 'Email',
+    'prefijo_recibo': 'Prefijo recibo',
+    'duracion_meses': 'Duración (meses)',
+    'tipo': 'Tipo',
+    'resultado': 'Resultado',
+  };
+  return labels[raw] ??
+      raw
+          .replaceAll('_', ' ')
+          .replaceFirstMapped(RegExp(r'^.'), (m) => m[0]!.toUpperCase());
+}

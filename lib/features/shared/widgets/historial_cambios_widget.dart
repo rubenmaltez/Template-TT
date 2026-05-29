@@ -1,8 +1,6 @@
-import 'dart:convert';
-
 import 'package:flutter/material.dart';
 
-import '../../../data/models/pago.dart';
+import '../../../data/utils/audit_changelog.dart';
 import '../../../data/utils/formatters.dart';
 import '../../../powersync/db.dart' as ps;
 
@@ -67,7 +65,26 @@ class _HistorialCambiosWidgetState extends State<HistorialCambiosWidget> {
           );
         }
         final rows = snap.data!;
-        if (rows.isEmpty) {
+        // Inyectamos la tabla del widget en cada row (la query de tabla-única
+        // no la selecciona) para que la curaduría del allowlist sepa el origen.
+        final eventos = <_EventoVisual>[];
+        for (final r in rows) {
+          final rowConTabla = {...r, 'tabla': widget.tabla};
+          final accion = auditDetectarAccion(rowConTabla);
+          final cambios = auditExtraerCambios(rowConTabla);
+          // Hide-empty: descartar updates que quedan sin cambios tras curaduría
+          // (eventos fantasma, ej. delta 0 en cargos_neto). Create/delete/
+          // anulacion se muestran aunque tengan pocos campos.
+          if (accion == 'update' && cambios.isEmpty) continue;
+          eventos.add(_EventoVisual(
+            row: rowConTabla,
+            accion: accion,
+            tabla: widget.tabla,
+            cambios: cambios,
+          ));
+        }
+
+        if (eventos.isEmpty) {
           return Padding(
             padding: const EdgeInsets.all(24),
             child: Center(
@@ -80,42 +97,52 @@ class _HistorialCambiosWidgetState extends State<HistorialCambiosWidget> {
         return ListView.separated(
           shrinkWrap: true,
           physics: const NeverScrollableScrollPhysics(),
-          itemCount: rows.length,
+          itemCount: eventos.length,
           separatorBuilder: (_, __) => const Divider(height: 1),
-          itemBuilder: (context, i) {
-            final r = rows[i];
-            return _CambioTile(row: r);
-          },
+          itemBuilder: (context, i) => _CambioTile(evento: eventos[i]),
         );
       },
     );
   }
 }
 
-class _CambioTile extends StatelessWidget {
-  const _CambioTile({required this.row, this.tabla});
+// Un evento listo para renderizar. `cambios` ya viene curado; `extraLineas`
+// son líneas adicionales precompuestas (usado al fusionar un cobro: el
+// resultado de la cuota se anexa al card del pago).
+class _EventoVisual {
+  _EventoVisual({
+    required this.row,
+    required this.accion,
+    required this.tabla,
+    required this.cambios,
+    this.extraLineas = const [],
+  });
   final Map<String, dynamic> row;
-
-  // Cuando se renderiza en una timeline unificada (cuota + pagos) pasamos la
-  // tabla de origen para etiquetar el evento de forma contextual
-  // ("Cuota generada", "Pago registrado", "Pago anulado"...). En el uso de
-  // tabla-única (`HistorialCambiosWidget`) queda null → etiquetas genéricas.
+  final String accion;
   final String? tabla;
+  final List<CampoChange> cambios;
+  final List<CampoChange> extraLineas;
+
+  List<CampoChange> get todos => [...cambios, ...extraLineas];
+}
+
+class _CambioTile extends StatelessWidget {
+  const _CambioTile({required this.evento});
+  final _EventoVisual evento;
 
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    final accionRaw = row['accion'] as String? ?? 'update';
-    final fecha = DateTime.parse(row['created_at'] as String);
-    final autor = row['user_nombre'] as String? ?? row['user_rol'] as String? ?? '—';
+    final row = evento.row;
+    // created_at viene en UTC del server: convertir a hora local del device.
+    final fecha = DateTime.parse(row['created_at'] as String).toLocal();
+    final autor =
+        row['user_nombre'] as String? ?? row['user_rol'] as String? ?? '—';
 
-    // Detectar anulación: el trigger guarda 'update' pero el JSONB
-    // contiene anulado: 0→1. Lo identificamos para mostrar "Anulado".
-    final accion = _detectarAccion(accionRaw, row);
+    final (IconData icon, Color color, String label) =
+        _labelFor(evento.accion, evento.tabla, scheme);
 
-    final (IconData icon, Color color, String label) = _labelFor(accion, scheme);
-
-    final cambios = _extraerCambios(row);
+    final cambios = evento.todos;
 
     return ExpansionTile(
       leading: Icon(icon, color: color, size: 20),
@@ -164,7 +191,8 @@ class _CambioTile extends StatelessWidget {
   // Etiqueta + ícono + color del evento. Si `tabla` viene seteada (timeline
   // unificada), las etiquetas distinguen cuota vs pago; si es null, caen a las
   // genéricas (Creado / Editado / Anulado / Eliminado).
-  (IconData, Color, String) _labelFor(String accion, ColorScheme scheme) {
+  (IconData, Color, String) _labelFor(
+      String accion, String? tabla, ColorScheme scheme) {
     switch (tabla) {
       case 'cuotas':
         return switch (accion) {
@@ -189,234 +217,6 @@ class _CambioTile extends StatelessWidget {
         };
     }
   }
-
-  // Columnas computadas / auto que se omiten en cualquier snapshot.
-  static const _skipKeys = {
-    'id', 'tenant_id', 'client_local_id', 'created_at', 'updated_at',
-    'foto_comprobante_path',
-    // Campos de anulación/auditoría que cargan la UI con nulls
-    // cuando se muestra una creación o snapshot de delete.
-    'anulado_en', 'anulado_por', 'motivo_anulacion',
-    // FK ids: son UUIDs sin valor para el usuario (se ven como data
-    // corrupta). El actor del cambio ya se muestra resuelto a nombre.
-    'cobrador_id', 'cliente_id', 'contrato_id', 'cuota_id', 'plan_id',
-    'pago_id', 'recibo_id', 'comunidad_id', 'departamento_id',
-    'municipio_id', 'grupo_cobro', 'user_id',
-    // Geo del cobro: deprecado (ya no se captura ubicación al cobrar).
-    'lat', 'lng',
-  };
-
-  List<_CampoChange> _extraerCambios(Map<String, dynamic> row) {
-    final anteriorRaw = row['valor_anterior'] as String?;
-    final nuevoRaw = row['valor_nuevo'] as String?;
-    if (anteriorRaw == null && nuevoRaw == null) return [];
-
-    try {
-      final anterior = anteriorRaw != null ? jsonDecode(anteriorRaw) : null;
-      final nuevo = nuevoRaw != null ? jsonDecode(nuevoRaw) : null;
-
-      // UPDATE: ambos snapshots → diff campo por campo.
-      if (anterior is Map && nuevo is Map) {
-        final cambios = <_CampoChange>[];
-        final allKeys = {...anterior.keys, ...nuevo.keys};
-        for (final key in allKeys) {
-          if (_skipKeys.contains(key)) continue;
-          final a = anterior[key];
-          final n = nuevo[key];
-          if (a != n) {
-            cambios.add(_CampoChange(
-              campo: _fieldLabel(key),
-              antes: _fmtField(key, a),
-              despues: _fmtField(key, n),
-            ));
-          }
-        }
-        return cambios;
-      }
-
-      // CREATE: solo valor_nuevo. Mostramos los valores iniciales no nulos
-      // como "— → valor".
-      if (anterior == null && nuevo is Map) {
-        return _snapshotAsCambios(nuevo, isCreate: true);
-      }
-
-      // DELETE: solo valor_anterior. Mostramos los valores eliminados
-      // como "valor → —".
-      if (nuevo == null && anterior is Map) {
-        return _snapshotAsCambios(anterior, isCreate: false);
-      }
-
-      return [
-        _CampoChange(
-          campo: row['campo'] as String? ?? 'valor',
-          antes: _fmt(anterior),
-          despues: _fmt(nuevo),
-        ),
-      ];
-    } catch (_) {
-      return [
-        _CampoChange(
-          campo: row['campo'] as String? ?? 'valor',
-          antes: anteriorRaw ?? '—',
-          despues: nuevoRaw ?? '—',
-        ),
-      ];
-    }
-  }
-
-  // Convierte un snapshot completo (create/delete) en una lista de cambios
-  // que el ExpansionTile pueda renderizar con el mismo widget que update.
-  // - isCreate true:  "— → valor"  (campos del row inicial)
-  // - isCreate false: "valor → —"  (campos del row eliminado)
-  List<_CampoChange> _snapshotAsCambios(Map snap, {required bool isCreate}) {
-    final cambios = <_CampoChange>[];
-    for (final entry in snap.entries) {
-      final key = entry.key as String;
-      if (_skipKeys.contains(key)) continue;
-      final v = entry.value;
-      // Omitir nulls y vacíos del snapshot (no aportan info).
-      if (v == null) continue;
-      if (v is String && v.isEmpty) continue;
-      // En creaciones, omitir montos en cero (ruido tipo "— → C$0.00" en el
-      // evento "Cuota generada"; toda cuota arranca con monto_pagado 0).
-      if (isCreate && _moneyKeys.contains(key)) {
-        final n = v is num ? v : num.tryParse(v.toString());
-        if (n != null && n == 0) continue;
-      }
-      cambios.add(_CampoChange(
-        campo: _fieldLabel(key),
-        antes: isCreate ? '—' : _fmtField(key, v),
-        despues: isCreate ? _fmtField(key, v) : '—',
-      ));
-    }
-    return cambios;
-  }
-
-  static String _detectarAccion(String accion, Map<String, dynamic> row) {
-    if (accion != 'update') return accion;
-    try {
-      final nuevoRaw = row['valor_nuevo'] as String?;
-      if (nuevoRaw == null) return accion;
-      final nuevo = jsonDecode(nuevoRaw);
-      if (nuevo is Map && nuevo['anulado'] == 1) return 'anulacion';
-    } catch (_) {}
-    return accion;
-  }
-
-  // Campos de dinero que se muestran formateados como córdobas (C$X.XX).
-  static const _moneyKeys = {
-    'monto', 'monto_pagado', 'monto_cordobas', 'vuelto_cordobas',
-    'cargos_neto', 'monto_original', 'precio_mensual',
-  };
-
-  // Formatea un valor teniendo en cuenta el nombre del campo: los campos de
-  // dinero se renderizan con `Fmt.cordobas` (C$500.00); el resto cae al
-  // formateo genérico de `_fmt`.
-  static String _fmtField(String key, dynamic v) {
-    if (_moneyKeys.contains(key)) {
-      if (v == null) return '—';
-      if (v is num) return Fmt.cordobas(v);
-      final n = num.tryParse(v.toString());
-      if (n != null) return Fmt.cordobas(n);
-    }
-    // Enums: mostrar el label humano que usa el resto de la app, no el slug.
-    if (key == 'metodo' && v is String && v.isNotEmpty) {
-      return MetodoPago.fromString(v).label;
-    }
-    if (key == 'tipo_cargo_manual' && v is String && v.isNotEmpty) {
-      return _tipoCargoLabel(v);
-    }
-    return _fmt(v);
-  }
-
-  static String _tipoCargoLabel(String t) => switch (t) {
-        'reconexion' => 'Reconexión',
-        'instalacion' => 'Instalación',
-        'mora' => 'Mora',
-        'reparacion' => 'Reparación',
-        'otro' => 'Otro',
-        _ => t,
-      };
-
-  static String _fmt(dynamic v) {
-    if (v == null) return '—';
-    if (v is bool) return v ? 'Sí' : 'No';
-    if (v is num) return v.toStringAsFixed(v.truncateToDouble() == v ? 0 : 2);
-    final s = v.toString();
-    if (s.length >= 19 && RegExp(r'^\d{4}-\d{2}-\d{2}').hasMatch(s)) {
-      final dt = DateTime.tryParse(s);
-      if (dt != null) return Fmt.fechaCorta(dt);
-    }
-    if (s.length > 30) return '${s.substring(0, 27)}…';
-    return s;
-  }
-
-  static String _fieldLabel(String raw) {
-    const labels = {
-      'monto_cordobas': 'Monto',
-      'monto_original': 'Monto original',
-      'monto_pagado': 'Monto pagado',
-      'vuelto_cordobas': 'Vuelto',
-      'fecha_pago': 'Fecha de pago',
-      'fecha_vencimiento': 'Fecha vencimiento',
-      'fecha_inicio': 'Fecha inicio',
-      'fecha_fin': 'Fecha fin',
-      'cobrador_id': 'Cobrador',
-      'cliente_id': 'Cliente',
-      'contrato_id': 'Contrato',
-      'cuota_id': 'Cuota',
-      'plan_id': 'Plan',
-      'metodo': 'Método de pago',
-      'moneda': 'Moneda',
-      'tasa_conversion': 'Tasa de conversión',
-      'anulado': 'Anulado',
-      'anulado_en': 'Anulado en',
-      'anulado_por': 'Anulado por',
-      'motivo_anulacion': 'Motivo anulación',
-      'estado': 'Estado',
-      'monto': 'Monto',
-      'periodo': 'Período',
-      'nombre': 'Nombre',
-      'telefono': 'Teléfono',
-      'direccion': 'Dirección',
-      'cedula': 'Cédula',
-      'comunidad_id': 'Comunidad',
-      'departamento_id': 'Departamento',
-      'municipio_id': 'Municipio',
-      'activo': 'Activo',
-      'referencia': 'Referencia',
-      'notas': 'Notas',
-      'descripcion': 'Descripción',
-      'numero_completo': 'Número recibo',
-      'grupo_cobro': 'Cobro agrupado',
-      'cargos_neto': 'Cargos neto',
-      'lat': 'Latitud',
-      'lng': 'Longitud',
-      'dia_pago': 'Día de pago',
-      'reimpresiones': 'Reimpresiones',
-      'documento_path': 'Documento adjunto',
-      'precio_mensual': 'Precio mensual',
-      'tipo_cargo_manual': 'Tipo de cargo',
-      'pago_id': 'Pago',
-      'recibo_id': 'Recibo',
-      'numero': 'Número',
-      'prefijo': 'Prefijo',
-      'serie': 'Serie',
-      'rol': 'Rol',
-      'email': 'Email',
-      'prefijo_recibo': 'Prefijo recibo',
-    };
-    return labels[raw] ?? raw
-        .replaceAll('_', ' ')
-        .replaceFirstMapped(RegExp(r'^.'), (m) => m[0]!.toUpperCase());
-  }
-}
-
-class _CampoChange {
-  const _CampoChange({required this.campo, required this.antes, required this.despues});
-  final String campo;
-  final String antes;
-  final String despues;
 }
 
 // ---------------------------------------------------------------------------
@@ -497,7 +297,9 @@ class _HistorialCuotaWidgetState extends State<HistorialCuotaWidget> {
           );
         }
         final rows = snap.data!;
-        if (rows.isEmpty) {
+        final eventos = _construirEventos(rows);
+
+        if (eventos.isEmpty) {
           return Padding(
             padding: const EdgeInsets.all(24),
             child: Center(
@@ -510,17 +312,103 @@ class _HistorialCuotaWidgetState extends State<HistorialCuotaWidget> {
         return ListView.separated(
           shrinkWrap: true,
           physics: const NeverScrollableScrollPhysics(),
-          itemCount: rows.length,
+          itemCount: eventos.length,
           separatorBuilder: (_, __) => const Divider(height: 1),
-          itemBuilder: (context, i) {
-            final r = rows[i];
-            return _CambioTile(
-              row: r,
-              tabla: r['tabla'] as String?,
-            );
-          },
+          itemBuilder: (context, i) => _CambioTile(evento: eventos[i]),
         );
       },
     );
+  }
+
+  // Pre-procesa las filas crudas del audit_log en una lista de eventos
+  // visuales, aplicando:
+  //  1. Curaduría + hide-empty (igual que la timeline de tabla-única).
+  //  2. "Un cobro = un solo evento": un pago/create + las cuota/update que
+  //     genera (mismo user_id y created_at dentro de ≤3s) se fusionan en un
+  //     solo card "Pago registrado" con el resultado de la cuota anexado.
+  //     Las cuota/update absorbidas NO se muestran por separado.
+  // El orden cronológico ASC se preserva (el card del grupo toma la posición
+  // del pago/create).
+  List<_EventoVisual> _construirEventos(List<Map<String, dynamic>> rows) {
+    const ventana = Duration(seconds: 3);
+
+    // Parseamos created_at una vez para el matching de ventana.
+    final parsed = rows.map((r) {
+      final dt = DateTime.tryParse(r['created_at'] as String? ?? '');
+      return (row: r, ts: dt);
+    }).toList();
+
+    // Índices de cuota/update ya absorbidos por un grupo de pago.
+    final absorbidos = <int>{};
+
+    // Para cada pago/create, buscar cuota/update del mismo user dentro de la
+    // ventana, y marcarlas como absorbidas anexando su resultado.
+    for (var i = 0; i < parsed.length; i++) {
+      final p = parsed[i];
+      final row = p.row;
+      if (row['tabla'] != 'pagos') continue;
+      final accion = auditDetectarAccion(row);
+      if (accion != 'create') continue;
+      final pagoTs = p.ts;
+      final pagoUser = row['user_id'];
+      if (pagoTs == null) continue;
+
+      for (var j = 0; j < parsed.length; j++) {
+        if (j == i || absorbidos.contains(j)) continue;
+        final q = parsed[j];
+        final qr = q.row;
+        if (qr['tabla'] != 'cuotas') continue;
+        if (auditDetectarAccion(qr) != 'update') continue;
+        if (qr['user_id'] != pagoUser) continue;
+        final qts = q.ts;
+        if (qts == null) continue;
+        if ((qts.difference(pagoTs)).abs() > ventana) continue;
+        absorbidos.add(j);
+      }
+    }
+
+    final eventos = <_EventoVisual>[];
+
+    for (var i = 0; i < parsed.length; i++) {
+      if (absorbidos.contains(i)) continue;
+      final row = parsed[i].row;
+      final tabla = row['tabla'] as String?;
+      final accion = auditDetectarAccion(row);
+      final cambios = auditExtraerCambios(row);
+
+      // Hide-empty: descartar updates sin cambios tras curaduría. No aplica a
+      // create/delete/anulacion.
+      if (accion == 'update' && cambios.isEmpty) continue;
+
+      // Si es un pago/create, anexar el resultado de las cuota/update que
+      // absorbió (líneas extra del card combinado).
+      final extra = <CampoChange>[];
+      if (tabla == 'pagos' && accion == 'create') {
+        final pagoTs = parsed[i].ts;
+        final pagoUser = row['user_id'];
+        if (pagoTs != null) {
+          for (var j = 0; j < parsed.length; j++) {
+            if (!absorbidos.contains(j)) continue;
+            final qr = parsed[j].row;
+            final qts = parsed[j].ts;
+            if (qr['tabla'] != 'cuotas') continue;
+            if (qr['user_id'] != pagoUser) continue;
+            if (qts == null) continue;
+            if ((qts.difference(pagoTs)).abs() > ventana) continue;
+            extra.addAll(auditExtraerCambios(qr));
+          }
+        }
+      }
+
+      eventos.add(_EventoVisual(
+        row: row,
+        accion: accion,
+        tabla: tabla,
+        cambios: cambios,
+        extraLineas: extra,
+      ));
+    }
+
+    return eventos;
   }
 }
