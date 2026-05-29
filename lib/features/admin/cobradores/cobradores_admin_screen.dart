@@ -642,6 +642,11 @@ class _EditarCobradorDialogState extends ConsumerState<_EditarCobradorDialog> {
     }
   }
 
+  // El dropdown de rol solo es editable para el super_admin (el backend lo
+  // restringe a la RPC super_admin-only). Para el admin común queda en lock.
+  bool get _puedeCambiarRol =>
+      ref.watch(cobradorActualProvider).valueOrNull?.esSuperAdmin ?? false;
+
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
