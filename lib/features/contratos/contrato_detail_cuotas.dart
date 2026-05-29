@@ -207,9 +207,7 @@ class _CuotasSectionState extends ConsumerState<_CuotasSection> {
                               _isPending(rows[i]['estado'] as String? ?? '')
                           ? () {
                               final cuotaId = rows[i]['id'] as String;
-                              if (onLongPressCuota != null) {
-                                onLongPressCuota!(cuotaId, pendingIds);
-                              }
+                              onLongPressCuota?.call(cuotaId, pendingIds);
                             }
                           : null,
                     ),
