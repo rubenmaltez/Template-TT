@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_map/flutter_map.dart';
@@ -50,7 +52,8 @@ class _ClienteFormScreenState extends ConsumerState<ClienteFormScreen> {
 
   // Código de cliente: chequeo de duplicado en vivo + bloqueo de inmutabilidad.
   String? _codigoDupNombre; // nombre del cliente que ya usa ese código (o null)
-  bool _codigoBloqueado = false; // true = ya asignado → read-only (inmutable)
+  bool _codigoYaAsignado = false; // true = el cliente ya tiene código guardado
+  Timer? _dupDebounce; // debounce del chequeo de duplicado en vivo
 
   @override
   void initState() {
@@ -82,9 +85,9 @@ class _ClienteFormScreenState extends ConsumerState<ClienteFormScreen> {
     _activo = (r['activo'] as int? ?? 1) == 1;
     _fotoPath = r['foto_path'] as String?;
     _codigo.text = r['codigo'] as String? ?? '';
-    // Si ya tiene código asignado, queda read-only (inmutable). Si está
-    // vacío (cliente legacy), se permite asignarlo una vez.
-    _codigoBloqueado = _codigo.text.trim().isNotEmpty;
+    // Si ya tiene código asignado queda read-only para admin/cobrador; el
+    // super_admin sí puede corregirlo (se evalúa en build con el rol actual).
+    _codigoYaAsignado = _codigo.text.trim().isNotEmpty;
     setState(() => _cargando = false);
   }
 
@@ -97,6 +100,7 @@ class _ClienteFormScreenState extends ConsumerState<ClienteFormScreen> {
     // sino el próximo sidebar tap mostraría un dialog huérfano.
     // Sync (antes de super.dispose) porque ref sigue válido acá.
     ref.read(formDirtyProvider.notifier).state = false;
+    _dupDebounce?.cancel();
     _codigo.dispose();
     _nombre.dispose();
     _cedula.dispose();
@@ -121,14 +125,19 @@ class _ClienteFormScreenState extends ConsumerState<ClienteFormScreen> {
     }
     final tenantId = ref.read(tenantIdProvider);
     if (tenantId == null) return;
-    final rows = await ps.db.getAll(
-      'SELECT nombre FROM clientes '
-      'WHERE tenant_id = ? AND upper(codigo) = upper(?) AND id != ? LIMIT 1',
-      [tenantId, codigo, widget.clienteId ?? ''],
-    );
-    if (!mounted) return;
-    final nombre = rows.isEmpty ? null : rows.first['nombre'] as String?;
-    if (nombre != _codigoDupNombre) setState(() => _codigoDupNombre = nombre);
+    try {
+      final rows = await ps.db.getAll(
+        'SELECT nombre FROM clientes '
+        'WHERE tenant_id = ? AND upper(codigo) = upper(?) AND id != ? LIMIT 1',
+        [tenantId, codigo, widget.clienteId ?? ''],
+      );
+      if (!mounted) return;
+      final nombre = rows.isEmpty ? null : rows.first['nombre'] as String?;
+      if (nombre != _codigoDupNombre) setState(() => _codigoDupNombre = nombre);
+    } catch (_) {
+      // Best-effort: si la query local falla no bloqueamos el form (el UNIQUE
+      // de Postgres es la garantía dura igual).
+    }
   }
 
   Future<void> _guardar() async {
@@ -140,8 +149,12 @@ class _ClienteFormScreenState extends ConsumerState<ClienteFormScreen> {
     }
 
     // Guard de código duplicado (hard stop con mensaje claro; el UNIQUE de la
-    // DB es la red final). Solo si el código es editable (no bloqueado).
-    if (!_codigoBloqueado) {
+    // DB es la red final). El super_admin puede corregir un código asignado,
+    // así que para él el campo es editable y también se chequea.
+    final esSuper =
+        ref.read(cobradorActualProvider).valueOrNull?.esSuperAdmin ?? false;
+    final codigoBloqueado = _codigoYaAsignado && !esSuper;
+    if (!codigoBloqueado) {
       await _verificarCodigoDuplicado();
       if (_codigoDupNombre != null) {
         setState(() => _error =
@@ -194,7 +207,7 @@ class _ClienteFormScreenState extends ConsumerState<ClienteFormScreen> {
           ''',
           [
             id, tenantId, _cobradorId, _comunidadId,
-            _codigo.text.trim().isEmpty ? null : _codigo.text.trim(),
+            _codigo.text.trim().isEmpty ? null : _codigo.text.trim().toUpperCase(),
             _nombre.text.trim(),
             _cedula.text.trim().isEmpty ? null : _cedula.text.trim(),
             PhoneTextField.sanitized(_telefono),
@@ -217,7 +230,7 @@ class _ClienteFormScreenState extends ConsumerState<ClienteFormScreen> {
           ''',
           [
             _cobradorId, _comunidadId,
-            _codigo.text.trim().isEmpty ? null : _codigo.text.trim(),
+            _codigo.text.trim().isEmpty ? null : _codigo.text.trim().toUpperCase(),
             _nombre.text.trim(),
             _cedula.text.trim().isEmpty ? null : _cedula.text.trim(),
             PhoneTextField.sanitized(_telefono),
@@ -298,6 +311,12 @@ class _ClienteFormScreenState extends ConsumerState<ClienteFormScreen> {
       return const Center(child: CircularProgressIndicator());
     }
 
+    // El código es inmutable una vez asignado para admin/cobrador; el
+    // super_admin sí puede corregirlo (P1 del audit del feature).
+    final esSuper =
+        ref.watch(cobradorActualProvider).valueOrNull?.esSuperAdmin ?? false;
+    final codigoBloqueado = _codigoYaAsignado && !esSuper;
+
     return PopScope(
       canPop: !_dirty,
       onPopInvokedWithResult: (didPop, _) async {
@@ -331,11 +350,11 @@ class _ClienteFormScreenState extends ConsumerState<ClienteFormScreen> {
             children: [
               TextFormField(
                 controller: _codigo,
-                enabled: !_codigoBloqueado,
+                enabled: !codigoBloqueado,
                 decoration: InputDecoration(
                   labelText: 'Código de cliente *',
                   hintText: 'Ej. CL00027',
-                  helperText: _codigoBloqueado
+                  helperText: codigoBloqueado
                       ? 'Inmutable: no se puede cambiar una vez asignado.'
                       : 'Identificador visible del cliente. No se puede repetir.',
                   errorText: _codigoDupNombre != null
@@ -346,16 +365,24 @@ class _ClienteFormScreenState extends ConsumerState<ClienteFormScreen> {
                 textCapitalization: TextCapitalization.characters,
                 inputFormatters: [
                   FilteringTextInputFormatter.allow(RegExp(r'[A-Za-z0-9\-_]')),
+                  TextInputFormatter.withFunction((oldV, newV) =>
+                      newV.copyWith(text: newV.text.toUpperCase())),
                   LengthLimitingTextInputFormatter(30),
                 ],
                 validator: (v) {
-                  if (_codigoBloqueado) return null;
+                  if (codigoBloqueado) return null;
                   final t = (v ?? '').trim();
                   if (t.isEmpty) return 'El código es obligatorio';
-                  if (_codigoDupNombre != null) return 'Código duplicado';
+                  if (_codigoDupNombre != null) {
+                    return 'Ya existe un cliente con ese código: $_codigoDupNombre';
+                  }
                   return null;
                 },
-                onChanged: (_) => _verificarCodigoDuplicado(),
+                onChanged: (_) {
+                  _dupDebounce?.cancel();
+                  _dupDebounce = Timer(const Duration(milliseconds: 350),
+                      _verificarCodigoDuplicado);
+                },
                 textInputAction: TextInputAction.next,
               ),
               const SizedBox(height: 12),

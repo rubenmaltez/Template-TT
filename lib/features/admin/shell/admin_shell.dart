@@ -34,7 +34,12 @@ class AdminShell extends ConsumerWidget {
       if (error != null && context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Error al sincronizar ${error.table}: ${error.message}'),
+            content: Text(
+              error.table == 'clientes' &&
+                      error.message.toString().toLowerCase().contains('codigo')
+                  ? 'Código de cliente duplicado: otro cliente ya usa ese '
+                      'código. Editá el cliente y asignale uno distinto.'
+                  : 'Error al sincronizar ${error.table}: ${error.message}'),
             backgroundColor: Theme.of(context).colorScheme.error,
             duration: const Duration(seconds: 6),
           ),

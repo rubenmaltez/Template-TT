@@ -96,7 +96,7 @@ class _ClientesListScreenState extends ConsumerState<ClientesListScreen> {
             onChanged: _onSearchChanged,
             decoration: InputDecoration(
               prefixIcon: const Icon(Icons.search),
-              hintText: 'Buscar por nombre, cédula o teléfono',
+              hintText: 'Buscar por nombre, código, cédula o teléfono',
               suffixIcon: _searchCtrl.text.isEmpty
                   ? null
                   : IconButton(
@@ -291,8 +291,8 @@ class _ClientesList extends StatelessWidget {
     final where = <String>['c.activo = 1'];
 
     if (query.isNotEmpty) {
-      where.add('(lower(c.nombre) LIKE ? OR c.cedula LIKE ? OR c.telefono LIKE ?)');
-      params..add(like)..add(like)..add(likeTelefono);
+      where.add('(lower(c.nombre) LIKE ? OR c.cedula LIKE ? OR c.telefono LIKE ? OR lower(coalesce(c.codigo,\'\')) LIKE ?)');
+      params..add(like)..add(like)..add(likeTelefono)..add(like);
     }
     if (comunidadId != null) {
       where.add('c.comunidad_id = ?');
@@ -306,7 +306,7 @@ class _ClientesList extends StatelessWidget {
 
     final sql = '''
       SELECT
-        c.id, c.nombre, c.telefono, c.direccion_referencia,
+        c.id, c.codigo, c.nombre, c.telefono, c.direccion_referencia,
         co.nombre  AS comunidad,
         m.nombre   AS municipio,
         c.latitud, c.longitud,
@@ -322,7 +322,7 @@ class _ClientesList extends StatelessWidget {
         LEFT JOIN municipios  m  ON m.id = co.municipio_id
         LEFT JOIN cuotas      cu ON cu.cliente_id = c.id
        WHERE ${where.join(' AND ')}
-       GROUP BY c.id, c.nombre, c.telefono, c.direccion_referencia,
+       GROUP BY c.id, c.codigo, c.nombre, c.telefono, c.direccion_referencia,
                 co.nombre, m.nombre, c.latitud, c.longitud
        $having
        ORDER BY cuotas_vencidas DESC, cuotas_pendientes DESC, c.nombre
@@ -400,6 +400,13 @@ class _ClienteCard extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
+                      if (row['codigo'] != null)
+                        Text(row['codigo'] as String,
+                            style: TextStyle(
+                                fontWeight: FontWeight.w700,
+                                fontSize: 11,
+                                color: scheme.primary,
+                                letterSpacing: 0.5)),
                       Text(row['nombre'] as String,
                           style: const TextStyle(fontWeight: FontWeight.w600)),
                       const SizedBox(height: 2),

@@ -93,21 +93,22 @@ class GlobalSearchDelegate extends SearchDelegate<String?> {
 
     final clientes = await ps.db.getAll(
       '''
-      SELECT c.id, c.nombre, c.cedula, co.nombre AS comunidad
+      SELECT c.id, c.codigo, c.nombre, c.cedula, co.nombre AS comunidad
         FROM clientes c
    LEFT JOIN comunidades co ON co.id = c.comunidad_id
        WHERE c.activo = 1
-         AND (lower(c.nombre) LIKE ? OR lower(c.cedula) LIKE ? OR lower(c.telefono) LIKE ?)
+         AND (lower(c.nombre) LIKE ? OR lower(c.cedula) LIKE ? OR lower(c.telefono) LIKE ? OR lower(coalesce(c.codigo,'')) LIKE ?)
        ORDER BY c.nombre
        LIMIT 10
       ''',
-      [q, q, q],
+      [q, q, q, q],
     );
     for (final c in clientes) {
       results.add(_SearchResult(
         tipo: 'cliente',
         titulo: c['nombre'] as String,
         subtitulo: [
+          if (c['codigo'] != null) c['codigo'] as String,
           if (c['cedula'] != null) c['cedula'] as String,
           if (c['comunidad'] != null) c['comunidad'] as String,
         ].join(' · '),

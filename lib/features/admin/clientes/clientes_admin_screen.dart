@@ -113,7 +113,7 @@ class _ClientesAdminScreenState extends ConsumerState<ClientesAdminScreen> {
                   onChanged: _onSearch,
                   decoration: InputDecoration(
                     prefixIcon: const Icon(Icons.search),
-                    hintText: 'Buscar cliente por nombre, cédula o teléfono',
+                    hintText: 'Buscar por nombre, código, cédula o teléfono',
                     suffixIcon: _searchCtrl.text.isEmpty
                         ? null
                         : IconButton(
