@@ -9,7 +9,6 @@ import '../../../data/providers/crud_error_provider.dart';
 import '../../../data/providers/impersonation_provider.dart';
 import '../../../data/providers/sync_status_provider.dart';
 import '../../../data/services/impersonation_service.dart';
-import '../../shared/widgets/app_version_label.dart';
 import '../../shared/widgets/update_banner.dart';
 import '../../../powersync/db.dart' as ps;
 import '../../auth/cambiar_password_dialog.dart';

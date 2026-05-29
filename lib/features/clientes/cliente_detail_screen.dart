@@ -67,7 +67,6 @@ class _ClienteDetailScreenState extends ConsumerState<ClienteDetailScreen> {
     final clienteAsync = ref.watch(clienteByIdProvider(widget.clienteId));
     final cobrador = ref.watch(cobradorActualProvider).valueOrNull;
     final esAdmin = cobrador?.tieneAccesoAdmin ?? false;
-    final esCobrador = cobrador?.rol == 'cobrador';
     final loc = GoRouterState.of(context).uri.path;
     final enAdminShell = loc.startsWith('/admin');
 

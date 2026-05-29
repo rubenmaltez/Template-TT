@@ -118,12 +118,25 @@ class ErrorLogEntry {
       jsonEncode(list.map((e) => e.toJson()).toList());
 
   static List<ErrorLogEntry> decodeList(String raw) {
-    final decoded = jsonDecode(raw);
-    if (decoded is! List) return const [];
-    return decoded
-        .whereType<Map<String, dynamic>>()
-        .map(ErrorLogEntry.fromJson)
-        .toList();
+    List<dynamic> decoded;
+    try {
+      final parsed = jsonDecode(raw);
+      if (parsed is! List) return const [];
+      decoded = parsed;
+    } catch (_) {
+      // SharedPreferences corrupto / JSON inválido → no romper el arranque.
+      return const [];
+    }
+    final out = <ErrorLogEntry>[];
+    for (final e in decoded) {
+      if (e is! Map<String, dynamic>) continue;
+      try {
+        out.add(ErrorLogEntry.fromJson(e));
+      } catch (_) {
+        // Elemento malformado: descartarlo sin perder el resto de los logs.
+      }
+    }
+    return out;
   }
 
   @override

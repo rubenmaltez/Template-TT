@@ -53,9 +53,6 @@ class _CobroScreenState extends ConsumerState<CobroScreen> {
   bool _cargaFallida = false;
   bool get _esMultiCuota => widget.cuotaIds.length > 1;
 
-  // Backward compat.
-  Cuota? get _cuota => _cuotas.isEmpty ? null : _cuotas.first;
-
   @override
   void initState() {
     super.initState();
@@ -167,8 +164,6 @@ class _CobroScreenState extends ConsumerState<CobroScreen> {
         if (totales[idx] < 0) totales[idx] = 0;
       }
     }
-
-    final totalGlobal = totales.fold(0.0, (s, t) => s + t);
 
     if (!mounted) return;
     setState(() {

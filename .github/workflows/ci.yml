@@ -58,7 +58,10 @@ jobs:
 
       - uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.24.0'
+          # Debe traer intl 0.20.2 (lo exige el pubspec). Flutter 3.24.0 fijaba
+          # intl 0.19.0 vía flutter_localizations y rompía `flutter pub get`.
+          # Mantener alineada con la versión de Flutter del equipo de desarrollo.
+          flutter-version: '3.41.9'
           channel: stable
 
       - name: flutter pub get

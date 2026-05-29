@@ -3,13 +3,11 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../data/models/setting.dart';
 import '../../../data/providers/cobrador_provider.dart';
 import '../../../data/providers/logo_empresa_provider.dart';
 import '../../../data/repositories/settings_repo.dart';
-import '../../../data/services/logo_empresa_service.dart';
 import '../../shared/widgets/empty_state.dart';
 
 /// Panel de configuración. Agrupa settings por categoría en pestañas.

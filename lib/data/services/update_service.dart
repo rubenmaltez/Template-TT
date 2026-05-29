@@ -5,8 +5,6 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:package_info_plus/package_info_plus.dart';
 
-import '../../config/env.dart';
-
 /// Información de una actualización disponible.
 class AppUpdate {
   const AppUpdate({
