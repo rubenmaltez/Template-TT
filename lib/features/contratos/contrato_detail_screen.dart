@@ -86,7 +86,7 @@ class _ContratoDetailScreenState extends ConsumerState<ContratoDetailScreen> {
        LIMIT 1
       ''',
       parameters: [widget.contratoId],
-    ).asBroadcastStream();
+    );
   }
 
   Stream<List<Map<String, dynamic>>> _buildCuotasStream() {
@@ -100,7 +100,7 @@ class _ContratoDetailScreenState extends ConsumerState<ContratoDetailScreen> {
        ORDER BY cu.periodo ASC
       ''',
       parameters: [widget.contratoId],
-    ).asBroadcastStream();
+    );
   }
 
   Stream<List<Map<String, dynamic>>> _buildPagosStream() {
@@ -121,7 +121,7 @@ class _ContratoDetailScreenState extends ConsumerState<ContratoDetailScreen> {
        LIMIT 20
       ''',
       parameters: [widget.contratoId],
-    ).asBroadcastStream();
+    );
   }
 
   // Resumen: SUM(monto_pagado) de pagos NO anulados del contrato.
@@ -136,7 +136,7 @@ class _ContratoDetailScreenState extends ConsumerState<ContratoDetailScreen> {
          AND pa.anulado = 0
       ''',
       parameters: [widget.contratoId],
-    ).asBroadcastStream();
+    );
   }
 
   // --- multi-select helpers ---
