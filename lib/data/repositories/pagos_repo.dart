@@ -197,6 +197,15 @@ class PagosRepo {
         final estadoActual = cuotaRows.first['estado'] as String;
         final pagadoNuevo = pagadoViejo + montoCordobas;
         final delta = await _deltaCargosExtra(tx, cuotaId);
+        // M3-MONEY: el trigger Postgres `cargos_extra_actualizar_neto_trg`
+        // (0023) mantiene cuotas.cargos_neto = SUM neta de cargos_extra.
+        // Ese trigger corre recién al sync, así que offline reflejamos el
+        // efecto localmente. `delta` ya es exactamente cargos_neto
+        // (reconexion/otro suman, descuento_* restan).
+        await tx.execute(
+          'UPDATE cuotas SET cargos_neto = ? WHERE id = ?',
+          [delta, cuotaId],
+        );
         final nuevoEstado = calcularEstadoCuota(
           estadoActual: estadoActual,
           montoCuota: montoCuota,
@@ -345,6 +354,14 @@ class PagosRepo {
           final estadoActual = cuotaRows.first['estado'] as String;
           final pagadoNuevo = pagadoViejo + montosCordobas[i];
           final delta = await _deltaCargosExtra(tx, cuotaIds[i]);
+          // M3-MONEY: mirror del trigger `cargos_extra_actualizar_neto_trg`
+          // (0023). `delta` ya es cargos_neto (reconexion/otro suman,
+          // descuento_* restan). Sin esto el saldo offline queda stale
+          // hasta el sync.
+          await tx.execute(
+            'UPDATE cuotas SET cargos_neto = ? WHERE id = ?',
+            [delta, cuotaIds[i]],
+          );
           final nuevoEstado = calcularEstadoCuota(
             estadoActual: estadoActual,
             montoCuota: montoCuota,
@@ -446,11 +463,21 @@ class PagosRepo {
     await ps.db.writeTransaction((tx) async {
       // Leer el pago actual para obtener cuota_id y monto previo.
       final pagoRows = await tx.getAll(
-        'SELECT cuota_id, monto_cordobas FROM pagos WHERE id = ? AND anulado = 0',
+        'SELECT cuota_id, monto_cordobas, vuelto_cordobas FROM pagos WHERE id = ? AND anulado = 0',
         [pagoId],
       );
       if (pagoRows.isEmpty) {
         throw Exception('Pago no encontrado o ya anulado');
+      }
+      // Defense in depth: editar un pago con vuelto dejaría el vuelto
+      // inconsistente con el nuevo monto. El flujo correcto es anular +
+      // recobrar. El UI ya bloquea el botón, esto cubre cualquier callsite.
+      final vueltoPrevio =
+          (pagoRows.first['vuelto_cordobas'] as num? ?? 0).toDouble();
+      if (vueltoPrevio > 0) {
+        throw Exception(
+          'No se puede editar un pago con vuelto. Anulalo y registrá el cobro de nuevo.',
+        );
       }
       final cuotaId = pagoRows.first['cuota_id'] as String;
       final montoPrevio = (pagoRows.first['monto_cordobas'] as num).toDouble();

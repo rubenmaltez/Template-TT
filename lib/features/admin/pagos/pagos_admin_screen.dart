@@ -321,11 +321,19 @@ class _PagoCard extends ConsumerWidget {
                 onPressed: () => _verHistorial(context),
               ),
             if (!anulado) ...[
-              IconButton(
-                icon: const Icon(Icons.edit),
-                tooltip: 'Editar pago',
-                onPressed: () => _editar(context, ref),
-              ),
+              if (((row['vuelto_cordobas'] as num?) ?? 0) > 0)
+                IconButton(
+                  icon: const Icon(Icons.edit),
+                  tooltip: 'No se puede editar: este pago tiene vuelto',
+                  color: scheme.outline,
+                  onPressed: () => _avisarVuelto(context),
+                )
+              else
+                IconButton(
+                  icon: const Icon(Icons.edit),
+                  tooltip: 'Editar pago',
+                  onPressed: () => _editar(context, ref),
+                ),
               IconButton(
                 icon: const Icon(Icons.block),
                 tooltip: 'Anular pago',
@@ -389,6 +397,19 @@ class _PagoCard extends ConsumerWidget {
         'tarjeta' => Icons.credit_card,
         _ => Icons.payments,
       };
+
+  void _avisarVuelto(BuildContext context) {
+    final vuelto = (row['vuelto_cordobas'] as num?) ?? 0;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          'Este pago tiene vuelto (${Fmt.cordobas(vuelto)}). Para corregirlo, '
+          'anulalo y registrá el cobro de nuevo.',
+        ),
+        duration: const Duration(seconds: 4),
+      ),
+    );
+  }
 
   Future<void> _editar(BuildContext context, WidgetRef ref) async {
     final resultado = await showDialog<_EditarPagoResult?>(
