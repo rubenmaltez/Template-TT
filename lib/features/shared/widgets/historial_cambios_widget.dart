@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 
+import '../../../data/models/pago.dart';
 import '../../../data/utils/formatters.dart';
 import '../../../powersync/db.dart' as ps;
 
@@ -196,6 +197,13 @@ class _CambioTile extends StatelessWidget {
     // Campos de anulación/auditoría que cargan la UI con nulls
     // cuando se muestra una creación o snapshot de delete.
     'anulado_en', 'anulado_por', 'motivo_anulacion',
+    // FK ids: son UUIDs sin valor para el usuario (se ven como data
+    // corrupta). El actor del cambio ya se muestra resuelto a nombre.
+    'cobrador_id', 'cliente_id', 'contrato_id', 'cuota_id', 'plan_id',
+    'pago_id', 'recibo_id', 'comunidad_id', 'departamento_id',
+    'municipio_id', 'grupo_cobro', 'user_id',
+    // Geo del cobro: deprecado (ya no se captura ubicación al cobrar).
+    'lat', 'lng',
   };
 
   List<_CampoChange> _extraerCambios(Map<String, dynamic> row) {
@@ -269,6 +277,12 @@ class _CambioTile extends StatelessWidget {
       // Omitir nulls y vacíos del snapshot (no aportan info).
       if (v == null) continue;
       if (v is String && v.isEmpty) continue;
+      // En creaciones, omitir montos en cero (ruido tipo "— → C$0.00" en el
+      // evento "Cuota generada"; toda cuota arranca con monto_pagado 0).
+      if (isCreate && _moneyKeys.contains(key)) {
+        final n = v is num ? v : num.tryParse(v.toString());
+        if (n != null && n == 0) continue;
+      }
       cambios.add(_CampoChange(
         campo: _fieldLabel(key),
         antes: isCreate ? '—' : _fmtField(key, v),
@@ -305,8 +319,24 @@ class _CambioTile extends StatelessWidget {
       final n = num.tryParse(v.toString());
       if (n != null) return Fmt.cordobas(n);
     }
+    // Enums: mostrar el label humano que usa el resto de la app, no el slug.
+    if (key == 'metodo' && v is String && v.isNotEmpty) {
+      return MetodoPago.fromString(v).label;
+    }
+    if (key == 'tipo_cargo_manual' && v is String && v.isNotEmpty) {
+      return _tipoCargoLabel(v);
+    }
     return _fmt(v);
   }
+
+  static String _tipoCargoLabel(String t) => switch (t) {
+        'reconexion' => 'Reconexión',
+        'instalacion' => 'Instalación',
+        'mora' => 'Mora',
+        'reparacion' => 'Reparación',
+        'otro' => 'Otro',
+        _ => t,
+      };
 
   static String _fmt(dynamic v) {
     if (v == null) return '—';

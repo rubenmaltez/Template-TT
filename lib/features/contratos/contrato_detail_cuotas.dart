@@ -166,11 +166,15 @@ class _CuotasSectionState extends ConsumerState<_CuotasSection> {
               );
             }
 
-            // IDs pendientes ordenados para validar orden de seleccion.
+            // IDs pendientes ordenados para validar orden de cobro/seleccion.
+            // Los cargos manuales (reconexion, instalacion, etc.) NO entran al
+            // orden obligatorio: se cobran en cualquier orden (decision de
+            // negocio). Por eso se excluyen de pendingIds.
             final pendingIds = allRows
                 .where((r) {
                   final e = r['estado'] as String? ?? '';
-                  return e == 'pendiente' || e == 'parcial';
+                  final esManual = r['tipo_cargo_manual'] != null;
+                  return !esManual && (e == 'pendiente' || e == 'parcial');
                 })
                 .map((r) => r['id'] as String)
                 .toList();
@@ -186,49 +190,76 @@ class _CuotasSectionState extends ConsumerState<_CuotasSection> {
                     children: [
                       for (var i = 0; i < rows.length; i++) ...[
                         if (i > 0) const Divider(height: 1),
-                        _CuotaRow(
-                          row: rows[i],
-                          diasGracia: diasGracia,
-                      isSelected: selected.contains(rows[i]['id'] as String),
-                      showCheckbox: selected.isNotEmpty,
-                      onHistorial: () =>
-                          _showCuotaChangeLog(context, rows[i]['id'] as String),
-                      onTap: () {
-                        final cuotaId = rows[i]['id'] as String;
-                        final estado = rows[i]['estado'] as String? ?? '';
-                        if (selected.isNotEmpty && pendingIds.contains(cuotaId)) {
-                          onToggle(cuotaId, pendingIds);
-                        } else if (selected.isEmpty &&
-                            (estado == 'pendiente' || estado == 'parcial')) {
-                          // Regla de negocio: las cuotas se cobran en orden
-                          // cronologico (la mas antigua pendiente primero).
-                          // pendingIds viene siempre en orden ASC (de allRows,
-                          // no de la lista de display), asi que el primer
-                          // elemento es la cuota cobrable mas vieja.
-                          if (pendingIds.isNotEmpty &&
-                              pendingIds.first == cuotaId) {
-                            onTapCuota(cuotaId);
-                          } else {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                content: Text(
-                                    'Cobrá primero las cuotas más antiguas pendientes.'),
-                                duration: Duration(seconds: 2),
-                              ),
-                            );
-                          }
-                        }
-                      },
-                      onLongPress: multiSelect &&
-                              _isPending(rows[i]['estado'] as String? ?? '')
-                          ? () {
-                              final cuotaId = rows[i]['id'] as String;
-                              onLongPressCuota?.call(cuotaId, pendingIds);
-                            }
-                          : null,
-                    ),
-                  ],
-                ],
+                        Builder(builder: (context) {
+                          final row = rows[i];
+                          final cuotaId = row['id'] as String;
+                          final estado = row['estado'] as String? ?? '';
+                          final esManual = row['tipo_cargo_manual'] != null;
+                          final esPendiente =
+                              estado == 'pendiente' || estado == 'parcial';
+                          final esRegularSiguiente = pendingIds.isNotEmpty &&
+                              pendingIds.first == cuotaId;
+                          // La fila cobrable AHORA (sin multi-select activo): la
+                          // cuota regular mas antigua, o cualquier cargo manual
+                          // pendiente (se cobran en cualquier orden).
+                          final esCobrable = selected.isEmpty &&
+                              esPendiente &&
+                              (esManual || esRegularSiguiente);
+                          // Atenuar las cuotas regulares pendientes que todavia
+                          // NO se pueden cobrar (no son la siguiente en el orden).
+                          final atenuada = selected.isEmpty &&
+                              esPendiente &&
+                              !esManual &&
+                              !esRegularSiguiente;
+                          return _CuotaRow(
+                            row: row,
+                            diasGracia: diasGracia,
+                            isSelected: selected.contains(cuotaId),
+                            showCheckbox: selected.isNotEmpty,
+                            esCobrable: esCobrable,
+                            atenuada: atenuada,
+                            onHistorial: () =>
+                                _showCuotaChangeLog(context, cuotaId),
+                            onTap: () {
+                              if (selected.isNotEmpty &&
+                                  pendingIds.contains(cuotaId)) {
+                                onToggle(cuotaId, pendingIds);
+                              } else if (selected.isEmpty && esPendiente) {
+                                if (esManual || esRegularSiguiente) {
+                                  // Cargo manual (cualquier orden) o la cuota
+                                  // regular mas antigua: se puede cobrar.
+                                  onTapCuota(cuotaId);
+                                } else {
+                                  // Falta cobrar una cuota mas antigua: avisamos
+                                  // cual es (mes) para que no se sienta roto.
+                                  final primera = allRows.firstWhere(
+                                    (r) => r['id'] == pendingIds.first,
+                                    orElse: () => const <String, dynamic>{},
+                                  );
+                                  final mesPrimera = primera['periodo'] != null
+                                      ? _mesCap(DateTime.parse(
+                                          primera['periodo'] as String))
+                                      : 'la más antigua';
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(
+                                      content: Text(
+                                          'Cobrá primero $mesPrimera (la cuota más antigua pendiente).'),
+                                      duration: const Duration(seconds: 3),
+                                      behavior: SnackBarBehavior.floating,
+                                    ),
+                                  );
+                                }
+                              }
+                            },
+                            onLongPress:
+                                multiSelect && esPendiente && !esManual
+                                    ? () => onLongPressCuota?.call(
+                                        cuotaId, pendingIds)
+                                    : null,
+                          );
+                        }),
+                      ],
+                    ],
               ),
             ),
               ],
@@ -239,8 +270,9 @@ class _CuotasSectionState extends ConsumerState<_CuotasSection> {
     );
   }
 
-  static bool _isPending(String estado) =>
-      estado == 'pendiente' || estado == 'parcial';
+  // Mes capitalizado (ej. "Enero") para el aviso de orden de cobro.
+  static String _mesCap(DateTime d) =>
+      '${Fmt.mes(d)[0].toUpperCase()}${Fmt.mes(d).substring(1)}';
 
   static String _filtroLabel(_CuotaFiltro f) => switch (f) {
         _CuotaFiltro.todas => 'Todas',
@@ -290,6 +322,8 @@ class _CuotaRow extends StatelessWidget {
     required this.diasGracia,
     required this.isSelected,
     required this.showCheckbox,
+    required this.esCobrable,
+    required this.atenuada,
     required this.onTap,
     required this.onHistorial,
     this.onLongPress,
@@ -298,6 +332,10 @@ class _CuotaRow extends StatelessWidget {
   final int diasGracia;
   final bool isSelected;
   final bool showCheckbox;
+  // Fila cobrable ahora → muestra chevron de "tocar para cobrar".
+  final bool esCobrable;
+  // Pendiente que todavia no se puede cobrar (orden) → atenuada.
+  final bool atenuada;
   final VoidCallback onTap;
   final VoidCallback onHistorial;
   final VoidCallback? onLongPress;
@@ -348,7 +386,9 @@ class _CuotaRow extends StatelessWidget {
             ? scheme.primaryContainer.withValues(alpha: 0.3)
             : null,
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-        child: Row(
+        child: Opacity(
+          opacity: atenuada ? 0.45 : 1.0,
+          child: Row(
           children: [
             // Checkbox o color bar
             if (showCheckbox)
@@ -436,7 +476,13 @@ class _CuotaRow extends StatelessWidget {
               color: scheme.outline,
               onPressed: onHistorial,
             ),
+            // Chevron de "tocar para cobrar" solo en la fila cobrable.
+            if (esCobrable)
+              Icon(Icons.chevron_right, size: 20, color: scheme.primary)
+            else
+              const SizedBox(width: 20),
           ],
+        ),
         ),
       ),
     );

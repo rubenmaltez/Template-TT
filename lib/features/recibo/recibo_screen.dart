@@ -132,7 +132,10 @@ class _ReciboScreenState extends ConsumerState<ReciboScreen> {
         initialData: const [],
         builder: (context, snap) {
           if (snap.hasError) {
-            return const Center(child: Text('Error al cargar el recibo'));
+            return const EmptyState(
+              icon: Icons.error_outline,
+              titulo: 'Error al cargar el recibo',
+            );
           }
           if (snap.data!.isEmpty) {
             return const EmptyState(
