@@ -200,7 +200,23 @@ class _CuotasSectionState extends ConsumerState<_CuotasSection> {
                           onToggle(cuotaId, pendingIds);
                         } else if (selected.isEmpty &&
                             (estado == 'pendiente' || estado == 'parcial')) {
-                          onTapCuota(cuotaId);
+                          // Regla de negocio: las cuotas se cobran en orden
+                          // cronologico (la mas antigua pendiente primero).
+                          // pendingIds viene siempre en orden ASC (de allRows,
+                          // no de la lista de display), asi que el primer
+                          // elemento es la cuota cobrable mas vieja.
+                          if (pendingIds.isNotEmpty &&
+                              pendingIds.first == cuotaId) {
+                            onTapCuota(cuotaId);
+                          } else {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text(
+                                    'Cobrá primero las cuotas más antiguas pendientes.'),
+                                duration: Duration(seconds: 2),
+                              ),
+                            );
+                          }
                         }
                       },
                       onLongPress: multiSelect &&
@@ -254,10 +270,7 @@ class _CuotasSectionState extends ConsumerState<_CuotasSection> {
             Expanded(
               child: SingleChildScrollView(
                 controller: ctrl,
-                child: HistorialCambiosWidget(
-                  tabla: 'cuotas',
-                  registroId: cuotaId,
-                ),
+                child: HistorialCuotaWidget(cuotaId: cuotaId),
               ),
             ),
           ],

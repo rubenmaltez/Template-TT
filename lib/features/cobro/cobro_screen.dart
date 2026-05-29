@@ -14,7 +14,6 @@ import '../../data/providers/foto_comprobante_provider.dart';
 import '../../data/repositories/cuotas_repo.dart';
 import '../../data/repositories/pagos_repo.dart';
 import '../../data/repositories/settings_repo.dart';
-import '../../data/services/gps_service.dart';
 import '../../data/utils/cobro_calculo.dart';
 import '../../data/utils/formatters.dart';
 import '../../powersync/db.dart' as ps;
@@ -45,8 +44,6 @@ class _CobroScreenState extends ConsumerState<CobroScreen> {
   final List<double> _totalesACobrar = [];
   Map<String, dynamic>? _clienteRow;
   double? _tasaSnapshot;
-  ({double lat, double lng})? _ubicacion;
-  bool _capturandoUbicacion = false;
   String? _fotoPath;
   DateTime _fechaCobro = DateTime.now();
 
@@ -62,21 +59,7 @@ class _CobroScreenState extends ConsumerState<CobroScreen> {
   @override
   void initState() {
     super.initState();
-    _capturandoUbicacion = true;
     _cargar();
-    _capturarUbicacion();
-  }
-
-  /// Captura GPS en background al abrir la pantalla. Si tarda o falla,
-  /// el cobro continúa sin coordenadas — no es bloqueante.
-  Future<void> _capturarUbicacion() async {
-    final ubi = await const GpsService().obtenerUbicacion();
-    if (mounted) {
-      setState(() {
-        _ubicacion = ubi;
-        _capturandoUbicacion = false;
-      });
-    }
   }
 
   void _cambiarMoneda(Moneda nueva, AppSettings settings) {
@@ -316,8 +299,8 @@ class _CobroScreenState extends ConsumerState<CobroScreen> {
                   ? null
                   : _referenciaCtrl.text.trim(),
               fotoComprobantePath: _fotoPath,
-              lat: _ubicacion?.lat,
-              lng: _ubicacion?.lng,
+              lat: null,
+              lng: null,
               notas: _notasCtrl.text.trim().isEmpty
                   ? null
                   : _notasCtrl.text.trim(),
@@ -370,8 +353,8 @@ class _CobroScreenState extends ConsumerState<CobroScreen> {
                   ? null
                   : _referenciaCtrl.text.trim(),
               fotoComprobantePath: _fotoPath,
-              lat: _ubicacion?.lat,
-              lng: _ubicacion?.lng,
+              lat: null,
+              lng: null,
               notas: _notasCtrl.text.trim().isEmpty
                   ? null
                   : _notasCtrl.text.trim(),
@@ -631,11 +614,6 @@ class _CobroScreenState extends ConsumerState<CobroScreen> {
             ),
           ),
 
-          const SizedBox(height: 24),
-          _UbicacionIndicador(
-            capturando: _capturandoUbicacion,
-            ubicacion: _ubicacion,
-          ),
           // Fecha del cobro: editable si el admin lo habilitó.
           if (settings.cobradorEditaFecha) ...[
             const SizedBox(height: 16),
@@ -1063,39 +1041,6 @@ class _FotoComprobantePickerState
           ],
         ),
       ),
-    );
-  }
-}
-
-class _UbicacionIndicador extends StatelessWidget {
-  const _UbicacionIndicador({
-    required this.capturando,
-    required this.ubicacion,
-  });
-  final bool capturando;
-  final ({double lat, double lng})? ubicacion;
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    final (icon, label, color) = capturando
-        ? (Icons.gps_not_fixed, 'Capturando ubicación...', scheme.outline)
-        : ubicacion != null
-            ? (Icons.gps_fixed, 'Ubicación capturada', scheme.tertiary)
-            : (Icons.gps_off, 'Sin ubicación (cobro continúa)', scheme.outline);
-
-    return Row(
-      children: [
-        if (capturando)
-          const SizedBox(
-              width: 16,
-              height: 16,
-              child: CircularProgressIndicator(strokeWidth: 2))
-        else
-          Icon(icon, size: 16, color: color),
-        const SizedBox(width: 8),
-        Text(label, style: TextStyle(color: color, fontSize: 12)),
-      ],
     );
   }
 }

@@ -267,10 +267,7 @@ class _PagoDetalleSheetState extends ConsumerState<_PagoDetalleSheet> {
             Expanded(
               child: SingleChildScrollView(
                 controller: ctrl,
-                child: HistorialCambiosWidget(
-                  tabla: 'cuotas',
-                  registroId: cuotaId,
-                ),
+                child: HistorialCuotaWidget(cuotaId: cuotaId),
               ),
             ),
           ],

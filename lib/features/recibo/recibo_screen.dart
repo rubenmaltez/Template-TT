@@ -32,11 +32,8 @@ class _ReciboScreenState extends ConsumerState<ReciboScreen> {
 
   // Vista preview: si está activa, el body del recibo se constraine al
   // ancho visual de la tira térmica (según `cobranza.formato_recibo_mm`).
-  // Útil en web para que el admin "vea" cómo va a quedar el ticket.
-  // Default ON: el recibo se muestra siempre simulando el ancho real
-  // del papel térmico (80mm/57mm). El toggle permite expandir a vista
-  // amplia si el admin quiere copiar texto.
-  bool _vistaPreview = true;
+  // El recibo se muestra SIEMPRE simulando el ancho real del papel
+  // térmico (80mm/57mm). Sin toggle: la vista preview es permanente.
 
   bool get _esMultiCuota => widget.grupoCobro != null;
 
@@ -118,21 +115,12 @@ class _ReciboScreenState extends ConsumerState<ReciboScreen> {
         ? ref.watch(logoEmpresaUrlProvider).valueOrNull
         : null;
 
-    final maxWidth = _vistaPreview
-        ? _previewWidthPx(settings.formatoReciboMm)
-        : double.infinity;
+    final maxWidth = _previewWidthPx(settings.formatoReciboMm);
 
     return Scaffold(
       appBar: AppBar(
         title: const Text('Recibo'),
         actions: [
-          IconButton(
-            icon: Icon(_vistaPreview ? Icons.crop_free : Icons.crop_din),
-            tooltip: _vistaPreview
-                ? 'Vista normal'
-                : 'Vista preview de la tira térmica',
-            onPressed: () => setState(() => _vistaPreview = !_vistaPreview),
-          ),
           IconButton(
             icon: const Icon(Icons.home),
             onPressed: () => context.go('/'),
