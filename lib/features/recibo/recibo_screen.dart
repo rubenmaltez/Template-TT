@@ -897,12 +897,14 @@ class _PostCobroActionsState extends State<_PostCobroActions> {
             textAlign: TextAlign.center,
             style: TextStyle(color: scheme.outline, fontSize: 13),
           ),
-        const SizedBox(height: 8),
-        OutlinedButton.icon(
-          icon: const Icon(Icons.list),
-          label: const Text('Volver a cuotas'),
-          onPressed: () => context.go('/cuotas'),
-        ),
+        if (widget.clienteId != null) ...[
+          const SizedBox(height: 8),
+          OutlinedButton.icon(
+            icon: const Icon(Icons.person),
+            label: const Text('Ver detalle del cliente'),
+            onPressed: () => context.go('/clientes/${widget.clienteId}'),
+          ),
+        ],
         const SizedBox(height: 24),
       ],
     );

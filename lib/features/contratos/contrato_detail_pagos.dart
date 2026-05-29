@@ -246,6 +246,39 @@ class _PagoDetalleSheetState extends ConsumerState<_PagoDetalleSheet> {
     }
   }
 
+  // Abre el historial de cambios de la CUOTA asociada al pago en un bottom
+  // sheet (mismo patrón que `_showChangeLog` del contrato).
+  void _showCuotaChangeLog(String cuotaId) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      builder: (_) => DraggableScrollableSheet(
+        expand: false,
+        initialChildSize: 0.6,
+        maxChildSize: 0.9,
+        builder: (_, ctrl) => Column(
+          children: [
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: Text('Historial de la cuota',
+                  style: Theme.of(context).textTheme.titleMedium),
+            ),
+            const Divider(height: 1),
+            Expanded(
+              child: SingleChildScrollView(
+                controller: ctrl,
+                child: HistorialCambiosWidget(
+                  tabla: 'cuotas',
+                  registroId: cuotaId,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
@@ -311,6 +344,15 @@ class _PagoDetalleSheetState extends ConsumerState<_PagoDetalleSheet> {
                             fontSize: 11,
                             fontWeight: FontWeight.bold,
                           )),
+                    ),
+                  // Historial de la cuota asociada al pago (creación + cambios
+                  // de estado + pagos). Esquina superior derecha del sheet.
+                  if (widget.row['cuota_id'] != null)
+                    IconButton(
+                      icon: const Icon(Icons.history),
+                      tooltip: 'Historial de la cuota',
+                      onPressed: () => _showCuotaChangeLog(
+                          widget.row['cuota_id'] as String),
                     ),
                 ],
               ),

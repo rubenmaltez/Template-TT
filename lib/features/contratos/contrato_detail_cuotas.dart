@@ -2,7 +2,7 @@ part of 'contrato_detail_screen.dart';
 
 enum _CuotaFiltro { todas, pendientes, pagadas, manuales }
 
-class _CuotasSection extends ConsumerWidget {
+class _CuotasSection extends ConsumerStatefulWidget {
   const _CuotasSection({
     required this.contratoId,
     required this.diasGracia,
@@ -25,22 +25,60 @@ class _CuotasSection extends ConsumerWidget {
   final void Function(String cuotaId, List<String> orderedIds)? onLongPressCuota;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<_CuotasSection> createState() => _CuotasSectionState();
+}
+
+class _CuotasSectionState extends ConsumerState<_CuotasSection> {
+  // false = más antiguas primero (el orden ASC que viene del provider). Es el
+  // default porque las cuotas se leen cronológicamente hacia adelante.
+  bool _masNuevasPrimero = false;
+
+  @override
+  Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
+    final contratoId = widget.contratoId;
+    final diasGracia = widget.diasGracia;
+    final multiSelect = widget.multiSelect;
+    final selected = widget.selected;
+    final filtro = widget.filtro;
+    final onFiltroChanged = widget.onFiltroChanged;
+    final onToggle = widget.onToggle;
+    final onTapCuota = widget.onTapCuota;
+    final onLongPressCuota = widget.onLongPressCuota;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // Titulo
+        // Titulo + toggle de orden
         Row(
           children: [
             Icon(Icons.receipt_long, size: 20, color: scheme.primary),
             const SizedBox(width: 8),
-            Text('Cuotas',
-                style: Theme.of(context)
-                    .textTheme
-                    .titleSmall
-                    ?.copyWith(fontWeight: FontWeight.bold)),
+            Expanded(
+              child: Text('Cuotas',
+                  style: Theme.of(context)
+                      .textTheme
+                      .titleSmall
+                      ?.copyWith(fontWeight: FontWeight.bold)),
+            ),
+            // Toggle de orden: Más antiguas / Más nuevas.
+            SegmentedButton<bool>(
+              segments: const [
+                ButtonSegment(value: false, label: Text('Más antiguas')),
+                ButtonSegment(value: true, label: Text('Más nuevas')),
+              ],
+              selected: {_masNuevasPrimero},
+              showSelectedIcon: false,
+              style: ButtonStyle(
+                visualDensity: VisualDensity.compact,
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                textStyle: WidgetStatePropertyAll(
+                  Theme.of(context).textTheme.labelSmall,
+                ),
+              ),
+              onSelectionChanged: (sel) =>
+                  setState(() => _masNuevasPrimero = sel.first),
+            ),
           ],
         ),
         const SizedBox(height: 8),
@@ -93,8 +131,8 @@ class _CuotasSection extends ConsumerWidget {
               ),
             );
 
-            // Filtrar según chip activo
-            final rows = allRows.where((r) {
+            // Filtrar según chip activo (siempre en orden ASC del provider).
+            final filtradas = allRows.where((r) {
               final estado = r['estado'] as String? ?? 'pendiente';
               return switch (filtro) {
                 _CuotaFiltro.todas => true,
@@ -104,6 +142,12 @@ class _CuotasSection extends ConsumerWidget {
                 _CuotaFiltro.manuales => r['tipo_cargo_manual'] != null,
               };
             }).toList();
+
+            // Orden de DISPLAY según toggle. El cálculo de pendingIds queda
+            // siempre en ASC (más abajo) para no romper el orden de selección.
+            final rows = _masNuevasPrimero
+                ? filtradas.reversed.toList()
+                : filtradas;
 
             if (rows.isEmpty) {
               return Column(
@@ -147,6 +191,8 @@ class _CuotasSection extends ConsumerWidget {
                           diasGracia: diasGracia,
                       isSelected: selected.contains(rows[i]['id'] as String),
                       showCheckbox: selected.isNotEmpty,
+                      onHistorial: () =>
+                          _showCuotaChangeLog(context, rows[i]['id'] as String),
                       onTap: () {
                         final cuotaId = rows[i]['id'] as String;
                         final estado = rows[i]['estado'] as String? ?? '';
@@ -188,6 +234,39 @@ class _CuotasSection extends ConsumerWidget {
         _CuotaFiltro.pagadas => 'Pagadas',
         _CuotaFiltro.manuales => 'Manuales',
       };
+
+  // Abre el historial de cambios de una cuota en un bottom sheet
+  // (mismo patrón que `_showChangeLog` del contrato).
+  void _showCuotaChangeLog(BuildContext context, String cuotaId) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      builder: (_) => DraggableScrollableSheet(
+        expand: false,
+        initialChildSize: 0.6,
+        maxChildSize: 0.9,
+        builder: (_, ctrl) => Column(
+          children: [
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: Text('Historial de la cuota',
+                  style: Theme.of(context).textTheme.titleMedium),
+            ),
+            const Divider(height: 1),
+            Expanded(
+              child: SingleChildScrollView(
+                controller: ctrl,
+                child: HistorialCambiosWidget(
+                  tabla: 'cuotas',
+                  registroId: cuotaId,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -201,6 +280,7 @@ class _CuotaRow extends StatelessWidget {
     required this.isSelected,
     required this.showCheckbox,
     required this.onTap,
+    required this.onHistorial,
     this.onLongPress,
   });
   final Map<String, dynamic> row;
@@ -208,6 +288,7 @@ class _CuotaRow extends StatelessWidget {
   final bool isSelected;
   final bool showCheckbox;
   final VoidCallback onTap;
+  final VoidCallback onHistorial;
   final VoidCallback? onLongPress;
 
   @override
@@ -333,6 +414,16 @@ class _CuotaRow extends StatelessWidget {
                     ),
                   ),
               ],
+            ),
+            // Historial de cambios de la cuota (separado del tap-a-cobrar).
+            IconButton(
+              icon: const Icon(Icons.history, size: 18),
+              tooltip: 'Historial de la cuota',
+              visualDensity: VisualDensity.compact,
+              constraints: const BoxConstraints(),
+              padding: const EdgeInsets.only(left: 8),
+              color: scheme.outline,
+              onPressed: onHistorial,
             ),
           ],
         ),
