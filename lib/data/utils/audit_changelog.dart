@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import '../models/pago.dart';
+import '../providers/audit_lookups_provider.dart';
 import 'formatters.dart';
 
 /// Un cambio individual de un campo dentro de un evento del audit log.
@@ -50,6 +51,8 @@ const Map<String, Set<String>> kAuditCamposVisiblesDefault = {
     'referencia',
     'notas',
     'activo',
+    'cobrador_id',
+    'comunidad_id',
   },
   'contratos': {
     'estado',
@@ -58,6 +61,8 @@ const Map<String, Set<String>> kAuditCamposVisiblesDefault = {
     'fecha_inicio',
     'fecha_fin',
     'duracion_meses',
+    'plan_id',
+    'cobrador_id',
   },
   'recibos': {
     'numero_completo',
@@ -97,6 +102,8 @@ const Map<String, List<String>> kAuditCamposCatalogo = {
     'referencia',
     'notas',
     'activo',
+    'cobrador_id',
+    'comunidad_id',
   ],
   'contratos': [
     'estado',
@@ -106,6 +113,8 @@ const Map<String, List<String>> kAuditCamposCatalogo = {
     'fecha_fin',
     'duracion_meses',
     'documento_path',
+    'plan_id',
+    'cobrador_id',
   ],
   'cuotas': [
     'estado',
@@ -169,11 +178,9 @@ const Set<String> kAuditSkipKeys = {
   // Campos de anulación/auditoría que cargan la UI con nulls
   // cuando se muestra una creación o snapshot de delete.
   'anulado_en', 'anulado_por', 'motivo_anulacion',
-  // FK ids: son UUIDs sin valor para el usuario (se ven como data
-  // corrupta). El actor del cambio ya se muestra resuelto a nombre.
-  'cobrador_id', 'cliente_id', 'contrato_id', 'cuota_id', 'plan_id',
-  'pago_id', 'recibo_id', 'comunidad_id', 'departamento_id',
-  'municipio_id', 'grupo_cobro', 'user_id',
+  // FK ids siempre ocultos (no aportan info o ya están reflejados en otro
+  // lado del card): id de la entidad misma, group, user resuelto via JOIN.
+  'cuota_id', 'pago_id', 'recibo_id', 'grupo_cobro', 'user_id',
   // Geo del cobro: deprecado (ya no se captura ubicación al cobrar).
   'lat', 'lng',
 };
@@ -252,6 +259,7 @@ num? _asNum(dynamic v) {
 List<CampoChange> auditExtraerCambios(
   Map<String, dynamic> row, {
   Set<String>? camposVisibles,
+  AuditLookups? lookups,
 }) {
   final tabla = row['tabla'] as String?;
   final anteriorRaw = row['valor_anterior'] as String?;
@@ -275,8 +283,8 @@ List<CampoChange> auditExtraerCambios(
         if (_smartOmit(key, n)) continue;
         cambios.add(CampoChange(
           campo: auditFieldLabel(key),
-          antes: _fmtField(key, a),
-          despues: _fmtField(key, n),
+          antes: _fmtField(key, a, lookups: lookups),
+          despues: _fmtField(key, n, lookups: lookups),
         ));
       }
       return cambios;
@@ -289,6 +297,7 @@ List<CampoChange> auditExtraerCambios(
         isCreate: true,
         tabla: tabla,
         camposVisibles: camposVisibles,
+        lookups: lookups,
       );
     }
 
@@ -299,6 +308,7 @@ List<CampoChange> auditExtraerCambios(
         isCreate: false,
         tabla: tabla,
         camposVisibles: camposVisibles,
+        lookups: lookups,
       );
     }
 
@@ -332,6 +342,7 @@ List<CampoChange> _snapshotAsCambios(
   required bool isCreate,
   required String? tabla,
   required Set<String>? camposVisibles,
+  required AuditLookups? lookups,
 }) {
   final cambios = <CampoChange>[];
   for (final entry in snap.entries) {
@@ -349,10 +360,11 @@ List<CampoChange> _snapshotAsCambios(
     }
     // Reglas SMART: el valor relevante del snapshot es el propio `v`.
     if (_smartOmit(key, v)) continue;
+    final formateado = _fmtField(key, v, lookups: lookups);
     cambios.add(CampoChange(
       campo: auditFieldLabel(key),
-      antes: isCreate ? '—' : _fmtField(key, v),
-      despues: isCreate ? _fmtField(key, v) : '—',
+      antes: isCreate ? '—' : formateado,
+      despues: isCreate ? formateado : '—',
     ));
   }
   return cambios;
@@ -360,8 +372,9 @@ List<CampoChange> _snapshotAsCambios(
 
 // Formatea un valor teniendo en cuenta el nombre del campo: los campos de
 // dinero se renderizan con `Fmt.cordobas` (C$500.00); enums con su label
-// humano; el resto cae al formateo genérico de `_fmt`.
-String _fmtField(String key, dynamic v) {
+// humano; FKs con `lookups` (UUID → nombre); el resto cae al formateo
+// genérico de `_fmt`.
+String _fmtField(String key, dynamic v, {AuditLookups? lookups}) {
   if (kAuditMoneyKeys.contains(key)) {
     if (v == null) return '—';
     if (v is num) return Fmt.cordobas(v);
@@ -379,8 +392,25 @@ String _fmtField(String key, dynamic v) {
   if (key == 'tipo' && v is String && v.isNotEmpty) {
     return _tipoCargoExtraLabel(v);
   }
+  // FKs: resolver UUID a nombre humano. Si el lookup no encontró match
+  // (entidad eliminada o aún no sincronizada), mostramos "(eliminado)" en
+  // lugar de exponer el UUID crudo.
+  if (lookups != null && v is String && v.isNotEmpty) {
+    final resolved = lookups.resolve(key, v);
+    if (resolved != null) return resolved;
+    // ¿Era una clave FK conocida? Si sí, no se encontró el nombre.
+    if (_kClavesFk.contains(key)) return '(eliminado)';
+  }
   return _fmt(v);
 }
+
+// Claves de columnas que sabemos resolver via AuditLookups. Si una de estas
+// llega sin match en los lookups, mostramos "(eliminado)" en vez del UUID.
+const Set<String> _kClavesFk = {
+  'cobrador_id', 'cliente_id', 'plan_id', 'contrato_id',
+  'comunidad_id', 'departamento_id', 'municipio_id',
+  'anulado_por', 'user_id',
+};
 
 String _tipoCargoExtraLabel(String t) => switch (t) {
       'descuento_monto' => 'Descuento (monto fijo)',

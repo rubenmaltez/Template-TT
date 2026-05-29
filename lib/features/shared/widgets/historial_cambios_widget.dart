@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../data/providers/audit_lookups_provider.dart';
 import '../../../data/repositories/settings_repo.dart';
 import '../../../data/utils/audit_changelog.dart';
 import '../../../data/utils/formatters.dart';
@@ -61,6 +62,9 @@ class _HistorialCambiosWidgetState
     // Config per-tenant de campos visibles (Fase C). Si una tabla no está en
     // el map, `auditExtraerCambios` cae al default curado por tabla.
     final cfg = ref.watch(appSettingsProvider).auditCamposVisibles;
+    // Lookups id→nombre para resolver FK (cobrador, plan, comunidad, etc.).
+    // Mientras carga, los FK caen al fallback "(eliminado)" o se ocultan.
+    final lookups = ref.watch(auditLookupsProvider).valueOrNull;
 
     return StreamBuilder(
       stream: _stream,
@@ -81,6 +85,7 @@ class _HistorialCambiosWidgetState
           final cambios = auditExtraerCambios(
             rowConTabla,
             camposVisibles: cfg[widget.tabla],
+            lookups: lookups,
           );
           // Hide-empty: descartar updates que quedan sin cambios tras curaduría
           // (eventos fantasma, ej. delta 0 en cargos_neto). Create/delete/
@@ -133,7 +138,6 @@ class _EventoVisual {
   final List<CampoChange> cambios;
   final List<CampoChange> extraLineas;
 
-  List<CampoChange> get todos => [...cambios, ...extraLineas];
 }
 
 class _CambioTile extends StatelessWidget {
@@ -156,7 +160,13 @@ class _CambioTile extends StatelessWidget {
     final (IconData icon, Color color, String label) =
         _labelFor(evento.accion, evento.tabla, scheme);
 
-    final cambios = evento.todos;
+    // El evento principal usa su propia acción para el render. Las extraLineas
+    // (cuota/update absorbidas por un pago/create) SIEMPRE son updates →
+    // mantienen el "antes → después" aunque el evento sea create.
+    final principales = evento.cambios
+        .map((c) => (c: c, accion: evento.accion));
+    final extras = evento.extraLineas.map((c) => (c: c, accion: 'update'));
+    final filas = [...principales, ...extras].toList();
 
     return ExpansionTile(
       leading: Icon(icon, color: color, size: 20),
@@ -167,21 +177,21 @@ class _CambioTile extends StatelessWidget {
         style: TextStyle(color: scheme.outline, fontSize: 12),
       ),
       children: [
-        if (cambios.isEmpty)
+        if (filas.isEmpty)
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
             child: Text('Sin detalles disponibles',
                 style: TextStyle(color: scheme.outline, fontSize: 12)),
           )
         else
-          ...cambios.map((c) => Padding(
+          ...filas.map((f) => Padding(
                 padding: const EdgeInsets.fromLTRB(56, 0, 16, 8),
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     SizedBox(
                       width: 100,
-                      child: Text(c.campo,
+                      child: Text(f.c.campo,
                           style: TextStyle(
                             color: scheme.outline,
                             fontSize: 12,
@@ -189,16 +199,37 @@ class _CambioTile extends StatelessWidget {
                           )),
                     ),
                     Expanded(
-                      child: Text(
-                        '${c.antes} → ${c.despues}',
-                        style: const TextStyle(fontSize: 12),
-                      ),
+                      child: _textoCambio(f.c, f.accion, scheme),
                     ),
                   ],
                 ),
               )),
         const SizedBox(height: 4),
       ],
+    );
+  }
+
+  // Render del valor según la acción del evento:
+  // - create: "valor" (sin "— →"; no había estado previo).
+  // - delete: "valor (eliminado)" tachado.
+  // - update / anulacion: "antes → después".
+  Widget _textoCambio(CampoChange c, String accion, ColorScheme scheme) {
+    if (accion == 'create') {
+      return Text(c.despues, style: const TextStyle(fontSize: 12));
+    }
+    if (accion == 'delete') {
+      return Text(
+        '${c.antes} (eliminado)',
+        style: TextStyle(
+          fontSize: 12,
+          color: scheme.outline,
+          decoration: TextDecoration.lineThrough,
+        ),
+      );
+    }
+    return Text(
+      '${c.antes} → ${c.despues}',
+      style: const TextStyle(fontSize: 12),
     );
   }
 
@@ -294,6 +325,8 @@ class _HistorialCuotaWidgetState extends ConsumerState<HistorialCuotaWidget> {
     final scheme = Theme.of(context).colorScheme;
     // Config per-tenant de campos visibles (Fase C).
     final cfg = ref.watch(appSettingsProvider).auditCamposVisibles;
+    // Lookups id→nombre para resolver FK (cobrador, plan, comunidad, etc.).
+    final lookups = ref.watch(auditLookupsProvider).valueOrNull;
 
     return StreamBuilder(
       stream: _stream,
@@ -314,7 +347,7 @@ class _HistorialCuotaWidgetState extends ConsumerState<HistorialCuotaWidget> {
           );
         }
         final rows = snap.data!;
-        final eventos = _construirEventos(rows, cfg);
+        final eventos = _construirEventos(rows, cfg, lookups);
 
         if (eventos.isEmpty) {
           return Padding(
@@ -349,6 +382,7 @@ class _HistorialCuotaWidgetState extends ConsumerState<HistorialCuotaWidget> {
   List<_EventoVisual> _construirEventos(
     List<Map<String, dynamic>> rows,
     Map<String, Set<String>> cfg,
+    AuditLookups? lookups,
   ) {
     const ventana = Duration(seconds: 3);
 
@@ -402,7 +436,11 @@ class _HistorialCuotaWidgetState extends ConsumerState<HistorialCuotaWidget> {
       final row = parsed[i].row;
       final tabla = row['tabla'] as String?;
       final accion = auditDetectarAccion(row);
-      final cambios = auditExtraerCambios(row, camposVisibles: cfg[tabla]);
+      final cambios = auditExtraerCambios(
+        row,
+        camposVisibles: cfg[tabla],
+        lookups: lookups,
+      );
 
       // Hide-empty: descartar updates sin cambios tras curaduría. No aplica a
       // create/delete/anulacion.
@@ -415,7 +453,11 @@ class _HistorialCuotaWidgetState extends ConsumerState<HistorialCuotaWidget> {
       if (tabla == 'pagos' && accion == 'create') {
         for (final j in absorbidoPorPago[i] ?? const <int>[]) {
           extra.addAll(
-            auditExtraerCambios(parsed[j].row, camposVisibles: cfg['cuotas']),
+            auditExtraerCambios(
+              parsed[j].row,
+              camposVisibles: cfg['cuotas'],
+              lookups: lookups,
+            ),
           );
         }
       }
