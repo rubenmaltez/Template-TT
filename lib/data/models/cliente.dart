@@ -4,6 +4,7 @@ class Cliente {
     required this.tenantId,
     this.cobradorId,
     this.comunidadId,
+    this.codigo,
     required this.nombre,
     this.cedula,
     this.telefono,
@@ -19,6 +20,9 @@ class Cliente {
   final String tenantId;
   final String? cobradorId;
   final String? comunidadId;
+  // Código simbólico legible del cliente (ej. CL00027). Identidad VISUAL,
+  // no reemplaza el id (uuid). Único por tenant, inmutable una vez asignado.
+  final String? codigo;
   final String nombre;
   final String? cedula;
   final String? telefono;
@@ -39,6 +43,7 @@ class Cliente {
           other.tenantId == tenantId &&
           other.cobradorId == cobradorId &&
           other.comunidadId == comunidadId &&
+          other.codigo == codigo &&
           other.nombre == nombre &&
           other.cedula == cedula &&
           other.telefono == telefono &&
@@ -55,6 +60,7 @@ class Cliente {
         tenantId,
         cobradorId,
         comunidadId,
+        codigo,
         nombre,
         cedula,
         telefono,
@@ -71,6 +77,7 @@ class Cliente {
         tenantId: row['tenant_id'] as String,
         cobradorId: row['cobrador_id'] as String?,
         comunidadId: row['comunidad_id'] as String?,
+        codigo: row['codigo'] as String?,
         nombre: row['nombre'] as String,
         cedula: row['cedula'] as String?,
         telefono: row['telefono'] as String?,

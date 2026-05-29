@@ -44,6 +44,7 @@ const Map<String, Set<String>> kAuditCamposVisiblesDefault = {
     'descripcion',
   },
   'clientes': {
+    'codigo',
     'nombre',
     'telefono',
     'direccion',
@@ -95,6 +96,7 @@ const Map<String, Set<String>> kAuditCamposVisiblesDefault = {
 // ---------------------------------------------------------------------------
 const Map<String, List<String>> kAuditCamposCatalogo = {
   'clientes': [
+    'codigo',
     'nombre',
     'telefono',
     'direccion',
@@ -468,6 +470,7 @@ String auditFieldLabel(String raw) {
     'estado': 'Estado',
     'monto': 'Monto',
     'periodo': 'Período',
+    'codigo': 'Código',
     'nombre': 'Nombre',
     'telefono': 'Teléfono',
     'direccion': 'Dirección',

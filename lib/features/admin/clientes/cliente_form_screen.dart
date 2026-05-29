@@ -28,6 +28,7 @@ class _ClienteFormScreenState extends ConsumerState<ClienteFormScreen> {
   // tras la última cargada/guardado. Usado por PopScope para mostrar
   // dialog de confirmación al intentar salir con cambios sin guardar.
   bool _dirty = false;
+  final _codigo = TextEditingController();
   final _nombre = TextEditingController();
   final _cedula = TextEditingController();
   final _telefono = TextEditingController();
@@ -46,6 +47,10 @@ class _ClienteFormScreenState extends ConsumerState<ClienteFormScreen> {
   // ya no se setea desde el form — las fotos múltiples viven en
   // FotoGalleryWidget en la pantalla de detalle del cliente.
   String? _fotoPath;
+
+  // Código de cliente: chequeo de duplicado en vivo + bloqueo de inmutabilidad.
+  String? _codigoDupNombre; // nombre del cliente que ya usa ese código (o null)
+  bool _codigoBloqueado = false; // true = ya asignado → read-only (inmutable)
 
   @override
   void initState() {
@@ -76,6 +81,10 @@ class _ClienteFormScreenState extends ConsumerState<ClienteFormScreen> {
     _cobradorId = r['cobrador_id'] as String?;
     _activo = (r['activo'] as int? ?? 1) == 1;
     _fotoPath = r['foto_path'] as String?;
+    _codigo.text = r['codigo'] as String? ?? '';
+    // Si ya tiene código asignado, queda read-only (inmutable). Si está
+    // vacío (cliente legacy), se permite asignarlo una vez.
+    _codigoBloqueado = _codigo.text.trim().isNotEmpty;
     setState(() => _cargando = false);
   }
 
@@ -88,6 +97,7 @@ class _ClienteFormScreenState extends ConsumerState<ClienteFormScreen> {
     // sino el próximo sidebar tap mostraría un dialog huérfano.
     // Sync (antes de super.dispose) porque ref sigue válido acá.
     ref.read(formDirtyProvider.notifier).state = false;
+    _codigo.dispose();
     _nombre.dispose();
     _cedula.dispose();
     _telefono.dispose();
@@ -98,12 +108,47 @@ class _ClienteFormScreenState extends ConsumerState<ClienteFormScreen> {
     super.dispose();
   }
 
+  /// Chequea (contra el SQLite local) si ya existe OTRO cliente del tenant con
+  /// el mismo código (case-insensitive). Setea `_codigoDupNombre` con el nombre
+  /// del cliente en conflicto, o null si está libre. El admin baja todos los
+  /// clientes del tenant → el chequeo es confiable para él; el UNIQUE de
+  /// Postgres es la garantía dura (el cobrador tiene vista parcial).
+  Future<void> _verificarCodigoDuplicado() async {
+    final codigo = _codigo.text.trim();
+    if (codigo.isEmpty) {
+      if (_codigoDupNombre != null) setState(() => _codigoDupNombre = null);
+      return;
+    }
+    final tenantId = ref.read(tenantIdProvider);
+    if (tenantId == null) return;
+    final rows = await ps.db.getAll(
+      'SELECT nombre FROM clientes '
+      'WHERE tenant_id = ? AND upper(codigo) = upper(?) AND id != ? LIMIT 1',
+      [tenantId, codigo, widget.clienteId ?? ''],
+    );
+    if (!mounted) return;
+    final nombre = rows.isEmpty ? null : rows.first['nombre'] as String?;
+    if (nombre != _codigoDupNombre) setState(() => _codigoDupNombre = nombre);
+  }
+
   Future<void> _guardar() async {
     if (!_formKey.currentState!.validate()) return;
     final tenantId = ref.read(tenantIdProvider);
     if (tenantId == null) {
       setState(() => _error = 'No se pudo determinar el tenant');
       return;
+    }
+
+    // Guard de código duplicado (hard stop con mensaje claro; el UNIQUE de la
+    // DB es la red final). Solo si el código es editable (no bloqueado).
+    if (!_codigoBloqueado) {
+      await _verificarCodigoDuplicado();
+      if (_codigoDupNombre != null) {
+        setState(() => _error =
+            'Ya existe un cliente con el código "${_codigo.text.trim()}": '
+            '$_codigoDupNombre');
+        return;
+      }
     }
 
     // Guard cliente-side: si el admin intenta desasignar cobrador en un
@@ -142,13 +187,14 @@ class _ClienteFormScreenState extends ConsumerState<ClienteFormScreen> {
         await ps.db.execute(
           '''
           INSERT INTO clientes (
-            id, tenant_id, cobrador_id, comunidad_id, nombre, cedula,
+            id, tenant_id, cobrador_id, comunidad_id, codigo, nombre, cedula,
             telefono, direccion, direccion_referencia, latitud, longitud,
             foto_path, activo, created_at, updated_at, ocurrido_en
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
           ''',
           [
             id, tenantId, _cobradorId, _comunidadId,
+            _codigo.text.trim().isEmpty ? null : _codigo.text.trim(),
             _nombre.text.trim(),
             _cedula.text.trim().isEmpty ? null : _cedula.text.trim(),
             PhoneTextField.sanitized(_telefono),
@@ -163,14 +209,16 @@ class _ClienteFormScreenState extends ConsumerState<ClienteFormScreen> {
         await ps.db.execute(
           '''
           UPDATE clientes
-             SET cobrador_id = ?, comunidad_id = ?, nombre = ?, cedula = ?,
-                 telefono = ?, direccion = ?, direccion_referencia = ?,
-                 latitud = ?, longitud = ?, foto_path = ?,
-                 activo = ?, updated_at = ?, ocurrido_en = ?
+             SET cobrador_id = ?, comunidad_id = ?, codigo = ?, nombre = ?,
+                 cedula = ?, telefono = ?, direccion = ?,
+                 direccion_referencia = ?, latitud = ?, longitud = ?,
+                 foto_path = ?, activo = ?, updated_at = ?, ocurrido_en = ?
            WHERE id = ?
           ''',
           [
-            _cobradorId, _comunidadId, _nombre.text.trim(),
+            _cobradorId, _comunidadId,
+            _codigo.text.trim().isEmpty ? null : _codigo.text.trim(),
+            _nombre.text.trim(),
             _cedula.text.trim().isEmpty ? null : _cedula.text.trim(),
             PhoneTextField.sanitized(_telefono),
             _direccion.text.trim().isEmpty ? null : _direccion.text.trim(),
@@ -281,6 +329,36 @@ class _ClienteFormScreenState extends ConsumerState<ClienteFormScreen> {
           _Section(
             titulo: 'Datos personales',
             children: [
+              TextFormField(
+                controller: _codigo,
+                enabled: !_codigoBloqueado,
+                decoration: InputDecoration(
+                  labelText: 'Código de cliente *',
+                  hintText: 'Ej. CL00027',
+                  helperText: _codigoBloqueado
+                      ? 'Inmutable: no se puede cambiar una vez asignado.'
+                      : 'Identificador visible del cliente. No se puede repetir.',
+                  errorText: _codigoDupNombre != null
+                      ? 'Ya existe un cliente con ese código: $_codigoDupNombre'
+                      : null,
+                  prefixIcon: const Icon(Icons.badge_outlined),
+                ),
+                textCapitalization: TextCapitalization.characters,
+                inputFormatters: [
+                  FilteringTextInputFormatter.allow(RegExp(r'[A-Za-z0-9\-_]')),
+                  LengthLimitingTextInputFormatter(30),
+                ],
+                validator: (v) {
+                  if (_codigoBloqueado) return null;
+                  final t = (v ?? '').trim();
+                  if (t.isEmpty) return 'El código es obligatorio';
+                  if (_codigoDupNombre != null) return 'Código duplicado';
+                  return null;
+                },
+                onChanged: (_) => _verificarCodigoDuplicado(),
+                textInputAction: TextInputAction.next,
+              ),
+              const SizedBox(height: 12),
               TextFormField(
                 controller: _nombre,
                 decoration: const InputDecoration(labelText: 'Nombre completo *'),

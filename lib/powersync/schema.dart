@@ -66,6 +66,7 @@ const schema = Schema([
     Column.text('tenant_id'),
     Column.text('cobrador_id'),
     Column.text('comunidad_id'),
+    Column.text('codigo'),
     Column.text('nombre'),
     Column.text('cedula'),
     Column.text('telefono'),

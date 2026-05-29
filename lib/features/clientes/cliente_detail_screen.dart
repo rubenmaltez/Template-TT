@@ -123,6 +123,7 @@ class _ClienteDetailScreenState extends ConsumerState<ClienteDetailScreen> {
                 padding: const EdgeInsets.only(bottom: 80),
                 children: [
                   _ClienteHeader(
+                    codigo: cliente.codigo,
                     nombre: cliente.nombre,
                     telefono: cliente.telefono,
                     tieneUbicacion: cliente.tieneUbicacion,
@@ -189,12 +190,14 @@ class _ClienteDetailScreenState extends ConsumerState<ClienteDetailScreen> {
 
 class _ClienteHeader extends StatelessWidget {
   const _ClienteHeader({
+    required this.codigo,
     required this.nombre,
     required this.telefono,
     required this.tieneUbicacion,
     required this.latitud,
     required this.longitud,
   });
+  final String? codigo;
   final String nombre;
   final String? telefono;
   final bool tieneUbicacion;
@@ -210,6 +213,13 @@ class _ClienteHeader extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          if (codigo != null)
+            Text(codigo!,
+                style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                      fontWeight: FontWeight.w700,
+                      color: scheme.primary,
+                      letterSpacing: 0.5,
+                    )),
           Text(nombre, style: Theme.of(context).textTheme.headlineSmall),
           const SizedBox(height: 16),
           Wrap(

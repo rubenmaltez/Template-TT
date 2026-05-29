@@ -556,7 +556,7 @@ class _ListaState extends State<_Lista> {
 
     if (widget.query.isNotEmpty) {
       where.add(
-          '(lower(c.nombre) LIKE ? OR lower(coalesce(c.cedula,\'\')) LIKE ? OR coalesce(c.telefono,\'\') LIKE ?)');
+          '(lower(c.nombre) LIKE ? OR lower(coalesce(c.cedula,\'\')) LIKE ? OR coalesce(c.telefono,\'\') LIKE ? OR lower(coalesce(c.codigo,\'\')) LIKE ?)');
       final like = '%${widget.query}%';
       // Para el campo teléfono, sanitizamos el query a sólo dígitos.
       // Razón: post-sprint del validator, los teléfonos se guardan sin
@@ -566,7 +566,7 @@ class _ListaState extends State<_Lista> {
       // teléfonos pero tampoco rompe nombre/cédula).
       final digits = sanitizePhoneForWhatsApp(widget.query);
       final likeTelefono = digits.isEmpty ? like : '%$digits%';
-      params..add(like)..add(like)..add(likeTelefono);
+      params..add(like)..add(like)..add(likeTelefono)..add('%${widget.query.toLowerCase()}%');
     }
     if (widget.cobradorFilter != null) {
       where.add('c.cobrador_id = ?');
@@ -587,7 +587,7 @@ class _ListaState extends State<_Lista> {
     params.add(widget.pageSize);
 
     final sql = '''
-      SELECT c.id, c.nombre, c.telefono, c.direccion_referencia,
+      SELECT c.id, c.codigo, c.nombre, c.telefono, c.direccion_referencia,
              c.cobrador_id, c.activo,
              co.nombre AS cobrador_nombre,
              cm.nombre AS comunidad, m.nombre AS municipio,
@@ -603,7 +603,7 @@ class _ListaState extends State<_Lista> {
    LEFT JOIN municipios  m  ON m.id = cm.municipio_id
    LEFT JOIN cuotas      cu ON cu.cliente_id = c.id
        WHERE ${where.isEmpty ? '1=1' : where.join(' AND ')}
-       GROUP BY c.id, c.nombre, c.telefono, c.direccion_referencia,
+       GROUP BY c.id, c.codigo, c.nombre, c.telefono, c.direccion_referencia,
                 c.cobrador_id, c.activo, co.nombre, cm.nombre, m.nombre
        $having
        ORDER BY c.nombre
@@ -696,6 +696,17 @@ class _ClienteCard extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
+                    if (row['codigo'] != null)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 2),
+                        child: Text(row['codigo'] as String,
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w700,
+                              color: scheme.primary,
+                              letterSpacing: 0.5,
+                            )),
+                      ),
                     Row(
                       children: [
                         Flexible(
