@@ -103,7 +103,15 @@ class _AuditCamposScreenState extends ConsumerState<AuditCamposScreen> {
       );
     }
 
-    // Inicializamos la selección una vez con la config actual.
+    // Esperamos a que los settings hayan sincronizado antes de inicializar la
+    // selección. Si arrancáramos con el provider vacío, los checkboxes caerían
+    // a los defaults y, al guardar, pisarían la config guardada del tenant.
+    final settingsAsync = ref.watch(settingsMapProvider);
+    if (!settingsAsync.hasValue) {
+      return const Center(child: CircularProgressIndicator());
+    }
+
+    // Inicializamos la selección una vez, ya con los settings cargados.
     _seleccion ??= _estadoInicial(
       ref.read(appSettingsProvider).auditCamposVisibles,
     );

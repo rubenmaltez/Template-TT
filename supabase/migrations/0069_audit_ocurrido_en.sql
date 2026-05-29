@@ -11,20 +11,28 @@
 -- `audit_log.ocurrido_en`. El historial la muestra con `.toLocal()`.
 --
 -- Idempotente (IF NOT EXISTS / CREATE OR REPLACE). Solo corre en Postgres.
+-- Envuelta en transacción: columnas + funciones + backfill todo-o-nada.
+
+BEGIN;
 
 -- 1. Columna en audit_log (sin default: la setea el trigger vía COALESCE).
 ALTER TABLE public.audit_log ADD COLUMN IF NOT EXISTS ocurrido_en timestamptz;
 
--- 2. Columna en las 8 tablas de entidad (DEFAULT now() → writes sin valor
---    no quedan null; el server provee fallback razonable).
-ALTER TABLE public.pagos         ADD COLUMN IF NOT EXISTS ocurrido_en timestamptz DEFAULT now();
-ALTER TABLE public.cuotas        ADD COLUMN IF NOT EXISTS ocurrido_en timestamptz DEFAULT now();
-ALTER TABLE public.clientes      ADD COLUMN IF NOT EXISTS ocurrido_en timestamptz DEFAULT now();
-ALTER TABLE public.contratos     ADD COLUMN IF NOT EXISTS ocurrido_en timestamptz DEFAULT now();
-ALTER TABLE public.recibos       ADD COLUMN IF NOT EXISTS ocurrido_en timestamptz DEFAULT now();
-ALTER TABLE public.cargos_extra  ADD COLUMN IF NOT EXISTS ocurrido_en timestamptz DEFAULT now();
-ALTER TABLE public.visitas       ADD COLUMN IF NOT EXISTS ocurrido_en timestamptz DEFAULT now();
-ALTER TABLE public.fotos_cliente ADD COLUMN IF NOT EXISTS ocurrido_en timestamptz DEFAULT now();
+-- 2. Columna en las 8 tablas de entidad SIN DEFAULT.
+--    Motivo: `DEFAULT now()` es VOLATILE → Postgres reescribe físicamente
+--    toda la tabla con lock ACCESS EXCLUSIVE (lento/bloqueante en tablas
+--    grandes). Sin default, el ADD COLUMN es metadata-only (instantáneo).
+--    El cliente setea ocurrido_en en cada write; el trigger hace COALESCE a
+--    now() como fallback. El backfill de filas viejas es opcional (el display
+--    lee audit_log.ocurrido_en, no estas columnas) — no hace falta.
+ALTER TABLE public.pagos         ADD COLUMN IF NOT EXISTS ocurrido_en timestamptz;
+ALTER TABLE public.cuotas        ADD COLUMN IF NOT EXISTS ocurrido_en timestamptz;
+ALTER TABLE public.clientes      ADD COLUMN IF NOT EXISTS ocurrido_en timestamptz;
+ALTER TABLE public.contratos     ADD COLUMN IF NOT EXISTS ocurrido_en timestamptz;
+ALTER TABLE public.recibos       ADD COLUMN IF NOT EXISTS ocurrido_en timestamptz;
+ALTER TABLE public.cargos_extra  ADD COLUMN IF NOT EXISTS ocurrido_en timestamptz;
+ALTER TABLE public.visitas       ADD COLUMN IF NOT EXISTS ocurrido_en timestamptz;
+ALTER TABLE public.fotos_cliente ADD COLUMN IF NOT EXISTS ocurrido_en timestamptz;
 
 -- 3. audit_registrar: nuevo param p_ocurrido_en (con DEFAULT NULL → no rompe
 --    callers existentes). Inserta ocurrido_en = COALESCE(p_ocurrido_en, now()).
@@ -94,5 +102,8 @@ BEGIN
 END;
 $$;
 
--- 5. Backfill: las filas viejas muestran su hora server (mejor que null).
+-- 5. Backfill: las filas viejas del audit_log muestran su hora server
+--    (mejor que null). Acotado e idempotente.
 UPDATE public.audit_log SET ocurrido_en = created_at WHERE ocurrido_en IS NULL;
+
+COMMIT;

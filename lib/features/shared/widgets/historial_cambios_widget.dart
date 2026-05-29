@@ -363,6 +363,10 @@ class _HistorialCuotaWidgetState extends ConsumerState<HistorialCuotaWidget> {
 
     // Índices de cuota/update ya absorbidos por un grupo de pago.
     final absorbidos = <int>{};
+    // Mapa pago/create (índice) → cuota/update (índices) que absorbió. Cada
+    // cuota/update se asigna a UN solo pago (el primero que la matchea), para
+    // no cruzar las líneas de estado entre dos cobros a la misma cuota en <3s.
+    final absorbidoPorPago = <int, List<int>>{};
 
     // Para cada pago/create, buscar cuota/update del mismo user dentro de la
     // ventana, y marcarlas como absorbidas anexando su resultado.
@@ -387,6 +391,7 @@ class _HistorialCuotaWidgetState extends ConsumerState<HistorialCuotaWidget> {
         if (qts == null) continue;
         if ((qts.difference(pagoTs)).abs() > ventana) continue;
         absorbidos.add(j);
+        (absorbidoPorPago[i] ??= []).add(j);
       }
     }
 
@@ -403,25 +408,15 @@ class _HistorialCuotaWidgetState extends ConsumerState<HistorialCuotaWidget> {
       // create/delete/anulacion.
       if (accion == 'update' && cambios.isEmpty) continue;
 
-      // Si es un pago/create, anexar el resultado de las cuota/update que
-      // absorbió (líneas extra del card combinado).
+      // Si es un pago/create, anexar el resultado SOLO de las cuota/update que
+      // ESTE pago absorbió (no re-matchear por ventana → evita cruzar dos
+      // cobros a la misma cuota dentro de los 3s).
       final extra = <CampoChange>[];
       if (tabla == 'pagos' && accion == 'create') {
-        final pagoTs = parsed[i].ts;
-        final pagoUser = row['user_id'];
-        if (pagoTs != null) {
-          for (var j = 0; j < parsed.length; j++) {
-            if (!absorbidos.contains(j)) continue;
-            final qr = parsed[j].row;
-            final qts = parsed[j].ts;
-            if (qr['tabla'] != 'cuotas') continue;
-            if (qr['user_id'] != pagoUser) continue;
-            if (qts == null) continue;
-            if ((qts.difference(pagoTs)).abs() > ventana) continue;
-            extra.addAll(
-              auditExtraerCambios(qr, camposVisibles: cfg['cuotas']),
-            );
-          }
+        for (final j in absorbidoPorPago[i] ?? const <int>[]) {
+          extra.addAll(
+            auditExtraerCambios(parsed[j].row, camposVisibles: cfg['cuotas']),
+          );
         }
       }
 

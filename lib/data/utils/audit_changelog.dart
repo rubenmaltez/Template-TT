@@ -194,7 +194,11 @@ String auditDetectarAccion(Map<String, dynamic> row) {
     final nuevoRaw = row['valor_nuevo'] as String?;
     if (nuevoRaw == null) return accion;
     final nuevo = jsonDecode(nuevoRaw);
-    if (nuevo is Map && nuevo['anulado'] == 1) return 'anulacion';
+    if (nuevo is Map) {
+      // pagos/recibos usan columna `anulado`; cuotas usan estado='anulada'.
+      if (nuevo['anulado'] == 1) return 'anulacion';
+      if (nuevo['estado'] == 'anulada') return 'anulacion';
+    }
   } catch (_) {}
   return accion;
 }
@@ -371,8 +375,20 @@ String _fmtField(String key, dynamic v) {
   if (key == 'tipo_cargo_manual' && v is String && v.isNotEmpty) {
     return _tipoCargoLabel(v);
   }
+  // cargos_extra.tipo: enum con su propio set de valores.
+  if (key == 'tipo' && v is String && v.isNotEmpty) {
+    return _tipoCargoExtraLabel(v);
+  }
   return _fmt(v);
 }
+
+String _tipoCargoExtraLabel(String t) => switch (t) {
+      'descuento_monto' => 'Descuento (monto fijo)',
+      'descuento_porcentaje' => 'Descuento (porcentaje)',
+      'reconexion' => 'Reconexión',
+      'otro' => 'Otro',
+      _ => t,
+    };
 
 String _tipoCargoLabel(String t) => switch (t) {
       'reconexion' => 'Reconexión',

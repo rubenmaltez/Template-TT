@@ -732,13 +732,15 @@ class _AccionesImpresionState extends ConsumerState<_AccionesImpresion> {
           UPDATE recibos
              SET impreso_en = ?,
                  reimpresiones = reimpresiones + ?,
-                 ultimo_formato_mm = ?
+                 ultimo_formato_mm = ?,
+                 ocurrido_en = ?
            WHERE id = ?
           ''',
           [
             DateTime.now().toIso8601String(),
             esReimpresion ? 1 : 0,
             widget.settings.formatoReciboMm,
+            DateTime.now().toUtc().toIso8601String(),
             widget.reciboId,
           ],
         );
