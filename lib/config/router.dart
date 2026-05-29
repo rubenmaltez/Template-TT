@@ -19,6 +19,7 @@ import '../features/admin/onboarding/onboarding_screen.dart';
 import '../features/admin/pagos/pagos_admin_screen.dart';
 import '../features/admin/planes/planes_admin_screen.dart';
 import '../features/admin/reportes/reportes_admin_screen.dart';
+import '../features/admin/settings/audit_campos_screen.dart';
 import '../features/admin/settings/settings_admin_screen.dart';
 import '../features/admin/shell/admin_shell.dart';
 import '../data/providers/cobrador_provider.dart';
@@ -358,6 +359,9 @@ final routerProvider = Provider<GoRouter>((ref) {
               builder: (_, s) => _titled('Geografía', const GeografiaAdminScreen())),
           GoRoute(path: '/admin/settings',
               builder: (_, s) => _titled('Configuración', const SettingsAdminScreen())),
+          GoRoute(path: '/admin/settings/historial-campos',
+              builder: (_, s) => _titled(
+                  'Campos del historial', const AuditCamposScreen())),
         ],
       ),
 

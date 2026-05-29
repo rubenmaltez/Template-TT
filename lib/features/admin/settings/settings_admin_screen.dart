@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../../data/models/setting.dart';
 import '../../../data/providers/cobrador_provider.dart';
@@ -31,6 +32,7 @@ class SettingsAdminScreen extends ConsumerWidget {
     final cobrador = ref.watch(cobradorActualProvider).valueOrNull;
     // super_admin hereda permisos de admin.
     final esAdmin = cobrador?.tieneAccesoAdmin ?? false;
+    final esSuperAdmin = cobrador?.esSuperAdmin ?? false;
 
     return settingsAsync.when(
       loading: () => const Center(child: CircularProgressIndicator()),
@@ -75,6 +77,7 @@ class SettingsAdminScreen extends ConsumerWidget {
                       // el tenant impersonado, no el System.
                       tenantId: ref.watch(tenantIdProvider) ?? '',
                       esAdmin: esAdmin,
+                      esSuperAdmin: esSuperAdmin,
                     );
                   }).toList(),
                 ),
@@ -93,12 +96,14 @@ class _CategoriaTab extends ConsumerWidget {
     required this.settings,
     required this.tenantId,
     required this.esAdmin,
+    required this.esSuperAdmin,
   });
 
   final String categoria;
   final List<Setting> settings;
   final String tenantId;
   final bool esAdmin;
+  final bool esSuperAdmin;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -155,6 +160,22 @@ class _CategoriaTab extends ConsumerWidget {
             },
           );
         }),
+        // Entrada al panel de campos del historial (Fase C). Oculta salvo
+        // para super_admin; la pantalla destino igual defiende con un gate.
+        if (categoria == 'cobranza' && esSuperAdmin) ...[
+          const SizedBox(height: 8),
+          Card(
+            child: ListTile(
+              leading: const Icon(Icons.history),
+              title: const Text('Campos del historial'),
+              subtitle: const Text(
+                'Elegí qué campos se ven en el historial de cambios',
+              ),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () => context.push('/admin/settings/historial-campos'),
+            ),
+          ),
+        ],
       ],
     );
   }

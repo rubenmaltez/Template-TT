@@ -79,6 +79,87 @@ const Map<String, Set<String>> kAuditCamposVisiblesDefault = {
   },
 };
 
+// ---------------------------------------------------------------------------
+// Catálogo de campos SELECCIONABLES por entidad (Fase C). Es el superset que
+// el panel de configuración (`audit_campos_screen.dart`) ofrece como opciones
+// al super_admin. El subconjunto efectivamente visible se guarda en el setting
+// `audit.campos_visibles` per-tenant; si no hay setting, se usa el default
+// curado de `kAuditCamposVisiblesDefault`.
+//
+// Orden de la lista = orden de presentación en el panel.
+// ---------------------------------------------------------------------------
+const Map<String, List<String>> kAuditCamposCatalogo = {
+  'clientes': [
+    'nombre',
+    'telefono',
+    'direccion',
+    'cedula',
+    'referencia',
+    'notas',
+    'activo',
+  ],
+  'contratos': [
+    'estado',
+    'precio_mensual',
+    'dia_pago',
+    'fecha_inicio',
+    'fecha_fin',
+    'duracion_meses',
+    'documento_path',
+  ],
+  'cuotas': [
+    'estado',
+    'monto',
+    'monto_pagado',
+    'periodo',
+    'fecha_vencimiento',
+    'tipo_cargo_manual',
+    'descripcion',
+    'cargos_neto',
+  ],
+  'pagos': [
+    'monto_cordobas',
+    'vuelto_cordobas',
+    'monto_original',
+    'moneda',
+    'tasa_conversion',
+    'metodo',
+    'referencia',
+    'notas',
+    'anulado',
+  ],
+  'recibos': [
+    'numero_completo',
+    'anulado',
+    'reimpresiones',
+  ],
+  'cargos_extra': [
+    'monto',
+    'tipo',
+    'descripcion',
+  ],
+  'visitas': [
+    'estado',
+    'notas',
+    'resultado',
+  ],
+  'fotos_cliente': [
+    'descripcion',
+  ],
+};
+
+// Label humano por entidad (para los títulos de las secciones del panel).
+const Map<String, String> kAuditEntidadLabel = {
+  'clientes': 'Clientes',
+  'contratos': 'Contratos',
+  'cuotas': 'Cuotas',
+  'pagos': 'Pagos',
+  'recibos': 'Recibos',
+  'cargos_extra': 'Cargos manuales',
+  'visitas': 'Visitas',
+  'fotos_cliente': 'Fotos',
+};
+
 // Columnas computadas / auto que se omiten en cualquier snapshot, además del
 // allowlist. Esto evita filtrar ids/FKs/geo aunque la tabla caiga al fallback
 // permisivo (tabla no presente en el map de arriba).

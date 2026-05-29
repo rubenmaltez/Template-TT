@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:uuid/uuid.dart';
 
 import '../../powersync/db.dart' as ps;
 import '../models/setting.dart';
@@ -39,6 +40,56 @@ class SettingsRepo {
     await ps.db.execute(
       'UPDATE settings SET valor = ?, updated_at = ? WHERE tenant_id = ? AND clave = ?',
       [encoded, now, tenantId, clave],
+    );
+  }
+
+  /// Upsert de un setting: actualiza si la fila existe, la inserta si no.
+  ///
+  /// No usamos `ON CONFLICT(tenant_id, clave)` porque la constraint UNIQUE
+  /// vive en Postgres, pero la tabla local de PowerSync solo enforcea el PK
+  /// `id`. Por eso hacemos SELECT → UPDATE | INSERT (ambos válidos en SQLite).
+  ///
+  /// `valor` se serializa con JSON. `tipo`/`categoria` se respetan al crear.
+  Future<void> upsert(
+    String tenantId,
+    String clave,
+    dynamic valor, {
+    String tipo = 'json',
+    String categoria = 'cobranza',
+  }) async {
+    final encoded = jsonEncode(valor);
+    final now = DateTime.now().toIso8601String();
+
+    final existentes = await ps.db.getAll(
+      'SELECT id FROM settings WHERE tenant_id = ? AND clave = ? LIMIT 1',
+      [tenantId, clave],
+    );
+
+    if (existentes.isNotEmpty) {
+      await ps.db.execute(
+        'UPDATE settings SET valor = ?, updated_at = ? WHERE tenant_id = ? AND clave = ?',
+        [encoded, now, tenantId, clave],
+      );
+      return;
+    }
+
+    // INSERT: incluir todas las columnas NOT NULL (tenant_id, clave, valor,
+    // tipo, categoria) + id (PK local de PowerSync) + updated_at.
+    await ps.db.execute(
+      '''
+      INSERT INTO settings (id, tenant_id, clave, valor, tipo, categoria, editable_por, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      ''',
+      [
+        const Uuid().v4(),
+        tenantId,
+        clave,
+        encoded,
+        tipo,
+        categoria,
+        'admin',
+        now,
+      ],
     );
   }
 }
@@ -186,6 +237,39 @@ class AppSettings {
   /// Mostrar WhatsApp de la empresa en el recibo.
   String get empresaWhatsapp =>
       settingValue<String>(_map, 'empresa.whatsapp', '');
+
+  /// Config del CHANGE LOG (Fase C): qué campos se muestran en el historial
+  /// de cambios, por entidad. Lee el setting `audit.campos_visibles`, un map
+  /// JSONB `{tabla: [campos]}`.
+  ///
+  /// Parseo defensivo: solo se incluyen las entidades presentes en el setting.
+  /// Las entidades AUSENTES no se devuelven → el widget cae al default curado
+  /// por tabla (`kAuditCamposVisiblesDefault`). Si el setting no existe o es
+  /// inválido, devuelve `{}` (todo cae a default).
+  Map<String, Set<String>> get auditCamposVisibles {
+    final s = _map?['audit.campos_visibles'];
+    if (s == null) return const {};
+    final v = s.valor;
+    // El Setting ya viene con `valor` decodificado (jsonDecode en fromRow).
+    // Si por algún motivo llegó como string crudo, intentamos decodificar.
+    dynamic raw = v;
+    if (raw is String) {
+      try {
+        raw = jsonDecode(raw);
+      } catch (_) {
+        return const {};
+      }
+    }
+    if (raw is! Map) return const {};
+    final result = <String, Set<String>>{};
+    raw.forEach((key, value) {
+      if (key is! String) return;
+      if (value is List) {
+        result[key] = value.whereType<String>().toSet();
+      }
+    });
+    return result;
+  }
 }
 
 final appSettingsProvider = Provider<AppSettings>((ref) {

@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../data/repositories/settings_repo.dart';
 import '../../../data/utils/audit_changelog.dart';
 import '../../../data/utils/formatters.dart';
 import '../../../powersync/db.dart' as ps;
 
-class HistorialCambiosWidget extends StatefulWidget {
+class HistorialCambiosWidget extends ConsumerStatefulWidget {
   const HistorialCambiosWidget({
     super.key,
     required this.tabla,
@@ -14,10 +16,12 @@ class HistorialCambiosWidget extends StatefulWidget {
   final String registroId;
 
   @override
-  State<HistorialCambiosWidget> createState() => _HistorialCambiosWidgetState();
+  ConsumerState<HistorialCambiosWidget> createState() =>
+      _HistorialCambiosWidgetState();
 }
 
-class _HistorialCambiosWidgetState extends State<HistorialCambiosWidget> {
+class _HistorialCambiosWidgetState
+    extends ConsumerState<HistorialCambiosWidget> {
   late Stream<List<Map<String, dynamic>>> _stream;
 
   @override
@@ -54,6 +58,9 @@ class _HistorialCambiosWidgetState extends State<HistorialCambiosWidget> {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
+    // Config per-tenant de campos visibles (Fase C). Si una tabla no está en
+    // el map, `auditExtraerCambios` cae al default curado por tabla.
+    final cfg = ref.watch(appSettingsProvider).auditCamposVisibles;
 
     return StreamBuilder(
       stream: _stream,
@@ -71,7 +78,10 @@ class _HistorialCambiosWidgetState extends State<HistorialCambiosWidget> {
         for (final r in rows) {
           final rowConTabla = {...r, 'tabla': widget.tabla};
           final accion = auditDetectarAccion(rowConTabla);
-          final cambios = auditExtraerCambios(rowConTabla);
+          final cambios = auditExtraerCambios(
+            rowConTabla,
+            camposVisibles: cfg[widget.tabla],
+          );
           // Hide-empty: descartar updates que quedan sin cambios tras curaduría
           // (eventos fantasma, ej. delta 0 en cargos_neto). Create/delete/
           // anulacion se muestran aunque tengan pocos campos.
@@ -229,15 +239,16 @@ class _CambioTile extends StatelessWidget {
 // pagos asociados (registro / anulación / edición). Una sola línea de tiempo
 // cronológica para entender "qué le pasó a esta cuota".
 // ---------------------------------------------------------------------------
-class HistorialCuotaWidget extends StatefulWidget {
+class HistorialCuotaWidget extends ConsumerStatefulWidget {
   const HistorialCuotaWidget({super.key, required this.cuotaId});
   final String cuotaId;
 
   @override
-  State<HistorialCuotaWidget> createState() => _HistorialCuotaWidgetState();
+  ConsumerState<HistorialCuotaWidget> createState() =>
+      _HistorialCuotaWidgetState();
 }
 
-class _HistorialCuotaWidgetState extends State<HistorialCuotaWidget> {
+class _HistorialCuotaWidgetState extends ConsumerState<HistorialCuotaWidget> {
   late Stream<List<Map<String, dynamic>>> _stream;
 
   @override
@@ -281,6 +292,8 @@ class _HistorialCuotaWidgetState extends State<HistorialCuotaWidget> {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
+    // Config per-tenant de campos visibles (Fase C).
+    final cfg = ref.watch(appSettingsProvider).auditCamposVisibles;
 
     return StreamBuilder(
       stream: _stream,
@@ -301,7 +314,7 @@ class _HistorialCuotaWidgetState extends State<HistorialCuotaWidget> {
           );
         }
         final rows = snap.data!;
-        final eventos = _construirEventos(rows);
+        final eventos = _construirEventos(rows, cfg);
 
         if (eventos.isEmpty) {
           return Padding(
@@ -333,7 +346,10 @@ class _HistorialCuotaWidgetState extends State<HistorialCuotaWidget> {
   //     Las cuota/update absorbidas NO se muestran por separado.
   // El orden cronológico ASC se preserva (el card del grupo toma la posición
   // del pago/create).
-  List<_EventoVisual> _construirEventos(List<Map<String, dynamic>> rows) {
+  List<_EventoVisual> _construirEventos(
+    List<Map<String, dynamic>> rows,
+    Map<String, Set<String>> cfg,
+  ) {
     const ventana = Duration(seconds: 3);
 
     // Parseamos la hora de la acción una vez para el matching de ventana.
@@ -381,7 +397,7 @@ class _HistorialCuotaWidgetState extends State<HistorialCuotaWidget> {
       final row = parsed[i].row;
       final tabla = row['tabla'] as String?;
       final accion = auditDetectarAccion(row);
-      final cambios = auditExtraerCambios(row);
+      final cambios = auditExtraerCambios(row, camposVisibles: cfg[tabla]);
 
       // Hide-empty: descartar updates sin cambios tras curaduría. No aplica a
       // create/delete/anulacion.
@@ -402,7 +418,9 @@ class _HistorialCuotaWidgetState extends State<HistorialCuotaWidget> {
             if (qr['user_id'] != pagoUser) continue;
             if (qts == null) continue;
             if ((qts.difference(pagoTs)).abs() > ventana) continue;
-            extra.addAll(auditExtraerCambios(qr));
+            extra.addAll(
+              auditExtraerCambios(qr, camposVisibles: cfg['cuotas']),
+            );
           }
         }
       }
