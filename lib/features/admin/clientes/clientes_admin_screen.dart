@@ -485,7 +485,7 @@ class _BulkBar extends StatelessWidget {
   }
 }
 
-class _Lista extends StatelessWidget {
+class _Lista extends StatefulWidget {
   const _Lista({
     required this.query,
     required this.cobradorFilter,
@@ -515,44 +515,74 @@ class _Lista extends StatelessWidget {
   final VoidCallback onLoadMore;
 
   @override
-  Widget build(BuildContext context) {
-    final where = <String>[
-      if (filtroEstado == _FiltroEstado.activos) 'c.activo = 1',
-      if (filtroEstado == _FiltroEstado.inactivos) 'c.activo = 0',
-    ];
-    final params = <Object?>[diasGracia];
+  State<_Lista> createState() => _ListaState();
+}
 
-    if (query.isNotEmpty) {
+class _ListaState extends State<_Lista> {
+  late Stream<List<Map<String, dynamic>>> _stream;
+
+  @override
+  void initState() {
+    super.initState();
+    _stream = _buildStream();
+  }
+
+  @override
+  void didUpdateWidget(_Lista old) {
+    super.didUpdateWidget(old);
+    // Solo recrear el stream si cambió algún param que afecta la SQL.
+    // seleccionados/onToggle/loadingMore/onLoadMore NO tocan la query —
+    // solo cambian el render de la lista, así que no disparan recreate.
+    if (old.query != widget.query ||
+        old.cobradorFilter != widget.cobradorFilter ||
+        old.comunidadFilter != widget.comunidadFilter ||
+        old.soloMora != widget.soloMora ||
+        old.soloSinCobrador != widget.soloSinCobrador ||
+        old.filtroEstado != widget.filtroEstado ||
+        old.diasGracia != widget.diasGracia ||
+        old.pageSize != widget.pageSize) {
+      setState(() => _stream = _buildStream());
+    }
+  }
+
+  Stream<List<Map<String, dynamic>>> _buildStream() {
+    final where = <String>[
+      if (widget.filtroEstado == _FiltroEstado.activos) 'c.activo = 1',
+      if (widget.filtroEstado == _FiltroEstado.inactivos) 'c.activo = 0',
+    ];
+    final params = <Object?>[widget.diasGracia];
+
+    if (widget.query.isNotEmpty) {
       where.add(
           '(lower(c.nombre) LIKE ? OR lower(coalesce(c.cedula,\'\')) LIKE ? OR coalesce(c.telefono,\'\') LIKE ?)');
-      final like = '%$query%';
+      final like = '%${widget.query}%';
       // Para el campo teléfono, sanitizamos el query a sólo dígitos.
       // Razón: post-sprint del validator, los teléfonos se guardan sin
       // espacios ni guiones (`+50588888888`). Si el user busca
       // `"8888-8888"`, el LIKE raw no matchea. Strip a dígitos y matchea.
       // Si el query no tiene dígitos, dejamos el like raw (no matchea
       // teléfonos pero tampoco rompe nombre/cédula).
-      final digits = sanitizePhoneForWhatsApp(query);
+      final digits = sanitizePhoneForWhatsApp(widget.query);
       final likeTelefono = digits.isEmpty ? like : '%$digits%';
       params..add(like)..add(like)..add(likeTelefono);
     }
-    if (cobradorFilter != null) {
+    if (widget.cobradorFilter != null) {
       where.add('c.cobrador_id = ?');
-      params.add(cobradorFilter);
+      params.add(widget.cobradorFilter);
     }
-    if (comunidadFilter != null) {
+    if (widget.comunidadFilter != null) {
       where.add('c.comunidad_id = ?');
-      params.add(comunidadFilter);
+      params.add(widget.comunidadFilter);
     }
-    if (soloSinCobrador) {
+    if (widget.soloSinCobrador) {
       where.add('c.cobrador_id IS NULL');
     }
 
-    final having = soloMora ? 'HAVING vencidas > 0' : '';
+    final having = widget.soloMora ? 'HAVING vencidas > 0' : '';
 
     // LIMIT al final de los params para que el binding sea posicional
     // correcto. SQLite no soporta named params en bindings de Dart.
-    params.add(pageSize);
+    params.add(widget.pageSize);
 
     final sql = '''
       SELECT c.id, c.nombre, c.telefono, c.direccion_referencia,
@@ -578,8 +608,13 @@ class _Lista extends StatelessWidget {
        LIMIT ?
     ''';
 
+    return ps.db.watch(sql, parameters: params);
+  }
+
+  @override
+  Widget build(BuildContext context) {
     return StreamBuilder<List<Map<String, dynamic>>>(
-      stream: ps.db.watch(sql, parameters: params),
+      stream: _stream,
       initialData: const [],
       builder: (context, snap) {
         if (snap.hasError) {
@@ -597,7 +632,7 @@ class _Lista extends StatelessWidget {
         // de "probablemente hay más". Si el total fuese múltiplo exacto del
         // page size, el último tap traerá 0 nuevos y desaparecerá el botón.
         // No queremos un COUNT(*) extra al server: caro y poco valor.
-        final hayMas = rows.length >= pageSize;
+        final hayMas = rows.length >= widget.pageSize;
         return ListView.separated(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
           itemCount: rows.length + (hayMas ? 1 : 0),
@@ -605,16 +640,16 @@ class _Lista extends StatelessWidget {
           itemBuilder: (_, i) {
             if (i == rows.length) {
               return CargarMasButton(
-                loading: loadingMore,
-                onPressed: onLoadMore,
+                loading: widget.loadingMore,
+                onPressed: widget.onLoadMore,
               );
             }
             final r = rows[i];
-            final selected = seleccionados.contains(r['id']);
+            final selected = widget.seleccionados.contains(r['id']);
             return _ClienteCard(
               row: r,
               selected: selected,
-              onToggle: () => onToggle(r['id'] as String),
+              onToggle: () => widget.onToggle(r['id'] as String),
             );
           },
         );
