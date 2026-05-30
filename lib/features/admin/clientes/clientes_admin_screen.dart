@@ -552,7 +552,9 @@ class _ListaState extends State<_Lista> {
       if (widget.filtroEstado == _FiltroEstado.activos) 'c.activo = 1',
       if (widget.filtroEstado == _FiltroEstado.inactivos) 'c.activo = 0',
     ];
-    final params = <Object?>[widget.diasGracia];
+    // diasGracia se usa DOS veces en el SELECT (vencidas + en_gracia), en ese
+    // orden. SQLite bindea posicional, así que va duplicado al inicio.
+    final params = <Object?>[widget.diasGracia, widget.diasGracia];
 
     if (widget.query.isNotEmpty) {
       where.add(
@@ -595,8 +597,15 @@ class _ListaState extends State<_Lista> {
                                 AND date(cu.fecha_vencimiento, '+' || ? || ' days') < date('now')
                                THEN 1 ELSE 0 END), 0) AS vencidas,
              COALESCE(SUM(CASE WHEN cu.estado IN ('pendiente','parcial')
+                                AND date(cu.fecha_vencimiento) < date('now')
+                                AND date(cu.fecha_vencimiento, '+' || ? || ' days') >= date('now')
+                               THEN 1 ELSE 0 END), 0) AS en_gracia,
+             COALESCE(SUM(CASE WHEN cu.estado IN ('pendiente','parcial')
                                 THEN cu.monto + COALESCE(cu.cargos_neto, 0) - cu.monto_pagado
-                                ELSE 0 END), 0) AS saldo
+                                ELSE 0 END), 0) AS saldo,
+             (SELECT COUNT(*) FROM contratos ct
+               WHERE ct.cliente_id = c.id
+                 AND COALESCE(ct.estado, 'activo') = 'activo') AS contratos_activos
         FROM clientes c
    LEFT JOIN cobradores  co ON co.id = c.cobrador_id
    LEFT JOIN comunidades cm ON cm.id = c.comunidad_id
@@ -675,9 +684,13 @@ class _ClienteCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final vencidas = row['vencidas'] as int? ?? 0;
+    final enGracia = row['en_gracia'] as int? ?? 0;
+    final contratos = row['contratos_activos'] as int? ?? 0;
     final saldo = (row['saldo'] as num? ?? 0).toDouble();
     final sinCobrador = row['cobrador_id'] == null;
     final inactivo = (row['activo'] as int? ?? 1) == 0;
+    // Ámbar para "en gracia" (consistente con el color de la cuota en gracia).
+    const ambar = Color(0xFFB45309);
 
     return Card(
       color: selected ? scheme.primaryContainer.withValues(alpha: 0.4) : null,
@@ -754,11 +767,31 @@ class _ClienteCard extends StatelessWidget {
                             label: Text(row['cobrador_nombre'] as String? ?? '—'),
                             visualDensity: VisualDensity.compact,
                           ),
+                        // Indicador de multi-contrato: que se vea de un vistazo
+                        // que el cliente tiene más de un servicio (la mora y el
+                        // saldo agregan todos los contratos).
+                        if (contratos >= 2)
+                          Chip(
+                            avatar: Icon(Icons.description_outlined,
+                                size: 14, color: scheme.primary),
+                            label: Text('$contratos contratos'),
+                            backgroundColor:
+                                scheme.primaryContainer.withValues(alpha: 0.3),
+                            visualDensity: VisualDensity.compact,
+                          ),
                         if (vencidas > 0)
                           Chip(
                             avatar: Icon(Icons.warning, size: 14, color: scheme.error),
                             label: Text('$vencidas vencida(s)'),
                             backgroundColor: scheme.errorContainer.withValues(alpha: 0.3),
+                            visualDensity: VisualDensity.compact,
+                          ),
+                        if (enGracia > 0)
+                          Chip(
+                            avatar: const Icon(Icons.hourglass_bottom,
+                                size: 14, color: ambar),
+                            label: Text('$enGracia en gracia'),
+                            backgroundColor: ambar.withValues(alpha: 0.12),
                             visualDensity: VisualDensity.compact,
                           ),
                       ],

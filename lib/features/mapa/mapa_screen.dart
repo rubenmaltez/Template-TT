@@ -31,7 +31,14 @@ class _MapaScreenState extends ConsumerState<MapaScreen> {
                COALESCE(SUM(CASE WHEN cu.estado IN ('pendiente','parcial') THEN 1 ELSE 0 END), 0) AS pendientes,
                COALESCE(SUM(CASE WHEN cu.estado IN ('pendiente','parcial')
                    AND date(cu.fecha_vencimiento, '+' || ? || ' days') < date('now')
-                 THEN 1 ELSE 0 END), 0) AS vencidas
+                 THEN 1 ELSE 0 END), 0) AS vencidas,
+               COALESCE(SUM(CASE WHEN cu.estado IN ('pendiente','parcial')
+                   AND date(cu.fecha_vencimiento) < date('now')
+                   AND date(cu.fecha_vencimiento, '+' || ? || ' days') >= date('now')
+                 THEN 1 ELSE 0 END), 0) AS en_gracia,
+               (SELECT COUNT(*) FROM contratos ct
+                 WHERE ct.cliente_id = c.id
+                   AND COALESCE(ct.estado, 'activo') = 'activo') AS contratos_activos
           FROM clientes c
      LEFT JOIN cuotas cu ON cu.cliente_id = c.id
          WHERE c.activo = 1
@@ -39,7 +46,8 @@ class _MapaScreenState extends ConsumerState<MapaScreen> {
            AND c.longitud IS NOT NULL
          GROUP BY c.id, c.nombre, c.latitud, c.longitud
         ''',
-        parameters: [diasGracia],
+        // diasGracia x2: vencidas + en_gracia, en orden de aparición.
+        parameters: [diasGracia, diasGracia],
       );
 
   @override
@@ -123,12 +131,16 @@ class _MapaScreenState extends ConsumerState<MapaScreen> {
   Marker _markerFor(BuildContext context, Map<String, dynamic> r) {
     final scheme = Theme.of(context).colorScheme;
     final vencidas = (r['vencidas'] as int? ?? 0);
+    final enGracia = (r['en_gracia'] as int? ?? 0);
     final pendientes = (r['pendientes'] as int? ?? 0);
+    // En gracia → ámbar (entre el rojo de vencida y el normal de pendiente).
     final color = vencidas > 0
         ? scheme.error
-        : pendientes > 0
-            ? scheme.primary
-            : scheme.tertiary;
+        : enGracia > 0
+            ? const Color(0xFFB45309)
+            : pendientes > 0
+                ? scheme.primary
+                : scheme.tertiary;
 
     return Marker(
       point: LatLng(
@@ -151,9 +163,11 @@ class _MapaScreenState extends ConsumerState<MapaScreen> {
           child: Icon(
             vencidas > 0
                 ? Icons.warning
-                : pendientes > 0
-                    ? Icons.payments
-                    : Icons.check,
+                : enGracia > 0
+                    ? Icons.hourglass_bottom
+                    : pendientes > 0
+                        ? Icons.payments
+                        : Icons.check,
             color: Colors.white,
             size: 20,
           ),
@@ -164,7 +178,10 @@ class _MapaScreenState extends ConsumerState<MapaScreen> {
 
   void _mostrarBottomSheet(BuildContext context, Map<String, dynamic> r, Color color) {
     final vencidas = (r['vencidas'] as int? ?? 0);
+    final enGracia = (r['en_gracia'] as int? ?? 0);
     final pendientes = (r['pendientes'] as int? ?? 0);
+    final contratos = (r['contratos_activos'] as int? ?? 0);
+    const ambar = Color(0xFFB45309);
     showModalBottomSheet(
       context: context,
       showDragHandle: true,
@@ -178,17 +195,31 @@ class _MapaScreenState extends ConsumerState<MapaScreen> {
               Text(r['nombre'] as String,
                   style: Theme.of(context).textTheme.titleMedium),
               const SizedBox(height: 12),
-              Row(
+              Wrap(
+                spacing: 8,
+                runSpacing: 4,
                 children: [
+                  if (contratos >= 2)
+                    Chip(
+                      label: Text('$contratos contratos'),
+                      avatar: Icon(Icons.description_outlined,
+                          size: 16, color: Theme.of(context).colorScheme.primary),
+                    ),
                   if (vencidas > 0)
                     Chip(
                       label: Text('$vencidas vencidas'),
                       avatar: Icon(Icons.warning,
                           size: 16, color: Theme.of(context).colorScheme.error),
-                    )
-                  else if (pendientes > 0)
-                    Chip(label: Text('$pendientes pendientes'))
-                  else
+                    ),
+                  if (enGracia > 0)
+                    Chip(
+                      label: Text('$enGracia en gracia'),
+                      avatar: const Icon(Icons.hourglass_bottom,
+                          size: 16, color: ambar),
+                    ),
+                  if (vencidas == 0 && enGracia == 0 && pendientes > 0)
+                    Chip(label: Text('$pendientes pendientes')),
+                  if (vencidas == 0 && enGracia == 0 && pendientes == 0)
                     const Chip(label: Text('Al día'),
                         avatar: Icon(Icons.check, size: 16)),
                 ],
