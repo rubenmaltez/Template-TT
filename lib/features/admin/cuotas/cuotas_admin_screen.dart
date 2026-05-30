@@ -60,7 +60,7 @@ class _CuotasAdminScreenState extends ConsumerState<CuotasAdminScreen> {
     return ps.db.watch(
       '''
       SELECT cu.*, c.nombre AS cliente, p.nombre AS plan,
-             co.nombre AS cobrador
+             co.nombre AS cobrador, ct.dia_pago
         FROM cuotas cu
         JOIN clientes c ON c.id = cu.cliente_id
    LEFT JOIN contratos ct ON ct.id = cu.contrato_id
@@ -796,7 +796,7 @@ class _CuotaCard extends ConsumerWidget {
 
     final subtexto = esManual
         ? (descripcion ?? 'Cuota manual')
-        : '${planNombre ?? '?'} · ${Fmt.mes(periodo)[0].toUpperCase()}${Fmt.mes(periodo).substring(1)}';
+        : '${planNombre ?? '?'} · ${Fmt.mesServicioLabel(periodo, tipoCargoManual != null ? null : (row['dia_pago'] as num?)?.toInt())}';
 
     return Card(
       child: ListTile(

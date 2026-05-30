@@ -324,7 +324,7 @@ class _CuotasListState extends State<_CuotasList> {
              cu.descripcion, cu.tipo_cargo_manual,
              c.id AS cliente_id, c.nombre AS cliente_nombre,
              co.nombre AS comunidad,
-             p.nombre AS plan_nombre
+             p.nombre AS plan_nombre, ct.dia_pago
         FROM cuotas cu
         JOIN clientes c ON c.id = cu.cliente_id
    LEFT JOIN comunidades co ON co.id = c.comunidad_id
@@ -633,7 +633,14 @@ class _CuotaCompactRow extends StatelessWidget {
                 ? ('Hoy', scheme.primary)
                 : ('${-diasFromVence}d', scheme.outline);
 
-    final mesLabel = '${Fmt.mes(periodo)[0].toUpperCase()}${Fmt.mes(periodo).substring(1)}';
+    // Mes de servicio (mes con más días del período de la cuota). Cargos
+    // manuales y cuotas sin contrato → mes del periodo tal cual.
+    final mesLabel = Fmt.mesServicioLabel(
+      periodo,
+      (esManual || row['tipo_cargo_manual'] != null)
+          ? null
+          : (row['dia_pago'] as num?)?.toInt(),
+    );
 
     return InkWell(
       onTap: onTap,

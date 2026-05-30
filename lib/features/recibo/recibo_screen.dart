@@ -546,8 +546,12 @@ class _MultiReciboTicket extends StatelessWidget {
                   children: [
                     Expanded(
                       child: Text(
-                        '${Fmt.mes(DateTime.parse(r['periodo'] as String))[0].toUpperCase()}'
-                        '${Fmt.mes(DateTime.parse(r['periodo'] as String)).substring(1)}',
+                        Fmt.mesServicioLabel(
+                          DateTime.parse(r['periodo'] as String),
+                          r['plan_nombre'] == null
+                              ? null
+                              : (r['dia_pago'] as num?)?.toInt(),
+                        ),
                         style: const TextStyle(fontSize: 12),
                       ),
                     ),

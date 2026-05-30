@@ -272,8 +272,12 @@ Future<pw.Document> buildMultiReciboPdf({
                 children: [
                   pw.Expanded(
                     child: pw.Text(
-                      '${Fmt.mes(DateTime.parse(r['periodo'] as String))[0].toUpperCase()}'
-                      '${Fmt.mes(DateTime.parse(r['periodo'] as String)).substring(1)}',
+                      Fmt.mesServicioLabel(
+                        DateTime.parse(r['periodo'] as String),
+                        r['plan_nombre'] == null
+                            ? null
+                            : (r['dia_pago'] as num?)?.toInt(),
+                      ),
                       style: const pw.TextStyle(fontSize: 8),
                     ),
                   ),

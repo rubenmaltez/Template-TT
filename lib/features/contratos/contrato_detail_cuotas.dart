@@ -237,8 +237,13 @@ class _CuotasSectionState extends ConsumerState<_CuotasSection> {
                                     orElse: () => const <String, dynamic>{},
                                   );
                                   final mesPrimera = primera['periodo'] != null
-                                      ? _mesCap(DateTime.parse(
-                                          primera['periodo'] as String))
+                                      ? Fmt.mesServicioLabel(
+                                          DateTime.parse(
+                                              primera['periodo'] as String),
+                                          primera['tipo_cargo_manual'] != null
+                                              ? null
+                                              : (primera['dia_pago'] as num?)
+                                                  ?.toInt())
                                       : 'la más antigua';
                                   ScaffoldMessenger.of(context).showSnackBar(
                                     SnackBar(
@@ -269,10 +274,6 @@ class _CuotasSectionState extends ConsumerState<_CuotasSection> {
       ],
     );
   }
-
-  // Mes capitalizado (ej. "Enero") para el aviso de orden de cobro.
-  static String _mesCap(DateTime d) =>
-      '${Fmt.mes(d)[0].toUpperCase()}${Fmt.mes(d).substring(1)}';
 
   static String _filtroLabel(_CuotaFiltro f) => switch (f) {
         _CuotaFiltro.todas => 'Todas',
@@ -374,8 +375,14 @@ class _CuotaRow extends StatelessWidget {
       _ => (estado, scheme.outline),
     };
 
-    final mesLabel =
-        '${Fmt.mes(periodo)[0].toUpperCase()}${Fmt.mes(periodo).substring(1)}';
+    // Mes de servicio (mes con más días del período): se deriva del día de
+    // pago. Cargos manuales no tienen período de servicio → mes del periodo.
+    final mesLabel = Fmt.mesServicioLabel(
+      periodo,
+      row['tipo_cargo_manual'] != null
+          ? null
+          : (row['dia_pago'] as num?)?.toInt(),
+    );
     final esPagadaOAnulada = estado == 'pagada' || estado == 'anulada';
 
     return InkWell(

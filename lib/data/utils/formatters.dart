@@ -44,16 +44,50 @@ class Fmt {
     return fechaCorta(d);
   }
 
-  /// Período que se muestra en el recibo. Regla del 15 sobre el DÍA DE
-  /// PAGO DEL CLIENTE (no la fecha de emisión variable):
-  ///   - dia_pago ≤ 14: el recibo cubre el mismo mes que `periodo`.
-  ///   - dia_pago ≥ 15: el recibo cubre el MES SIGUIENTE a `periodo`.
+  /// Mes "simbólico" que representa una cuota — el que sale en el recibo.
   ///
-  /// `periodo` viene de `cuotas.periodo` — el mes calendario de la cuota.
-  static String periodoRecibo(int diaPago, DateTime periodo) {
-    final mesObjetivo = diaPago >= 15
-        ? DateTime(periodo.year, periodo.month + 1, 1)
-        : DateTime(periodo.year, periodo.month, 1);
-    return mes(mesObjetivo);
+  /// Facturación VENCIDA: la cuota cubre el período de servicio que TERMINA
+  /// en su vencimiento y arranca el mismo día del mes anterior. El mes
+  /// mostrado es el que tiene MÁS días dentro de ese período (el que el
+  /// cliente más usó). Empate exacto → gana el mes del vencimiento.
+  ///
+  /// [periodo] = primer día del MES DE VENCIMIENTO de la cuota
+  /// (`cuotas.periodo`). [diaPago] = día de cobro del contrato.
+  ///
+  /// Ejemplos (validados con Rubén):
+  ///   - venc 14/jun (periodo=jun, día 14) → mayo (18 días vs 13).
+  ///   - venc 25/may (periodo=may, día 25) → mayo (24 vs 6).
+  ///   - venc 5/may  (periodo=may, día 5)  → abril (26 vs 4).
+  ///   - venc 28/feb (periodo=feb, día 31) → febrero (27 vs 1).
+  static DateTime mesServicio(int diaPago, DateTime periodo) {
+    final mesVenc = DateTime(periodo.year, periodo.month, 1);
+    final mesAnterior = DateTime(periodo.year, periodo.month - 1, 1);
+    // Último día real de cada mes (DateTime(y, m+1, 0) = último de m).
+    final ultDiaVenc = DateTime(mesVenc.year, mesVenc.month + 1, 0).day;
+    final ultDiaAnt = DateTime(mesAnterior.year, mesAnterior.month + 1, 0).day;
+    // Día clampeado al último día real (ej. 31 en febrero → 28).
+    final diaVenc = diaPago < ultDiaVenc ? diaPago : ultDiaVenc;
+    final diaInicio = diaPago < ultDiaAnt ? diaPago : ultDiaAnt;
+    // Período [diaInicio del mes anterior, diaVenc del mes de vencimiento).
+    final diasMesAnterior = ultDiaAnt - diaInicio + 1;
+    final diasMesVenc = diaVenc - 1;
+    return diasMesAnterior > diasMesVenc ? mesAnterior : mesVenc;
+  }
+
+  /// Período que se muestra en el recibo (sin capitalizar). Deriva el mes
+  /// de servicio de `mesServicio`. Ver esa función para la regla.
+  static String periodoRecibo(int diaPago, DateTime periodo) =>
+      mes(mesServicio(diaPago, periodo));
+
+  /// Label capitalizado del mes de servicio de una cuota, para listas y
+  /// detalles. Si [diaPago] es null (cuota manual sin contrato) usa el mes
+  /// del `periodo` tal cual — las cuotas manuales no tienen período de
+  /// servicio derivado.
+  static String mesServicioLabel(DateTime periodo, int? diaPago) {
+    final m = diaPago == null
+        ? DateTime(periodo.year, periodo.month, 1)
+        : mesServicio(diaPago, periodo);
+    final s = mes(m);
+    return s[0].toUpperCase() + s.substring(1);
   }
 }

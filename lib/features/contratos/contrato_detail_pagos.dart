@@ -140,7 +140,11 @@ class _PagoTileState extends ConsumerState<_PagoTile> {
                 children: [
                   Text(
                     periodo != null
-                        ? '${Fmt.mes(periodo)[0].toUpperCase()}${Fmt.mes(periodo).substring(1)}'
+                        ? Fmt.mesServicioLabel(
+                            periodo,
+                            widget.row['tipo_cargo_manual'] != null
+                                ? null
+                                : (widget.row['dia_pago'] as num?)?.toInt())
                         : '—',
                     style: TextStyle(
                       fontWeight: FontWeight.w500,
@@ -359,7 +363,11 @@ class _PagoDetalleSheetState extends ConsumerState<_PagoDetalleSheet> {
               // Detalles
               _kv('Período',
                   periodo != null
-                      ? '${Fmt.mes(periodo)[0].toUpperCase()}${Fmt.mes(periodo).substring(1)}'
+                      ? Fmt.mesServicioLabel(
+                          periodo,
+                          widget.row['tipo_cargo_manual'] != null
+                              ? null
+                              : (widget.row['dia_pago'] as num?)?.toInt())
                       : '—'),
               _kv('Método', pago.metodo.label),
               _kv('Fecha', '${Fmt.fechaCorta(pago.fechaPago)} ${Fmt.hora(pago.fechaPago)}'),

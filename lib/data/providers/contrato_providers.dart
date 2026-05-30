@@ -46,8 +46,9 @@ final contratoCuotasProvider = StreamProvider.autoDispose
     '''
     SELECT cu.id, cu.monto, cu.monto_pagado, cu.fecha_vencimiento,
            cu.periodo, cu.estado, cu.contrato_id,
-           cu.descripcion, cu.tipo_cargo_manual
+           cu.descripcion, cu.tipo_cargo_manual, ct.dia_pago
       FROM cuotas cu
+      LEFT JOIN contratos ct ON ct.id = cu.contrato_id
      WHERE cu.contrato_id = ?
      ORDER BY cu.periodo ASC
     ''',
@@ -66,9 +67,10 @@ final contratoPagosProvider = StreamProvider.autoDispose
            pa.lat, pa.lng, pa.notas, pa.fecha_pago,
            pa.anulado, pa.anulado_en, pa.anulado_por,
            pa.motivo_anulacion, pa.grupo_cobro, pa.client_local_id,
-           cu.periodo
+           cu.periodo, cu.tipo_cargo_manual, ct.dia_pago
       FROM pagos pa
       INNER JOIN cuotas cu ON cu.id = pa.cuota_id
+      LEFT JOIN contratos ct ON ct.id = cu.contrato_id
      WHERE cu.contrato_id = ?
      ORDER BY pa.fecha_pago DESC
      LIMIT 20
