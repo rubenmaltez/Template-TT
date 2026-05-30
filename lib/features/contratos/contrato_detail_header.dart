@@ -183,6 +183,7 @@ class _ContratoHeader extends StatelessWidget {
               precioMensual: precio,
               fechaInicio: fechaInicio,
               fechaFin: fechaFin,
+              duracionMeses: (contrato['duracion_meses'] as num?)?.toInt(),
             ),
           ],
         ),
@@ -201,19 +202,26 @@ class _ContratoResumen extends ConsumerWidget {
     required this.precioMensual,
     required this.fechaInicio,
     required this.fechaFin,
+    required this.duracionMeses,
   });
   final String contratoId;
   final double precioMensual;
   final DateTime fechaInicio;
   final DateTime? fechaFin;
+  final int? duracionMeses;
 
   /// Total contrato = precio_mensual × meses (definido al crear).
   /// Para contratos indefinidos retorna null.
   double? _calcularTotalContrato() {
-    if (fechaFin == null) return null;
-    final meses = (fechaFin!.year - fechaInicio.year) * 12 +
-        (fechaFin!.month - fechaInicio.month);
-    if (meses <= 0) return null;
+    // Fuente de verdad: duracion_meses guardada al crear (invariante #5).
+    // Fallback a derivar de fechas solo para contratos viejos sin la columna
+    // backfilleada (no debería pasar tras la migración 0072).
+    final meses = duracionMeses ??
+        (fechaFin != null
+            ? (fechaFin!.year - fechaInicio.year) * 12 +
+                (fechaFin!.month - fechaInicio.month)
+            : null);
+    if (meses == null || meses <= 0) return null;
     return precioMensual * meses;
   }
 

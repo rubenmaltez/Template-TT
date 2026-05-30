@@ -137,6 +137,11 @@ class _ContratoFormScreenState extends ConsumerState<ContratoFormScreen> {
 
     try {
       final fechaFin = _fechaFin();
+      // Duración inmutable del contrato (invariante #5): se fija al crear y
+      // NO se re-deriva de fechas. null = indefinido.
+      final duracionMeses = _duracion == _Duracion.unAno
+          ? 12
+          : (_duracion == _Duracion.dosAnos ? 24 : null);
       // Hora REAL del dispositivo (UTC) para el change log — offline-first.
       final ocurridoEn = DateTime.now().toUtc().toIso8601String();
       if (_esEdicion) {
@@ -144,7 +149,8 @@ class _ContratoFormScreenState extends ConsumerState<ContratoFormScreen> {
           '''
           UPDATE contratos
              SET plan_id = ?, dia_pago = ?,
-                 fecha_inicio = ?, fecha_fin = ?, estado = ?, ocurrido_en = ?
+                 fecha_inicio = ?, fecha_fin = ?, duracion_meses = ?,
+                 estado = ?, ocurrido_en = ?
            WHERE id = ?
           ''',
           [
@@ -152,6 +158,7 @@ class _ContratoFormScreenState extends ConsumerState<ContratoFormScreen> {
             int.parse(_diaPagoCtrl.text),
             _fechaInicio.toIso8601String().substring(0, 10),
             fechaFin?.toIso8601String().substring(0, 10),
+            duracionMeses,
             _activo ? 'activo' : 'cancelado',
             ocurridoEn,
             widget.contratoId,
@@ -186,8 +193,9 @@ class _ContratoFormScreenState extends ConsumerState<ContratoFormScreen> {
           '''
           INSERT INTO contratos (
             id, tenant_id, cliente_id, cobrador_id, plan_id, dia_pago,
-            fecha_inicio, fecha_fin, estado, created_at, ocurrido_en
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'activo', ?, ?)
+            fecha_inicio, fecha_fin, duracion_meses, estado, created_at,
+            ocurrido_en
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'activo', ?, ?)
           ''',
           [
             const Uuid().v4(),
@@ -198,6 +206,7 @@ class _ContratoFormScreenState extends ConsumerState<ContratoFormScreen> {
             int.parse(_diaPagoCtrl.text),
             _fechaInicio.toIso8601String().substring(0, 10),
             fechaFin?.toIso8601String().substring(0, 10),
+            duracionMeses,
             DateTime.now().toIso8601String(),
             ocurridoEn,
           ],

@@ -27,7 +27,7 @@ final contratoDetalleProvider = StreamProvider.autoDispose
     '''
     SELECT ct.id, ct.tenant_id, ct.dia_pago, ct.fecha_inicio, ct.fecha_fin,
            ct.estado, ct.cliente_id, ct.cobrador_id,
-           ct.documento_path,
+           ct.documento_path, ct.duracion_meses,
            p.nombre AS plan_nombre, p.precio_mensual,
            c.nombre AS cliente_nombre
       FROM contratos ct

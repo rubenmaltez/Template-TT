@@ -95,6 +95,7 @@ const schema = Schema([
     Column.integer('dia_pago'),
     Column.text('fecha_inicio'),
     Column.text('fecha_fin'),
+    Column.integer('duracion_meses'),
     Column.text('estado'),
     Column.text('documento_path'),
     Column.text('created_at'),
