@@ -1,5 +1,3 @@
-import 'dart:typed_data';
-
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -138,7 +136,7 @@ class _ContratoFormScreenState extends ConsumerState<ContratoFormScreen> {
     if (bytes.length > _docMaxBytes) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
+          const SnackBar(
               content: Text(
                   'El archivo supera el límite de ${_docMaxBytes ~/ (1024 * 1024)} MB')),
         );
