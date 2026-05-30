@@ -781,21 +781,17 @@ class _SelectorFecha extends StatelessWidget {
     required this.label,
     required this.fecha,
     required this.onChanged,
-    this.primeraFecha,
   });
 
   final String label;
   final DateTime fecha;
   final ValueChanged<DateTime> onChanged;
-  // Límite inferior opcional del picker (ej. el primer cobro no puede ser
-  // anterior a la fecha de instalación).
-  final DateTime? primeraFecha;
 
   @override
   Widget build(BuildContext context) {
     return InkWell(
       onTap: () async {
-        final minDate = primeraFecha ?? DateTime(2020);
+        final minDate = DateTime(2020);
         // initialDate debe estar dentro de [firstDate, lastDate].
         final initial = fecha.isBefore(minDate) ? minDate : fecha;
         final picked = await showDatePicker(

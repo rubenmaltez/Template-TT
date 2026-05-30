@@ -35,6 +35,9 @@ class _ContratoHeader extends StatelessWidget {
         : null;
     final diaPago = contrato['dia_pago'] as int? ?? 1;
     final clienteNombre = contrato['cliente_nombre'] as String? ?? '—';
+    final costoInstalacion =
+        (contrato['costo_instalacion'] as num?)?.toDouble();
+    final notas = contrato['notas'] as String?;
 
     final (Color badgeColor, String badgeLabel) = switch (estado) {
       'activo' => (scheme.primary, 'Activo'),
@@ -173,6 +176,34 @@ class _ContratoHeader extends StatelessWidget {
                 ),
               ],
             ),
+            // Costo de instalación (si se registró). Dato informativo —
+            // no genera un cobro automático.
+            if (costoInstalacion != null) ...[
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  Icon(Icons.build, size: 16, color: scheme.outline),
+                  const SizedBox(width: 6),
+                  Text('Instalación: ${Fmt.cordobas(costoInstalacion)}',
+                      style: TextStyle(color: scheme.onSurfaceVariant)),
+                ],
+              ),
+            ],
+            // Notas del contrato (si las hay).
+            if (notas != null && notas.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Icon(Icons.notes, size: 16, color: scheme.outline),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(notas,
+                        style: TextStyle(color: scheme.onSurfaceVariant)),
+                  ),
+                ],
+              ),
+            ],
             const SizedBox(height: 12),
             // Resumen financiero del contrato.
             // Total = precio_mensual × meses (lo definido al crear).

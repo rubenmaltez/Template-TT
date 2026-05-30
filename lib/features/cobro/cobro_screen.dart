@@ -42,6 +42,9 @@ class _CobroScreenState extends ConsumerState<CobroScreen> {
   // Multi-cuota: lista de cuotas y sus totales a cobrar.
   final List<Cuota> _cuotas = [];
   final List<double> _totalesACobrar = [];
+  // Día de pago del contrato de cada cuota (paralela a _cuotas). Sirve para
+  // derivar el "mes de servicio" en las tarjetas. null = cuota manual.
+  final List<int?> _diasPago = [];
   Map<String, dynamic>? _clienteRow;
   double? _tasaSnapshot;
   String? _fotoPath;
@@ -75,12 +78,26 @@ class _CobroScreenState extends ConsumerState<CobroScreen> {
     final settings = ref.read(appSettingsProvider);
     final cuotas = <Cuota>[];
     final totales = <double>[];
+    // Día de pago del contrato de cada cuota — para el mes de servicio en las
+    // tarjetas. null para cuotas manuales (sin contrato).
+    final dias = <int?>[];
 
     for (final id in widget.cuotaIds) {
       final cuota = await repo.getById(id);
       if (cuota == null) continue;
       cuotas.add(cuota);
       totales.add(await repo.totalACobrar(id));
+      int? diaPago;
+      if (cuota.contratoId != null) {
+        final ctRows = await ps.db.getAll(
+          'SELECT dia_pago FROM contratos WHERE id = ?',
+          [cuota.contratoId],
+        );
+        if (ctRows.isNotEmpty) {
+          diaPago = (ctRows.first['dia_pago'] as num?)?.toInt();
+        }
+      }
+      dias.add(diaPago);
     }
     if (cuotas.isEmpty) {
       if (mounted) setState(() => _cargaFallida = true);
@@ -169,6 +186,7 @@ class _CobroScreenState extends ConsumerState<CobroScreen> {
     setState(() {
       _cuotas.addAll(cuotas);
       _totalesACobrar.addAll(totales);
+      _diasPago.addAll(dias);
       _clienteRow = cliRows.isEmpty ? null : cliRows.first;
       _cargosAuto.addAll(cargos);
       // Default: cobrar el saldo completo de todas las cuotas.
@@ -473,9 +491,14 @@ class _CobroScreenState extends ConsumerState<CobroScreen> {
               cliente: _clienteRow,
               cuotas: _cuotas,
               totales: _totalesACobrar,
+              diasPago: _diasPago,
             )
           else
-            _ClienteCuotaCard(cliente: _clienteRow, cuota: cuota, totalACobrar: _totalesACobrar.first),
+            _ClienteCuotaCard(
+                cliente: _clienteRow,
+                cuota: cuota,
+                totalACobrar: _totalesACobrar.first,
+                diaPago: _diasPago.first),
           // Cargos automáticos (C3/C4).
           if (_cargosAuto.isNotEmpty) ...[
             const SizedBox(height: 8),
@@ -729,11 +752,14 @@ class _ClienteCuotaCard extends StatelessWidget {
     required this.cliente,
     required this.cuota,
     required this.totalACobrar,
+    required this.diaPago,
   });
 
   final Map<String, dynamic>? cliente;
   final Cuota cuota;
   final double totalACobrar;
+  // Día de pago del contrato — para el mes de servicio. null = manual.
+  final int? diaPago;
 
   @override
   Widget build(BuildContext context) {
@@ -754,7 +780,7 @@ class _ClienteCuotaCard extends StatelessWidget {
               children: [
                 const Icon(Icons.calendar_today, size: 18),
                 const SizedBox(width: 8),
-                Text('Cuota de ${Fmt.mes(cuota.periodo)[0].toUpperCase()}${Fmt.mes(cuota.periodo).substring(1)}'),
+                Text('Cuota de ${Fmt.mesServicioLabel(cuota.periodo, diaPago)}'),
                 const Spacer(),
                 Text(Fmt.cordobas(cuota.monto),
                     style: const TextStyle(fontWeight: FontWeight.w600)),
@@ -796,10 +822,13 @@ class _MultiCuotaCard extends StatelessWidget {
     required this.cliente,
     required this.cuotas,
     required this.totales,
+    required this.diasPago,
   });
   final Map<String, dynamic>? cliente;
   final List<Cuota> cuotas;
   final List<double> totales;
+  // Día de pago por cuota (paralela a cuotas). null = manual.
+  final List<int?> diasPago;
 
   @override
   Widget build(BuildContext context) {
@@ -835,7 +864,7 @@ class _MultiCuotaCard extends StatelessWidget {
                     const Icon(Icons.calendar_today, size: 14),
                     const SizedBox(width: 6),
                     Text(
-                      'Cuota ${Fmt.mes(cuotas[i].periodo)[0].toUpperCase()}${Fmt.mes(cuotas[i].periodo).substring(1)}',
+                      'Cuota ${Fmt.mesServicioLabel(cuotas[i].periodo, diasPago[i])}',
                       style: const TextStyle(fontSize: 13),
                     ),
                     const Spacer(),
