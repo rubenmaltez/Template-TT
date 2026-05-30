@@ -45,6 +45,27 @@ Un setting guardado DEBE cambiar el comportamiento real de la app:
 - El cambio de rol del super_admin va por la RPC `set_cobrador_rol` (queda en
   `audit_log`).
 
+### Generación de cuotas y mes del recibo (facturación vencida)
+- **Un solo campo de fecha** en el form de contrato: **fecha de instalación**.
+  El día de pago mensual = el día de esa fecha; no hay campo separado.
+- **Facturación vencida**: la **primera cuota vence el MES SIGUIENTE** a la
+  instalación, mismo día (clamp a fin de mes). Instalado el 14/may → 1ª cuota
+  vence 14/jun. El form muestra esa fecha estimada.
+- **Mes simbólico del recibo** = el mes calendario con **MÁS días** dentro del
+  período de servicio que **termina** en el vencimiento y arranca el mismo día
+  del mes anterior. Empate exacto → gana el mes del vencimiento. **No se
+  almacena**: se deriva al mostrar desde `(periodo, dia_pago)` vía
+  `Fmt.mesServicio`. Debe dar idéntico en recibo (pantalla/PDF/térmica),
+  detalle de contrato (cuotas + pagos), lista del cobrador, admin de cuotas y
+  tarjetas de cobro. Cuotas manuales (sin contrato) → mes del periodo crudo.
+  - Ejemplos: instala 14/may → 1ª cuota **MAYO**; 5/abr → **ABRIL**;
+    25/abr → **MAYO**; día 16 (mes de 30) → mes anterior; día 17 → mes venc.
+- **Contrato fijo**: se generan exactamente `duracion_meses` cuotas (12/24).
+- **Contrato indefinido**: se generan retroactivo desde el primer mes hasta hoy
+  + colchón de 3 meses; el cron mensual extiende el colchón.
+- **Campos informativos**: `costo_instalacion` y `notas` del contrato se cargan
+  en el form y se muestran en el detalle. El costo NO genera un cobro automático.
+
 ### Invariantes de dinero (resumen — ver CLAUDE.md para el detalle)
 - `recaudado` = `SUM(pagos.monto_cordobas)` no anulados.
 - Total de contrato fijo = `precio_mensual × duracion_meses` (definido al crear,
@@ -72,11 +93,15 @@ canónico que el producto debe resolver de punta a punta.
 3. **Catálogo.** Crea el plan *Residencial 10MB — C$500/mes*. Da de alta
    clientes con código (doña Rosa = **CL00042**; si tipea `cl42` se guarda
    `CL00042`). Si intenta reusar un código, lo ve antes de guardar. Crea el
-   contrato de doña Rosa: plan + **duración 1 año** → se guarda
-   `duracion_meses = 12` y se generan las 12 cuotas.
+   contrato de doña Rosa: **un solo campo** — fecha de instalación
+   (**14/may**) + **duración 1 año** → se guarda `duracion_meses = 12`, se
+   generan las **12 cuotas** y la primera **vence el 14/jun** (mes siguiente,
+   facturación vencida). Opcional: carga **costo de instalación** y **notas**.
 
 4. **Campo (cobrador — María).** Sale con el celular (offline-first). Busca
-   **"42"** y encuentra a doña Rosa al toque. Abre el cobro de mayo (C$500):
+   **"42"** y encuentra a doña Rosa al toque. Abre el cobro de la primera cuota,
+   que en el recibo figura como **MAYO** (el mes que doña Rosa más usó: del
+   14/may al 14/jun son más días de mayo), aunque se cobra en junio:
    - Doña Rosa quiere pagar **C$300** → el sistema **no deja** (*"cobrá el total
      de C$500"*). Paga los 500 por transferencia.
    - María intenta confirmar y el sistema le **exige la foto** del comprobante.
@@ -102,6 +127,66 @@ consistentes → auditoría.
 
 > Más reciente arriba. Formato por ítem: error → fix → expectativa.
 
+### 2026-05-30 (noche) — Facturación vencida + mes simbólico del recibo
+
+Sprint de modelo de cobranza. Commits `e69c37a` + `5c82ac7` + `7a96887`,
+migración **0074**, schema local **v15**. Auditado (2 audits estáticos, ambos
+limpios — sin `flutter`/`dart` en el entorno; correr `flutter analyze` al pull).
+
+**A — Form de contrato vuelve a un solo campo (revierte parte del 0073)**
+- *Error:* el 0073 había agregado un segundo selector ("Fecha del primer cobro")
+  además de la instalación. Rubén lo pidió simplificar: un solo dato, el resto
+  derivado. Dos campos de fecha eran confusos y redundantes.
+- *Fix:* el form pide **solo "Fecha de instalación"**. El día de pago = el día de
+  esa fecha; el primer cobro se deriva (mes siguiente) y se muestra como texto
+  informativo. Se eliminó el selector manual de primer cobro y el param muerto
+  `_SelectorFecha.primeraFecha`.
+- *Archivos:* `contrato_form_screen.dart`.
+
+**B — Facturación vencida (la primera cuota es mes vencido)**
+- *Error:* el 0073 anclaba la primera cuota al mes de instalación, lo que en la
+  práctica era facturación adelantada. El negocio real es **vencido**: el cliente
+  paga al final del período de servicio.
+- *Fix:* `generar_cuotas_contrato` reescrita (migración 0074): la primera cuota
+  vence el **mes siguiente** a la instalación. **Fijos** generan exactamente
+  `duracion_meses` cuotas; **indefinidos** se generan retroactivo hasta hoy +
+  colchón de 3 meses, y el cron extiende el colchón. `generar_cuotas_mes` y el
+  cron ahora **delegan** en `generar_cuotas_contrato` (una sola fuente de verdad).
+- *Expectativa:* ver §1 "Generación de cuotas y mes del recibo".
+
+**C — Mes simbólico del recibo = mes con más días (reemplaza la "regla del 15")**
+- *Error:* el recibo derivaba el mes con una "regla del 15" aproximada
+  (`Fmt.periodoRecibo`) que fallaba en los bordes (día 16 vs 17) y, peor, estaba
+  **inconsistente entre pantallas**: lista del cobrador, admin y detalle de
+  contrato mostraban `Fmt.mes(periodo)` crudo (mes calendario), no el mes de
+  servicio. Dos vistas del mismo período mostraban meses distintos.
+- *Fix:* `Fmt.mesServicio` / `mesServicioLabel` calculan el mes con **más días**
+  del período que termina en el vencimiento (empate → mes del vencimiento). Se
+  unificó en **todas** las superficies: recibo (pantalla/PDF/térmica), detalle de
+  contrato (cuotas + pagos), lista del cobrador, admin de cuotas y tarjetas de
+  cobro. Se deriva al mostrar desde `(periodo, dia_pago)` — **no se almacena**, así
+  que no migra cuotas viejas ni toca el control de duplicados. Cuotas manuales
+  (sin contrato) → mes del periodo crudo.
+- *Expectativa:* ver §1. Mismo período = mismo mes en toda la app.
+
+**D — Campos `costo_instalacion` + `notas` (informativos)**
+- *Fix:* columnas nuevas en `contratos` (migración 0074), cargables en el form y
+  visibles en el detalle. El costo **no** genera un cobro automático (decisión
+  explícita: dato informativo por ahora). schema v14→15.
+- *Archivos:* migración 0074, `schema.dart`, `db.dart`, `formatters.dart`,
+  `contrato_form_screen`, `contrato_providers`, `contrato_detail_header`,
+  `contrato_detail_cuotas`, `contrato_detail_pagos`, `cuotas_list_screen`,
+  `cuotas_admin_screen`, `cobro_screen`, `recibo_screen`, `recibo_pdf`.
+
+> **Nota sobre el 0073:** la entrada de abajo ("Fecha del primer cobro explícita")
+> queda **superada** por esta tanda. El modelo vigente es el de acá: un solo
+> campo + facturación vencida + mes de servicio derivado.
+
+**Deploy de esta tanda:** migración **0074** + redeploy de **sync rules**
+(columnas `costo_instalacion`/`notas` vía `SELECT *`) + schema local **v15**
+(DB fresca al reiniciar). Correr `flutter analyze` antes de testear.
+
+
 ### 2026-05-30 (tarde) — Navegación + creación de contratos
 
 Hallazgos durante el primer testing manual. Commit `a31e42d` + migración 0073.
@@ -125,7 +210,8 @@ Hallazgos durante el primer testing manual. Commit `a31e42d` + migración 0073.
   offline-first). Solo en alta.
 - *Archivos:* `contrato_form_screen.dart`.
 
-**C — Fecha del primer cobro explícita**
+**C — Fecha del primer cobro explícita** ⚠️ *(superado por la tanda 0074 — ver
+arriba: el modelo vigente es un solo campo + facturación vencida)*
 - *Error:* el form solo pedía fecha de instalación + día de pago; la fecha de
   la primera cuota la derivaba un trigger y no se mostraba ni se controlaba.
 - *Fix:* campo "Fecha del primer cobro"; el día de pago mensual se deriva de su

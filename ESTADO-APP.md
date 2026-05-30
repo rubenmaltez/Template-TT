@@ -4,8 +4,9 @@
 > JUNTO con `CLAUDE.md` al abrir una sesión nueva de Claude Code, para
 > continuar exactamente desde acá sin re-descubrir el contexto.
 >
-> **Última actualización**: 2026-05-28 (commit `0bb3254`, branch
-> `claude/powersync-sdk-setup-KZF1R`).
+> **Última actualización**: 2026-05-30 (commit `7a96887`, branch
+> `claude/inspiring-dijkstra-wKs5h`). Sprint facturación vencida + mes simbólico
+> del recibo (migración 0074, schema v15) — ver REPORTE-SESION §3.
 >
 > Generado por un audit exhaustivo de 5 agentes en paralelo (backend/DB,
 > dinero/contabilidad, frontend code quality, QA funcional por rol,
@@ -38,10 +39,10 @@ con vuelto) están resueltos (migraciones 0061/0064/0065).
 | Métrica | Valor |
 |---|---|
 | Archivos Dart (`lib/`) | ~131 (~35k LOC) |
-| Migraciones SQL | 68 (0001 → 0068) |
+| Migraciones SQL | 74 (0001 → 0074) |
 | Funciones server-side (RPC/triggers) | ~52 |
 | Edge Functions (Deno) | 6 |
-| Schema version (PowerSync) | v10 |
+| Schema version (PowerSync) | v15 |
 | Storage buckets | 4 (comprobantes-pago, fotos-clientes, logos-empresa, contratos-documentos) |
 | Tests automatizados | 8 archivos (todos unit de funciones puras) |
 
@@ -66,7 +67,7 @@ con vuelto) están resueltos (migraciones 0061/0064/0065).
 - **L2**: `_CuotaRow` (detalle contrato) muestra saldo sin `cargos_neto` (cosmético).
 - **L3**: `actualizar_notificaciones_mora` calcula `monto_adeudado` sin `cargos_neto` (reporte mora levemente inexacto).
 - **L4**: Cascadas de reasignación no se auditan individualmente (`pg_trigger_depth() < 2` las salta — por diseño, evita ruido).
-- **Dead code (3 archivos)**: `lib/data/models/contrato.dart` (nunca instanciado), `lib/data/services/foto_cliente_service.dart` (superseded), `lib/features/admin/reportes/pdf/reporte_estado_cuenta_pdf.dart` (nunca cableado al menú).
+- **Dead code (3 archivos)**: `lib/data/models/contrato.dart` (sigue sin instanciarse — el detalle/form usan maps crudos vía `contrato_providers`; además quedó **desactualizado** tras 0072-0074: le faltan `duracion_meses`, `fecha_primer_cobro`, `costo_instalacion`, `notas` — si se revive, completar antes), `lib/data/services/foto_cliente_service.dart` (superseded), `lib/features/admin/reportes/pdf/reporte_estado_cuenta_pdf.dart` (nunca cableado al menú).
 - **NIT**: algunos StreamBuilder sin branch `hasError` explícito (seguros por `initialData`): `perfil_screen.dart:187`, tiles de `geografia_admin_screen.dart`.
 - **clientes.foto_path**: columna legacy presente en Postgres + schema.dart pero sin uso (superseded por tabla `fotos_cliente`). Inofensiva.
 
