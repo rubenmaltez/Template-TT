@@ -102,6 +102,47 @@ consistentes → auditoría.
 
 > Más reciente arriba. Formato por ítem: error → fix → expectativa.
 
+### 2026-05-30 (tarde) — Navegación + creación de contratos
+
+Hallazgos durante el primer testing manual. Commit `a31e42d` + migración 0073.
+
+**A — Submenú "Administración" en el sidebar**
+- *Error:* el rework de BULK 12 simplificó el sidebar con la intención de
+  mover Planes/Geografía/Auditoría "dentro de Configuración", pero los links
+  nunca se agregaron. Las rutas existían y funcionaban, pero **no había forma
+  de llegar a ellas desde la UI** (Planes y Geografía inalcanzables).
+- *Fix:* ítem expandible "Administración" que agrupa Personal + Planes +
+  Geografía + Auditoría. `ExpansionTile` compartido por rail (desktop) y drawer
+  (mobile); arranca expandido si la ruta actual cae dentro del grupo.
+- *Archivos:* `admin_shell.dart`.
+
+**B — Documento del contrato opcional en el alta**
+- *Error:* la subida de documento solo existía en el detalle del contrato; el
+  form de creación no tenía campo.
+- *Fix:* picker opcional en el form. Con conexión sube apenas se crea el
+  contrato (bucket `contratos-documentos`); offline o sin adjuntar, el contrato
+  se crea igual y el doc se sube luego desde el detalle (best-effort, no rompe
+  offline-first). Solo en alta.
+- *Archivos:* `contrato_form_screen.dart`.
+
+**C — Fecha del primer cobro explícita**
+- *Error:* el form solo pedía fecha de instalación + día de pago; la fecha de
+  la primera cuota la derivaba un trigger y no se mostraba ni se controlaba.
+- *Fix:* campo "Fecha del primer cobro"; el día de pago mensual se deriva de su
+  día del mes (se eliminó el campo "Día de pago" separado). Migración 0073:
+  columna `fecha_primer_cobro` + backfill con la fecha que el sistema ya
+  calculaba (no cambia cuotas existentes) + `generar_cuotas_contrato` reescrita
+  para anclar el período inicial al primer cobro (idempotente). Mes completo,
+  sin prorrateo. schema v13→14.
+- *Expectativa:* la primera cuota vence en la fecha elegida; las siguientes,
+  mensuales en el mismo día. Editar el primer cobro de un contrato existente
+  recalcula solo las cuotas futuras pendientes (trigger 0018), no las pagadas.
+- *Archivos:* migración 0073, `schema.dart`, `db.dart`, `contrato_form_screen.dart`.
+
+**Deploy de esta tanda:** migración **0073** + redeploy de **sync rules** +
+schema local **v14**. A y B son client-side (solo `flutter run`).
+
+
 ### 2026-05-30 — Código de cliente (C1–C7) + P1–P5
 
 Hilo conductor: varios **settings existían en la base y en la UI pero no estaban
