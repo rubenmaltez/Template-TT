@@ -96,6 +96,7 @@ const schema = Schema([
     Column.text('fecha_inicio'),
     Column.text('fecha_fin'),
     Column.integer('duracion_meses'),
+    Column.text('fecha_primer_cobro'),
     Column.text('estado'),
     Column.text('documento_path'),
     Column.text('created_at'),

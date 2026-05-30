@@ -299,11 +299,18 @@ class _SyncIndicator extends ConsumerWidget {
 
 /// Items del menú del panel admin. BULK 12: sidebar simplificado.
 /// Contratos/Cuotas/Pagos viven dentro del detalle del cliente.
-/// Planes/Auditoría/Geografía viven dentro de Configuración.
+/// Personal/Planes/Geografía/Auditoría se agrupan bajo "Administración".
 const _adminMenu = [
   _MenuItem(Icons.dashboard, 'Resumen', '/admin'),
   _MenuItem(Icons.people, 'Clientes', '/admin/clientes'),
-  _MenuItem(Icons.groups, 'Personal', '/admin/cobradores', adminOnly: true),
+  _MenuItem(Icons.admin_panel_settings, 'Administración', '/admin/cobradores',
+      adminOnly: true, children: [
+    _MenuItem(Icons.groups, 'Personal', '/admin/cobradores', adminOnly: true),
+    _MenuItem(Icons.wifi, 'Planes', '/admin/planes', adminOnly: true),
+    _MenuItem(Icons.location_city, 'Geografía', '/admin/geografia',
+        adminOnly: true),
+    _MenuItem(Icons.history_edu, 'Auditoría', '/admin/audit', adminOnly: true),
+  ]),
   _MenuItem(Icons.bar_chart, 'Reportes', '/admin/reportes'),
   _MenuItem(Icons.map, 'Mapa', '/admin/mapa'),
   _MenuItem(Icons.settings, 'Configuración', '/admin/settings', adminOnly: true),
@@ -317,12 +324,14 @@ class _MenuItem {
     this.path, {
     this.adminOnly = false,
     this.superAdminOnly = false,
+    this.children = const [],
   });
   final IconData icon;
   final String label;
   final String path;
   final bool adminOnly;
   final bool superAdminOnly;
+  final List<_MenuItem> children;
 }
 
 bool _menuVisible(
@@ -337,6 +346,45 @@ bool _menuVisible(
   if (m.superAdminOnly) return esSuperAdmin && !impersonating;
   if (m.adminOnly) return tieneAccesoAdmin;
   return true;
+}
+
+/// Item de menú agrupador (con sub-ítems). Render como ExpansionTile,
+/// usado tanto por el rail (desktop) como por el drawer (mobile). Arranca
+/// expandido si la ruta actual cae dentro de alguno de sus hijos, para que
+/// el usuario vea dónde está parado al entrar por deep-link.
+class _ExpandableMenuItem extends ConsumerWidget {
+  const _ExpandableMenuItem({required this.item, required this.currentPath});
+  final _MenuItem item;
+  final String currentPath;
+
+  bool _matches(_MenuItem m) =>
+      currentPath == m.path || currentPath.startsWith('${m.path}/');
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final scheme = Theme.of(context).colorScheme;
+    final algunHijoActivo = item.children.any(_matches);
+    return ExpansionTile(
+      leading: Icon(item.icon),
+      title: Text(item.label),
+      initiallyExpanded: algunHijoActivo,
+      shape: const Border(),
+      collapsedShape: const Border(),
+      childrenPadding: const EdgeInsets.only(left: 16),
+      children: item.children.map((child) {
+        final selected = _matches(child);
+        return ListTile(
+          leading: Icon(child.icon, size: 20),
+          title: Text(child.label),
+          selected: selected,
+          selectedTileColor: scheme.primaryContainer,
+          // Mismo guard que los items planos: cierra modales + chequea
+          // formDirtyProvider antes de navegar (context.go bypassa PopScope).
+          onTap: () => context.closeModalsAndGoGuarded(ref, child.path),
+        );
+      }).toList(),
+    );
+  }
 }
 
 class _AdminRail extends ConsumerWidget {
@@ -356,8 +404,11 @@ class _AdminRail extends ConsumerWidget {
             tieneAccesoAdmin: tieneAccesoAdmin,
             impersonating: impersonating))
         .toList();
-    final selectedIndex = items
-        .indexWhere((m) => currentPath == m.path || currentPath.startsWith('${m.path}/'));
+    // Los grupos (con children) no se "seleccionan" como tile plano — su
+    // estado activo lo maneja el _ExpandableMenuItem mirando sus hijos.
+    final selectedIndex = items.indexWhere((m) =>
+        m.children.isEmpty &&
+        (currentPath == m.path || currentPath.startsWith('${m.path}/')));
 
     return SizedBox(
       width: 240,
@@ -372,6 +423,10 @@ class _AdminRail extends ConsumerWidget {
                 itemCount: items.length,
                 itemBuilder: (_, i) {
                   final item = items[i];
+                  if (item.children.isNotEmpty) {
+                    return _ExpandableMenuItem(
+                        item: item, currentPath: currentPath);
+                  }
                   final selected = i == selectedIndex;
                   return ListTile(
                     leading: Icon(item.icon),
@@ -437,24 +492,26 @@ class _AdminDrawer extends ConsumerWidget {
             const Divider(height: 1),
             Expanded(
               child: ListView(
-                children: items
-                    .map((item) => ListTile(
-                          leading: Icon(item.icon),
-                          title: Text(item.label),
-                          selected: currentPath == item.path,
-                          selectedTileColor:
-                              Theme.of(context).colorScheme.primaryContainer,
-                          // closeModalsAndGoGuarded: cierra el drawer
-                          // + dialogs descartables + consulta el
-                          // formDirtyProvider. Si hay form dirty,
-                          // pregunta "¿Descartar?" antes de navegar.
-                          // Sin esto, tap en item del drawer perdía
-                          // cambios sin warning (context.go bypassa
-                          // PopScope).
-                          onTap: () => context.closeModalsAndGoGuarded(
-                              ref, item.path),
-                        ))
-                    .toList(),
+                children: items.map((item) {
+                  if (item.children.isNotEmpty) {
+                    return _ExpandableMenuItem(
+                        item: item, currentPath: currentPath);
+                  }
+                  return ListTile(
+                    leading: Icon(item.icon),
+                    title: Text(item.label),
+                    selected: currentPath == item.path,
+                    selectedTileColor:
+                        Theme.of(context).colorScheme.primaryContainer,
+                    // closeModalsAndGoGuarded: cierra el drawer + dialogs
+                    // descartables + consulta el formDirtyProvider. Si hay
+                    // form dirty, pregunta "¿Descartar?" antes de navegar.
+                    // Sin esto, tap en item del drawer perdía cambios sin
+                    // warning (context.go bypassa PopScope).
+                    onTap: () =>
+                        context.closeModalsAndGoGuarded(ref, item.path),
+                  );
+                }).toList(),
               ),
             ),
             ListTile(

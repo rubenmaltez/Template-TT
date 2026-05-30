@@ -1,7 +1,11 @@
+import 'dart:typed_data';
+
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../../data/providers/cobrador_provider.dart';
@@ -26,15 +30,29 @@ class _ContratoFormScreenState extends ConsumerState<ContratoFormScreen> {
   // Tracking de "form sucio" — flagea cambios para que PopScope muestre
   // confirmación al salir con data sin guardar.
   bool _dirty = false;
-  final _diaPagoCtrl = TextEditingController();
   String? _clienteId;
   String? _planId;
   DateTime _fechaInicio = DateTime.now();
+  // Fecha de vencimiento de la primera cuota. La define el admin; el "día de
+  // pago" mensual se deriva de su día del mes. Default: mismo día que la
+  // instalación (el server saltaba al mes siguiente si caía antes — ahora es
+  // explícito y editable). Se materializa en contratos.fecha_primer_cobro.
+  DateTime _fechaPrimerCobro = DateTime.now();
   _Duracion _duracion = _Duracion.unAno;
   bool _activo = true;
   bool _cargando = true;
   bool _guardando = false;
   String? _error;
+
+  // Documento del contrato (opcional al crear). Se sube best-effort tras el
+  // INSERT si hay conexión; offline o sin adjuntar, el contrato se crea igual
+  // y el doc se puede subir luego desde el detalle. Solo en alta (no edición:
+  // ahí el detalle ya tiene su propia sección de documento).
+  static const _docBucket = 'contratos-documentos';
+  static const _docMaxBytes = 10 * 1024 * 1024; // 10 MB
+  Uint8List? _docBytes;
+  String? _docExt;
+  String? _docNombre;
 
   bool get _esEdicion => widget.contratoId != null;
 
@@ -42,7 +60,7 @@ class _ContratoFormScreenState extends ConsumerState<ContratoFormScreen> {
   void initState() {
     super.initState();
     _clienteId = widget.clienteId;
-    _diaPagoCtrl.text = DateTime.now().day.toString();
+    _fechaPrimerCobro = _fechaInicio;
     _cargar();
   }
 
@@ -60,8 +78,14 @@ class _ContratoFormScreenState extends ConsumerState<ContratoFormScreen> {
     final r = rows.first;
     _clienteId = r['cliente_id'] as String;
     _planId = r['plan_id'] as String;
-    _diaPagoCtrl.text = (r['dia_pago'] as int).toString();
     _fechaInicio = DateTime.parse(r['fecha_inicio'] as String);
+    // fecha_primer_cobro puede no existir en contratos viejos (pre-migración
+    // 0073): fallback a derivarla del mes de inicio + día de pago.
+    final fpcRaw = r['fecha_primer_cobro'] as String?;
+    _fechaPrimerCobro = fpcRaw != null
+        ? DateTime.parse(fpcRaw)
+        : DateTime(_fechaInicio.year, _fechaInicio.month,
+            (r['dia_pago'] as int).clamp(1, 28));
     _activo = (r['estado'] as String? ?? 'activo') == 'activo';
     if (r['fecha_fin'] != null) {
       final fin = DateTime.parse(r['fecha_fin'] as String);
@@ -80,7 +104,6 @@ class _ContratoFormScreenState extends ConsumerState<ContratoFormScreen> {
 
   @override
   void dispose() {
-    _diaPagoCtrl.dispose();
     // Reset defensivo del form_dirty_provider: el shell que watchea
     // este provider no debe ver dirty=true tras desmontar el form.
     // Sync (no post-frame) porque dispose corre fuera del build cycle.
@@ -98,6 +121,78 @@ class _ContratoFormScreenState extends ConsumerState<ContratoFormScreen> {
         return null;
     }
   }
+
+  /// Abre el file picker para el documento del contrato (PDF/Word/foto).
+  /// Solo guarda los bytes en memoria; la subida real ocurre en _guardar
+  /// tras crear el contrato (necesita el contrato_id).
+  Future<void> _elegirDocumento() async {
+    final picked = await FilePicker.platform.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: ['pdf', 'jpg', 'jpeg', 'png', 'doc', 'docx'],
+      withData: true,
+    );
+    if (picked == null || picked.files.isEmpty) return;
+    final file = picked.files.single;
+    final bytes = file.bytes;
+    if (bytes == null) return;
+    if (bytes.length > _docMaxBytes) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+              content: Text(
+                  'El archivo supera el límite de ${_docMaxBytes ~/ (1024 * 1024)} MB')),
+        );
+      }
+      return;
+    }
+    setState(() {
+      _docBytes = bytes;
+      _docExt = (file.extension ?? 'bin').toLowerCase();
+      _docNombre = file.name;
+      _dirty = true;
+    });
+  }
+
+  /// Sube el documento adjunto al bucket y actualiza documento_path.
+  /// Best-effort: si falla (offline, etc.) no rompe la creación del contrato
+  /// — solo avisa que se puede reintentar desde el detalle.
+  Future<void> _subirDocumento(
+      String contratoId, String tenantId, String ocurridoEn) async {
+    try {
+      final ext = _docExt ?? 'bin';
+      final storagePath =
+          '$tenantId/$contratoId/${DateTime.now().millisecondsSinceEpoch}.$ext';
+      await Supabase.instance.client.storage.from(_docBucket).uploadBinary(
+            storagePath,
+            _docBytes!,
+            fileOptions: FileOptions(contentType: _mimeDoc(ext)),
+          );
+      await ps.db.execute(
+        'UPDATE contratos SET documento_path = ?, ocurrido_en = ? WHERE id = ?',
+        [storagePath, ocurridoEn, contratoId],
+      );
+    } catch (_) {
+      // No bloquea: el contrato ya existe. Avisamos para subir desde detalle.
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+              content: Text(
+                  'El contrato se creó, pero no se pudo subir el documento '
+                  '(¿sin conexión?). Podés adjuntarlo desde el detalle.')),
+        );
+      }
+    }
+  }
+
+  String _mimeDoc(String ext) => switch (ext) {
+        'pdf' => 'application/pdf',
+        'jpg' || 'jpeg' => 'image/jpeg',
+        'png' => 'image/png',
+        'doc' => 'application/msword',
+        'docx' =>
+          'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        _ => 'application/octet-stream',
+      };
 
   Future<void> _guardar() async {
     if (!_formKey.currentState!.validate()) return;
@@ -142,6 +237,11 @@ class _ContratoFormScreenState extends ConsumerState<ContratoFormScreen> {
       final duracionMeses = _duracion == _Duracion.unAno
           ? 12
           : (_duracion == _Duracion.dosAnos ? 24 : null);
+      // El día de pago mensual se deriva del día de la fecha del primer cobro
+      // (decisión de negocio: un solo campo, primer cobro define el ciclo).
+      final diaPago = _fechaPrimerCobro.day;
+      final fechaPrimerCobroStr =
+          _fechaPrimerCobro.toIso8601String().substring(0, 10);
       // Hora REAL del dispositivo (UTC) para el change log — offline-first.
       final ocurridoEn = DateTime.now().toUtc().toIso8601String();
       if (_esEdicion) {
@@ -150,15 +250,16 @@ class _ContratoFormScreenState extends ConsumerState<ContratoFormScreen> {
           UPDATE contratos
              SET plan_id = ?, dia_pago = ?,
                  fecha_inicio = ?, fecha_fin = ?, duracion_meses = ?,
-                 estado = ?, ocurrido_en = ?
+                 fecha_primer_cobro = ?, estado = ?, ocurrido_en = ?
            WHERE id = ?
           ''',
           [
             _planId,
-            int.parse(_diaPagoCtrl.text),
+            diaPago,
             _fechaInicio.toIso8601String().substring(0, 10),
             fechaFin?.toIso8601String().substring(0, 10),
             duracionMeses,
+            fechaPrimerCobroStr,
             _activo ? 'activo' : 'cancelado',
             ocurridoEn,
             widget.contratoId,
@@ -189,28 +290,37 @@ class _ContratoFormScreenState extends ConsumerState<ContratoFormScreen> {
           return;
         }
 
+        final nuevoId = const Uuid().v4();
         await ps.db.execute(
           '''
           INSERT INTO contratos (
             id, tenant_id, cliente_id, cobrador_id, plan_id, dia_pago,
-            fecha_inicio, fecha_fin, duracion_meses, estado, created_at,
-            ocurrido_en
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'activo', ?, ?)
+            fecha_inicio, fecha_fin, duracion_meses, fecha_primer_cobro,
+            estado, created_at, ocurrido_en
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'activo', ?, ?)
           ''',
           [
-            const Uuid().v4(),
+            nuevoId,
             tenantId,
             _clienteId,
             cobradorId,
             _planId,
-            int.parse(_diaPagoCtrl.text),
+            diaPago,
             _fechaInicio.toIso8601String().substring(0, 10),
             fechaFin?.toIso8601String().substring(0, 10),
             duracionMeses,
+            fechaPrimerCobroStr,
             DateTime.now().toIso8601String(),
             ocurridoEn,
           ],
         );
+
+        // Documento opcional: subir best-effort si se adjuntó. Requiere
+        // conexión (Storage); si falla o estamos offline, el contrato ya
+        // quedó creado y el doc se puede subir luego desde el detalle.
+        if (_docBytes != null) {
+          await _subirDocumento(nuevoId, tenantId, ocurridoEn);
+        }
       }
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -324,31 +434,34 @@ class _ContratoFormScreenState extends ConsumerState<ContratoFormScreen> {
                     fecha: _fechaInicio,
                     onChanged: (d) => setState(() {
                       _fechaInicio = d;
-                      // El día de pago default sigue el día de instalación
-                      // (regla del negocio: 'instalado el 17 paga los 17').
-                      // El admin puede editar el campo después si quiere.
-                      _diaPagoCtrl.text = d.day.toString();
+                      // Si el primer cobro quedó antes de la instalación,
+                      // lo arrastramos a la fecha de instalación (no se
+                      // puede cobrar antes de instalar).
+                      if (_fechaPrimerCobro.isBefore(d)) _fechaPrimerCobro = d;
                       _dirty = true;
                     }),
                   ),
                   const SizedBox(height: 12),
-                  TextFormField(
-                    controller: _diaPagoCtrl,
-                    decoration: const InputDecoration(
-                      labelText: 'Día de pago (1-31)',
-                      helperText:
-                          'Si el mes no tiene ese día, cobra el último día disponible.',
+                  _SelectorFecha(
+                    label: 'Fecha del primer cobro',
+                    fecha: _fechaPrimerCobro,
+                    // El primer cobro no puede ser anterior a la instalación.
+                    primeraFecha: _fechaInicio,
+                    onChanged: (d) => setState(() {
+                      _fechaPrimerCobro = d;
+                      _dirty = true;
+                    }),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(4, 6, 4, 0),
+                    child: Text(
+                      'Vence la primera cuota este día. Las siguientes se cobran '
+                      'cada día ${_fechaPrimerCobro.day} del mes.',
+                      style: TextStyle(
+                        color: Theme.of(context).colorScheme.outline,
+                        fontSize: 12,
+                      ),
                     ),
-                    keyboardType: TextInputType.number,
-                    inputFormatters: [
-                      FilteringTextInputFormatter.digitsOnly,
-                      LengthLimitingTextInputFormatter(2),
-                    ],
-                    validator: (v) {
-                      final n = int.tryParse(v ?? '');
-                      if (n == null || n < 1 || n > 31) return 'Entre 1 y 31';
-                      return null;
-                    },
                   ),
                   const SizedBox(height: 16),
                   Text('Duración',
@@ -402,6 +515,60 @@ class _ContratoFormScreenState extends ConsumerState<ContratoFormScreen> {
               ),
             ),
           ),
+          // Documento del contrato: solo en alta. En edición el detalle del
+          // contrato ya tiene su propia sección (ver/reemplazar/eliminar).
+          if (!_esEdicion) ...[
+            const SizedBox(height: 16),
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Text('Documento del contrato (opcional)',
+                        style: Theme.of(context).textTheme.titleMedium),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Adjuntá el contrato firmado (PDF, Word o foto). Si no '
+                      'tenés conexión ahora, podés subirlo después desde el '
+                      'detalle del contrato.',
+                      style: TextStyle(
+                        color: Theme.of(context).colorScheme.outline,
+                        fontSize: 12,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    if (_docBytes == null)
+                      OutlinedButton.icon(
+                        icon: const Icon(Icons.upload_file),
+                        label: const Text('Adjuntar documento'),
+                        onPressed: _guardando ? null : _elegirDocumento,
+                      )
+                    else
+                      ListTile(
+                        contentPadding: EdgeInsets.zero,
+                        leading: const Icon(Icons.insert_drive_file),
+                        title: Text(_docNombre ?? 'Documento',
+                            maxLines: 1, overflow: TextOverflow.ellipsis),
+                        subtitle: Text(
+                            '${(_docBytes!.length / 1024).toStringAsFixed(0)} KB'),
+                        trailing: IconButton(
+                          icon: const Icon(Icons.close),
+                          tooltip: 'Quitar',
+                          onPressed: _guardando
+                              ? null
+                              : () => setState(() {
+                                    _docBytes = null;
+                                    _docExt = null;
+                                    _docNombre = null;
+                                  }),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            ),
+          ],
           const SizedBox(height: 16),
           if (_error != null)
             Card(
@@ -596,20 +763,27 @@ class _SelectorFecha extends StatelessWidget {
     required this.label,
     required this.fecha,
     required this.onChanged,
+    this.primeraFecha,
   });
 
   final String label;
   final DateTime fecha;
   final ValueChanged<DateTime> onChanged;
+  // Límite inferior opcional del picker (ej. el primer cobro no puede ser
+  // anterior a la fecha de instalación).
+  final DateTime? primeraFecha;
 
   @override
   Widget build(BuildContext context) {
     return InkWell(
       onTap: () async {
+        final minDate = primeraFecha ?? DateTime(2020);
+        // initialDate debe estar dentro de [firstDate, lastDate].
+        final initial = fecha.isBefore(minDate) ? minDate : fecha;
         final picked = await showDatePicker(
           context: context,
-          initialDate: fecha,
-          firstDate: DateTime(2020),
+          initialDate: initial,
+          firstDate: minDate,
           lastDate: DateTime(2035),
         );
         if (picked != null) onChanged(picked);
