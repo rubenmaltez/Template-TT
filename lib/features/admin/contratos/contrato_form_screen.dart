@@ -31,11 +31,11 @@ class _ContratoFormScreenState extends ConsumerState<ContratoFormScreen> {
   String? _clienteId;
   String? _planId;
   DateTime _fechaInicio = DateTime.now();
-  // Fecha de vencimiento de la primera cuota. La define el admin; el "día de
-  // pago" mensual se deriva de su día del mes. Default: mismo día que la
-  // instalación (el server saltaba al mes siguiente si caía antes — ahora es
-  // explícito y editable). Se materializa en contratos.fecha_primer_cobro.
-  DateTime _fechaPrimerCobro = DateTime.now();
+  // Día de pago mensual = día de la fecha de instalación (un solo campo). La
+  // primera cuota vence el MES SIGUIENTE (facturación vencida); el server
+  // (generar_cuotas_contrato) lo deriva de fecha_inicio.
+  final _costoCtrl = TextEditingController();
+  final _notasCtrl = TextEditingController();
   _Duracion _duracion = _Duracion.unAno;
   bool _activo = true;
   bool _cargando = true;
@@ -58,7 +58,6 @@ class _ContratoFormScreenState extends ConsumerState<ContratoFormScreen> {
   void initState() {
     super.initState();
     _clienteId = widget.clienteId;
-    _fechaPrimerCobro = _fechaInicio;
     _cargar();
   }
 
@@ -77,13 +76,8 @@ class _ContratoFormScreenState extends ConsumerState<ContratoFormScreen> {
     _clienteId = r['cliente_id'] as String;
     _planId = r['plan_id'] as String;
     _fechaInicio = DateTime.parse(r['fecha_inicio'] as String);
-    // fecha_primer_cobro puede no existir en contratos viejos (pre-migración
-    // 0073): fallback a derivarla del mes de inicio + día de pago.
-    final fpcRaw = r['fecha_primer_cobro'] as String?;
-    _fechaPrimerCobro = fpcRaw != null
-        ? DateTime.parse(fpcRaw)
-        : DateTime(_fechaInicio.year, _fechaInicio.month,
-            (r['dia_pago'] as int).clamp(1, 28));
+    _costoCtrl.text = (r['costo_instalacion'] as num?)?.toString() ?? '';
+    _notasCtrl.text = (r['notas'] as String?) ?? '';
     _activo = (r['estado'] as String? ?? 'activo') == 'activo';
     if (r['fecha_fin'] != null) {
       final fin = DateTime.parse(r['fecha_fin'] as String);
@@ -102,6 +96,8 @@ class _ContratoFormScreenState extends ConsumerState<ContratoFormScreen> {
 
   @override
   void dispose() {
+    _costoCtrl.dispose();
+    _notasCtrl.dispose();
     // Reset defensivo del form_dirty_provider: el shell que watchea
     // este provider no debe ver dirty=true tras desmontar el form.
     // Sync (no post-frame) porque dispose corre fuera del build cycle.
@@ -118,6 +114,16 @@ class _ContratoFormScreenState extends ConsumerState<ContratoFormScreen> {
       case _Duracion.indefinido:
         return null;
     }
+  }
+
+  /// Vencimiento estimado de la primera cuota = mes SIGUIENTE a la
+  /// instalación, mismo día (clamp a fin de mes). Solo para mostrar en el
+  /// form; el server (generar_cuotas_contrato) lo deriva igual de fecha_inicio.
+  DateTime _primerCobroEstimado() {
+    final base = DateTime(_fechaInicio.year, _fechaInicio.month + 1, 1);
+    final ultimoDia = DateTime(base.year, base.month + 1, 0).day;
+    final dia = _fechaInicio.day < ultimoDia ? _fechaInicio.day : ultimoDia;
+    return DateTime(base.year, base.month, dia);
   }
 
   /// Abre el file picker para el documento del contrato (PDF/Word/foto).
@@ -235,11 +241,14 @@ class _ContratoFormScreenState extends ConsumerState<ContratoFormScreen> {
       final duracionMeses = _duracion == _Duracion.unAno
           ? 12
           : (_duracion == _Duracion.dosAnos ? 24 : null);
-      // El día de pago mensual se deriva del día de la fecha del primer cobro
-      // (decisión de negocio: un solo campo, primer cobro define el ciclo).
-      final diaPago = _fechaPrimerCobro.day;
+      // Día de pago = día de la instalación (un solo campo). La primera cuota
+      // vence el mes siguiente; el server la deriva de fecha_inicio.
+      final diaPago = _fechaInicio.day;
       final fechaPrimerCobroStr =
-          _fechaPrimerCobro.toIso8601String().substring(0, 10);
+          _primerCobroEstimado().toIso8601String().substring(0, 10);
+      final costoInstalacion = double.tryParse(_costoCtrl.text.trim());
+      final notas =
+          _notasCtrl.text.trim().isEmpty ? null : _notasCtrl.text.trim();
       // Hora REAL del dispositivo (UTC) para el change log — offline-first.
       final ocurridoEn = DateTime.now().toUtc().toIso8601String();
       if (_esEdicion) {
@@ -248,7 +257,8 @@ class _ContratoFormScreenState extends ConsumerState<ContratoFormScreen> {
           UPDATE contratos
              SET plan_id = ?, dia_pago = ?,
                  fecha_inicio = ?, fecha_fin = ?, duracion_meses = ?,
-                 fecha_primer_cobro = ?, estado = ?, ocurrido_en = ?
+                 fecha_primer_cobro = ?, costo_instalacion = ?, notas = ?,
+                 estado = ?, ocurrido_en = ?
            WHERE id = ?
           ''',
           [
@@ -258,6 +268,8 @@ class _ContratoFormScreenState extends ConsumerState<ContratoFormScreen> {
             fechaFin?.toIso8601String().substring(0, 10),
             duracionMeses,
             fechaPrimerCobroStr,
+            costoInstalacion,
+            notas,
             _activo ? 'activo' : 'cancelado',
             ocurridoEn,
             widget.contratoId,
@@ -294,8 +306,8 @@ class _ContratoFormScreenState extends ConsumerState<ContratoFormScreen> {
           INSERT INTO contratos (
             id, tenant_id, cliente_id, cobrador_id, plan_id, dia_pago,
             fecha_inicio, fecha_fin, duracion_meses, fecha_primer_cobro,
-            estado, created_at, ocurrido_en
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'activo', ?, ?)
+            costo_instalacion, notas, estado, created_at, ocurrido_en
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'activo', ?, ?)
           ''',
           [
             nuevoId,
@@ -308,6 +320,8 @@ class _ContratoFormScreenState extends ConsumerState<ContratoFormScreen> {
             fechaFin?.toIso8601String().substring(0, 10),
             duracionMeses,
             fechaPrimerCobroStr,
+            costoInstalacion,
+            notas,
             DateTime.now().toIso8601String(),
             ocurridoEn,
           ],
@@ -432,29 +446,14 @@ class _ContratoFormScreenState extends ConsumerState<ContratoFormScreen> {
                     fecha: _fechaInicio,
                     onChanged: (d) => setState(() {
                       _fechaInicio = d;
-                      // Si el primer cobro quedó antes de la instalación,
-                      // lo arrastramos a la fecha de instalación (no se
-                      // puede cobrar antes de instalar).
-                      if (_fechaPrimerCobro.isBefore(d)) _fechaPrimerCobro = d;
-                      _dirty = true;
-                    }),
-                  ),
-                  const SizedBox(height: 12),
-                  _SelectorFecha(
-                    label: 'Fecha del primer cobro',
-                    fecha: _fechaPrimerCobro,
-                    // El primer cobro no puede ser anterior a la instalación.
-                    primeraFecha: _fechaInicio,
-                    onChanged: (d) => setState(() {
-                      _fechaPrimerCobro = d;
                       _dirty = true;
                     }),
                   ),
                   Padding(
                     padding: const EdgeInsets.fromLTRB(4, 6, 4, 0),
                     child: Text(
-                      'Vence la primera cuota este día. Las siguientes se cobran '
-                      'cada día ${_fechaPrimerCobro.day} del mes.',
+                      'La primera cuota vence el ${Fmt.fechaCorta(_primerCobroEstimado())} '
+                      '(mes siguiente). Después, cada día ${_fechaInicio.day} del mes.',
                       style: TextStyle(
                         color: Theme.of(context).colorScheme.outline,
                         fontSize: 12,
@@ -483,12 +482,33 @@ class _ContratoFormScreenState extends ConsumerState<ContratoFormScreen> {
                     padding: const EdgeInsets.all(8),
                     child: Text(
                       _Duracion.indefinido == _duracion
-                          ? 'Se generan 3 cuotas iniciales. El cron mantiene un colchón de 3 meses adelante automáticamente.'
-                          : 'Se generan todas las cuotas hasta ${Fmt.fechaCorta(_fechaFin()!)} al guardar.',
+                          ? 'Contrato indefinido: se generan las cuotas del período actual y el sistema mantiene un colchón de 3 meses adelante.'
+                          : 'Se generan ${_duracion == _Duracion.unAno ? 12 : 24} cuotas (una por mes) desde el primer cobro.',
                       style: TextStyle(
                         color: Theme.of(context).colorScheme.outline,
                         fontSize: 12,
                       ),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  TextFormField(
+                    controller: _costoCtrl,
+                    keyboardType:
+                        const TextInputType.numberWithOptions(decimal: true),
+                    decoration: const InputDecoration(
+                      labelText: 'Costo de instalación (opcional)',
+                      prefixText: 'C\$ ',
+                      helperText:
+                          'Dato informativo. No genera un cobro automático.',
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  TextFormField(
+                    controller: _notasCtrl,
+                    maxLines: 3,
+                    decoration: const InputDecoration(
+                      labelText: 'Notas del contrato (opcional)',
+                      alignLabelWithHint: true,
                     ),
                   ),
                   if (_esEdicion) ...[
