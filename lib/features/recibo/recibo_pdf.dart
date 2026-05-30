@@ -40,6 +40,11 @@ Future<pw.Document> buildReciboPdf({
   final periodoLabel = diaPago != null
       ? Fmt.periodoRecibo(diaPago, periodoCuota)
       : Fmt.mes(periodoCuota);
+  // Saldo de la cuota tras este pago (para "mostrar adeudado" en el recibo).
+  final saldoCuota = ((row['cuota_monto'] as num).toDouble() +
+          (row['cargos_neto'] as num? ?? 0).toDouble()) -
+      (row['monto_pagado_cuota'] as num? ?? row['monto_cordobas'] as num)
+          .toDouble();
 
   doc.addPage(
     pw.Page(
@@ -71,6 +76,16 @@ Future<pw.Document> buildReciboPdf({
           if (settings.empresaRuc.isNotEmpty)
             pw.Text('RUC: ${settings.empresaRuc}',
                 style: const pw.TextStyle(fontSize: 8)),
+          if (settings.reciboTitulo.isNotEmpty)
+            pw.Padding(
+              padding: const pw.EdgeInsets.only(top: 3),
+              child: pw.Text(
+                settings.reciboTitulo.toUpperCase(),
+                style:
+                    pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 9),
+                textAlign: pw.TextAlign.center,
+              ),
+            ),
           _pdfDivider(),
 
           _pdfRow('Recibo Nº', row['numero_completo'] as String),
@@ -92,6 +107,8 @@ Future<pw.Document> buildReciboPdf({
           _pdfRow('Período',
               periodoLabel[0].toUpperCase() + periodoLabel.substring(1)),
           _pdfRow('Cuota base', Fmt.cordobas(row['cuota_monto'] as num)),
+          if (settings.reciboMostrarAdeudado && saldoCuota > 0.01)
+            _pdfRow('Saldo cuota', Fmt.cordobas(saldoCuota)),
 
           if (settings.reciboMontoEnLetras)
             pw.Padding(
@@ -143,6 +160,12 @@ Future<pw.Document> buildReciboPdf({
           if (settings.pieRecibo.isNotEmpty) ...[
             _pdfDivider(),
             pw.Text(settings.pieRecibo,
+                style: const pw.TextStyle(fontSize: 8),
+                textAlign: pw.TextAlign.center),
+          ],
+          if (settings.empresaWhatsapp.isNotEmpty) ...[
+            _pdfDivider(),
+            pw.Text('WhatsApp: ${settings.empresaWhatsapp}',
                 style: const pw.TextStyle(fontSize: 8),
                 textAlign: pw.TextAlign.center),
           ],
@@ -213,6 +236,16 @@ Future<pw.Document> buildMultiReciboPdf({
           if (settings.empresaRuc.isNotEmpty)
             pw.Text('RUC: ${settings.empresaRuc}',
                 style: const pw.TextStyle(fontSize: 8)),
+          if (settings.reciboTitulo.isNotEmpty)
+            pw.Padding(
+              padding: const pw.EdgeInsets.only(top: 3),
+              child: pw.Text(
+                settings.reciboTitulo.toUpperCase(),
+                style:
+                    pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 9),
+                textAlign: pw.TextAlign.center,
+              ),
+            ),
           _pdfDivider(),
 
           pw.Text('COBRO MÚLTIPLE (${rows.length} cuotas)',
@@ -318,6 +351,12 @@ Future<pw.Document> buildMultiReciboPdf({
           if (settings.pieRecibo.isNotEmpty) ...[
             _pdfDivider(),
             pw.Text(settings.pieRecibo,
+                style: const pw.TextStyle(fontSize: 8),
+                textAlign: pw.TextAlign.center),
+          ],
+          if (settings.empresaWhatsapp.isNotEmpty) ...[
+            _pdfDivider(),
+            pw.Text('WhatsApp: ${settings.empresaWhatsapp}',
                 style: const pw.TextStyle(fontSize: 8),
                 textAlign: pw.TextAlign.center),
           ],

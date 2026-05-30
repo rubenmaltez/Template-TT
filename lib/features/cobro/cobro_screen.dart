@@ -236,6 +236,30 @@ class _CobroScreenState extends ConsumerState<CobroScreen> {
         ? (_tasaSnapshot ?? settings.tasaUsd)
         : 1.0;
 
+    // P3: si el tenant exige foto del comprobante, no dejar confirmar sin foto.
+    // Solo aplica a métodos con comprobante — en efectivo el picker no se
+    // muestra y _fotoPath siempre es null, así que no bloqueamos ahí.
+    if (settings.fotoObligatoria &&
+        _metodo.requiereComprobante &&
+        _fotoPath == null) {
+      setState(() => _error =
+          'La foto del comprobante es obligatoria para este método de pago.');
+      return;
+    }
+    // P4: si el tenant no permite pago parcial, exigir cubrir el saldo
+    // completo de la cuota (en multi-cuota el monto ya es read-only = total).
+    if (!settings.pagoParcialPermitido && !_esMultiCuota) {
+      final saldoCuota = (_totalesACobrar.first - _cuotas.first.montoPagado)
+          .clamp(0.0, double.infinity);
+      final entregadoCordobas =
+          CobroCalculo.aCordobas(double.tryParse(_montoCtrl.text) ?? 0, tasa);
+      if (entregadoCordobas < saldoCuota - 0.01) {
+        setState(() => _error =
+            'No se permite pago parcial: cobrá el total de ${Fmt.cordobas(saldoCuota)}.');
+        return;
+      }
+    }
+
     setState(() {
       _enviando = true;
       _error = null;

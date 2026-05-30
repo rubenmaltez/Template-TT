@@ -238,6 +238,11 @@ class _ReciboTicket extends StatelessWidget {
     final periodoLabel = diaPago != null
         ? Fmt.periodoRecibo(diaPago, periodoCuota)
         : Fmt.mes(periodoCuota);
+    // Saldo de la cuota tras este pago (para "mostrar adeudado" en el recibo).
+    final saldoCuota = ((row['cuota_monto'] as num).toDouble() +
+            (row['cargos_neto'] as num? ?? 0).toDouble()) -
+        (row['monto_pagado_cuota'] as num? ?? row['monto_cordobas'] as num)
+            .toDouble();
 
     return Container(
       decoration: BoxDecoration(
@@ -280,6 +285,16 @@ class _ReciboTicket extends StatelessWidget {
               Text('Tel: ${settings.empresaTelefono}'),
             if (settings.empresaRuc.isNotEmpty)
               Text('RUC: ${settings.empresaRuc}'),
+            if (settings.reciboTitulo.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(top: 6),
+                child: Text(
+                  settings.reciboTitulo.toUpperCase(),
+                  style: const TextStyle(
+                      fontWeight: FontWeight.bold, fontSize: 14),
+                  textAlign: TextAlign.center,
+                ),
+              ),
             const Divider(),
 
             _ticketRow('Recibo Nº', row['numero_completo'] as String),
@@ -298,6 +313,8 @@ class _ReciboTicket extends StatelessWidget {
                 : row['plan_nombre'] as String),
             _ticketRow('Período', periodoLabel[0].toUpperCase() + periodoLabel.substring(1)),
             _ticketRow('Cuota base', Fmt.cordobas(row['cuota_monto'] as num)),
+            if (settings.reciboMostrarAdeudado && saldoCuota > 0.01)
+              _ticketRow('Saldo cuota', Fmt.cordobas(saldoCuota)),
 
             // Cantidad en letras (si está habilitado en settings).
             if (settings.reciboMontoEnLetras)
@@ -404,6 +421,11 @@ class _ReciboTicket extends StatelessWidget {
               const Divider(),
               Text(settings.pieRecibo, textAlign: TextAlign.center),
             ],
+            if (settings.empresaWhatsapp.isNotEmpty) ...[
+              const Divider(),
+              Text('WhatsApp: ${settings.empresaWhatsapp}',
+                  textAlign: TextAlign.center),
+            ],
 
             const SizedBox(height: 8),
             if (row['impreso_en'] != null)
@@ -490,6 +512,16 @@ class _MultiReciboTicket extends StatelessWidget {
               Text('Tel: ${settings.empresaTelefono}'),
             if (settings.empresaRuc.isNotEmpty)
               Text('RUC: ${settings.empresaRuc}'),
+            if (settings.reciboTitulo.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(top: 6),
+                child: Text(
+                  settings.reciboTitulo.toUpperCase(),
+                  style: const TextStyle(
+                      fontWeight: FontWeight.bold, fontSize: 14),
+                  textAlign: TextAlign.center,
+                ),
+              ),
             const Divider(),
 
             Text('COBRO MÚLTIPLE (${rows.length} cuotas)',
@@ -587,6 +619,11 @@ class _MultiReciboTicket extends StatelessWidget {
             if (settings.pieRecibo.isNotEmpty) ...[
               const Divider(),
               Text(settings.pieRecibo, textAlign: TextAlign.center),
+            ],
+            if (settings.empresaWhatsapp.isNotEmpty) ...[
+              const Divider(),
+              Text('WhatsApp: ${settings.empresaWhatsapp}',
+                  textAlign: TextAlign.center),
             ],
           ],
         ),
@@ -722,6 +759,9 @@ class _AccionesImpresionState extends ConsumerState<_AccionesImpresion> {
         anchoMm: widget.settings.formatoReciboMm,
         pieRecibo: widget.settings.pieRecibo,
         esReimpresion: esReimpresion,
+        reciboTitulo: widget.settings.reciboTitulo,
+        mostrarAdeudado: widget.settings.reciboMostrarAdeudado,
+        empresaWhatsapp: widget.settings.empresaWhatsapp,
       );
 
       if (!mounted) return;

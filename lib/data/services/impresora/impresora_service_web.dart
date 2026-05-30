@@ -22,6 +22,9 @@ class ImpresoraService {
     required int anchoMm,
     String? pieRecibo,
     bool esReimpresion = false,
+    String? reciboTitulo,
+    bool mostrarAdeudado = true,
+    String? empresaWhatsapp,
   }) async {
     throw UnsupportedError('Impresión BT no disponible en web');
   }

@@ -47,6 +47,9 @@ class ImpresoraService {
     required int anchoMm,
     String? pieRecibo,
     bool esReimpresion = false,
+    String? reciboTitulo,
+    bool mostrarAdeudado = true,
+    String? empresaWhatsapp,
   }) async {
     return _enviarBytes(
       macImpresora,
@@ -56,6 +59,9 @@ class ImpresoraService {
         anchoMm: anchoMm,
         pieRecibo: pieRecibo,
         esReimpresion: esReimpresion,
+        reciboTitulo: reciboTitulo,
+        mostrarAdeudado: mostrarAdeudado,
+        empresaWhatsapp: empresaWhatsapp,
       ),
     );
   }
@@ -113,6 +119,9 @@ class ImpresoraService {
     required int anchoMm,
     String? pieRecibo,
     bool esReimpresion = false,
+    String? reciboTitulo,
+    bool mostrarAdeudado = true,
+    String? empresaWhatsapp,
   }) async {
     final profile = await CapabilityProfile.load();
     final gen = Generator(_size(anchoMm), profile);
@@ -156,6 +165,12 @@ class ImpresoraService {
       bytes.addAll(gen.text('RUC: ${empresa['ruc']}',
           styles: const PosStyles(
               align: PosAlign.center, codeTable: _codeTable)));
+    }
+    // Título configurable del recibo (ej. "RECIBO", "COBRO").
+    if (reciboTitulo != null && reciboTitulo.isNotEmpty) {
+      bytes.addAll(gen.text(reciboTitulo.toUpperCase(),
+          styles: const PosStyles(
+              align: PosAlign.center, bold: true, codeTable: _codeTable)));
     }
     if (hayEmpresa) bytes.addAll(gen.hr());
 
@@ -287,7 +302,7 @@ class ImpresoraService {
     final totalReal = (cuotaMonto + cargosNeto).clamp(0.0, double.infinity);
     final montoPagadoAcum = (recibo['monto_pagado_cuota'] as num? ?? cobrado).toDouble();
     final saldo = totalReal - montoPagadoAcum;
-    if (saldo > 0.01) {
+    if (mostrarAdeudado && saldo > 0.01) {
       bytes.addAll(gen.feed(1));
       bytes.addAll(gen.row([
         PosColumn(
@@ -308,6 +323,18 @@ class ImpresoraService {
     if (pieRecibo != null && pieRecibo.isNotEmpty) {
       bytes.addAll(gen.hr());
       bytes.addAll(gen.text(pieRecibo,
+          styles: const PosStyles(
+              align: PosAlign.center, codeTable: _codeTable)));
+    }
+
+    // WhatsApp de la empresa (configurable).
+    if (empresaWhatsapp != null && empresaWhatsapp.isNotEmpty) {
+      if (pieRecibo == null || pieRecibo.isEmpty) {
+        bytes.addAll(gen.hr());
+      } else {
+        bytes.addAll(gen.feed(1));
+      }
+      bytes.addAll(gen.text('WhatsApp: $empresaWhatsapp',
           styles: const PosStyles(
               align: PosAlign.center, codeTable: _codeTable)));
     }

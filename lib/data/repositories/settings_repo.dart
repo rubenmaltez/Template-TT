@@ -174,7 +174,7 @@ class AppSettings {
       settingValue<bool>(_map, 'cobranza.cobrador_edita_cobros', false);
   bool get fotoObligatoria =>
       settingValue<bool>(_map, 'cobranza.foto_obligatoria', false);
-  bool get pagoParicialPermitido =>
+  bool get pagoParcialPermitido =>
       settingValue<bool>(_map, 'cobranza.pago_parcial', true);
   bool get pagoAdelantadoPermitido =>
       settingValue<bool>(_map, 'cobranza.pago_adelantado', true);
