@@ -8,6 +8,12 @@ Si estás abriendo este repo por primera vez en esta sesión, leé este archivo 
 > tiene las REGLAS y el PROCESO; ESTADO-APP.md tiene el "dónde estamos parados
 > hoy". Los dos juntos dan el contexto completo para continuar.
 
+> **Leé también `REPORTE-SESION.md`** — bitácora viva: cómo se ESPERA que
+> funcione la app (comportamiento esperado por feature + lifecycle de uso
+> real end-to-end) y el HISTORIAL de fixes (error → fix → expectativa, por
+> sesión). Revisá el comportamiento esperado de un feature ANTES de tocarlo;
+> al cerrar cada sesión/sprint de fixes, agregá una entrada nueva.
+
 ---
 
 ## Producto
