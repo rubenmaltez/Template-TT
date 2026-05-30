@@ -223,6 +223,29 @@ class _ContratoFormScreenState extends ConsumerState<ContratoFormScreen> {
         return;
       }
     }
+    // Guard: el índice único contratos_unique_activo_por_cliente_plan
+    // (migración 0023/0054) prohíbe dos contratos ACTIVOS del mismo
+    // cliente+plan. Sin este pre-chequeo, el INSERT/UPDATE local pasa pero
+    // PowerSync lo rechaza al sincronizar con un error técnico en inglés.
+    // Validamos acá solo si el contrato quedaría activo. Excluimos el
+    // propio contrato en edición (id != ?).
+    if (!_esEdicion || _activo) {
+      final dup = await ps.db.getAll(
+        '''
+        SELECT id FROM contratos
+         WHERE cliente_id = ? AND plan_id = ? AND estado = 'activo'
+           AND id != ?
+         LIMIT 1
+        ''',
+        [_clienteId, _planId, widget.contratoId ?? ''],
+      );
+      if (dup.isNotEmpty) {
+        setState(() => _error =
+            'Este cliente ya tiene un contrato activo con ese plan. '
+            'Cancelá el contrato anterior o elegí otro plan.');
+        return;
+      }
+    }
     final tenantId = ref.read(tenantIdProvider);
     if (tenantId == null) {
       setState(() => _error = 'No se pudo determinar el tenant');
