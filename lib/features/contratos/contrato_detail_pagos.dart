@@ -417,7 +417,11 @@ class _PagoDetalleSheetState extends ConsumerState<_PagoDetalleSheet> {
                       ? null
                       : () {
                           Navigator.of(context).pop();
-                          context.push('/recibo/$_reciboId');
+                          // Cobro agrupado → abrir el recibo combinado.
+                          final grupo = widget.row['grupo_cobro'] as String?;
+                          context.push(grupo != null
+                              ? '/recibo/$_reciboId?grupo=$grupo'
+                              : '/recibo/$_reciboId');
                         },
                 ),
                 // Acciones destructivas: solo admin/admin_cobranza.

@@ -29,7 +29,7 @@ class _HistorialScreenState extends ConsumerState<HistorialScreen> {
     _historialStream = ps.db.watch(
       '''
       SELECT p.id, p.monto_cordobas, p.moneda, p.monto_original,
-             p.metodo, p.fecha_pago, p.notas,
+             p.metodo, p.fecha_pago, p.notas, p.grupo_cobro,
              c.nombre AS cliente_nombre,
              r.id AS recibo_id, r.numero_completo
         FROM pagos p
@@ -176,7 +176,16 @@ class _GrupoDia extends ConsumerWidget {
                           ],
                         ),
                         onTap: p['recibo_id'] != null
-                            ? () => context.push('/recibo/${p['recibo_id']}')
+                            ? () {
+                                // Si el pago es parte de un cobro agrupado,
+                                // abrir el recibo COMBINADO (todas las cuotas
+                                // del grupo + vuelto), no solo esta cuota.
+                                final grupo = p['grupo_cobro'] as String?;
+                                final ruta = grupo != null
+                                    ? '/recibo/${p['recibo_id']}?grupo=$grupo'
+                                    : '/recibo/${p['recibo_id']}';
+                                context.push(ruta);
+                              }
                             : null,
                       ),
                     ],

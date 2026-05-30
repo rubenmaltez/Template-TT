@@ -265,7 +265,7 @@ class _CobroScreenState extends ConsumerState<CobroScreen> {
       return;
     }
     // P4: si el tenant no permite pago parcial, exigir cubrir el saldo
-    // completo de la cuota (en multi-cuota el monto ya es read-only = total).
+    // completo de la cuota.
     if (!settings.pagoParcialPermitido && !_esMultiCuota) {
       final saldoCuota = (_totalesACobrar.first - _cuotas.first.montoPagado)
           .clamp(0.0, double.infinity);
@@ -274,6 +274,24 @@ class _CobroScreenState extends ConsumerState<CobroScreen> {
       if (entregadoCordobas < saldoCuota - 0.01) {
         setState(() => _error =
             'No se permite pago parcial: cobrá el total de ${Fmt.cordobas(saldoCuota)}.');
+        return;
+      }
+    }
+    // Multi-cuota: cada cuota se cobra completa (sin pago parcial repartido).
+    // El monto entregado puede ser MAYOR al total (genera vuelto), pero nunca
+    // menor: no tendría sentido un parcial distribuido entre varias cuotas.
+    if (_esMultiCuota) {
+      var totalSaldo = 0.0;
+      for (var i = 0; i < _cuotas.length; i++) {
+        totalSaldo += (_totalesACobrar[i] - _cuotas[i].montoPagado)
+            .clamp(0.0, double.infinity);
+      }
+      final entregadoCordobas =
+          CobroCalculo.aCordobas(double.tryParse(_montoCtrl.text) ?? 0, tasa);
+      if (entregadoCordobas < totalSaldo - 0.01) {
+        setState(() => _error =
+            'En cobro múltiple cada cuota se paga completa: el monto no puede '
+            'ser menor al total de ${Fmt.cordobas(totalSaldo)}.');
         return;
       }
     }
@@ -289,27 +307,42 @@ class _CobroScreenState extends ConsumerState<CobroScreen> {
         // Multi-cuota: cada cuota recibe su saldo completo. Si el monto
         // entregado supera el total a cobrar, el excedente queda como
         // vuelto en el último pago del grupo (ver registrarCobroMultiple).
+        // montosNIO[i] = lo APLICADO a la cuota i = su saldo completo (entra
+        // a la caja del ISP). El vuelto NO infla esto — invariante de dinero.
         final montosNIO = <double>[];
-        final montosOrig = <double>[];
         var totalSaldoNIO = 0.0;
         for (var i = 0; i < _cuotas.length; i++) {
           final saldo = (_totalesACobrar[i] - _cuotas[i].montoPagado)
               .clamp(0.0, double.infinity);
           montosNIO.add(saldo);
-          montosOrig.add(_moneda == Moneda.usd ? saldo / tasa : saldo);
           totalSaldoNIO += saldo;
         }
 
-        // entregado = lo que el cliente puso en mano (en córdobas).
-        // aplicado = min(entregado, totalSaldo); vuelto = exceso.
-        // En el flow actual el campo es read-only = totalSaldo, así que
-        // vuelto será 0 — pero dejamos la fórmula correcta para futuro.
-        // Misma matemática pura que single-cuota (CobroCalculo).
+        // entregado = lo que el cliente puso en mano (en la moneda elegida).
+        // aplicado = min(entregado, totalSaldo); vuelto = exceso (en córdobas).
+        // El campo ahora es editable: si entrega más que el total, el exceso
+        // es vuelto. La matemática pura vive en CobroCalculo (testeado).
         final entregado = double.parse(_montoCtrl.text);
         final vueltoCordobas = CobroCalculo.calcular(
           entregadoCordobas: CobroCalculo.aCordobas(entregado, tasa),
           saldoCordobas: totalSaldoNIO,
         ).vueltoCordobas;
+
+        // monto_original[i] = lo ENTREGADO en la moneda original, por pago.
+        // Opción A: las cuotas previas llevan su saldo; el ÚLTIMO pago lleva
+        // su saldo + TODO el excedente entregado, de modo que en cada fila se
+        // cumpla el invariante monto_original*tasa ≈ monto_cordobas + vuelto.
+        // (El vuelto también se asigna al último pago — ver registrarCobroMultiple.)
+        final excedenteCordobas =
+            (CobroCalculo.aCordobas(entregado, tasa) - totalSaldoNIO)
+                .clamp(0.0, double.infinity);
+        final montosOrig = <double>[];
+        for (var i = 0; i < _cuotas.length; i++) {
+          final esUltimo = i == _cuotas.length - 1;
+          final cordobasFila =
+              montosNIO[i] + (esUltimo ? excedenteCordobas : 0.0);
+          montosOrig.add(_moneda == Moneda.usd ? cordobasFila / tasa : cordobasFila);
+        }
 
         final cargosInfo = _cargosAuto
             .map((c) => CargoAutoInfo(
@@ -581,11 +614,10 @@ class _CobroScreenState extends ConsumerState<CobroScreen> {
             children: [
               Text('Monto', style: Theme.of(context).textTheme.titleMedium),
               const Spacer(),
-              // En multi-cuota el campo de monto es readOnly (siempre cobra
-              // el saldo exacto). Si dejamos el toggle USD, al pulsarlo
-              // _cambiarMoneda limpia el campo y el cobro queda bloqueado
-              // (no se puede re-tipear). Lo ocultamos hasta que el flow
-              // soporte editar el monto en multi-cuota.
+              // El toggle USD sigue oculto en multi-cuota: el monto ya es
+              // editable (para el vuelto en córdobas), pero el cobro multi en
+              // USD requiere más lógica (tasa por cuota) — fuera de scope. El
+              // vuelto multi funciona en córdobas, que es el caso real común.
               if (settings.usdHabilitado && !_esMultiCuota) _MonedaToggle(
                 actual: _moneda,
                 onChanged: (m) => _cambiarMoneda(m, settings),
@@ -595,7 +627,6 @@ class _CobroScreenState extends ConsumerState<CobroScreen> {
           const SizedBox(height: 8),
           TextFormField(
             controller: _montoCtrl,
-            readOnly: _esMultiCuota,
             keyboardType: const TextInputType.numberWithOptions(decimal: true),
             inputFormatters: [
               FilteringTextInputFormatter.allow(RegExp(r'[0-9.]')),
@@ -604,10 +635,10 @@ class _CobroScreenState extends ConsumerState<CobroScreen> {
               prefixText: _moneda.symbol + ' ',
               hintText: '0.00',
               helperText: _esMultiCuota
-                  ? 'Monto fijo: cada cuota se paga completa'
+                  ? 'Total de las cuotas. Si el cliente entrega más, el exceso se devuelve como vuelto.'
                   : null,
             ),
-            onChanged: _esMultiCuota ? null : (_) => setState(() {}),
+            onChanged: (_) => setState(() {}),
             validator: (v) {
               if (v == null || v.isEmpty) return 'Ingresá un monto';
               final n = double.tryParse(v);
