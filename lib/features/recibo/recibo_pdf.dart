@@ -199,11 +199,15 @@ Future<pw.Document> buildMultiReciboPdf({
   final emision = DateTime.parse(first['fecha_pago'] as String);
   var totalCobrado = 0.0;
   var totalVuelto = 0.0;
+  var totalOriginal = 0.0; // Σ monto_original = lo entregado en moneda original.
   for (final r in rows) {
     totalCobrado += (r['monto_cordobas'] as num).toDouble();
     totalVuelto += (r['vuelto_cordobas'] as num? ?? 0).toDouble();
+    totalOriginal += (r['monto_original'] as num? ?? 0).toDouble();
   }
   final totalEntregado = totalCobrado + totalVuelto;
+  // Todo el grupo comparte moneda/tasa (registrarCobroMultiple usa una sola).
+  final esUsd = (first['moneda'] as String?) == 'USD';
 
   doc.addPage(
     pw.Page(
@@ -295,6 +299,12 @@ Future<pw.Document> buildMultiReciboPdf({
                   .toUpperCase()),
           if (first['referencia'] != null)
             _pdfRow('Ref.', first['referencia'] as String),
+          if (esUsd)
+            _pdfRow(
+              'Recibido',
+              'US\$${totalOriginal.toStringAsFixed(2)} '
+                  '(tasa ${(first['tasa_conversion'] as num).toStringAsFixed(2)})',
+            ),
 
           if (settings.reciboMontoEnLetras)
             pw.Padding(
@@ -327,7 +337,7 @@ Future<pw.Document> buildMultiReciboPdf({
               child: pw.Row(
                 mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
                 children: [
-                  pw.Text('VUELTO',
+                  pw.Text(esUsd ? 'VUELTO (en C\$)' : 'VUELTO',
                       style: pw.TextStyle(
                           fontWeight: pw.FontWeight.bold, fontSize: 9)),
                   pw.Text(Fmt.cordobas(totalVuelto),
@@ -344,7 +354,10 @@ Future<pw.Document> buildMultiReciboPdf({
                   pw.Text('PAGADO',
                       style: pw.TextStyle(
                           fontWeight: pw.FontWeight.bold, fontSize: 10)),
-                  pw.Text(Fmt.cordobas(totalEntregado),
+                  pw.Text(
+                      esUsd
+                          ? 'US\$${totalOriginal.toStringAsFixed(2)} = ${Fmt.cordobas(totalEntregado)}'
+                          : Fmt.cordobas(totalEntregado),
                       style: pw.TextStyle(
                           fontWeight: pw.FontWeight.bold, fontSize: 10)),
                 ],

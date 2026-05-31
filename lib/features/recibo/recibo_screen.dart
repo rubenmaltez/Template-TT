@@ -467,11 +467,15 @@ class _MultiReciboTicket extends StatelessWidget {
     final emision = DateTime.parse(first['fecha_pago'] as String);
     var totalCobrado = 0.0;
     var totalVuelto = 0.0;
+    var totalOriginal = 0.0; // Σ monto_original = lo entregado en moneda original.
     for (final r in rows) {
       totalCobrado += (r['monto_cordobas'] as num).toDouble();
       totalVuelto += (r['vuelto_cordobas'] as num? ?? 0).toDouble();
+      totalOriginal += (r['monto_original'] as num? ?? 0).toDouble();
     }
     final totalEntregado = totalCobrado + totalVuelto;
+    // Todo el grupo comparte moneda/tasa (registrarCobroMultiple usa una sola).
+    final esUsd = (first['moneda'] as String?) == 'USD';
 
     return Container(
       decoration: BoxDecoration(
@@ -565,6 +569,12 @@ class _MultiReciboTicket extends StatelessWidget {
             _ticketRow('Método', MetodoPago.fromString(first['metodo'] as String).label.toUpperCase()),
             if (first['referencia'] != null)
               _ticketRow('Ref.', first['referencia'] as String),
+            if (esUsd)
+              _ticketRow(
+                'Recibido',
+                'US\$${totalOriginal.toStringAsFixed(2)} '
+                    '(tasa ${(first['tasa_conversion'] as num).toStringAsFixed(2)})',
+              ),
 
             if (settings.reciboMontoEnLetras)
               Padding(
@@ -594,7 +604,7 @@ class _MultiReciboTicket extends StatelessWidget {
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Text('VUELTO',
+                  Text(esUsd ? 'VUELTO (en C\$)' : 'VUELTO',
                       style: TextStyle(
                         fontWeight: FontWeight.w600,
                         fontSize: 13,
@@ -614,7 +624,10 @@ class _MultiReciboTicket extends StatelessWidget {
                 children: [
                   const Text('PAGADO',
                       style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
-                  Text(Fmt.cordobas(totalEntregado),
+                  Text(
+                      esUsd
+                          ? 'US\$${totalOriginal.toStringAsFixed(2)} = ${Fmt.cordobas(totalEntregado)}'
+                          : Fmt.cordobas(totalEntregado),
                       style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
                 ],
               ),

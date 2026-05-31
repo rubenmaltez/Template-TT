@@ -102,4 +102,18 @@ Backlog de 9 observaciones de Rubén (2026-05-31). Se atacan **EN ORDEN**.
     invariante `monto_original*tasa ≈ monto_cordobas + vuelto` por pago,
     recaudado = Σ saldos (sin vuelto).
 - Invariantes de dinero verificados a mano + en tests. Sin migración ni sync
-  rules (no toca schema). Audit pendiente (igual patrón que #5).
+  rules (no toca schema).
+- **Post-audit (2 agentes: math + downstream):**
+  - Math: MERGEABLE sin blockers. El auditor portó `distribuirMulti` a JS y
+    corrió 40+ asserts con Node (0 fallas). Invariantes + equivalencia con la
+    lógica vieja + tests confirmados.
+  - Downstream: plata SEGURA — toda agregación de recaudado/reportes/dashboard
+    suma `monto_cordobas` (siempre NIO), nunca `monto_original`; cero mezcla
+    USD↔NIO.
+  - Fix aplicado: el recibo de cobro MÚLTIPLE (pantalla + PDF) no mostraba el
+    monto en USD ni la tasa (solo córdobas), a diferencia del recibo single.
+    Replicado el patrón: línea "Recibido US$X (tasa Y)" + "PAGADO US$X = C$Y"
+    cuando moneda=USD (X = Σ monto_original del grupo).
+  - Backlog (no bloquea): (a) impresión Bluetooth de un cobro multi saca solo
+    la 1ª cuota (gap pre-existente, no regresión); (b) divergencia tasa
+    snapshot vs live entre preview y cobro (pre-existente, single+multi).
