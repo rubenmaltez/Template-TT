@@ -440,7 +440,7 @@ class _SettingTileState extends State<_SettingTile> {
       'recibo.pie_libre': 'Pie del recibo',
       'recibo.titulo': 'Título del recibo',
       'recibo.monto_en_letras': 'Monto en letras',
-      'recibo.mostrar_adeudado': 'Mostrar meses adeudados',
+      'recibo.mostrar_adeudado': 'Mostrar saldo de la cuota',
       'recibo.mostrar_empresa': 'Mostrar datos de empresa',
       'recibo.mostrar_cedula': 'Mostrar cédula del cliente',
       'cuotas.manuales': 'Cuotas manuales',

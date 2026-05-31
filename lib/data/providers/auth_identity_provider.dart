@@ -76,6 +76,17 @@ class AuthIdentityNotifier extends StateNotifier<AuthIdentityState> {
     _onPersist?.call(userId);
   }
 
+  /// Cambio de TENANT impersonado (mismo `userId`, pero el SQLite local va a
+  /// cambiar de tenant tras el disconnect+connect de `ImpersonationService`).
+  /// Re-arma el sync gate (mismo mecanismo que un cambio de identidad) para
+  /// que la UI del AdminShell NO muestre data del tenant anterior hasta que
+  /// PowerSync confirme un sync posterior (#9 / finding S2). Solo se llama al
+  /// ENTRAR a un tenant; al salir, el super vuelve a /super/tenants (vista
+  /// propia online, no necesita gate).
+  void onImpersonationChanged() {
+    state = AuthIdentityState(userId: state.userId, changedAt: DateTime.now());
+  }
+
   void onSignOut() {
     // No tocamos el storage — `last_known_user_id` se mantiene apuntando
     // al user del cache local. Si la pestaña se cierra y otro user se

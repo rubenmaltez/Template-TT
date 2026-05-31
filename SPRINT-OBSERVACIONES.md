@@ -148,6 +148,41 @@ Backlog de 9 observaciones de Rubén (2026-05-31). Se atacan **EN ORDEN**.
     bug: todo provider global nuevo que lea ps.db debe observar el epoch.
 - Sin migración ni sync rules. Audit pendiente.
 
+### Full audit (4 lentes, a pedido pre-pull) ✅
+Segunda ronda, 4 agentes con lentes distintos sobre `46acf9c~1..HEAD`:
+💰 dinero · 🔒 seguridad/multi-tenant · 🎨 UX/QA · ⚙️ compilación.
+**Veredicto global: APTO para pull** tras cerrar los hallazgos accionables.
+
+Hallazgos y resolución:
+- 🟠 **UX-Alta (banner casi invisible)**: el banner de impersonación usaba
+  `primaryContainer` (celeste 8%, se fundía con el header). **FIX**: `AppColors.
+  warning` (#CC7700) + texto/ícono/spinner blanco. Ahora grita "otro tenant".
+- 🟠 **Dinero-Alto (F1, pre-existente, agravado por #6)**: editar un pago en
+  USD lo corrompía (`monto_original=C$, tasa=1.0` → recibo "Recibido US$1098").
+  **FIX**: botón Editar deshabilitado para `moneda==USD` (+ aviso) y guard
+  defensivo en `editarPago` (rechaza `moneda!='NIO'`), igual patrón que vuelto.
+- 🟡 **Seguridad-Media (S1)**: el trigger 0078 era solo INSERT → un super_admin
+  podía mover un pago a otro tenant vía UPDATE (no alcanzable por UI, pero
+  contradecía el propósito). **FIX**: triggers a `INSERT OR UPDATE` con skip de
+  UPDATE benigno (anular/editar notas no se bloquean; solo se valida si cambia
+  tenant_id o el link al padre).
+- 🟡 **Seguridad-Baja (S2)**: el sync gate no se re-armaba al cambiar de tenant
+  impersonado → ventana de data stale. **FIX**: `onImpersonationChanged()` en
+  AuthIdentityNotifier, llamado al ENTRAR a un tenant (reusa el gate). De paso
+  enmascara **S3** (rebote de navegación al entrar). Salir no gatea (vuelve a
+  /super/tenants, vista propia online).
+- 🟢 **Nits**: tasa del preview con `toStringAsFixed(2)`; label "Mostrar meses
+  adeudados" → "Mostrar saldo de la cuota"; en web se quitó el botón
+  "Imprimir (sólo mobile)" redundante y el de PDF dice "Descargar PDF".
+
+**Confirmado limpio por los 4 lentes**: `distribuirMulti` recalculado a mano
+(invariantes #1/#2/#3/#4 OK), todas las agregaciones de recaudado suman
+monto_cordobas sin mezcla USD↔NIO, aislamiento per-user sólido, los 3
+write-paths de impersonación guardados (client + trigger + RLS), **compila**
+(0 errores; 1 INFO de lint pre-existente). Backlog real (no bloquea): preview
+57/80mm sin comparar, reprint multi solo 1er recibo, `_PostCobroActions` ruta
+cobrador para super (inalcanzable por el guard).
+
 ### Audit integral final (pre-pull) ✅
 Dos agentes en paralelo (correctness/regresión full-codebase + migraciones/DB).
 **Veredicto: LISTO para pull + testing, sin blockers.** Highlights verificados:

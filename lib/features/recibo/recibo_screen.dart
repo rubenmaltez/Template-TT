@@ -854,13 +854,8 @@ class _AccionesImpresionState extends ConsumerState<_AccionesImpresion> {
     final puedeImprimir = !kIsWeb;
     return Column(
       children: [
-        if (kIsWeb)
-          FilledButton.icon(
-            icon: const Icon(Icons.print_disabled),
-            label: const Text('Imprimir (sólo disponible en mobile)'),
-            onPressed: null,
-          )
-        else
+        // Impresión Bluetooth térmica: solo mobile. En web se usa el PDF.
+        if (!kIsWeb)
           FilledButton.icon(
             icon: _imprimiendo
                 ? const SizedBox(
@@ -886,7 +881,7 @@ class _AccionesImpresionState extends ConsumerState<_AccionesImpresion> {
                 : const Icon(Icons.picture_as_pdf),
             label: Text(_descargandoPdf
                 ? 'Generando PDF...'
-                : 'Imprimir / Descargar PDF ${widget.settings.formatoReciboMm}mm'),
+                : 'Descargar PDF ${widget.settings.formatoReciboMm}mm'),
             onPressed: _descargandoPdf ? null : _descargarPdf,
           ),
         ],

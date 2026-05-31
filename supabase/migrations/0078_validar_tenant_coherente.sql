@@ -13,10 +13,13 @@
 --   recibos.tenant_id      debe == pagos.tenant_id    (por pago_id)
 --   visitas.tenant_id      debe == clientes.tenant_id (por cliente_id)
 --
--- Solo se valida en INSERT: el tenant nunca cambia en un UPDATE legítimo, y
--- así no bloqueamos operaciones sobre filas legacy que pudieran existir
--- (ej. anular un pago viejo). SECURITY DEFINER para leer el tenant real del
--- padre sin que RLS lo oculte y haga pasar la validación por error.
+-- Se valida en INSERT y en los UPDATE que MUEVEN la fila de tenant/padre
+-- (cambian tenant_id o el link cuota_id/pago_id/cliente_id). Los UPDATE
+-- benignos (anular, editar notas/monto) NO se validan → no bloquean filas
+-- legacy que pudieran ser incoherentes. Esto cierra el vector UPDATE-move del
+-- super_admin (que evade el scoping de RLS via super_admin_all). SECURITY
+-- DEFINER para leer el tenant real del padre sin que RLS lo oculte y haga
+-- pasar la validación por error.
 
 create or replace function public.validar_tenant_coherente()
 returns trigger
@@ -27,6 +30,24 @@ as $$
 declare
   v_tenant_padre uuid;
 begin
+  -- En UPDATE solo validamos si la fila se "mueve" de tenant o de padre
+  -- (cambia tenant_id o el link al padre). Un UPDATE benigno (anular, editar
+  -- notas/monto) NO se valida → no bloquea filas legacy que pudieran ser
+  -- incoherentes. Esto cierra el vector UPDATE-move del super_admin (que evade
+  -- el scoping de RLS por la policy super_admin_all) sin romper anular/editar.
+  if tg_op = 'UPDATE'
+     and new.tenant_id is not distinct from old.tenant_id
+     and (
+       (tg_table_name in ('pagos', 'cargos_extra')
+          and new.cuota_id is not distinct from old.cuota_id)
+       or (tg_table_name = 'recibos'
+          and new.pago_id is not distinct from old.pago_id)
+       or (tg_table_name = 'visitas'
+          and new.cliente_id is not distinct from old.cliente_id)
+     ) then
+    return new;
+  end if;
+
   if tg_table_name = 'pagos' then
     select tenant_id into v_tenant_padre
       from public.cuotas where id = new.cuota_id;
@@ -70,20 +91,20 @@ $$;
 
 drop trigger if exists validar_tenant_coherente_pagos on public.pagos;
 create trigger validar_tenant_coherente_pagos
-  before insert on public.pagos
+  before insert or update on public.pagos
   for each row execute function public.validar_tenant_coherente();
 
 drop trigger if exists validar_tenant_coherente_cargos on public.cargos_extra;
 create trigger validar_tenant_coherente_cargos
-  before insert on public.cargos_extra
+  before insert or update on public.cargos_extra
   for each row execute function public.validar_tenant_coherente();
 
 drop trigger if exists validar_tenant_coherente_recibos on public.recibos;
 create trigger validar_tenant_coherente_recibos
-  before insert on public.recibos
+  before insert or update on public.recibos
   for each row execute function public.validar_tenant_coherente();
 
 drop trigger if exists validar_tenant_coherente_visitas on public.visitas;
 create trigger validar_tenant_coherente_visitas
-  before insert on public.visitas
+  before insert or update on public.visitas
   for each row execute function public.validar_tenant_coherente();

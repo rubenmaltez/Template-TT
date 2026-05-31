@@ -481,7 +481,7 @@ class PagosRepo {
     await ps.db.writeTransaction((tx) async {
       // Leer el pago actual para obtener cuota_id y monto previo.
       final pagoRows = await tx.getAll(
-        'SELECT cuota_id, monto_cordobas, vuelto_cordobas FROM pagos WHERE id = ? AND anulado = 0',
+        'SELECT cuota_id, monto_cordobas, vuelto_cordobas, moneda FROM pagos WHERE id = ? AND anulado = 0',
         [pagoId],
       );
       if (pagoRows.isEmpty) {
@@ -495,6 +495,16 @@ class PagosRepo {
       if (vueltoPrevio > 0) {
         throw Exception(
           'No se puede editar un pago con vuelto. Anulalo y registrá el cobro de nuevo.',
+        );
+      }
+      // Defense in depth (F1): el editor solo captura monto en córdobas; editar
+      // un pago en moneda extranjera lo dejaría con monto_original en C$ y
+      // tasa=1.0, corrompiendo el rastro de moneda (invariante #3). El flujo
+      // correcto es anular + recobrar. El UI ya bloquea el botón.
+      final monedaPrevia = pagoRows.first['moneda'] as String? ?? 'NIO';
+      if (monedaPrevia != 'NIO') {
+        throw Exception(
+          'No se puede editar un pago en moneda extranjera. Anulalo y registrá el cobro de nuevo.',
         );
       }
       final cuotaId = pagoRows.first['cuota_id'] as String;

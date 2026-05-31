@@ -5,6 +5,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../data/models/modulo.dart';
 import '../../data/models/tenant_admin.dart';
+import '../../data/providers/auth_identity_provider.dart';
 import '../../data/services/impersonation_service.dart';
 import '../../data/repositories/super_admin_repo.dart';
 import '../../data/utils/cobrador_helpers.dart';
@@ -369,7 +370,7 @@ class _MiembrosList extends ConsumerWidget {
 /// Botón "Entrar al tenant" que inicia la impersonación. Al completar,
 /// navega a /admin donde el AdminShell muestra el panel con la data del
 /// tenant impersonado y el banner de impersonación.
-class _EntrarTenantButton extends StatefulWidget {
+class _EntrarTenantButton extends ConsumerStatefulWidget {
   const _EntrarTenantButton({
     required this.tenantId,
     required this.tenantNombre,
@@ -378,10 +379,11 @@ class _EntrarTenantButton extends StatefulWidget {
   final String tenantNombre;
 
   @override
-  State<_EntrarTenantButton> createState() => _EntrarTenantButtonState();
+  ConsumerState<_EntrarTenantButton> createState() =>
+      _EntrarTenantButtonState();
 }
 
-class _EntrarTenantButtonState extends State<_EntrarTenantButton> {
+class _EntrarTenantButtonState extends ConsumerState<_EntrarTenantButton> {
   bool _busy = false;
 
   Future<void> _entrar() async {
@@ -392,6 +394,9 @@ class _EntrarTenantButtonState extends State<_EntrarTenantButton> {
         tenantNombre: widget.tenantNombre,
       );
       if (!mounted) return;
+      // Re-armar el sync gate: no mostrar data del tenant anterior hasta que
+      // PowerSync baje la del tenant nuevo (#9 / S2).
+      ref.read(authIdentityProvider.notifier).onImpersonationChanged();
       context.go('/admin');
     } catch (e) {
       if (!mounted) return;

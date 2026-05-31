@@ -327,6 +327,16 @@ class _PagoCard extends ConsumerWidget {
                   color: scheme.outline,
                   onPressed: () => _avisarVuelto(context),
                 )
+              // El editor solo maneja córdobas (monto C$ + método + notas);
+              // editar un pago USD lo dejaría con monto_original=C$ y tasa=1.0,
+              // corrompiendo el rastro de moneda (F1). Se deshabilita.
+              else if ((row['moneda'] as String) == 'USD')
+                IconButton(
+                  icon: const Icon(Icons.edit),
+                  tooltip: 'No se puede editar: pago en dólares',
+                  color: scheme.outline,
+                  onPressed: () => _avisarUsd(context),
+                )
               else
                 IconButton(
                   icon: const Icon(Icons.edit),
@@ -400,6 +410,19 @@ class _PagoCard extends ConsumerWidget {
           'anulalo y registrá el cobro de nuevo.',
         ),
         duration: const Duration(seconds: 4),
+      ),
+    );
+  }
+
+  void _avisarUsd(BuildContext context) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text(
+          'Este pago fue en dólares. El editor solo maneja córdobas y '
+          'perdería la conversión. Para corregirlo, anulalo y registrá el '
+          'cobro de nuevo.',
+        ),
+        duration: Duration(seconds: 4),
       ),
     );
   }

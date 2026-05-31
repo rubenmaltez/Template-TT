@@ -6,6 +6,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../data/models/modulo.dart';
 import '../../data/models/tenant_admin.dart';
+import '../../data/providers/auth_identity_provider.dart';
 import '../../data/repositories/super_admin_repo.dart';
 import '../../data/services/impersonation_service.dart';
 import '../../data/utils/cobrador_helpers.dart';
@@ -157,15 +158,15 @@ class TenantsListScreen extends ConsumerWidget {
   }
 }
 
-class _TenantCard extends StatefulWidget {
+class _TenantCard extends ConsumerStatefulWidget {
   const _TenantCard({required this.tenant});
   final TenantAdmin tenant;
 
   @override
-  State<_TenantCard> createState() => _TenantCardState();
+  ConsumerState<_TenantCard> createState() => _TenantCardState();
 }
 
-class _TenantCardState extends State<_TenantCard> {
+class _TenantCardState extends ConsumerState<_TenantCard> {
   bool _hover = false;
   bool _entering = false;
 
@@ -178,6 +179,10 @@ class _TenantCardState extends State<_TenantCard> {
         tenantId: tenant.id,
         tenantNombre: tenant.nombre,
       );
+      // Re-armar el sync gate: no mostrar data del tenant anterior hasta que
+      // PowerSync baje la del tenant nuevo (#9 / S2). El router redirige a
+      // /sync-gate y luego a /admin cuando sincroniza la impersonación.
+      ref.read(authIdentityProvider.notifier).onImpersonationChanged();
     } catch (e) {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(

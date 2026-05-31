@@ -652,7 +652,7 @@ class _CobroScreenState extends ConsumerState<CobroScreen> {
             Padding(
               padding: const EdgeInsets.only(top: 6),
               child: Text(
-                'Equivalente: ${Fmt.cordobas(montoEnNio)} (tasa $tasaEfectiva)',
+                'Equivalente: ${Fmt.cordobas(montoEnNio)} (tasa ${tasaEfectiva.toStringAsFixed(2)})',
                 style: Theme.of(context).textTheme.bodySmall,
               ),
             ),
