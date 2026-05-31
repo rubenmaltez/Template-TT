@@ -49,7 +49,7 @@ class _HistorialCambiosWidgetState
         FROM audit_log a
    LEFT JOIN cobradores c ON c.id = a.user_id
        WHERE a.registro_id = ? AND a.tabla = ?
-       ORDER BY a.created_at DESC
+       ORDER BY COALESCE(a.ocurrido_en, a.created_at) DESC
        LIMIT 50
       ''',
       parameters: [widget.registroId, widget.tabla],
@@ -276,7 +276,11 @@ class _HistorialCuotaWidgetState extends ConsumerState<HistorialCuotaWidget> {
     // Entries de la cuota + entries de sus pagos, unidas en una sola query.
     // La subquery `IN (SELECT ...)` corre sobre SQLite local (válida acá; la
     // restricción de "sin subqueries" aplica a las SYNC RULES, no a las
-    // queries de `ps.db.watch`). Orden ASC = cronológico hacia adelante.
+    // queries de `ps.db.watch`). Orden ASC por ocurrido_en (device time, con
+    // fallback a created_at) = cronológico real del cobro hacia adelante. Es
+    // CLAVE que coincida con el campo que usa la ventana de agrupación de
+    // _construirEventos (ocurrido_en), sino el pago y el update de su cuota se
+    // desordenan y no se agrupan.
     return ps.db.watch(
       '''
       SELECT a.id, a.tabla, a.accion, a.campo,
@@ -289,7 +293,7 @@ class _HistorialCuotaWidgetState extends ConsumerState<HistorialCuotaWidget> {
           OR (a.tabla = 'pagos' AND a.registro_id IN (
                 SELECT id FROM pagos WHERE cuota_id = ?
               ))
-       ORDER BY a.created_at ASC
+       ORDER BY COALESCE(a.ocurrido_en, a.created_at) ASC
        LIMIT 100
       ''',
       parameters: [widget.cuotaId, widget.cuotaId],
