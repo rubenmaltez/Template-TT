@@ -180,7 +180,7 @@ class _RangoReportesCard extends ConsumerWidget {
       final picked = await showDateRangePicker(
         context: context,
         firstDate: DateTime(now.year - 5),
-        lastDate: DateTime(now.year + 1, 12, 31),
+        lastDate: now, // sin futuro: "fecha de cobro" no tiene sentido a futuro
         initialDateRange:
             DateTimeRange(start: actual.desde, end: actual.hasta),
       );
