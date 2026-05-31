@@ -817,6 +817,23 @@ class _ClienteCuotaCard extends StatelessWidget {
                     style: const TextStyle(fontWeight: FontWeight.w600)),
               ],
             ),
+            const SizedBox(height: 6),
+            Padding(
+              padding: const EdgeInsets.only(left: 26),
+              child: Text(
+                'Fecha de cuota: ${Fmt.fechaCorta(cuota.fechaVencimiento)}',
+                style: TextStyle(color: scheme.outline, fontSize: 12),
+              ),
+            ),
+            if (Fmt.periodoServicioRango(diaPago, cuota.fechaVencimiento) != null)
+              Padding(
+                padding: const EdgeInsets.only(left: 26),
+                child: Text(
+                  'Periodo de cuota: '
+                  '${Fmt.periodoServicioRango(diaPago, cuota.fechaVencimiento)}',
+                  style: TextStyle(color: scheme.outline, fontSize: 12),
+                ),
+              ),
             if (totalACobrar != cuota.monto) ...[
               const SizedBox(height: 4),
               Row(
@@ -889,20 +906,41 @@ class _MultiCuotaCard extends StatelessWidget {
             const SizedBox(height: 8),
             for (var i = 0; i < cuotas.length; i++)
               Padding(
-                padding: const EdgeInsets.only(bottom: 4),
-                child: Row(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Icon(Icons.calendar_today, size: 14),
-                    const SizedBox(width: 6),
-                    Text(
-                      'Cuota ${Fmt.mesServicioLabel(cuotas[i].periodo, diasPago[i])}',
-                      style: const TextStyle(fontSize: 13),
+                    Row(
+                      children: [
+                        const Icon(Icons.calendar_today, size: 14),
+                        const SizedBox(width: 6),
+                        Text(
+                          'Cuota ${Fmt.mesServicioLabel(cuotas[i].periodo, diasPago[i])}',
+                          style: const TextStyle(fontSize: 13),
+                        ),
+                        const Spacer(),
+                        Text(
+                          Fmt.cordobas((totales[i] - cuotas[i].montoPagado).clamp(0.0, double.infinity)),
+                          style: const TextStyle(fontSize: 13),
+                        ),
+                      ],
                     ),
-                    const Spacer(),
-                    Text(
-                      Fmt.cordobas((totales[i] - cuotas[i].montoPagado).clamp(0.0, double.infinity)),
-                      style: const TextStyle(fontSize: 13),
+                    Padding(
+                      padding: const EdgeInsets.only(left: 20),
+                      child: Text(
+                        'Fecha de cuota: ${Fmt.fechaCorta(cuotas[i].fechaVencimiento)}',
+                        style: TextStyle(color: scheme.outline, fontSize: 11),
+                      ),
                     ),
+                    if (Fmt.periodoServicioRango(diasPago[i], cuotas[i].fechaVencimiento) != null)
+                      Padding(
+                        padding: const EdgeInsets.only(left: 20),
+                        child: Text(
+                          'Periodo de cuota: '
+                          '${Fmt.periodoServicioRango(diasPago[i], cuotas[i].fechaVencimiento)}',
+                          style: TextStyle(color: scheme.outline, fontSize: 11),
+                        ),
+                      ),
                   ],
                 ),
               ),

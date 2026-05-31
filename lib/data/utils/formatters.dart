@@ -90,4 +90,26 @@ class Fmt {
     final s = mes(m);
     return s[0].toUpperCase() + s.substring(1);
   }
+
+  /// Rango de fechas del período de servicio que cubre una cuota (modelo de
+  /// facturación VENCIDA): del día de pago del mes anterior al día de
+  /// vencimiento. Ambos extremos clampeados al último día real de su mes
+  /// (ej. día 31 en un mes de 30 → 30). Devuelve "DD/MM/AAAA a DD/MM/AAAA".
+  ///
+  /// [fechaVencimiento] = fin del período (la fecha de cobro de la cuota, ya
+  /// clampeada por el server). [diaPago] = día de cobro del contrato; null en
+  /// cuotas manuales (sin contrato) → devuelve null porque no hay período de
+  /// servicio derivado.
+  static String? periodoServicioRango(int? diaPago, DateTime fechaVencimiento) {
+    if (diaPago == null) return null;
+    final fin = fechaVencimiento;
+    // Primer día del mes anterior al vencimiento (month-1 en enero → dic del
+    // año previo, lo normaliza DateTime).
+    final mesAnt = DateTime(fin.year, fin.month - 1, 1);
+    // Último día real del mes anterior (DateTime(y, m+1, 0) = último de m).
+    final ultDiaAnt = DateTime(mesAnt.year, mesAnt.month + 1, 0).day;
+    final diaInicio = diaPago < ultDiaAnt ? diaPago : ultDiaAnt;
+    final inicio = DateTime(mesAnt.year, mesAnt.month, diaInicio);
+    return '${fechaCorta(inicio)} a ${fechaCorta(fin)}';
+  }
 }
