@@ -7,6 +7,7 @@ import '../../../data/providers/cobrador_provider.dart';
 import '../../../data/utils/formatters.dart';
 import '../../../powersync/db.dart' as ps;
 import '../../shared/widgets/empty_state.dart';
+import '../../shared/widgets/historial_cambios_widget.dart';
 
 /// CRUD de planes del tenant. Sin planes no se pueden crear contratos.
 ///
@@ -90,6 +91,8 @@ class _PlanesAdminScreenState extends ConsumerState<PlanesAdminScreen> {
                 itemBuilder: (_, i) => _PlanCard(
                   row: rows[i],
                   onEdit: () => _abrirForm(context, rows[i]),
+                  onHistory: () =>
+                      _showHistorial(context, rows[i]['id'] as String),
                 ),
               );
             },
@@ -108,12 +111,55 @@ class _PlanesAdminScreenState extends ConsumerState<PlanesAdminScreen> {
       builder: (_) => _PlanFormDialog(plan: row),
     );
   }
+
+  void _showHistorial(BuildContext context, String planId) {
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (_) => DraggableScrollableSheet(
+        expand: false,
+        initialChildSize: 0.6,
+        maxChildSize: 0.9,
+        builder: (context, scrollCtrl) => Column(
+          children: [
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: Row(
+                children: [
+                  const Icon(Icons.history),
+                  const SizedBox(width: 8),
+                  Text('Historial del plan',
+                      style: Theme.of(context).textTheme.titleMedium),
+                ],
+              ),
+            ),
+            const Divider(),
+            Expanded(
+              child: SingleChildScrollView(
+                controller: scrollCtrl,
+                child: HistorialCambiosWidget(
+                  tabla: 'planes',
+                  registroId: planId,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }
 
 class _PlanCard extends StatelessWidget {
-  const _PlanCard({required this.row, required this.onEdit});
+  const _PlanCard({
+    required this.row,
+    required this.onEdit,
+    required this.onHistory,
+  });
   final Map<String, dynamic> row;
   final VoidCallback onEdit;
+  final VoidCallback onHistory;
 
   @override
   Widget build(BuildContext context) {
@@ -147,6 +193,11 @@ class _PlanCard extends StatelessWidget {
               style: const TextStyle(fontWeight: FontWeight.bold),
             ),
             IconButton(icon: const Icon(Icons.edit), tooltip: 'Editar plan', onPressed: onEdit),
+            IconButton(
+              icon: const Icon(Icons.history),
+              tooltip: 'Historial del plan',
+              onPressed: onHistory,
+            ),
           ],
         ),
       ),
