@@ -496,7 +496,6 @@ class _PagoDetalleSheetState extends ConsumerState<_PagoDetalleSheet> {
       }
     }
   }
-
 }
 
 // Dialog de anulación — local al sheet para no acoplarse al

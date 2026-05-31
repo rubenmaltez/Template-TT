@@ -322,12 +322,18 @@ class _HistorialCuotaWidgetState extends ConsumerState<HistorialCuotaWidget> {
     // sus propias hijas (no las tiene), así que no abre la puerta a nietas
     // genéricas.
     //
+    // AUDIENCIA: este timeline solo tiene data para admin / admin_cobranza /
+    // super_admin impersonando — son los únicos buckets que sincronizan
+    // `audit_log` (ver sync-rules.yaml; `por_cobrador` NO lo baja, así que para
+    // un cobrador el widget muestra "Sin movimientos", igual que antes de #5).
+    // Esos roles además sincronizan TODOS los pagos (incl. anulados), así que
+    // el `pago_id IN (SELECT ... FROM pagos)` de abajo siempre resuelve.
+    //
     // El recibo se vincula por el `pago_id` DENTRO del snapshot JSON del
-    // audit_log (json_extract), NO por un JOIN a la tabla `recibos`: las sync
-    // rules excluyen los recibos anulados del cobrador, así que la fila local
-    // podría no existir — pero la entrada del audit_log SÍ baja (scopa por
-    // tenant). Mismo patrón que HistorialClienteWidget. json_extract corre
-    // sobre SQLite local (válido en ps.db.watch).
+    // audit_log (json_extract), NO por un JOIN a la tabla `recibos`: leer el
+    // snapshot evita depender de que la fila del recibo siga existiendo y es el
+    // mismo patrón que HistorialClienteWidget. json_extract corre sobre SQLite
+    // local (válido en ps.db.watch).
     //
     // La subquery `IN (SELECT ...)` corre sobre SQLite local (válida acá; la
     // restricción de "sin subqueries" aplica a las SYNC RULES, no a las
@@ -351,7 +357,10 @@ class _HistorialCuotaWidgetState extends ConsumerState<HistorialCuotaWidget> {
           OR (a.tabla = 'recibos' AND json_extract(
                 COALESCE(a.valor_nuevo, a.valor_anterior), '\$.pago_id'
               ) IN (SELECT id FROM pagos WHERE cuota_id = ?))
-       ORDER BY COALESCE(a.ocurrido_en, a.created_at) ASC
+       ORDER BY COALESCE(a.ocurrido_en, a.created_at) ASC,
+                CASE a.tabla
+                  WHEN 'pagos' THEN 0 WHEN 'recibos' THEN 1 ELSE 2
+                END ASC
       ''',
       parameters: [widget.cuotaId, widget.cuotaId, widget.cuotaId],
     );

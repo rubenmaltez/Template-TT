@@ -468,7 +468,6 @@ class _PagoCard extends ConsumerWidget {
       }
     }
   }
-
 }
 
 class _AnularDialog extends StatefulWidget {
