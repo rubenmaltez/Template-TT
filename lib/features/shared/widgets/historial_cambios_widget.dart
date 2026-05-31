@@ -354,8 +354,9 @@ class _HistorialCuotaWidgetState extends ConsumerState<HistorialCuotaWidget> {
   // visuales, aplicando:
   //  1. Curaduría + hide-empty (igual que la timeline de tabla-única).
   //  2. "Un cobro = un solo evento": un pago/create + las cuota/update que
-  //     genera (mismo user_id y created_at dentro de ≤3s) se fusionan en un
-  //     solo card "Pago registrado" con el resultado de la cuota anexado.
+  //     genera (mismo user_id y ocurrido_en —fallback created_at— dentro de
+  //     ≤3s) se fusionan en un solo card "Pago registrado" con el resultado
+  //     de la cuota anexado.
   //     Las cuota/update absorbidas NO se muestran por separado.
   // El orden cronológico ASC se preserva (el card del grupo toma la posición
   // del pago/create).
