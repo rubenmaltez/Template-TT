@@ -25,6 +25,10 @@ class ImpresoraService {
     String? reciboTitulo,
     bool mostrarAdeudado = true,
     String? empresaWhatsapp,
+    // #8b: visibilidad/orden de bloques presentacionales del recibo.
+    bool mostrarEmpresa = true,
+    bool mostrarCedula = true,
+    List<String> ordenPie = const ['pie', 'whatsapp'],
     List<Map<String, dynamic>>? multiRecibos,
   }) async {
     throw UnsupportedError('Impresión BT no disponible en web');

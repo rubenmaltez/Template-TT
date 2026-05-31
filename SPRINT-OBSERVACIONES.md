@@ -12,7 +12,7 @@ Backlog de 9 observaciones de Rubén (2026-05-31). Se atacan **EN ORDEN**.
 | 5 | Anular pago: sacar botón "recrear" + prompt + log completo | Bug+UX (plata) | ✅ |
 | 6 | Multi-pago: selector USD/Córdoba | Falta feature | ✅ |
 | 7 | Cambio de usuario: data vieja / settings vacío (F5) | Bug estado | ✅ |
-| 8 | Rework settings + diseñador visual de recibo | Feature grande | 🔄 8a |
+| 8 | Rework settings + diseñador visual de recibo | Feature grande | ✅ |
 | 9 | Interfaz super_admin (administrar/entrar a tenants) | Feature grande | ✅ |
 
 ## Notas / decisiones por ítem
@@ -147,6 +147,30 @@ Backlog de 9 observaciones de Rubén (2026-05-31). Se atacan **EN ORDEN**.
   - Contrato documentado en `db_epoch_provider.dart` para no re-introducir el
     bug: todo provider global nuevo que lea ps.db debe observar el epoch.
 - Sin migración ni sync rules. Audit pendiente.
+
+### #8 — Rework settings + diseñador visual de recibo ✅
+- **8a** Vista previa en vivo (`ReciboPreview`): reusa el widget real
+  `ReciboTicket` con datos de ejemplo; se actualiza al instante al cambiar
+  cualquier ajuste del recibo. Al tope de la tab Recibos.
+- **8b** Ocultar/reordenar bloques (migración **0079** — filas nuevas en
+  `settings`, sin columnas → sin bump de schema/sync):
+  - Show/hide: `recibo.mostrar_empresa` y `recibo.mostrar_cedula` (toggles
+    nuevos, auto-aparecen como tiles) + los existentes (logo, monto en letras,
+    adeudado; título/pie/whatsapp por contenido). Gateados en los 6 render
+    paths (pantalla/PDF/Bluetooth × single/multi).
+  - Reorder: `recibo.orden_pie` (CSV 'pie'/'whatsapp') con editor
+    `ReciboPieOrderEditor` (ReorderableListView). Los 3 renderers emiten el pie
+    libre y el WhatsApp en ese orden. El núcleo de plata (ítems/método/COBRADO/
+    VUELTO/PAGADO) y el saldo adeudado quedan FIJOS — cero líneas de dinero
+    tocadas (verificado por diff + balance de paréntesis 0/0/0).
+  - El render lo implementó un agente con spec precisa; revisado por diff
+    (money core intacto) + el agente mejoró el manejo del divider del
+    encabezado (solo si empresa visible o hay título).
+- **8c** Reorg de tabs: la infra de labels/descripciones/orden/hidden ya era
+  completa; se integraron los settings nuevos (label + orden lógico en la
+  sección Recibos) y se ocultó `recibo.orden_pie` del listado genérico (se
+  edita con su widget dedicado).
+- Requiere correr la migración 0079 en el Dashboard.
 
 ### #9 — Super_admin / impersonación: verificar + pulir ✅
 - Estado encontrado: la impersonación YA estaba implementada y bien diseñada

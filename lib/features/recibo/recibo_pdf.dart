@@ -60,22 +60,26 @@ Future<pw.Document> buildReciboPdf({
               child: pw.Image(pw.MemoryImage(logoBytes),
                   height: 50, fit: pw.BoxFit.contain),
             ),
-          if (settings.empresaNombre.isNotEmpty)
-            pw.Text(
-              settings.empresaNombre.toUpperCase(),
-              style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 11),
-              textAlign: pw.TextAlign.center,
-            ),
-          if (settings.empresaDireccion.isNotEmpty)
-            pw.Text(settings.empresaDireccion,
-                style: const pw.TextStyle(fontSize: 8),
-                textAlign: pw.TextAlign.center),
-          if (settings.empresaTelefono.isNotEmpty)
-            pw.Text('Tel: ${settings.empresaTelefono}',
-                style: const pw.TextStyle(fontSize: 8)),
-          if (settings.empresaRuc.isNotEmpty)
-            pw.Text('RUC: ${settings.empresaRuc}',
-                style: const pw.TextStyle(fontSize: 8)),
+          // Bloque empresa (nombre/dir/tel/RUC): solo si el toggle está activo (#8b).
+          if (settings.reciboMostrarEmpresa) ...[
+            if (settings.empresaNombre.isNotEmpty)
+              pw.Text(
+                settings.empresaNombre.toUpperCase(),
+                style:
+                    pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 11),
+                textAlign: pw.TextAlign.center,
+              ),
+            if (settings.empresaDireccion.isNotEmpty)
+              pw.Text(settings.empresaDireccion,
+                  style: const pw.TextStyle(fontSize: 8),
+                  textAlign: pw.TextAlign.center),
+            if (settings.empresaTelefono.isNotEmpty)
+              pw.Text('Tel: ${settings.empresaTelefono}',
+                  style: const pw.TextStyle(fontSize: 8)),
+            if (settings.empresaRuc.isNotEmpty)
+              pw.Text('RUC: ${settings.empresaRuc}',
+                  style: const pw.TextStyle(fontSize: 8)),
+          ],
           if (settings.reciboTitulo.isNotEmpty)
             pw.Padding(
               padding: const pw.EdgeInsets.only(top: 3),
@@ -95,7 +99,7 @@ Future<pw.Document> buildReciboPdf({
           _pdfDivider(),
 
           _pdfRow('Cliente', row['cliente_nombre'] as String),
-          if (row['cliente_cedula'] != null)
+          if (settings.reciboMostrarCedula && row['cliente_cedula'] != null)
             _pdfRow('Cédula', row['cliente_cedula'] as String),
           _pdfDivider(),
 
@@ -157,17 +161,21 @@ Future<pw.Document> buildReciboPdf({
           // VUELTO + PAGADO si hubo vuelto.
           ..._vueltoIfNeeded(row),
 
-          if (settings.pieRecibo.isNotEmpty) ...[
-            _pdfDivider(),
-            pw.Text(settings.pieRecibo,
-                style: const pw.TextStyle(fontSize: 8),
-                textAlign: pw.TextAlign.center),
-          ],
-          if (settings.empresaWhatsapp.isNotEmpty) ...[
-            _pdfDivider(),
-            pw.Text('WhatsApp: ${settings.empresaWhatsapp}',
-                style: const pw.TextStyle(fontSize: 8),
-                textAlign: pw.TextAlign.center),
+          // Bloques de texto del pie (pie libre + WhatsApp) en el orden
+          // configurado (#8b). Cada bloque lleva su propio divider arriba.
+          for (final id in settings.reciboOrdenPie) ...[
+            if (id == 'pie' && settings.pieRecibo.isNotEmpty) ...[
+              _pdfDivider(),
+              pw.Text(settings.pieRecibo,
+                  style: const pw.TextStyle(fontSize: 8),
+                  textAlign: pw.TextAlign.center),
+            ] else if (id == 'whatsapp' &&
+                settings.empresaWhatsapp.isNotEmpty) ...[
+              _pdfDivider(),
+              pw.Text('WhatsApp: ${settings.empresaWhatsapp}',
+                  style: const pw.TextStyle(fontSize: 8),
+                  textAlign: pw.TextAlign.center),
+            ],
           ],
 
           pw.SizedBox(height: 6),
@@ -223,23 +231,26 @@ Future<pw.Document> buildMultiReciboPdf({
               child: pw.Image(pw.MemoryImage(logoBytes),
                   height: 50, fit: pw.BoxFit.contain),
             ),
-          if (settings.empresaNombre.isNotEmpty)
-            pw.Text(
-              settings.empresaNombre.toUpperCase(),
-              style:
-                  pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 11),
-              textAlign: pw.TextAlign.center,
-            ),
-          if (settings.empresaDireccion.isNotEmpty)
-            pw.Text(settings.empresaDireccion,
-                style: const pw.TextStyle(fontSize: 8),
-                textAlign: pw.TextAlign.center),
-          if (settings.empresaTelefono.isNotEmpty)
-            pw.Text('Tel: ${settings.empresaTelefono}',
-                style: const pw.TextStyle(fontSize: 8)),
-          if (settings.empresaRuc.isNotEmpty)
-            pw.Text('RUC: ${settings.empresaRuc}',
-                style: const pw.TextStyle(fontSize: 8)),
+          // Bloque empresa (nombre/dir/tel/RUC): solo si el toggle está activo (#8b).
+          if (settings.reciboMostrarEmpresa) ...[
+            if (settings.empresaNombre.isNotEmpty)
+              pw.Text(
+                settings.empresaNombre.toUpperCase(),
+                style:
+                    pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 11),
+                textAlign: pw.TextAlign.center,
+              ),
+            if (settings.empresaDireccion.isNotEmpty)
+              pw.Text(settings.empresaDireccion,
+                  style: const pw.TextStyle(fontSize: 8),
+                  textAlign: pw.TextAlign.center),
+            if (settings.empresaTelefono.isNotEmpty)
+              pw.Text('Tel: ${settings.empresaTelefono}',
+                  style: const pw.TextStyle(fontSize: 8)),
+            if (settings.empresaRuc.isNotEmpty)
+              pw.Text('RUC: ${settings.empresaRuc}',
+                  style: const pw.TextStyle(fontSize: 8)),
+          ],
           if (settings.reciboTitulo.isNotEmpty)
             pw.Padding(
               padding: const pw.EdgeInsets.only(top: 3),
@@ -264,7 +275,7 @@ Future<pw.Document> buildMultiReciboPdf({
           _pdfDivider(),
 
           _pdfRow('Cliente', first['cliente_nombre'] as String),
-          if (first['cliente_cedula'] != null)
+          if (settings.reciboMostrarCedula && first['cliente_cedula'] != null)
             _pdfRow('Cédula', first['cliente_cedula'] as String),
           _pdfDivider(),
 
@@ -365,17 +376,21 @@ Future<pw.Document> buildMultiReciboPdf({
             ),
           ],
 
-          if (settings.pieRecibo.isNotEmpty) ...[
-            _pdfDivider(),
-            pw.Text(settings.pieRecibo,
-                style: const pw.TextStyle(fontSize: 8),
-                textAlign: pw.TextAlign.center),
-          ],
-          if (settings.empresaWhatsapp.isNotEmpty) ...[
-            _pdfDivider(),
-            pw.Text('WhatsApp: ${settings.empresaWhatsapp}',
-                style: const pw.TextStyle(fontSize: 8),
-                textAlign: pw.TextAlign.center),
+          // Bloques de texto del pie (pie libre + WhatsApp) en el orden
+          // configurado (#8b). Cada bloque lleva su propio divider arriba.
+          for (final id in settings.reciboOrdenPie) ...[
+            if (id == 'pie' && settings.pieRecibo.isNotEmpty) ...[
+              _pdfDivider(),
+              pw.Text(settings.pieRecibo,
+                  style: const pw.TextStyle(fontSize: 8),
+                  textAlign: pw.TextAlign.center),
+            ] else if (id == 'whatsapp' &&
+                settings.empresaWhatsapp.isNotEmpty) ...[
+              _pdfDivider(),
+              pw.Text('WhatsApp: ${settings.empresaWhatsapp}',
+                  style: const pw.TextStyle(fontSize: 8),
+                  textAlign: pw.TextAlign.center),
+            ],
           ],
         ],
       ),

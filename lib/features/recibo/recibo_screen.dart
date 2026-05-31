@@ -278,19 +278,22 @@ class ReciboTicket extends StatelessWidget {
                   errorBuilder: (_, __, ___) => const SizedBox.shrink(),
                 ),
               ),
-            if (settings.empresaNombre.isNotEmpty)
-              Text(
-                settings.empresaNombre.toUpperCase(),
-                style: const TextStyle(
-                    fontWeight: FontWeight.bold, fontSize: 16),
-                textAlign: TextAlign.center,
-              ),
-            if (settings.empresaDireccion.isNotEmpty)
-              Text(settings.empresaDireccion, textAlign: TextAlign.center),
-            if (settings.empresaTelefono.isNotEmpty)
-              Text('Tel: ${settings.empresaTelefono}'),
-            if (settings.empresaRuc.isNotEmpty)
-              Text('RUC: ${settings.empresaRuc}'),
+            // Bloque empresa (nombre/dir/tel/RUC): solo si el toggle está activo (#8b).
+            if (settings.reciboMostrarEmpresa) ...[
+              if (settings.empresaNombre.isNotEmpty)
+                Text(
+                  settings.empresaNombre.toUpperCase(),
+                  style: const TextStyle(
+                      fontWeight: FontWeight.bold, fontSize: 16),
+                  textAlign: TextAlign.center,
+                ),
+              if (settings.empresaDireccion.isNotEmpty)
+                Text(settings.empresaDireccion, textAlign: TextAlign.center),
+              if (settings.empresaTelefono.isNotEmpty)
+                Text('Tel: ${settings.empresaTelefono}'),
+              if (settings.empresaRuc.isNotEmpty)
+                Text('RUC: ${settings.empresaRuc}'),
+            ],
             if (settings.reciboTitulo.isNotEmpty)
               Padding(
                 padding: const EdgeInsets.only(top: 6),
@@ -310,7 +313,7 @@ class ReciboTicket extends StatelessWidget {
             const Divider(),
 
             _ticketRow('Cliente', row['cliente_nombre'] as String),
-            if (row['cliente_cedula'] != null)
+            if (settings.reciboMostrarCedula && row['cliente_cedula'] != null)
               _ticketRow('Cédula', row['cliente_cedula'] as String),
             const Divider(),
 
@@ -423,14 +426,18 @@ class ReciboTicket extends StatelessWidget {
               );
             }),
 
-            if (settings.pieRecibo.isNotEmpty) ...[
-              const Divider(),
-              Text(settings.pieRecibo, textAlign: TextAlign.center),
-            ],
-            if (settings.empresaWhatsapp.isNotEmpty) ...[
-              const Divider(),
-              Text('WhatsApp: ${settings.empresaWhatsapp}',
-                  textAlign: TextAlign.center),
+            // Bloques de texto del pie (pie libre + WhatsApp) en el orden
+            // configurado (#8b). Cada bloque lleva su propio Divider arriba.
+            for (final id in settings.reciboOrdenPie) ...[
+              if (id == 'pie' && settings.pieRecibo.isNotEmpty) ...[
+                const Divider(),
+                Text(settings.pieRecibo, textAlign: TextAlign.center),
+              ] else if (id == 'whatsapp' &&
+                  settings.empresaWhatsapp.isNotEmpty) ...[
+                const Divider(),
+                Text('WhatsApp: ${settings.empresaWhatsapp}',
+                    textAlign: TextAlign.center),
+              ],
             ],
 
             const SizedBox(height: 8),
@@ -510,18 +517,22 @@ class _MultiReciboTicket extends StatelessWidget {
                   errorBuilder: (_, __, ___) => const SizedBox.shrink(),
                 ),
               ),
-            if (settings.empresaNombre.isNotEmpty)
-              Text(
-                settings.empresaNombre.toUpperCase(),
-                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-                textAlign: TextAlign.center,
-              ),
-            if (settings.empresaDireccion.isNotEmpty)
-              Text(settings.empresaDireccion, textAlign: TextAlign.center),
-            if (settings.empresaTelefono.isNotEmpty)
-              Text('Tel: ${settings.empresaTelefono}'),
-            if (settings.empresaRuc.isNotEmpty)
-              Text('RUC: ${settings.empresaRuc}'),
+            // Bloque empresa (nombre/dir/tel/RUC): solo si el toggle está activo (#8b).
+            if (settings.reciboMostrarEmpresa) ...[
+              if (settings.empresaNombre.isNotEmpty)
+                Text(
+                  settings.empresaNombre.toUpperCase(),
+                  style:
+                      const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                  textAlign: TextAlign.center,
+                ),
+              if (settings.empresaDireccion.isNotEmpty)
+                Text(settings.empresaDireccion, textAlign: TextAlign.center),
+              if (settings.empresaTelefono.isNotEmpty)
+                Text('Tel: ${settings.empresaTelefono}'),
+              if (settings.empresaRuc.isNotEmpty)
+                Text('RUC: ${settings.empresaRuc}'),
+            ],
             if (settings.reciboTitulo.isNotEmpty)
               Padding(
                 padding: const EdgeInsets.only(top: 6),
@@ -544,7 +555,7 @@ class _MultiReciboTicket extends StatelessWidget {
             const Divider(),
 
             _ticketRow('Cliente', first['cliente_nombre'] as String),
-            if (first['cliente_cedula'] != null)
+            if (settings.reciboMostrarCedula && first['cliente_cedula'] != null)
               _ticketRow('Cédula', first['cliente_cedula'] as String),
             const Divider(),
 
@@ -639,14 +650,18 @@ class _MultiReciboTicket extends StatelessWidget {
               ),
             ],
 
-            if (settings.pieRecibo.isNotEmpty) ...[
-              const Divider(),
-              Text(settings.pieRecibo, textAlign: TextAlign.center),
-            ],
-            if (settings.empresaWhatsapp.isNotEmpty) ...[
-              const Divider(),
-              Text('WhatsApp: ${settings.empresaWhatsapp}',
-                  textAlign: TextAlign.center),
+            // Bloques de texto del pie (pie libre + WhatsApp) en el orden
+            // configurado (#8b). Cada bloque lleva su propio Divider arriba.
+            for (final id in settings.reciboOrdenPie) ...[
+              if (id == 'pie' && settings.pieRecibo.isNotEmpty) ...[
+                const Divider(),
+                Text(settings.pieRecibo, textAlign: TextAlign.center),
+              ] else if (id == 'whatsapp' &&
+                  settings.empresaWhatsapp.isNotEmpty) ...[
+                const Divider(),
+                Text('WhatsApp: ${settings.empresaWhatsapp}',
+                    textAlign: TextAlign.center),
+              ],
             ],
           ],
         ),
@@ -785,6 +800,10 @@ class _AccionesImpresionState extends ConsumerState<_AccionesImpresion> {
         reciboTitulo: widget.settings.reciboTitulo,
         mostrarAdeudado: widget.settings.reciboMostrarAdeudado,
         empresaWhatsapp: widget.settings.empresaWhatsapp,
+        // #8b: visibilidad/orden de bloques presentacionales del recibo.
+        mostrarEmpresa: widget.settings.reciboMostrarEmpresa,
+        mostrarCedula: widget.settings.reciboMostrarCedula,
+        ordenPie: widget.settings.reciboOrdenPie,
         // #6a: si es cobro múltiple, imprimir las N cuotas del grupo (no solo
         // la 1ª). El service cae al recibo single si multiRows es null/1.
         multiRecibos: widget.multiRows,

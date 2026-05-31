@@ -50,6 +50,10 @@ class ImpresoraService {
     String? reciboTitulo,
     bool mostrarAdeudado = true,
     String? empresaWhatsapp,
+    // #8b: visibilidad/orden de bloques presentacionales del recibo.
+    bool mostrarEmpresa = true,
+    bool mostrarCedula = true,
+    List<String> ordenPie = const ['pie', 'whatsapp'],
     List<Map<String, dynamic>>? multiRecibos,
   }) async {
     // Cobro múltiple: imprimir las N cuotas del grupo (#6a). Si viene una sola
@@ -63,6 +67,9 @@ class ImpresoraService {
             esReimpresion: esReimpresion,
             reciboTitulo: reciboTitulo,
             empresaWhatsapp: empresaWhatsapp,
+            mostrarEmpresa: mostrarEmpresa,
+            mostrarCedula: mostrarCedula,
+            ordenPie: ordenPie,
           )
         : await _generarBytes(
             recibo: recibo,
@@ -73,6 +80,9 @@ class ImpresoraService {
             reciboTitulo: reciboTitulo,
             mostrarAdeudado: mostrarAdeudado,
             empresaWhatsapp: empresaWhatsapp,
+            mostrarEmpresa: mostrarEmpresa,
+            mostrarCedula: mostrarCedula,
+            ordenPie: ordenPie,
           );
     return _enviarBytes(macImpresora, bytes);
   }
@@ -133,6 +143,10 @@ class ImpresoraService {
     String? reciboTitulo,
     bool mostrarAdeudado = true,
     String? empresaWhatsapp,
+    // #8b: visibilidad/orden de bloques presentacionales del recibo.
+    bool mostrarEmpresa = true,
+    bool mostrarCedula = true,
+    List<String> ordenPie = const ['pie', 'whatsapp'],
   }) async {
     final profile = await CapabilityProfile.load();
     final gen = Generator(_size(anchoMm), profile);
@@ -146,44 +160,50 @@ class ImpresoraService {
       bytes.addAll(gen.feed(1));
     }
 
-    // Encabezado: empresa.
-    final hayEmpresa = (empresa['nombre'] ?? '').isNotEmpty ||
-        (empresa['direccion'] ?? '').isNotEmpty ||
-        (empresa['telefono'] ?? '').isNotEmpty ||
-        (empresa['ruc'] ?? '').isNotEmpty;
+    // Encabezado: empresa. Solo si el toggle `mostrar_empresa` está activo (#8b).
+    final mostrarBloqueEmpresa = mostrarEmpresa &&
+        ((empresa['nombre'] ?? '').isNotEmpty ||
+            (empresa['direccion'] ?? '').isNotEmpty ||
+            (empresa['telefono'] ?? '').isNotEmpty ||
+            (empresa['ruc'] ?? '').isNotEmpty);
 
-    if ((empresa['nombre'] ?? '').isNotEmpty) {
-      bytes.addAll(gen.text(
-        empresa['nombre']!.toUpperCase(),
-        styles: const PosStyles(
-            align: PosAlign.center,
-            bold: true,
-            height: PosTextSize.size2,
-            codeTable: _codeTable),
-      ));
-    }
-    if ((empresa['direccion'] ?? '').isNotEmpty) {
-      bytes.addAll(gen.text(empresa['direccion']!,
+    if (mostrarBloqueEmpresa) {
+      if ((empresa['nombre'] ?? '').isNotEmpty) {
+        bytes.addAll(gen.text(
+          empresa['nombre']!.toUpperCase(),
           styles: const PosStyles(
-              align: PosAlign.center, codeTable: _codeTable)));
-    }
-    if ((empresa['telefono'] ?? '').isNotEmpty) {
-      bytes.addAll(gen.text('Tel: ${empresa['telefono']}',
-          styles: const PosStyles(
-              align: PosAlign.center, codeTable: _codeTable)));
-    }
-    if ((empresa['ruc'] ?? '').isNotEmpty) {
-      bytes.addAll(gen.text('RUC: ${empresa['ruc']}',
-          styles: const PosStyles(
-              align: PosAlign.center, codeTable: _codeTable)));
+              align: PosAlign.center,
+              bold: true,
+              height: PosTextSize.size2,
+              codeTable: _codeTable),
+        ));
+      }
+      if ((empresa['direccion'] ?? '').isNotEmpty) {
+        bytes.addAll(gen.text(empresa['direccion']!,
+            styles: const PosStyles(
+                align: PosAlign.center, codeTable: _codeTable)));
+      }
+      if ((empresa['telefono'] ?? '').isNotEmpty) {
+        bytes.addAll(gen.text('Tel: ${empresa['telefono']}',
+            styles: const PosStyles(
+                align: PosAlign.center, codeTable: _codeTable)));
+      }
+      if ((empresa['ruc'] ?? '').isNotEmpty) {
+        bytes.addAll(gen.text('RUC: ${empresa['ruc']}',
+            styles: const PosStyles(
+                align: PosAlign.center, codeTable: _codeTable)));
+      }
     }
     // Título configurable del recibo (ej. "RECIBO", "COBRO").
-    if (reciboTitulo != null && reciboTitulo.isNotEmpty) {
+    final hayTitulo = reciboTitulo != null && reciboTitulo.isNotEmpty;
+    if (hayTitulo) {
       bytes.addAll(gen.text(reciboTitulo.toUpperCase(),
           styles: const PosStyles(
               align: PosAlign.center, bold: true, codeTable: _codeTable)));
     }
-    if (hayEmpresa) bytes.addAll(gen.hr());
+    // hr() solo si hubo algún bloque de encabezado arriba (empresa o título);
+    // si no, evitamos un divider suelto al inicio del ticket.
+    if (mostrarBloqueEmpresa || hayTitulo) bytes.addAll(gen.hr());
 
     // Info del recibo.
     final emision = DateTime.parse(recibo['fecha_pago'] as String);
@@ -202,7 +222,8 @@ class ImpresoraService {
     // Cliente.
     bytes.addAll(_doblColumna(gen, anchoMm, 'Cliente',
         recibo['cliente_nombre'] as String));
-    if (recibo['cliente_cedula'] != null) {
+    // Cédula: solo si el toggle está activo y existe el dato (#8b).
+    if (mostrarCedula && recibo['cliente_cedula'] != null) {
       bytes.addAll(_doblColumna(gen, anchoMm, 'Cédula',
           recibo['cliente_cedula'] as String));
     }
@@ -330,24 +351,23 @@ class ImpresoraService {
       ]));
     }
 
-    // Pie libre.
-    if (pieRecibo != null && pieRecibo.isNotEmpty) {
-      bytes.addAll(gen.hr());
-      bytes.addAll(gen.text(pieRecibo,
-          styles: const PosStyles(
-              align: PosAlign.center, codeTable: _codeTable)));
-    }
-
-    // WhatsApp de la empresa (configurable).
-    if (empresaWhatsapp != null && empresaWhatsapp.isNotEmpty) {
-      if (pieRecibo == null || pieRecibo.isEmpty) {
+    // Bloques de texto del pie (pie libre + WhatsApp) en el orden configurado
+    // (#8b). Cada bloque emite su propio hr() arriba y se renderiza solo si su
+    // texto no está vacío.
+    for (final id in ordenPie) {
+      if (id == 'pie' && pieRecibo != null && pieRecibo.isNotEmpty) {
         bytes.addAll(gen.hr());
-      } else {
-        bytes.addAll(gen.feed(1));
+        bytes.addAll(gen.text(pieRecibo,
+            styles: const PosStyles(
+                align: PosAlign.center, codeTable: _codeTable)));
+      } else if (id == 'whatsapp' &&
+          empresaWhatsapp != null &&
+          empresaWhatsapp.isNotEmpty) {
+        bytes.addAll(gen.hr());
+        bytes.addAll(gen.text('WhatsApp: $empresaWhatsapp',
+            styles: const PosStyles(
+                align: PosAlign.center, codeTable: _codeTable)));
       }
-      bytes.addAll(gen.text('WhatsApp: $empresaWhatsapp',
-          styles: const PosStyles(
-              align: PosAlign.center, codeTable: _codeTable)));
     }
 
     bytes.addAll(gen.feed(2));
@@ -367,6 +387,10 @@ class ImpresoraService {
     bool esReimpresion = false,
     String? reciboTitulo,
     String? empresaWhatsapp,
+    // #8b: visibilidad/orden de bloques presentacionales del recibo.
+    bool mostrarEmpresa = true,
+    bool mostrarCedula = true,
+    List<String> ordenPie = const ['pie', 'whatsapp'],
   }) async {
     final profile = await CapabilityProfile.load();
     final gen = Generator(_size(anchoMm), profile);
@@ -380,40 +404,46 @@ class ImpresoraService {
       bytes.addAll(gen.feed(1));
     }
 
-    // Encabezado: empresa (idéntico al single).
-    final hayEmpresa = (empresa['nombre'] ?? '').isNotEmpty ||
-        (empresa['direccion'] ?? '').isNotEmpty ||
-        (empresa['telefono'] ?? '').isNotEmpty ||
-        (empresa['ruc'] ?? '').isNotEmpty;
-    if ((empresa['nombre'] ?? '').isNotEmpty) {
-      bytes.addAll(gen.text(empresa['nombre']!.toUpperCase(),
-          styles: const PosStyles(
-              align: PosAlign.center,
-              bold: true,
-              height: PosTextSize.size2,
-              codeTable: _codeTable)));
+    // Encabezado: empresa (idéntico al single). Solo si el toggle
+    // `mostrar_empresa` está activo (#8b).
+    final mostrarBloqueEmpresa = mostrarEmpresa &&
+        ((empresa['nombre'] ?? '').isNotEmpty ||
+            (empresa['direccion'] ?? '').isNotEmpty ||
+            (empresa['telefono'] ?? '').isNotEmpty ||
+            (empresa['ruc'] ?? '').isNotEmpty);
+    if (mostrarBloqueEmpresa) {
+      if ((empresa['nombre'] ?? '').isNotEmpty) {
+        bytes.addAll(gen.text(empresa['nombre']!.toUpperCase(),
+            styles: const PosStyles(
+                align: PosAlign.center,
+                bold: true,
+                height: PosTextSize.size2,
+                codeTable: _codeTable)));
+      }
+      if ((empresa['direccion'] ?? '').isNotEmpty) {
+        bytes.addAll(gen.text(empresa['direccion']!,
+            styles: const PosStyles(
+                align: PosAlign.center, codeTable: _codeTable)));
+      }
+      if ((empresa['telefono'] ?? '').isNotEmpty) {
+        bytes.addAll(gen.text('Tel: ${empresa['telefono']}',
+            styles: const PosStyles(
+                align: PosAlign.center, codeTable: _codeTable)));
+      }
+      if ((empresa['ruc'] ?? '').isNotEmpty) {
+        bytes.addAll(gen.text('RUC: ${empresa['ruc']}',
+            styles: const PosStyles(
+                align: PosAlign.center, codeTable: _codeTable)));
+      }
     }
-    if ((empresa['direccion'] ?? '').isNotEmpty) {
-      bytes.addAll(gen.text(empresa['direccion']!,
-          styles: const PosStyles(
-              align: PosAlign.center, codeTable: _codeTable)));
-    }
-    if ((empresa['telefono'] ?? '').isNotEmpty) {
-      bytes.addAll(gen.text('Tel: ${empresa['telefono']}',
-          styles: const PosStyles(
-              align: PosAlign.center, codeTable: _codeTable)));
-    }
-    if ((empresa['ruc'] ?? '').isNotEmpty) {
-      bytes.addAll(gen.text('RUC: ${empresa['ruc']}',
-          styles: const PosStyles(
-              align: PosAlign.center, codeTable: _codeTable)));
-    }
-    if (reciboTitulo != null && reciboTitulo.isNotEmpty) {
+    final hayTitulo = reciboTitulo != null && reciboTitulo.isNotEmpty;
+    if (hayTitulo) {
       bytes.addAll(gen.text(reciboTitulo.toUpperCase(),
           styles: const PosStyles(
               align: PosAlign.center, bold: true, codeTable: _codeTable)));
     }
-    if (hayEmpresa) bytes.addAll(gen.hr());
+    // hr() solo si hubo algún bloque de encabezado arriba (empresa o título).
+    if (mostrarBloqueEmpresa || hayTitulo) bytes.addAll(gen.hr());
 
     bytes.addAll(gen.text('COBRO MÚLTIPLE (${rows.length} cuotas)',
         styles: const PosStyles(
@@ -437,7 +467,8 @@ class ImpresoraService {
     // Cliente.
     bytes.addAll(_doblColumna(
         gen, anchoMm, 'Cliente', first['cliente_nombre'] as String));
-    if (first['cliente_cedula'] != null) {
+    // Cédula: solo si el toggle está activo y existe el dato (#8b).
+    if (mostrarCedula && first['cliente_cedula'] != null) {
       bytes.addAll(_doblColumna(
           gen, anchoMm, 'Cédula', first['cliente_cedula'] as String));
     }
@@ -525,23 +556,23 @@ class ImpresoraService {
       ));
     }
 
-    // Pie libre.
-    if (pieRecibo != null && pieRecibo.isNotEmpty) {
-      bytes.addAll(gen.hr());
-      bytes.addAll(gen.text(pieRecibo,
-          styles: const PosStyles(
-              align: PosAlign.center, codeTable: _codeTable)));
-    }
-    // WhatsApp.
-    if (empresaWhatsapp != null && empresaWhatsapp.isNotEmpty) {
-      if (pieRecibo == null || pieRecibo.isEmpty) {
+    // Bloques de texto del pie (pie libre + WhatsApp) en el orden configurado
+    // (#8b). Cada bloque emite su propio hr() arriba y se renderiza solo si su
+    // texto no está vacío.
+    for (final id in ordenPie) {
+      if (id == 'pie' && pieRecibo != null && pieRecibo.isNotEmpty) {
         bytes.addAll(gen.hr());
-      } else {
-        bytes.addAll(gen.feed(1));
+        bytes.addAll(gen.text(pieRecibo,
+            styles: const PosStyles(
+                align: PosAlign.center, codeTable: _codeTable)));
+      } else if (id == 'whatsapp' &&
+          empresaWhatsapp != null &&
+          empresaWhatsapp.isNotEmpty) {
+        bytes.addAll(gen.hr());
+        bytes.addAll(gen.text('WhatsApp: $empresaWhatsapp',
+            styles: const PosStyles(
+                align: PosAlign.center, codeTable: _codeTable)));
       }
-      bytes.addAll(gen.text('WhatsApp: $empresaWhatsapp',
-          styles: const PosStyles(
-              align: PosAlign.center, codeTable: _codeTable)));
     }
 
     bytes.addAll(gen.feed(2));

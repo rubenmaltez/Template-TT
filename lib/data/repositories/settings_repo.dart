@@ -237,6 +237,32 @@ class AppSettings {
   String get empresaWhatsapp =>
       settingValue<String>(_map, 'empresa.whatsapp', '');
 
+  /// Mostrar datos de la empresa (nombre/dir/tel/RUC) en el recibo (#8b).
+  bool get reciboMostrarEmpresa =>
+      settingValue<bool>(_map, 'recibo.mostrar_empresa', true);
+
+  /// Mostrar la cédula del cliente en el recibo (#8b).
+  bool get reciboMostrarCedula =>
+      settingValue<bool>(_map, 'recibo.mostrar_cedula', true);
+
+  /// Orden de los bloques de TEXTO del pie del recibo: 'pie' (pie libre) y
+  /// 'whatsapp' (#8b). Saneo defensivo: descarta ids desconocidos y agrega los
+  /// faltantes al final, así nunca se "pierde" un bloque por un setting viejo.
+  List<String> get reciboOrdenPie {
+    const validos = ['pie', 'whatsapp'];
+    final raw =
+        settingValue<String>(_map, 'recibo.orden_pie', 'pie,whatsapp');
+    final pedidos = raw
+        .split(',')
+        .map((s) => s.trim())
+        .where(validos.contains)
+        .toList();
+    for (final v in validos) {
+      if (!pedidos.contains(v)) pedidos.add(v);
+    }
+    return pedidos;
+  }
+
   /// Config del CHANGE LOG (Fase C): qué campos se muestran en el historial
   /// de cambios, por entidad. Lee el setting `audit.campos_visibles`, un map
   /// JSONB `{tabla: [campos]}`.

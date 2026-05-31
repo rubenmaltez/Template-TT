@@ -10,6 +10,7 @@ import '../../../data/providers/cobrador_provider.dart';
 import '../../../data/providers/logo_empresa_provider.dart';
 import '../../../data/repositories/settings_repo.dart';
 import '../../shared/widgets/empty_state.dart';
+import 'recibo_pie_order_editor.dart';
 import 'recibo_preview.dart';
 
 /// Panel de configuración. Agrupa settings por categoría en pestañas.
@@ -127,6 +128,9 @@ class _CategoriaTab extends ConsumerWidget {
       // Templates sin implementar — confunden al admin.
       'recibo.template_57mm',
       'recibo.template_80mm',
+      // Orden del pie: se edita con el widget ReorderableListView dedicado
+      // (#8b), no como campo de texto CSV.
+      'recibo.orden_pie',
     };
     final settingsFiltrados = settings
         .where((s) => !_hidden.contains(s.clave))
@@ -166,6 +170,9 @@ class _CategoriaTab extends ConsumerWidget {
             },
           );
         }),
+        // Editor de orden del pie del recibo (#8b), al final de la tab Recibos.
+        if (categoria == 'recibos')
+          ReciboPieOrderEditor(tenantId: tenantId),
         // Entrada al panel de campos del historial (Fase C). Oculta salvo
         // para super_admin; la pantalla destino igual defiende con un gate.
         if (categoria == 'cobranza' && esSuperAdmin) ...[
@@ -434,6 +441,8 @@ class _SettingTileState extends State<_SettingTile> {
       'recibo.titulo': 'Título del recibo',
       'recibo.monto_en_letras': 'Monto en letras',
       'recibo.mostrar_adeudado': 'Mostrar meses adeudados',
+      'recibo.mostrar_empresa': 'Mostrar datos de empresa',
+      'recibo.mostrar_cedula': 'Mostrar cédula del cliente',
       'cuotas.manuales': 'Cuotas manuales',
       'cuotas.editar_monto': 'Editar monto de cuota',
       'cuotas.descuento_pronto_pago': 'Descuento pronto pago (valor)',
@@ -515,13 +524,16 @@ int _sortOrder(String clave) {
     'cuotas.editar_monto': 1,
     'cuotas.descuento_pronto_pago': 10,
     'cuotas.descuento_pronto_pago_tipo': 11,
-    // Recibos
+    // Recibos — encabezado, formato, contenido, pie (orden lógico de arriba
+    // hacia abajo en el ticket).
     'recibo.titulo': 0,
-    'recibo.formato_default_mm': 1,
+    'recibo.mostrar_empresa': 1,
     'recibo.imprimir_logo': 2,
-    'recibo.monto_en_letras': 3,
-    'recibo.mostrar_adeudado': 4,
-    'recibo.pie_libre': 5,
+    'recibo.formato_default_mm': 3,
+    'recibo.monto_en_letras': 4,
+    'recibo.mostrar_cedula': 5,
+    'recibo.mostrar_adeudado': 6,
+    'recibo.pie_libre': 7,
   };
   return order[clave] ?? 99;
 }
