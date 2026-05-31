@@ -11,6 +11,7 @@ import '../../data/models/cuota.dart';
 import '../../data/models/pago.dart';
 import '../../data/providers/cobrador_provider.dart';
 import '../../data/providers/foto_comprobante_provider.dart';
+import '../../data/providers/impersonation_provider.dart';
 import '../../data/repositories/cuotas_repo.dart';
 import '../../data/repositories/pagos_repo.dart';
 import '../../data/repositories/settings_repo.dart';
@@ -244,6 +245,15 @@ class _CobroScreenState extends ConsumerState<CobroScreen> {
   Future<void> _confirmar() async {
     if (!_formKey.currentState!.validate()) return;
     if (_cuotas.isEmpty) return;
+    // Guard (#9): el super_admin impersonando NO puede registrar cobros — el
+    // pago se atribuiría a su fila real (tenant System), no al impersonado,
+    // generando pagos/recibos huérfanos. La UI ya deshabilita el botón; esto
+    // es defensa en profundidad.
+    if (ref.read(estaImpersonandoProvider)) {
+      setState(() => _error =
+          'No se puede registrar cobros mientras gestionás un tenant como super_admin.');
+      return;
+    }
     final cobrador = ref.read(cobradorActualProvider).valueOrNull;
     if (cobrador == null || cobrador.prefijoRecibo == null) {
       setState(() => _error = 'No tenés prefijo de recibo asignado. Pedile al admin que te lo configure.');
@@ -432,6 +442,7 @@ class _CobroScreenState extends ConsumerState<CobroScreen> {
   Widget build(BuildContext context) {
     final settings = ref.watch(appSettingsProvider);
     final cobrador = ref.watch(cobradorActualProvider).valueOrNull;
+    final impersonando = ref.watch(estaImpersonandoProvider);
 
     // Si el método seleccionado fue deshabilitado en settings, corregir
     // al primer método disponible para evitar un estado inválido.
@@ -467,13 +478,17 @@ class _CobroScreenState extends ConsumerState<CobroScreen> {
       );
     }
 
-    final puedeConfirmar =
-        !_enviando && cobrador != null && (cobrador.prefijoRecibo ?? '').isNotEmpty;
-    final mensajeDeshabilitado = cobrador == null
-        ? 'Esperando datos del cobrador...'
-        : (cobrador.prefijoRecibo ?? '').isEmpty
-            ? 'Tu prefijo de recibo no está configurado. Pedile al admin que te lo asigne.'
-            : null;
+    final puedeConfirmar = !_enviando &&
+        !impersonando &&
+        cobrador != null &&
+        (cobrador.prefijoRecibo ?? '').isNotEmpty;
+    final mensajeDeshabilitado = impersonando
+        ? 'Estás gestionando un tenant como super_admin. El cobro lo registra el cobrador del ISP — no se puede cobrar impersonando.'
+        : cobrador == null
+            ? 'Esperando datos del cobrador...'
+            : (cobrador.prefijoRecibo ?? '').isEmpty
+                ? 'Tu prefijo de recibo no está configurado. Pedile al admin que te lo asigne.'
+                : null;
 
     final cuota = _cuotas.first;
     var saldo = 0.0;
@@ -543,7 +558,7 @@ class _CobroScreenState extends ConsumerState<CobroScreen> {
                 ),
               ),
           ],
-          if (!_esMultiCuota && (settings.descuentosHabilitados || settings.reconexionHabilitada)) ...[
+          if (!impersonando && !_esMultiCuota && (settings.descuentosHabilitados || settings.reconexionHabilitada)) ...[
             const SizedBox(height: 8),
             OutlinedButton.icon(
               icon: const Icon(Icons.discount),

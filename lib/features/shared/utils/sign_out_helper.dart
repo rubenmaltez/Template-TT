@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../../data/services/impersonation_service.dart';
 import '../../../powersync/db.dart' as ps;
 
 /// Verifica si hay cambios locales sin sincronizar antes de cerrar sesión.
@@ -39,7 +40,26 @@ Future<void> confirmarSignOut(BuildContext context) async {
     if (confirmar != true || !context.mounted) return;
   }
 
+  // Limpiar impersonación activa (#9) antes de cerrar sesión: si el
+  // super_admin estaba dentro de un tenant, salimos para no quedar "pegajoso"
+  // al re-loguear. Sin reconectar PowerSync (el signOut desconecta igual).
+  await _limpiarImpersonacionSiActiva();
+
   await Supabase.instance.client.auth.signOut();
+}
+
+/// Si hay una impersonación activa (fila local), sale de ella antes del
+/// signOut. Best-effort: no bloquea el cierre de sesión si falla.
+Future<void> _limpiarImpersonacionSiActiva() async {
+  try {
+    final rows = await ps.db.getAll(
+      'SELECT 1 FROM super_admin_impersonation LIMIT 1',
+    );
+    if (rows.isEmpty) return;
+    await ImpersonationService(Supabase.instance.client).exit(reconnect: false);
+  } catch (_) {
+    // best-effort: no impedir el signOut si falla la limpieza.
+  }
 }
 
 Future<int> _contarCrudPendientes() async {

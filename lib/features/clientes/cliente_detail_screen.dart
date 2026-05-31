@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../data/providers/cobrador_provider.dart';
+import '../../data/providers/impersonation_provider.dart';
 import '../../data/repositories/clientes_repo.dart';
 import '../../data/services/external_actions.dart';
 import '../../data/services/visitas_service.dart';
@@ -63,6 +64,7 @@ class _ClienteDetailScreenState extends ConsumerState<ClienteDetailScreen> {
   Widget build(BuildContext context) {
     final clienteAsync = ref.watch(clienteByIdProvider(widget.clienteId));
     final cobrador = ref.watch(cobradorActualProvider).valueOrNull;
+    final impersonando = ref.watch(estaImpersonandoProvider);
     final esAdmin = cobrador?.tieneAccesoAdmin ?? false;
     final loc = GoRouterState.of(context).uri.path;
     final enAdminShell = loc.startsWith('/admin');
@@ -94,7 +96,8 @@ class _ClienteDetailScreenState extends ConsumerState<ClienteDetailScreen> {
             ),
         ],
       ),
-      floatingActionButton: clienteAsync.valueOrNull != null
+      // FAB oculto impersonando (#9): la visita se atribuiría al tenant System.
+      floatingActionButton: clienteAsync.valueOrNull != null && !impersonando
           ? FloatingActionButton.extended(
               onPressed: () => _mostrarDialogVisita(context),
               icon: const Icon(Icons.add_task),

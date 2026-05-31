@@ -13,7 +13,7 @@ Backlog de 9 observaciones de Rubén (2026-05-31). Se atacan **EN ORDEN**.
 | 6 | Multi-pago: selector USD/Córdoba | Falta feature | ✅ |
 | 7 | Cambio de usuario: data vieja / settings vacío (F5) | Bug estado | ✅ |
 | 8 | Rework settings + diseñador visual de recibo | Feature grande | ⬜ |
-| 9 | Interfaz super_admin (administrar/entrar a tenants) | Feature grande | ⬜ |
+| 9 | Interfaz super_admin (administrar/entrar a tenants) | Feature grande | ✅ |
 
 ## Notas / decisiones por ítem
 
@@ -141,3 +141,35 @@ Backlog de 9 observaciones de Rubén (2026-05-31). Se atacan **EN ORDEN**.
   - Contrato documentado en `db_epoch_provider.dart` para no re-introducir el
     bug: todo provider global nuevo que lea ps.db debe observar el epoch.
 - Sin migración ni sync rules. Audit pendiente.
+
+### #9 — Super_admin / impersonación: verificar + pulir ✅
+- Estado encontrado: la impersonación YA estaba implementada y bien diseñada
+  (RLS, sync rules con bucket `impersonated_tenant`, `current_tenant_id()`
+  reescrito para respetarla, audit de enter/exit, banner ámbar "Viendo:
+  tenant X", gating del router). Los writes de FORMULARIOS del admin (clientes,
+  contratos, planes, settings, cuotas, fotos) usan `tenantIdProvider` correcto.
+- 🔴 **Hallazgo CRÍTICO (bug de plata latente, lo encontró el agente de
+  verificación):** 3 write-paths NO pasaban por `tenantIdProvider` y escribían
+  en el tenant **System** (la fila real del super_admin) en vez del impersonado:
+  - **Cobro** (`cobro_screen.dart:347/401`): generaba `pagos`/`recibos`
+    huérfanos en System, invisibles para el ISP real, con correlativo del
+    prefijo equivocado → rompía invariantes de dinero #4 y #10.
+  - **Cargo manual** (`aplicar_cargo_dialog.dart:164`).
+  - **Visita** (`visitas_service.dart:95`).
+- Decisión (Rubén): el super_admin impersona para VER/GESTIONAR, NO para cobrar
+  en campo (no tiene identidad de cobrador en el tenant X). → **Deshabilitar
+  cobro/cargo/visita mientras impersona.**
+- Hecho:
+  - Nuevo `estaImpersonandoProvider` (bool).
+  - Cobro: botón deshabilitado + mensaje claro + guard defensivo en `_confirmar`.
+  - Cargo: trigger oculto en cobro + guard en `_aplicar`.
+  - Visita: FAB oculto en cliente_detail + guard (throw) en el service.
+  - signOut: `confirmarSignOut` llama `ImpersonationService.exit(reconnect:false)`
+    si hay impersonación activa → no queda "pegajosa" al re-loguear.
+- Verificado: grep confirma que esos eran los ÚNICOS 3 write-paths con
+  `cobrador.tenantId`; el resto usa `tenantIdProvider`.
+- Backlog (nice-to-have, no bloquea): (a) banner de impersonación no se ve en
+  pantallas fuera del AdminShell (detalle/recibo) — menor ahora que los writes
+  están bloqueados; (b) `enter()` sobre `enter()` no emite `impersonate_end`
+  del tenant previo; (c) defensa server-side: trigger que rechace
+  `pago.tenant_id != cuota.tenant_id`. Audit del fix pendiente.

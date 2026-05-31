@@ -4,6 +4,7 @@ import 'package:uuid/uuid.dart';
 
 import '../../powersync/db.dart' as ps;
 import '../providers/cobrador_provider.dart';
+import '../providers/impersonation_provider.dart';
 
 enum VisitaResultado {
   cobrado('Cobrado'),
@@ -68,6 +69,12 @@ class VisitasService {
     required VisitaResultado resultado,
     String? notas,
   }) async {
+    // Guard (#9): no registrar visitas impersonando — se atribuiría al tenant
+    // System (fila real del super_admin), no al impersonado.
+    if (_ref.read(estaImpersonandoProvider)) {
+      throw StateError(
+          'No se puede registrar visitas mientras gestionás un tenant como super_admin.');
+    }
     final cobrador = _ref.read(cobradorActualProvider).valueOrNull;
     final user = Supabase.instance.client.auth.currentUser;
     if (cobrador == null || user == null) {

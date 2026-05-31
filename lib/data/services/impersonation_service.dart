@@ -60,7 +60,11 @@ class ImpersonationService {
   }
 
   /// Sale del modo impersonación. Vuelve al tenant System.
-  Future<void> exit() async {
+  ///
+  /// [reconnect]: si es true (default), reconecta PowerSync para re-evaluar
+  /// las sync rules y volver a la data de System. En el flujo de signOut se
+  /// pasa false porque el signOut desconecta PowerSync de todos modos (#9).
+  Future<void> exit({bool reconnect = true}) async {
     final userId = _supabase.auth.currentUser?.id;
     if (userId == null) return;
 
@@ -91,7 +95,9 @@ class ImpersonationService {
       });
     }
 
-    await ps.disconnectPowerSync();
-    await ps.connectPowerSync();
+    if (reconnect) {
+      await ps.disconnectPowerSync();
+      await ps.connectPowerSync();
+    }
   }
 }

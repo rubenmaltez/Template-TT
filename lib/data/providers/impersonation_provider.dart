@@ -22,3 +22,15 @@ final impersonatedTenantIdProvider = StreamProvider<String?>((ref) async* {
       .map((rows) =>
           rows.isEmpty ? null : rows.first['tenant_id'] as String?);
 });
+
+/// True si el super_admin está impersonando un tenant ahora mismo.
+///
+/// Usado para DESHABILITAR las acciones de campo (cobro / cargo manual /
+/// registrar visita) mientras se impersona (#9): esos write-paths atribuyen
+/// `cobrador_id`/`tenant_id` a la fila real del super_admin (tenant System),
+/// no al tenant impersonado, lo que generaría pagos/recibos huérfanos en
+/// System y rompería los invariantes de dinero. El super_admin impersona para
+/// VER/GESTIONAR; la cobranza de campo la hace el cobrador del ISP.
+final estaImpersonandoProvider = Provider<bool>((ref) {
+  return ref.watch(impersonatedTenantIdProvider).valueOrNull != null;
+});

@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../../data/providers/cobrador_provider.dart';
+import '../../../data/providers/impersonation_provider.dart';
 import '../../../data/repositories/settings_repo.dart';
 import '../../../data/utils/formatters.dart';
 import '../../../powersync/db.dart' as ps;
@@ -75,6 +76,13 @@ class _AplicarCargoDialogState extends ConsumerState<AplicarCargoDialog> {
   }
 
   Future<void> _aplicar() async {
+    // Guard (#9): no aplicar cargos impersonando — se atribuiría al tenant
+    // System (fila real del super_admin), no al impersonado.
+    if (ref.read(estaImpersonandoProvider)) {
+      setState(() => _error =
+          'No se puede aplicar cargos mientras gestionás un tenant como super_admin.');
+      return;
+    }
     if (_tipo == null) {
       setState(() => _error = 'Elegí un tipo');
       return;
