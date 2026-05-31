@@ -10,6 +10,7 @@ import '../../../data/providers/cobrador_provider.dart';
 import '../../../data/providers/logo_empresa_provider.dart';
 import '../../../data/repositories/settings_repo.dart';
 import '../../shared/widgets/empty_state.dart';
+import 'recibo_preview.dart';
 
 /// Panel de configuración. Agrupa settings por categoría en pestañas.
 /// Sólo admin puede editar la mayoría; admin_cobranza puede tocar las
@@ -145,6 +146,8 @@ class _CategoriaTab extends ConsumerWidget {
         // Widget de logo al inicio de la tab Empresa.
         if (categoria == 'empresa' && esAdmin)
           _LogoUploadWidget(tenantId: tenantId),
+        // Vista previa EN VIVO del recibo al inicio de la tab Recibos (#8a).
+        if (categoria == 'recibos') const ReciboPreview(),
         ...settingsFiltrados.map((s) {
           final puedeEditar = esAdmin || s.editablePor == 'admin_cobranza';
           return _SettingTile(

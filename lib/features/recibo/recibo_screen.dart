@@ -185,7 +185,7 @@ class _ReciboScreenState extends ConsumerState<ReciboScreen> {
               child: ListView(
                 padding: const EdgeInsets.all(16),
                 children: [
-                  _ReciboTicket(row: r, settings: settings, logoUrl: logoUrl),
+                  ReciboTicket(row: r, settings: settings, logoUrl: logoUrl),
                   if (r['foto_comprobante_path'] != null) ...[
                     const SizedBox(height: 16),
                     Text('Comprobante adjunto',
@@ -213,8 +213,11 @@ class _ReciboScreenState extends ConsumerState<ReciboScreen> {
   }
 }
 
-class _ReciboTicket extends StatelessWidget {
-  const _ReciboTicket({
+/// Ticket visual de un recibo de cobro single-cuota. Público para reusarlo en
+/// la vista previa del diseñador de recibos en settings (#8a).
+class ReciboTicket extends StatelessWidget {
+  const ReciboTicket({
+    super.key,
     required this.row,
     required this.settings,
     this.logoUrl,

@@ -12,7 +12,7 @@ Backlog de 9 observaciones de Rubén (2026-05-31). Se atacan **EN ORDEN**.
 | 5 | Anular pago: sacar botón "recrear" + prompt + log completo | Bug+UX (plata) | ✅ |
 | 6 | Multi-pago: selector USD/Córdoba | Falta feature | ✅ |
 | 7 | Cambio de usuario: data vieja / settings vacío (F5) | Bug estado | ✅ |
-| 8 | Rework settings + diseñador visual de recibo | Feature grande | ⬜ |
+| 8 | Rework settings + diseñador visual de recibo | Feature grande | 🔄 8a |
 | 9 | Interfaz super_admin (administrar/entrar a tenants) | Feature grande | ✅ |
 
 ## Notas / decisiones por ítem
