@@ -527,7 +527,8 @@ class _AnularPagoDialogState extends State<_AnularPagoDialog> {
         children: [
           const Text(
               'Esta acción queda registrada en auditoría. La cuota volverá '
-              'a su estado anterior. El recibo emitido queda inválido.'),
+              'a su estado anterior y el recibo emitido queda inválido. '
+              'Para volver a cobrar, registrá el cobro de nuevo desde la cuota.'),
           const SizedBox(height: 16),
           TextField(
             controller: _ctrl,
