@@ -232,10 +232,11 @@ class _CuotasSectionState extends ConsumerState<_CuotasSection> {
                                 } else {
                                   // Falta cobrar una cuota mas antigua: avisamos
                                   // cual es (mes) para que no se sienta roto.
-                                  final primera = allRows.firstWhere(
-                                    (r) => r['id'] == pendingIds.first,
-                                    orElse: () => const <String, dynamic>{},
-                                  );
+                                  final matchPrimera = allRows
+                                      .where((r) => r['id'] == pendingIds.first);
+                                  final primera = matchPrimera.isEmpty
+                                      ? const <String, dynamic>{}
+                                      : matchPrimera.first;
                                   final mesPrimera = primera['periodo'] != null
                                       ? Fmt.mesServicioLabel(
                                           DateTime.parse(

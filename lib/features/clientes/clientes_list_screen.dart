@@ -214,12 +214,11 @@ class _ComunidadChipState extends State<_ComunidadChip> {
           return Chip(label: Text('Error: ${snap.error}'));
         }
         final rows = snap.data!;
-        final label = widget.seleccionada == null
-            ? 'Comunidad'
-            : (rows.firstWhere(
-                  (r) => r['id'] == widget.seleccionada,
-                  orElse: () => {'nombre': 'Comunidad'},
-                )['nombre'] as String);
+        String label = 'Comunidad';
+        if (widget.seleccionada != null) {
+          final sel = rows.where((r) => r['id'] == widget.seleccionada);
+          if (sel.isNotEmpty) label = sel.first['nombre'] as String;
+        }
         return ActionChip(
           avatar: const Icon(Icons.place, size: 18),
           label: Text(label),

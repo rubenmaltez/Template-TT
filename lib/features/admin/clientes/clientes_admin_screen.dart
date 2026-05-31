@@ -339,10 +339,11 @@ class _CobradorChipState extends State<_CobradorChip> {
           return Chip(label: Text('Error: ${snap.error}'));
         }
         final rows = snap.data!;
-        final label = widget.seleccionado == null
-            ? 'Cobrador'
-            : (rows.firstWhere((r) => r['id'] == widget.seleccionado,
-                    orElse: () => {'nombre': 'Cobrador'})['nombre'] as String);
+        String label = 'Cobrador';
+        if (widget.seleccionado != null) {
+          final sel = rows.where((r) => r['id'] == widget.seleccionado);
+          if (sel.isNotEmpty) label = sel.first['nombre'] as String;
+        }
         return ActionChip(
           avatar: const Icon(Icons.person, size: 18),
           label: Text(label),
@@ -412,10 +413,11 @@ class _ComunidadChipState extends State<_ComunidadChip> {
           return Chip(label: Text('Error: ${snap.error}'));
         }
         final rows = snap.data!;
-        final label = widget.seleccionada == null
-            ? 'Comunidad'
-            : (rows.firstWhere((r) => r['id'] == widget.seleccionada,
-                    orElse: () => {'nombre': 'Comunidad'})['nombre'] as String);
+        String label = 'Comunidad';
+        if (widget.seleccionada != null) {
+          final sel = rows.where((r) => r['id'] == widget.seleccionada);
+          if (sel.isNotEmpty) label = sel.first['nombre'] as String;
+        }
         return ActionChip(
           avatar: const Icon(Icons.place, size: 18),
           label: Text(label),
