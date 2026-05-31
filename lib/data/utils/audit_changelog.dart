@@ -27,6 +27,7 @@ class CampoChange {
 // ---------------------------------------------------------------------------
 const Map<String, Set<String>> kAuditCamposVisiblesDefault = {
   'pagos': {
+    'fecha_pago',
     'monto_cordobas',
     'vuelto_cordobas',
     'metodo',
@@ -159,6 +160,7 @@ const Map<String, List<String>> kAuditCamposCatalogo = {
     'cargos_neto',
   ],
   'pagos': [
+    'fecha_pago',
     'monto_cordobas',
     'vuelto_cordobas',
     'monto_original',
