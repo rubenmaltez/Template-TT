@@ -148,6 +148,31 @@ Backlog de 9 observaciones de Rubén (2026-05-31). Se atacan **EN ORDEN**.
     bug: todo provider global nuevo que lea ps.db debe observar el epoch.
 - Sin migración ni sync rules. Audit pendiente.
 
+### Audit integral final (pre-pull) ✅
+Dos agentes en paralelo (correctness/regresión full-codebase + migraciones/DB).
+**Veredicto: LISTO para pull + testing, sin blockers.** Highlights verificados:
+- SQL: 0 hits de sintaxis Postgres-only en `lib/` (FILTER/ILIKE/::casts/ANY/ARRAY).
+- #7 epoch: los 13 providers globales db-bound observan el epoch; ordering
+  correcto (bump después de reasignar `ps.db`); main.dart sin imports colgados.
+- #8 render: plata intacta en los 6 paths; saneo de `reciboOrdenPie` robusto;
+  el sample row del preview tiene los 21 campos que lee `ReciboTicket`.
+- #9 guards: sin bypass; `confirmarSignOut` no se rompe (try/catch best-effort).
+- Migraciones 0078/0079: seguras, idempotentes, no rompen inserts legítimos,
+  claves Dart == seed, defaults cubren tenants nuevos.
+
+4 findings (todos BAJO/INFO). **Cerrados en este commit:**
+- Borrado `ImpersonationBannerWrap` (dead code — el banner se usa inline).
+- Trigger 0078 extendido a `visitas` (visitas.tenant_id == clientes.tenant_id),
+  por consistencia de defensa en profundidad.
+
+INFO sin acción (documentado): anular/editar pago NO llevan guard de
+impersonación porque son UPDATE sobre filas ya tenant-correctas (no atribuyen
+dinero nuevo a System); el guard #9 cubre INSERTs de dinero nuevo
+(cobro/cargo/visita). `tenantId ?? ''` en settings del super_admin es
+inalcanzable (el router no lo deja entrar a /admin/settings sin impersonar).
+**Pendiente capas 2-4**: correr `flutter analyze`/`flutter test` local
+(capa 3), invariantes SQL post-deploy (capa 2), testing manual (capa 4).
+
 ### #8 — Rework settings + diseñador visual de recibo ✅
 - **8a** Vista previa en vivo (`ReciboPreview`): reusa el widget real
   `ReciboTicket` con datos de ejemplo; se actualiza al instante al cambiar

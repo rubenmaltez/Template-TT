@@ -8,9 +8,10 @@
 -- una defensa en profundidad a nivel DB: rechazar cualquier INSERT donde el
 -- tenant del hijo no coincida con el de su padre.
 --
---   pagos.tenant_id        debe == cuotas.tenant_id  (por cuota_id)
---   cargos_extra.tenant_id debe == cuotas.tenant_id  (por cuota_id)
---   recibos.tenant_id      debe == pagos.tenant_id   (por pago_id)
+--   pagos.tenant_id        debe == cuotas.tenant_id   (por cuota_id)
+--   cargos_extra.tenant_id debe == cuotas.tenant_id   (por cuota_id)
+--   recibos.tenant_id      debe == pagos.tenant_id    (por pago_id)
+--   visitas.tenant_id      debe == clientes.tenant_id (por cliente_id)
 --
 -- Solo se valida en INSERT: el tenant nunca cambia en un UPDATE legítimo, y
 -- así no bloqueamos operaciones sobre filas legacy que pudieran existir
@@ -52,6 +53,15 @@ begin
         'tenant_id del recibo (%) no coincide con el de su pago (%)',
         new.tenant_id, v_tenant_padre using errcode = 'check_violation';
     end if;
+
+  elsif tg_table_name = 'visitas' then
+    select tenant_id into v_tenant_padre
+      from public.clientes where id = new.cliente_id;
+    if v_tenant_padre is not null and v_tenant_padre <> new.tenant_id then
+      raise exception
+        'tenant_id de la visita (%) no coincide con el de su cliente (%)',
+        new.tenant_id, v_tenant_padre using errcode = 'check_violation';
+    end if;
   end if;
 
   return new;
@@ -71,4 +81,9 @@ create trigger validar_tenant_coherente_cargos
 drop trigger if exists validar_tenant_coherente_recibos on public.recibos;
 create trigger validar_tenant_coherente_recibos
   before insert on public.recibos
+  for each row execute function public.validar_tenant_coherente();
+
+drop trigger if exists validar_tenant_coherente_visitas on public.visitas;
+create trigger validar_tenant_coherente_visitas
+  before insert on public.visitas
   for each row execute function public.validar_tenant_coherente();

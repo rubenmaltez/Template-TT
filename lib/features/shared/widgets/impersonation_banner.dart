@@ -98,28 +98,6 @@ class _ImpersonationBannerState extends ConsumerState<ImpersonationBanner> {
   }
 }
 
-/// Envuelve el body de un Scaffold mostrando el [ImpersonationBanner] arriba
-/// cuando hay impersonación activa. Como el banner es self-gating, cuando NO
-/// se impersona el primer hijo es un `SizedBox.shrink()` y el layout queda
-/// idéntico al original. Pensado para las pantallas push fuera del AdminShell
-/// (cobro, recibo, detalle de cliente/contrato) donde antes el banner
-/// desaparecía (#9a).
-class ImpersonationBannerWrap extends StatelessWidget {
-  const ImpersonationBannerWrap({super.key, required this.child});
-
-  final Widget child;
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      children: [
-        const ImpersonationBanner(),
-        Expanded(child: child),
-      ],
-    );
-  }
-}
-
 /// Nombre del tenant impersonado, scoped por tenant_id. Lee de la tabla
 /// `settings` local filtrando por el tenant_id específico (evita ambigüedad
 /// cuando hay settings de múltiples tenants en SQLite).
