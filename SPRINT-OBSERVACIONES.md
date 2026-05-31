@@ -7,7 +7,7 @@ Backlog de 9 observaciones de Rubén (2026-05-31). Se atacan **EN ORDEN**.
 |---|------|------|--------|
 | 1 | Código en contratos (tipo código de cliente) | Feature | ✅ |
 | 2 | TypeError filtro cliente/comunidad | Bug | ✅ |
-| 3 | Reportes filtrados por fecha de cobro (rango) | Bug/spec | ⬜ |
+| 3 | Reportes filtrados por fecha de cobro (rango) | Bug/spec | ⏳ diseño cerrado |
 | 4 | Fecha de cobro en el log de recibo/pago | Curaduría | ⬜ |
 | 5 | Anular pago: sacar botón "recrear" + prompt + log completo | Bug+UX (plata) | ⬜ |
 | 6 | Multi-pago: selector USD/Córdoba | Falta feature | ⬜ |
@@ -27,6 +27,16 @@ Backlog de 9 observaciones de Rubén (2026-05-31). Se atacan **EN ORDEN**.
   curaduría (visibles + catálogo).
 - ⚠️ DEPLOY: correr 0077 + REDEPLOY sync rules (contratos usa SELECT *) +
   schema v16 recrea las DBs locales.
+
+### #3 — Reportes por fecha de cobro (rango)
+- Hoy: reportes de cobros clavados a `date('now','start of month')`. Sin rango.
+- Decisión: selector GLOBAL con presets (Este mes / Mes pasado / Personalizado),
+  aplica SOLO a reportes descargables (PDF/CSV); las tarjetas en pantalla quedan
+  en 'mes actual'. Default 'Este mes' (no cambia lo actual).
+- Reportes afectados (filtran `fecha_pago`): cobros, por_cobrador, anulaciones,
+  fiscal, eficiencia, CSV. NO: mora / inactivos / estado de clientes (son foto).
+- Próximo: StateProvider de rango + selector UI (en la pantalla de reportes) +
+  threading desde/hasta en las queries (reemplazar `start of month` por `BETWEEN`).
 
 ### #2 — TypeError filtros ✅
 - Causa: `ps.db.watch` devuelve filas `Row`; `firstWhere(orElse: () => <Map literal>)`
