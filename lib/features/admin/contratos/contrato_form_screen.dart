@@ -36,6 +36,11 @@ class _ContratoFormScreenState extends ConsumerState<ContratoFormScreen> {
   // (generar_cuotas_contrato) lo deriva de fecha_inicio.
   final _costoCtrl = TextEditingController();
   final _notasCtrl = TextEditingController();
+  final _codigoCtrl = TextEditingController();
+  // Código de contrato (0077): identificador legible OPCIONAL, único por
+  // tenant, inmutable una vez asignado (server lo refuerza; solo super lo cambia).
+  String? _codigoDupInfo; // nombre del cliente del contrato en conflicto, o null
+  bool _codigoYaAsignado = false;
   _Duracion _duracion = _Duracion.unAno;
   bool _activo = true;
   bool _cargando = true;
@@ -78,6 +83,8 @@ class _ContratoFormScreenState extends ConsumerState<ContratoFormScreen> {
     _fechaInicio = DateTime.parse(r['fecha_inicio'] as String);
     _costoCtrl.text = (r['costo_instalacion'] as num?)?.toString() ?? '';
     _notasCtrl.text = (r['notas'] as String?) ?? '';
+    _codigoCtrl.text = (r['codigo'] as String?) ?? '';
+    _codigoYaAsignado = _codigoCtrl.text.trim().isNotEmpty;
     _activo = (r['estado'] as String? ?? 'activo') == 'activo';
     if (r['fecha_fin'] != null) {
       final fin = DateTime.parse(r['fecha_fin'] as String);
@@ -98,6 +105,7 @@ class _ContratoFormScreenState extends ConsumerState<ContratoFormScreen> {
   void dispose() {
     _costoCtrl.dispose();
     _notasCtrl.dispose();
+    _codigoCtrl.dispose();
     // Reset defensivo del form_dirty_provider: el shell que watchea
     // este provider no debe ver dirty=true tras desmontar el form.
     // Sync (no post-frame) porque dispose corre fuera del build cycle.
@@ -198,6 +206,33 @@ class _ContratoFormScreenState extends ConsumerState<ContratoFormScreen> {
         _ => 'application/octet-stream',
       };
 
+  /// Chequea (contra SQLite local) si ya existe OTRO contrato del tenant con el
+  /// mismo código (case-insensitive). Setea `_codigoDupInfo` con el nombre del
+  /// cliente del contrato en conflicto. El UNIQUE de Postgres (0077) es la red
+  /// dura. Devuelve true si hay conflicto.
+  Future<bool> _verificarCodigoDuplicado() async {
+    final codigo = _codigoCtrl.text.trim();
+    if (codigo.isEmpty) {
+      _codigoDupInfo = null;
+      return false;
+    }
+    final tenantId = ref.read(tenantIdProvider);
+    if (tenantId == null) return false;
+    try {
+      final rows = await ps.db.getAll(
+        'SELECT c.nombre AS n FROM contratos ct '
+        'JOIN clientes c ON c.id = ct.cliente_id '
+        'WHERE ct.tenant_id = ? AND upper(ct.codigo) = upper(?) AND ct.id != ? '
+        'LIMIT 1',
+        [tenantId, codigo, widget.contratoId ?? ''],
+      );
+      _codigoDupInfo = rows.isEmpty ? null : rows.first['n'] as String?;
+      return _codigoDupInfo != null;
+    } catch (_) {
+      return false; // best-effort; el UNIQUE de Postgres es la red dura
+    }
+  }
+
   Future<void> _guardar() async {
     if (!_formKey.currentState!.validate()) return;
     if (_clienteId == null) {
@@ -252,6 +287,20 @@ class _ContratoFormScreenState extends ConsumerState<ContratoFormScreen> {
       return;
     }
 
+    // Guard de código duplicado (el UNIQUE de 0077 es la red dura). Si el
+    // código está bloqueado (asignado + no super), no se puede cambiar → skip.
+    final esSuper =
+        ref.read(cobradorActualProvider).valueOrNull?.esSuperAdmin ?? false;
+    if (!(_codigoYaAsignado && !esSuper)) {
+      if (await _verificarCodigoDuplicado()) {
+        if (!mounted) return;
+        setState(() => _error =
+            'Ya existe un contrato con el código "${_codigoCtrl.text.trim()}"'
+            '${_codigoDupInfo != null ? ' (cliente $_codigoDupInfo)' : ''}.');
+        return;
+      }
+    }
+
     setState(() {
       _guardando = true;
       _error = null;
@@ -281,7 +330,7 @@ class _ContratoFormScreenState extends ConsumerState<ContratoFormScreen> {
              SET plan_id = ?, dia_pago = ?,
                  fecha_inicio = ?, fecha_fin = ?, duracion_meses = ?,
                  fecha_primer_cobro = ?, costo_instalacion = ?, notas = ?,
-                 estado = ?, ocurrido_en = ?
+                 codigo = ?, estado = ?, ocurrido_en = ?
            WHERE id = ?
           ''',
           [
@@ -293,6 +342,9 @@ class _ContratoFormScreenState extends ConsumerState<ContratoFormScreen> {
             fechaPrimerCobroStr,
             costoInstalacion,
             notas,
+            _codigoCtrl.text.trim().isEmpty
+                ? null
+                : _codigoCtrl.text.trim().toUpperCase(),
             _activo ? 'activo' : 'cancelado',
             ocurridoEn,
             widget.contratoId,
@@ -327,15 +379,18 @@ class _ContratoFormScreenState extends ConsumerState<ContratoFormScreen> {
         await ps.db.execute(
           '''
           INSERT INTO contratos (
-            id, tenant_id, cliente_id, cobrador_id, plan_id, dia_pago,
+            id, tenant_id, cliente_id, codigo, cobrador_id, plan_id, dia_pago,
             fecha_inicio, fecha_fin, duracion_meses, fecha_primer_cobro,
             costo_instalacion, notas, estado, created_at, ocurrido_en
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'activo', ?, ?)
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'activo', ?, ?)
           ''',
           [
             nuevoId,
             tenantId,
             _clienteId,
+            _codigoCtrl.text.trim().isEmpty
+                ? null
+                : _codigoCtrl.text.trim().toUpperCase(),
             cobradorId,
             _planId,
             diaPago,
@@ -401,6 +456,9 @@ class _ContratoFormScreenState extends ConsumerState<ContratoFormScreen> {
     if (_cargando) {
       return const Center(child: CircularProgressIndicator());
     }
+    final esSuper =
+        ref.watch(cobradorActualProvider).valueOrNull?.esSuperAdmin ?? false;
+    final codigoBloqueado = _codigoYaAsignado && !esSuper;
     return PopScope(
       canPop: !_dirty,
       onPopInvokedWithResult: (didPop, _) async {
@@ -431,6 +489,28 @@ class _ContratoFormScreenState extends ConsumerState<ContratoFormScreen> {
                 children: [
                   Text('Cliente y plan',
                       style: Theme.of(context).textTheme.titleMedium),
+                  const SizedBox(height: 12),
+                  TextFormField(
+                    controller: _codigoCtrl,
+                    enabled: !codigoBloqueado,
+                    decoration: InputDecoration(
+                      labelText: 'Código de contrato (opcional)',
+                      hintText: 'Ej. CT00012',
+                      helperText: codigoBloqueado
+                          ? 'Inmutable: no se puede cambiar una vez asignado.'
+                          : 'Identificador del contrato. No se puede repetir.',
+                      prefixIcon: const Icon(Icons.tag),
+                    ),
+                    textCapitalization: TextCapitalization.characters,
+                    inputFormatters: [
+                      FilteringTextInputFormatter.allow(
+                          RegExp(r'[A-Za-z0-9\-_]')),
+                      TextInputFormatter.withFunction((oldV, newV) =>
+                          newV.copyWith(text: newV.text.toUpperCase())),
+                      LengthLimitingTextInputFormatter(30),
+                    ],
+                    textInputAction: TextInputAction.next,
+                  ),
                   const SizedBox(height: 12),
                   _ClienteSelector(
                     clienteId: _clienteId,

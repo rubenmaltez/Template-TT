@@ -38,6 +38,7 @@ class _ContratoHeader extends StatelessWidget {
     final costoInstalacion =
         (contrato['costo_instalacion'] as num?)?.toDouble();
     final notas = contrato['notas'] as String?;
+    final codigo = contrato['codigo'] as String?;
 
     final (Color badgeColor, String badgeLabel) = switch (estado) {
       'activo' => (scheme.primary, 'Activo'),
@@ -120,6 +121,19 @@ class _ContratoHeader extends StatelessWidget {
                   ),
               ],
             ),
+            if (codigo != null && codigo.isNotEmpty) ...[
+              const SizedBox(height: 6),
+              Row(
+                children: [
+                  Icon(Icons.tag, size: 16, color: scheme.outline),
+                  const SizedBox(width: 6),
+                  Text(codigo,
+                      style: TextStyle(
+                          color: scheme.onSurfaceVariant,
+                          fontWeight: FontWeight.w600)),
+                ],
+              ),
+            ],
             const SizedBox(height: 12),
             // Cliente
             Row(

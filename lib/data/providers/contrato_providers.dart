@@ -25,7 +25,7 @@ final contratoDetalleProvider = StreamProvider.autoDispose
     .family<List<Map<String, dynamic>>, String>((ref, contratoId) {
   return ps.db.watch(
     '''
-    SELECT ct.id, ct.tenant_id, ct.dia_pago, ct.fecha_inicio, ct.fecha_fin,
+    SELECT ct.id, ct.tenant_id, ct.codigo, ct.dia_pago, ct.fecha_inicio, ct.fecha_fin,
            ct.estado, ct.cliente_id, ct.cobrador_id,
            ct.documento_path, ct.duracion_meses,
            ct.costo_instalacion, ct.notas,

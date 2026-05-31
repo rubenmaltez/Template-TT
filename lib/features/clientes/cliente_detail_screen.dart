@@ -481,6 +481,7 @@ class _ContratoCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final plan = contrato['plan_nombre'] as String? ?? 'Sin plan';
+    final codigo = contrato['codigo'] as String?;
     final precio = (contrato['precio_mensual'] as num?)?.toDouble() ?? 0;
     final totalCuotas = (contrato['total_cuotas'] as num?)?.toInt() ?? 0;
     final pagadas = (contrato['cuotas_pagadas'] as num?)?.toInt() ?? 0;
@@ -498,6 +499,16 @@ class _ContratoCard extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              if (codigo != null && codigo.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 4),
+                  child: Text(codigo,
+                      style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                          color: scheme.primary,
+                          letterSpacing: 0.5)),
+                ),
               Row(
                 children: [
                   Icon(Icons.description,

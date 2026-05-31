@@ -5,7 +5,7 @@ Backlog de 9 observaciones de Rubén (2026-05-31). Se atacan **EN ORDEN**.
 
 | # | Ítem | Tipo | Estado |
 |---|------|------|--------|
-| 1 | Código en contratos (tipo código de cliente) | Feature | ⏳ esperando decisiones |
+| 1 | Código en contratos (tipo código de cliente) | Feature | ✅ |
 | 2 | TypeError filtro cliente/comunidad | Bug | ✅ |
 | 3 | Reportes filtrados por fecha de cobro (rango) | Bug/spec | ⬜ |
 | 4 | Fecha de cobro en el log de recibo/pago | Curaduría | ⬜ |
@@ -17,10 +17,16 @@ Backlog de 9 observaciones de Rubén (2026-05-31). Se atacan **EN ORDEN**.
 
 ## Notas / decisiones por ítem
 
-### #1 — Código de contrato
-- Cliente hoy: `codigo` MANUAL, uppercase, único por tenant (case-insensitive),
-  inmutable una vez guardado (trigger 0071), super_admin puede cambiarlo, opcional.
-- Pendiente: ¿manual (igual cliente) o auto-generado? ¿dónde se muestra?
+### #1 — Código de contrato ✅
+- Decisión: MANUAL igual que cliente (OPCIONAL, uppercase, único por tenant,
+  inmutable, super lo cambia). Visible en detalle + lista/tarjeta + auditoría
+  (NO en recibo).
+- Hecho: migración 0077 (columna + índice único `contratos_codigo_tenant_uq` +
+  trigger inmutabilidad), schema.dart + `_schemaVersion` 16, form (campo +
+  dup-check + INSERT/UPDATE), detalle header, 2 tarjetas (admin + cliente),
+  curaduría (visibles + catálogo).
+- ⚠️ DEPLOY: correr 0077 + REDEPLOY sync rules (contratos usa SELECT *) +
+  schema v16 recrea las DBs locales.
 
 ### #2 — TypeError filtros ✅
 - Causa: `ps.db.watch` devuelve filas `Row`; `firstWhere(orElse: () => <Map literal>)`

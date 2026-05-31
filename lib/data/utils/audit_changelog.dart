@@ -56,6 +56,7 @@ const Map<String, Set<String>> kAuditCamposVisiblesDefault = {
     'comunidad_id',
   },
   'contratos': {
+    'codigo',
     'estado',
     'precio_mensual',
     'dia_pago',
@@ -136,6 +137,7 @@ const Map<String, List<String>> kAuditCamposCatalogo = {
     'comunidad_id',
   ],
   'contratos': [
+    'codigo',
     'estado',
     'precio_mensual',
     'dia_pago',

@@ -90,6 +90,7 @@ const schema = Schema([
   Table('contratos', [
     Column.text('tenant_id'),
     Column.text('cliente_id'),
+    Column.text('codigo'),
     Column.text('cobrador_id'),
     Column.text('plan_id'),
     Column.integer('dia_pago'),

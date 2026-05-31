@@ -28,7 +28,7 @@ class _ContratosAdminScreenState extends ConsumerState<ContratosAdminScreen> {
   Stream<List<Map<String, dynamic>>> _buildStream() {
     return ps.db.watch(
       '''
-      SELECT ct.id, ct.dia_pago, ct.fecha_inicio, ct.fecha_fin,
+      SELECT ct.id, ct.codigo, ct.dia_pago, ct.fecha_inicio, ct.fecha_fin,
              ct.estado, ct.documento_path,
              c.id AS cliente_id, c.nombre AS cliente,
              p.nombre AS plan, p.precio_mensual,
@@ -141,6 +141,13 @@ class _ContratoCard extends StatelessWidget {
         subtitle: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            if (row['codigo'] != null)
+              Text(row['codigo'] as String,
+                  style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                      color: scheme.primary,
+                      letterSpacing: 0.5)),
             Text('${row['plan']} · ${Fmt.cordobas(row['precio_mensual'] as num)}'),
             Text(
               '$duracion · Día de pago: ${row['dia_pago']} · '
