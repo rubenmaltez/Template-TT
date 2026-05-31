@@ -23,6 +23,7 @@ begin;
 drop trigger if exists trg_changelog_planes on public.planes;
 create trigger trg_changelog_planes
   after insert or update or delete on public.planes
-  for each row execute function public.audit_changelog_trg();
+  for each row when (pg_trigger_depth() < 2)
+  execute function public.audit_changelog_trg();
 
 commit;
