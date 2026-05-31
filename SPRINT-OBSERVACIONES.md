@@ -168,8 +168,14 @@ Backlog de 9 observaciones de Rubén (2026-05-31). Se atacan **EN ORDEN**.
     si hay impersonación activa → no queda "pegajosa" al re-loguear.
 - Verificado: grep confirma que esos eran los ÚNICOS 3 write-paths con
   `cobrador.tenantId`; el resto usa `tenantIdProvider`.
-- Backlog (nice-to-have, no bloquea): (a) banner de impersonación no se ve en
-  pantallas fuera del AdminShell (detalle/recibo) — menor ahora que los writes
-  están bloqueados; (b) `enter()` sobre `enter()` no emite `impersonate_end`
-  del tenant previo; (c) defensa server-side: trigger que rechace
-  `pago.tenant_id != cuota.tenant_id`. Audit del fix pendiente.
+- Hardening cerrado (ex-backlog, ahora hecho — "sin backlog"):
+  - (a) Banner de impersonación extraído a `ImpersonationBanner` (widget
+    compartido, self-gating) + `ImpersonationBannerWrap`. Se muestra ahora en
+    cobro, recibo (single+multi), detalle de cliente y de contrato — antes solo
+    en el AdminShell.
+  - (b) `enter()` sobre `enter()` ahora emite `impersonate_end` del tenant
+    previo antes de reemplazarlo (trazabilidad completa).
+  - (c) Migración **0078**: trigger `validar_tenant_coherente` (BEFORE INSERT en
+    pagos/cargos_extra/recibos) rechaza filas cuyo tenant_id no coincida con el
+    del padre (cuota/pago). Defensa server-side de la clase de bug. **Requiere
+    correr la migración en el Dashboard.**

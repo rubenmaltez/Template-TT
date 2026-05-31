@@ -14,6 +14,7 @@ import '../../data/utils/monto_a_letras.dart';
 import '../../powersync/db.dart' as ps;
 import '../shared/widgets/empty_state.dart';
 import '../shared/widgets/foto_comprobante_view.dart';
+import '../shared/widgets/impersonation_banner.dart';
 import 'recibo_pdf.dart';
 
 /// Preview visual del recibo + acción para imprimir.
@@ -153,6 +154,7 @@ class _ReciboScreenState extends ConsumerState<ReciboScreen> {
                 child: ListView(
                   padding: const EdgeInsets.all(16),
                   children: [
+                    const ImpersonationBanner(), // #9a
                     _MultiReciboTicket(
                         rows: rows, settings: settings, logoUrl: logoUrl),
                     if (r['foto_comprobante_path'] != null) ...[
@@ -185,6 +187,7 @@ class _ReciboScreenState extends ConsumerState<ReciboScreen> {
               child: ListView(
                 padding: const EdgeInsets.all(16),
                 children: [
+                  const ImpersonationBanner(), // #9a
                   ReciboTicket(row: r, settings: settings, logoUrl: logoUrl),
                   if (r['foto_comprobante_path'] != null) ...[
                     const SizedBox(height: 16),

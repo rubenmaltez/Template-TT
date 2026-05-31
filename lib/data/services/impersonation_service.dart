@@ -32,6 +32,27 @@ class ImpersonationService {
       throw ArgumentError('No se puede impersonar el tenant System');
     }
 
+    // Si ya estaba impersonando OTRO tenant, cerramos ese tramo en el audit
+    // antes de reemplazarlo, así cada `impersonate_start` tiene su
+    // `impersonate_end` (trazabilidad append-only completa).
+    final previo = await _supabase
+        .from('super_admin_impersonation')
+        .select('tenant_id')
+        .eq('user_id', userId)
+        .maybeSingle();
+    if (previo != null && previo['tenant_id'] != tenantId) {
+      await _supabase.from('audit_log').insert({
+        'tenant_id': previo['tenant_id'],
+        'tabla': 'super_admin_impersonation',
+        'registro_id': userId,
+        'campo': 'impersonation',
+        'valor_anterior': {'action': 'impersonate_end'},
+        'valor_nuevo': null,
+        'user_id': userId,
+        'user_rol': 'super_admin',
+      });
+    }
+
     // UPSERT: si ya estaba impersonando otro tenant, reemplaza.
     await _supabase.from('super_admin_impersonation').upsert({
       'user_id': userId,

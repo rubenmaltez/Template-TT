@@ -14,6 +14,7 @@ import '../../data/utils/formatters.dart';
 import '../../powersync/db.dart' as ps;
 import '../shared/widgets/empty_state.dart';
 import '../shared/widgets/foto_comprobante_view.dart';
+import '../shared/widgets/impersonation_banner.dart';
 import '../shared/widgets/historial_cambios_widget.dart';
 
 part 'contrato_detail_header.dart';
@@ -139,6 +140,7 @@ class _ContratoDetailScreenState extends ConsumerState<ContratoDetailScreen> {
                   bottom: _selected.isNotEmpty ? 96 : 16,
                 ),
                 children: [
+                  const ImpersonationBanner(), // #9a
                   _ContratoHeader(
                     contrato: contrato,
                     esAdmin: esAdmin,

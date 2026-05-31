@@ -11,6 +11,7 @@ import '../../data/utils/formatters.dart';
 import '../../powersync/db.dart' as ps;
 import '../shared/widgets/empty_state.dart';
 import '../shared/widgets/foto_gallery_widget.dart';
+import '../shared/widgets/impersonation_banner.dart';
 import '../shared/widgets/historial_cambios_widget.dart';
 
 class ClienteDetailScreen extends ConsumerStatefulWidget {
@@ -122,6 +123,7 @@ class _ClienteDetailScreenState extends ConsumerState<ClienteDetailScreen> {
               child: ListView(
                 padding: const EdgeInsets.only(bottom: 80),
                 children: [
+                  const ImpersonationBanner(), // #9a
                   _ClienteHeader(
                     codigo: cliente.codigo,
                     nombre: cliente.nombre,

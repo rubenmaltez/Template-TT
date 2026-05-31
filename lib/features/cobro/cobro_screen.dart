@@ -20,6 +20,7 @@ import '../../data/utils/formatters.dart';
 import '../../powersync/db.dart' as ps;
 import '../shared/widgets/aplicar_cargo_dialog.dart';
 import '../shared/widgets/empty_state.dart';
+import '../shared/widgets/impersonation_banner.dart';
 
 class CobroScreen extends ConsumerStatefulWidget {
   const CobroScreen({super.key, required this.cuotaIds});
@@ -513,6 +514,9 @@ class _CobroScreenState extends ConsumerState<CobroScreen> {
         child: ListView(
         padding: const EdgeInsets.fromLTRB(16, 16, 16, 120),
         children: [
+          // Banner de impersonación (#9a): visible si el super_admin entró a
+          // un tenant; self-gating (invisible si no impersona).
+          const ImpersonationBanner(),
           if (_esMultiCuota)
             _MultiCuotaCard(
               cliente: _clienteRow,
