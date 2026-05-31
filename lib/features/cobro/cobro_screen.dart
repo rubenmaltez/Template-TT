@@ -304,45 +304,24 @@ class _CobroScreenState extends ConsumerState<CobroScreen> {
     try {
       final CobroResultado result;
       if (_esMultiCuota) {
-        // Multi-cuota: cada cuota recibe su saldo completo. Si el monto
-        // entregado supera el total a cobrar, el excedente queda como
-        // vuelto en el último pago del grupo (ver registrarCobroMultiple).
-        // montosNIO[i] = lo APLICADO a la cuota i = su saldo completo (entra
-        // a la caja del ISP). El vuelto NO infla esto — invariante de dinero.
-        final montosNIO = <double>[];
-        var totalSaldoNIO = 0.0;
-        for (var i = 0; i < _cuotas.length; i++) {
-          final saldo = (_totalesACobrar[i] - _cuotas[i].montoPagado)
-              .clamp(0.0, double.infinity);
-          montosNIO.add(saldo);
-          totalSaldoNIO += saldo;
-        }
-
-        // entregado = lo que el cliente puso en mano (en la moneda elegida).
-        // aplicado = min(entregado, totalSaldo); vuelto = exceso (en córdobas).
-        // El campo ahora es editable: si entrega más que el total, el exceso
-        // es vuelto. La matemática pura vive en CobroCalculo (testeado).
-        final entregado = double.parse(_montoCtrl.text);
-        final vueltoCordobas = CobroCalculo.calcular(
-          entregadoCordobas: CobroCalculo.aCordobas(entregado, tasa),
-          saldoCordobas: totalSaldoNIO,
-        ).vueltoCordobas;
-
-        // monto_original[i] = lo ENTREGADO en la moneda original, por pago.
-        // Opción A: las cuotas previas llevan su saldo; el ÚLTIMO pago lleva
-        // su saldo + TODO el excedente entregado, de modo que en cada fila se
-        // cumpla el invariante monto_original*tasa ≈ monto_cordobas + vuelto.
-        // (El vuelto también se asigna al último pago — ver registrarCobroMultiple.)
-        final excedenteCordobas =
-            (CobroCalculo.aCordobas(entregado, tasa) - totalSaldoNIO)
-                .clamp(0.0, double.infinity);
-        final montosOrig = <double>[];
-        for (var i = 0; i < _cuotas.length; i++) {
-          final esUltimo = i == _cuotas.length - 1;
-          final cordobasFila =
-              montosNIO[i] + (esUltimo ? excedenteCordobas : 0.0);
-          montosOrig.add(_moneda == Moneda.usd ? cordobasFila / tasa : cordobasFila);
-        }
+        // Multi-cuota: cada cuota se cobra COMPLETA (su saldo entra a la caja
+        // del ISP). Si el entregado supera el total, el excedente es vuelto —en
+        // córdobas— imputado al ÚLTIMO pago del grupo. Funciona en NIO y en USD
+        // (una sola tasa para toda la transacción). La distribución (montos
+        // aplicados + montos en moneda original + vuelto) vive en CobroCalculo,
+        // testeada — respeta los invariantes de dinero #1/#4 (el vuelto NUNCA
+        // infla monto_cordobas).
+        final saldos = <double>[
+          for (var i = 0; i < _cuotas.length; i++)
+            (_totalesACobrar[i] - _cuotas[i].montoPagado)
+                .clamp(0.0, double.infinity)
+        ];
+        final dist = CobroCalculo.distribuirMulti(
+          saldosCordobas: saldos,
+          entregadoCordobas:
+              CobroCalculo.aCordobas(double.parse(_montoCtrl.text), tasa),
+          tasa: tasa,
+        );
 
         final cargosInfo = _cargosAuto
             .map((c) => CargoAutoInfo(
@@ -359,10 +338,10 @@ class _CobroScreenState extends ConsumerState<CobroScreen> {
               cobradorId: cobrador.id,
               prefijoRecibo: cobrador.prefijoRecibo!,
               cuotaIds: _cuotas.map((c) => c.id).toList(),
-              montosCordobas: montosNIO,
-              vueltoCordobas: vueltoCordobas,
+              montosCordobas: dist.montosCordobas,
+              vueltoCordobas: dist.vueltoCordobas,
               moneda: _moneda,
-              montosOriginal: montosOrig,
+              montosOriginal: dist.montosOriginal,
               tasaConversion: tasa,
               metodo: _metodo,
               referencia: _referenciaCtrl.text.trim().isEmpty
@@ -614,11 +593,11 @@ class _CobroScreenState extends ConsumerState<CobroScreen> {
             children: [
               Text('Monto', style: Theme.of(context).textTheme.titleMedium),
               const Spacer(),
-              // El toggle USD sigue oculto en multi-cuota: el monto ya es
-              // editable (para el vuelto en córdobas), pero el cobro multi en
-              // USD requiere más lógica (tasa por cuota) — fuera de scope. El
-              // vuelto multi funciona en córdobas, que es el caso real común.
-              if (settings.usdHabilitado && !_esMultiCuota) _MonedaToggle(
+              // Toggle de moneda (C$/US$), visible si el tenant habilitó USD.
+              // Funciona igual en single y multi-cuota: una sola tasa para toda
+              // la transacción; la distribución multi vive en
+              // CobroCalculo.distribuirMulti (pura + testeada).
+              if (settings.usdHabilitado) _MonedaToggle(
                 actual: _moneda,
                 onChanged: (m) => _cambiarMoneda(m, settings),
               ),

@@ -143,4 +143,114 @@ void main() {
       }
     });
   });
+
+  group('CobroCalculo.distribuirMulti — reparto multi-cuota (NIO)', () {
+    test('exacto: 3 cuotas de 500, entrega 1500 → cada una 500, vuelto 0', () {
+      final d = CobroCalculo.distribuirMulti(
+        saldosCordobas: [500, 500, 500],
+        entregadoCordobas: 1500,
+        tasa: 1,
+      );
+      expect(d.montosCordobas, [500, 500, 500]);
+      expect(d.vueltoCordobas, 0);
+      // En NIO sin vuelto, lo entregado por fila == lo aplicado.
+      expect(d.montosOriginal, [500, 500, 500]);
+    });
+
+    test('con vuelto: 2 cuotas de 500, entrega 1200 → vuelto 200 en el último', () {
+      final d = CobroCalculo.distribuirMulti(
+        saldosCordobas: [500, 500],
+        entregadoCordobas: 1200,
+        tasa: 1,
+      );
+      // CRÍTICO: aplicado = saldos completos; el vuelto NO infla monto_cordobas.
+      expect(d.montosCordobas, [500, 500]);
+      expect(d.vueltoCordobas, 200);
+      // El último pago carga su saldo + el excedente entregado (NIO, tasa 1).
+      expect(d.montosOriginal, [500, 700]);
+    });
+
+    test('saldos desparejos [300, 500], entrega 800 → aplica 300 y 500, vuelto 0', () {
+      final d = CobroCalculo.distribuirMulti(
+        saldosCordobas: [300, 500],
+        entregadoCordobas: 800,
+        tasa: 1,
+      );
+      expect(d.montosCordobas, [300, 500]);
+      expect(d.vueltoCordobas, 0);
+    });
+  });
+
+  group('CobroCalculo.distribuirMulti — multi-cuota en USD (vuelto SIEMPRE en NIO)', () {
+    test('exacto: 2 cuotas de 500 (total 1000), tasa 36.6 → vuelto ~0', () {
+      final entregadoUsd = 1000 / 36.6; // entregado justo
+      final d = CobroCalculo.distribuirMulti(
+        saldosCordobas: [500, 500],
+        entregadoCordobas: CobroCalculo.aCordobas(entregadoUsd, 36.6),
+        tasa: 36.6,
+      );
+      expect(d.montosCordobas, [500, 500]);
+      expect(d.vueltoCordobas, closeTo(0, 0.001));
+      // monto_original (USD) por fila = saldo / tasa.
+      expect(d.montosOriginal[0], closeTo(500 / 36.6, 0.001));
+      expect(d.montosOriginal[1], closeTo(500 / 36.6, 0.001));
+    });
+
+    test('cliente entrega US\$30 (1098 NIO) por 2 cuotas de 500 → vuelto 98 NIO', () {
+      final d = CobroCalculo.distribuirMulti(
+        saldosCordobas: [500, 500],
+        entregadoCordobas: CobroCalculo.aCordobas(30, 36.6), // 1098
+        tasa: 36.6,
+      );
+      expect(d.montosCordobas, [500, 500]);
+      // El vuelto se da en córdobas, nunca en dólares.
+      expect(d.vueltoCordobas, closeTo(98, 0.001));
+      // Último pago: monto_original = (500 + 98) / 36.6 en USD.
+      expect(d.montosOriginal[0], closeTo(500 / 36.6, 0.001));
+      expect(d.montosOriginal[1], closeTo((500 + 98) / 36.6, 0.001));
+      // La suma de monto_original (USD) ≈ lo entregado (US$30).
+      final sumaUsd = d.montosOriginal.reduce((a, b) => a + b);
+      expect(sumaUsd, closeTo(30, 0.001));
+    });
+  });
+
+  group('CobroCalculo.distribuirMulti — invariantes de dinero', () {
+    test('recaudado (Σ monto_cordobas) NUNCA incluye el vuelto', () {
+      final d = CobroCalculo.distribuirMulti(
+        saldosCordobas: [500, 500, 500],
+        entregadoCordobas: 2000, // 500 de más
+        tasa: 1,
+      );
+      expect(d.montosCordobas.reduce((a, b) => a + b), 1500);
+      expect(d.vueltoCordobas, 500);
+    });
+
+    test('por pago: monto_original * tasa ≈ monto_cordobas + vuelto (batería NIO+USD)', () {
+      final casos = <Map<String, dynamic>>[
+        {'saldos': [500.0, 500.0], 'entregado': 1000.0, 'tasa': 1.0},
+        {'saldos': [500.0, 500.0], 'entregado': 1300.0, 'tasa': 1.0},
+        {'saldos': [400.0, 600.0, 250.0], 'entregado': 1464.0, 'tasa': 36.6},
+        {'saldos': [1234.56], 'entregado': 2000.0, 'tasa': 36.6},
+      ];
+      for (final c in casos) {
+        final saldos = (c['saldos'] as List).cast<double>();
+        final tasa = c['tasa'] as double;
+        final d = CobroCalculo.distribuirMulti(
+          saldosCordobas: saldos,
+          entregadoCordobas: c['entregado'] as double,
+          tasa: tasa,
+        );
+        for (var i = 0; i < saldos.length; i++) {
+          final esUltimo = i == saldos.length - 1;
+          final vueltoFila = esUltimo ? d.vueltoCordobas : 0.0;
+          expect(d.montosOriginal[i] * tasa,
+              closeTo(d.montosCordobas[i] + vueltoFila, 0.01),
+              reason: 'caso $c, fila $i');
+        }
+        // recaudado = Σ saldos (sin vuelto).
+        expect(d.montosCordobas.reduce((a, b) => a + b),
+            closeTo(saldos.fold<double>(0, (a, b) => a + b), 0.001));
+      }
+    });
+  });
 }

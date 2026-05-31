@@ -10,7 +10,7 @@ Backlog de 9 observaciones de Rubén (2026-05-31). Se atacan **EN ORDEN**.
 | 3 | Reportes filtrados por fecha de cobro (rango) | Bug/spec | ✅ audit OK |
 | 4 | Fecha de cobro en el log de recibo/pago | Curaduría | ✅ |
 | 5 | Anular pago: sacar botón "recrear" + prompt + log completo | Bug+UX (plata) | ✅ |
-| 6 | Multi-pago: selector USD/Córdoba | Falta feature | ⬜ |
+| 6 | Multi-pago: selector USD/Córdoba | Falta feature | ✅ |
 | 7 | Cambio de usuario: data vieja / settings vacío (F5) | Bug estado | ⬜ |
 | 8 | Rework settings + diseñador visual de recibo | Feature grande | ⬜ |
 | 9 | Interfaz super_admin (administrar/entrar a tenants) | Feature grande | ⬜ |
@@ -85,3 +85,21 @@ Backlog de 9 observaciones de Rubén (2026-05-31). Se atacan **EN ORDEN**.
     recibo); el log completo con recibo vive en el timeline de la cuota.
   - Backlog (no bloquea): copy de anular duplicada en 3 archivos;
     `auditDetectarAccion` usa `==1` y no `==true` (hardening futuro).
+
+### #6 — Multi-pago selector USD/Córdoba ✅
+- Hallazgo: el backend YA soportaba multi+USD (`registrarCobroMultiple` persiste
+  moneda/monto_original/tasa por pago); el sprint BULK 11 solo había OCULTO el
+  toggle en multi-cuota (`!_esMultiCuota` en cobro_screen) con un comentario
+  desactualizado ("requiere tasa por cuota" — falso, una transacción usa una
+  sola tasa).
+- Decisión (Rubén): enfoque robusto — des-gatear + extraer math + tests.
+- Hecho:
+  - Extraída la distribución multi-cuota a `CobroCalculo.distribuirMulti` (pura):
+    saldos → montos aplicados (a caja) + montos en moneda original por fila +
+    vuelto (en NIO, al último pago). `_confirmar` ahora la consume.
+  - Des-gateado el `_MonedaToggle` (visible en single y multi si `usdHabilitado`).
+  - Tests nuevos en `cobro_calculo_test.dart`: multi NIO/USD, con y sin vuelto,
+    invariante `monto_original*tasa ≈ monto_cordobas + vuelto` por pago,
+    recaudado = Σ saldos (sin vuelto).
+- Invariantes de dinero verificados a mano + en tests. Sin migración ni sync
+  rules (no toca schema). Audit pendiente (igual patrón que #5).
