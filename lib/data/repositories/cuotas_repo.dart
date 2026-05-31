@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../powersync/db.dart' as ps;
 import '../models/cuota.dart';
+import '../providers/db_epoch_provider.dart';
 
 class CuotasRepo {
   const CuotasRepo();
@@ -54,5 +55,6 @@ class CuotasRepo {
 final cuotasRepoProvider = Provider((_) => const CuotasRepo());
 
 final cuotasCobrablesProvider = StreamProvider<List<Cuota>>((ref) {
+  ref.watch(dbEpochProvider); // recrea al cambiar de DB (#7)
   return ref.watch(cuotasRepoProvider).watchCobrables();
 });

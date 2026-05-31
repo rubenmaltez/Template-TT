@@ -11,7 +11,7 @@ Backlog de 9 observaciones de Rubén (2026-05-31). Se atacan **EN ORDEN**.
 | 4 | Fecha de cobro en el log de recibo/pago | Curaduría | ✅ |
 | 5 | Anular pago: sacar botón "recrear" + prompt + log completo | Bug+UX (plata) | ✅ |
 | 6 | Multi-pago: selector USD/Córdoba | Falta feature | ✅ |
-| 7 | Cambio de usuario: data vieja / settings vacío (F5) | Bug estado | ⬜ |
+| 7 | Cambio de usuario: data vieja / settings vacío (F5) | Bug estado | ✅ |
 | 8 | Rework settings + diseñador visual de recibo | Feature grande | ⬜ |
 | 9 | Interfaz super_admin (administrar/entrar a tenants) | Feature grande | ⬜ |
 
@@ -117,3 +117,27 @@ Backlog de 9 observaciones de Rubén (2026-05-31). Se atacan **EN ORDEN**.
   - Backlog (no bloquea): (a) impresión Bluetooth de un cobro multi saca solo
     la 1ª cuota (gap pre-existente, no regresión); (b) divergencia tasa
     snapshot vs live entre preview y cobro (pre-existente, single+multi).
+
+### #7 — Data vieja / settings vacío al cambiar de usuario ✅
+- Causa raíz: `onDatabaseSwitched` (main.dart) invalidaba una lista HARDCODEADA
+  de 5 providers, pero hay ~14 providers GLOBALES bound a `ps.db`. Los que
+  faltaban (settings, clientes, cuotas, rol, KPIs dashboard, impersonation)
+  quedaban con el stream de la DB del usuario anterior (cerrada) → data vieja /
+  settings vacío hasta el F5 (que recrea el container desde cero).
+- Decisión (Rubén): enfoque epoch-based (dependencia), no allowlist manual.
+- Hecho:
+  - Nuevo `dbEpochProvider` (StateProvider<int>). `onDatabaseSwitched` lo bumpea
+    (1 línea) en vez de la lista de `invalidate()`.
+  - Los 14 providers globales db-bound hacen `ref.watch(dbEpochProvider)` como
+    1ª línea → se recrean por dependencia al cambiar de DB: cobradorActual,
+    moraCount, syncStatus, impersonatedTenantId, los 4 KPIs del dashboard,
+    settingsMap, clientesAsignados, cuotasCobrables, _rolUsuario,
+    empresaNombre, empresaNombreRowExists.
+  - Nota: a los KPIs `operativo`/`distribucion` (que usan
+    `appSettings.select(diasGracia)`) se les puso el watch explícito igual,
+    porque `.select` NO recrearía si el valor coincide entre usuarios.
+  - Derivados (tenantId, appSettings, logoEmpresaUrl) y autoDispose/family se
+    recrean solos. super_admin/error_logs son online (Supabase), no aplican.
+  - Contrato documentado en `db_epoch_provider.dart` para no re-introducir el
+    bug: todo provider global nuevo que lea ps.db debe observar el epoch.
+- Sin migración ni sync rules. Audit pendiente.

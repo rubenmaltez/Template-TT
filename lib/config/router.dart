@@ -23,6 +23,7 @@ import '../features/admin/settings/audit_campos_screen.dart';
 import '../features/admin/settings/settings_admin_screen.dart';
 import '../features/admin/shell/admin_shell.dart';
 import '../data/providers/cobrador_provider.dart';
+import '../data/providers/db_epoch_provider.dart';
 import '../data/providers/impersonation_provider.dart';
 import '../data/providers/sync_ready_provider.dart';
 import '../data/providers/sync_status_provider.dart';
@@ -53,6 +54,7 @@ import '../powersync/db.dart' as ps;
 /// Una sola suscripción global que el router lee en cada redirect.
 /// Si aún no hay valor sincronizado, asumimos cobrador (conservador).
 final _rolUsuarioProvider = StreamProvider<String?>((ref) async* {
+  ref.watch(dbEpochProvider); // recrea al cambiar de DB (#7)
   final user = Supabase.instance.client.auth.currentUser;
   if (user == null) {
     yield null;
@@ -84,6 +86,7 @@ final _rolUsuarioProvider = StreamProvider<String?>((ref) async* {
 /// lo interpreta como "necesita onboarding" y redirige al wizard por
 /// ~1s antes de que llegue la row del seed (migración 0010).
 final empresaNombreRowExistsProvider = StreamProvider<bool>((ref) async* {
+  ref.watch(dbEpochProvider); // recrea al cambiar de DB (#7)
   yield* ps.db
       .watch(
           "SELECT 1 FROM settings WHERE clave = 'empresa.nombre' LIMIT 1")
@@ -98,6 +101,7 @@ final empresaNombreRowExistsProvider = StreamProvider<bool>((ref) async* {
 /// de redirect, sino la pantalla rendea con el redirect todavía
 /// pendiente y se ve un flash del dashboard antes del onboarding.
 final empresaNombreProvider = StreamProvider<String?>((ref) async* {
+  ref.watch(dbEpochProvider); // recrea al cambiar de DB (#7)
   yield* ps.db
       .watch("SELECT valor FROM settings WHERE clave = 'empresa.nombre'")
       .map((rows) {

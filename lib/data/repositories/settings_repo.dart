@@ -5,6 +5,7 @@ import 'package:uuid/uuid.dart';
 
 import '../../powersync/db.dart' as ps;
 import '../models/setting.dart';
+import '../providers/db_epoch_provider.dart';
 
 class SettingsRepo {
   const SettingsRepo();
@@ -98,6 +99,7 @@ final settingsRepoProvider = Provider((_) => const SettingsRepo());
 
 /// Mapa clave→Setting. Único stream global de settings.
 final settingsMapProvider = StreamProvider<Map<String, Setting>>((ref) {
+  ref.watch(dbEpochProvider); // recrea al cambiar de DB (#7)
   return ref.watch(settingsRepoProvider).watchAll();
 });
 

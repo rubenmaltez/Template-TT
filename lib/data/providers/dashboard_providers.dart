@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../powersync/db.dart' as ps;
 import '../repositories/settings_repo.dart';
+import 'db_epoch_provider.dart';
 
 /// Providers de los KPIs del dashboard admin (R10).
 ///
@@ -155,6 +156,7 @@ class DistribucionCuotas {
 }
 
 final cobrosKpisProvider = StreamProvider<CobrosKpis>((ref) {
+  ref.watch(dbEpochProvider); // recrea al cambiar de DB (#7)
   final d = _dashboardDates();
   return ps.db.watch(
     '''
@@ -190,6 +192,7 @@ final cobrosKpisProvider = StreamProvider<CobrosKpis>((ref) {
 });
 
 final operativoKpisProvider = StreamProvider<OperativoKpis>((ref) {
+  ref.watch(dbEpochProvider); // recrea al cambiar de DB (#7)
   final diasGracia =
       ref.watch(appSettingsProvider.select((s) => s.diasGracia));
   return ps.db.watch(
@@ -224,6 +227,7 @@ final operativoKpisProvider = StreamProvider<OperativoKpis>((ref) {
 });
 
 final topCobradoresProvider = StreamProvider<List<TopCobrador>>((ref) {
+  ref.watch(dbEpochProvider); // recrea al cambiar de DB (#7)
   final d = _dashboardDates();
   return ps.db.watch(
     '''
@@ -253,6 +257,7 @@ final topCobradoresProvider = StreamProvider<List<TopCobrador>>((ref) {
 });
 
 final distribucionCuotasProvider = StreamProvider<DistribucionCuotas>((ref) {
+  ref.watch(dbEpochProvider); // recrea al cambiar de DB (#7)
   final diasGracia =
       ref.watch(appSettingsProvider.select((s) => s.diasGracia));
   return ps.db.watch(

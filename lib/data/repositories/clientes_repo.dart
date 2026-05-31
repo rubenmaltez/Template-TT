@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../powersync/db.dart' as ps;
 import '../models/cliente.dart';
+import '../providers/db_epoch_provider.dart';
 
 /// Repo de clientes. Todos los queries leen del SQLite local sincronizado.
 class ClientesRepo {
@@ -46,6 +47,7 @@ class ClientesRepo {
 final clientesRepoProvider = Provider((_) => const ClientesRepo());
 
 final clientesAsignadosProvider = StreamProvider<List<Cliente>>((ref) {
+  ref.watch(dbEpochProvider); // recrea al cambiar de DB (#7)
   return ref.watch(clientesRepoProvider).watchAsignados();
 });
 

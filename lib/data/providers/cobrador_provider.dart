@@ -3,11 +3,13 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../powersync/db.dart' as ps;
 import '../models/cobrador.dart';
+import 'db_epoch_provider.dart';
 import 'impersonation_provider.dart';
 
 /// Cobrador (usuario actual) sincronizado desde el SQLite local.
 /// Reacciona a cambios en la fila (ej. admin actualiza prefijo_recibo).
 final cobradorActualProvider = StreamProvider<Cobrador?>((ref) async* {
+  ref.watch(dbEpochProvider); // recrea al cambiar de DB (#7)
   final user = Supabase.instance.client.auth.currentUser;
   if (user == null) {
     yield null;
