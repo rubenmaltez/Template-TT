@@ -7,7 +7,7 @@ Backlog de 9 observaciones de Rubén (2026-05-31). Se atacan **EN ORDEN**.
 |---|------|------|--------|
 | 1 | Código en contratos (tipo código de cliente) | Feature | ✅ |
 | 2 | TypeError filtro cliente/comunidad | Bug | ✅ |
-| 3 | Reportes filtrados por fecha de cobro (rango) | Bug/spec | ⏳ diseño cerrado |
+| 3 | Reportes filtrados por fecha de cobro (rango) | Bug/spec | ✅ (en audit) |
 | 4 | Fecha de cobro en el log de recibo/pago | Curaduría | ⬜ |
 | 5 | Anular pago: sacar botón "recrear" + prompt + log completo | Bug+UX (plata) | ⬜ |
 | 6 | Multi-pago: selector USD/Córdoba | Falta feature | ⬜ |

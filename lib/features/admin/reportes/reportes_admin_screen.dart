@@ -17,6 +17,49 @@ import 'pdf/reporte_inactivos_pdf.dart';
 import 'pdf/reporte_mora_pdf.dart';
 import 'pdf/reporte_por_cobrador_pdf.dart';
 
+/// Rango de fechas para los reportes DESCARGABLES (#3). Filtra por `fecha_pago`
+/// (la "fecha de cobro"). NO afecta las tarjetas analíticas en pantalla —esas
+/// siguen mostrando el mes actual—. Default: mes actual.
+class RangoReporte {
+  const RangoReporte({
+    required this.desde,
+    required this.hasta,
+    required this.label,
+  });
+  final DateTime desde; // inclusive (date-only)
+  final DateTime hasta; // inclusive (date-only)
+  final String label;
+
+  String get desdeSql => _d(desde);
+  String get hastaSql => _d(hasta);
+  String get periodoLabel => '${Fmt.fechaCorta(desde)} – ${Fmt.fechaCorta(hasta)}';
+  static String _d(DateTime x) => x.toIso8601String().substring(0, 10);
+
+  static RangoReporte mesActual() {
+    final now = DateTime.now();
+    return RangoReporte(
+      desde: DateTime(now.year, now.month, 1),
+      hasta: DateTime(now.year, now.month, now.day),
+      label: 'Este mes',
+    );
+  }
+
+  static RangoReporte mesPasado() {
+    final now = DateTime.now();
+    final finMesPasado = DateTime(now.year, now.month, 1)
+        .subtract(const Duration(days: 1));
+    return RangoReporte(
+      desde: DateTime(finMesPasado.year, finMesPasado.month, 1),
+      hasta: finMesPasado,
+      label: 'Mes pasado',
+    );
+  }
+}
+
+/// Rango activo para reportes descargables. Default: mes actual.
+final reporteRangoProvider =
+    StateProvider<RangoReporte>((ref) => RangoReporte.mesActual());
+
 class ReportesAdminScreen extends ConsumerWidget {
   const ReportesAdminScreen({super.key});
 
@@ -28,6 +71,8 @@ class ReportesAdminScreen extends ConsumerWidget {
         ListView(
           padding: const EdgeInsets.all(24),
           children: [
+            const _RangoReportesCard(),
+            const SizedBox(height: 16),
             const _RecaudacionMensualCard(),
             const SizedBox(height: 16),
             const _CobradoresMesCard(),
@@ -45,6 +90,108 @@ class ReportesAdminScreen extends ConsumerWidget {
         ),
       ],
     );
+  }
+}
+
+/// Selector de rango para los reportes descargables (#3). Muestra el rango
+/// activo y permite cambiarlo con presets (Este mes / Mes pasado / custom).
+/// Deja claro que NO afecta las tarjetas analíticas de abajo.
+class _RangoReportesCard extends ConsumerWidget {
+  const _RangoReportesCard();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final rango = ref.watch(reporteRangoProvider);
+    final scheme = Theme.of(context).colorScheme;
+    return Card(
+      color: scheme.surfaceContainerHighest.withValues(alpha: 0.4),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Row(
+          children: [
+            Icon(Icons.date_range, color: scheme.primary),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Rango de reportes descargables',
+                      style: Theme.of(context).textTheme.labelLarge),
+                  const SizedBox(height: 2),
+                  Text(
+                    '${rango.label} · ${rango.periodoLabel}',
+                    style:
+                        TextStyle(color: scheme.onSurfaceVariant, fontSize: 12),
+                  ),
+                  Text(
+                      'Filtra por fecha de cobro. No afecta las tarjetas de abajo.',
+                      style: TextStyle(color: scheme.outline, fontSize: 11)),
+                ],
+              ),
+            ),
+            const SizedBox(width: 8),
+            OutlinedButton.icon(
+              onPressed: () => _elegirRango(context, ref),
+              icon: const Icon(Icons.edit_calendar, size: 18),
+              label: const Text('Cambiar'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _elegirRango(BuildContext context, WidgetRef ref) async {
+    final opcion = await showModalBottomSheet<String>(
+      context: context,
+      showDragHandle: true,
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.today),
+              title: const Text('Este mes'),
+              onTap: () => Navigator.pop(ctx, 'mes'),
+            ),
+            ListTile(
+              leading: const Icon(Icons.history),
+              title: const Text('Mes pasado'),
+              onTap: () => Navigator.pop(ctx, 'pasado'),
+            ),
+            ListTile(
+              leading: const Icon(Icons.date_range),
+              title: const Text('Personalizado…'),
+              onTap: () => Navigator.pop(ctx, 'custom'),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (opcion == null || !context.mounted) return;
+    final notifier = ref.read(reporteRangoProvider.notifier);
+    if (opcion == 'mes') {
+      notifier.state = RangoReporte.mesActual();
+    } else if (opcion == 'pasado') {
+      notifier.state = RangoReporte.mesPasado();
+    } else if (opcion == 'custom') {
+      final now = DateTime.now();
+      final actual = ref.read(reporteRangoProvider);
+      final picked = await showDateRangePicker(
+        context: context,
+        firstDate: DateTime(now.year - 5),
+        lastDate: DateTime(now.year + 1, 12, 31),
+        initialDateRange:
+            DateTimeRange(start: actual.desde, end: actual.hasta),
+      );
+      if (picked == null) return;
+      notifier.state = RangoReporte(
+        desde:
+            DateTime(picked.start.year, picked.start.month, picked.start.day),
+        hasta: DateTime(picked.end.year, picked.end.month, picked.end.day),
+        label: 'Personalizado',
+      );
+    }
   }
 }
 
@@ -153,6 +300,7 @@ class _DescargarPdfMenu extends ConsumerWidget {
       BuildContext context, WidgetRef ref, String tipo) async {
     final empresaNombre =
         ref.read(empresaNombreProvider).valueOrNull ?? 'ISP';
+    final rango = ref.read(reporteRangoProvider);
 
     // CSV export abre un sub-menú para elegir qué reporte exportar.
     if (tipo == 'csv') {
@@ -175,12 +323,12 @@ class _DescargarPdfMenu extends ConsumerWidget {
        LEFT JOIN cobradores cb ON cb.id = p.cobrador_id
        LEFT JOIN recibos r ON r.pago_id = p.id
            WHERE p.anulado = 0
-             AND date(p.fecha_pago) >= date('now', 'start of month')
+             AND date(p.fecha_pago) BETWEEN ? AND ?
            ORDER BY p.fecha_pago DESC
-        ''');
+        ''', [rango.desdeSql, rango.hastaSql]);
 
         final now = DateTime.now();
-        final periodo = Fmt.mes(now);
+        final periodo = rango.periodoLabel;
         final doc = buildReporteCobros(
           titulo: 'Reporte de cobros',
           empresaNombre: empresaNombre,
@@ -254,15 +402,15 @@ class _DescargarPdfMenu extends ConsumerWidget {
        LEFT JOIN recibos r ON r.pago_id = p.id
            WHERE p.anulado = 0
              AND p.cobrador_id = ?
-             AND date(p.fecha_pago) >= date('now', 'start of month')
+             AND date(p.fecha_pago) BETWEEN ? AND ?
            ORDER BY p.fecha_pago DESC
-        ''', [seleccionado['id']]);
+        ''', [seleccionado['id'], rango.desdeSql, rango.hastaSql]);
 
         final now = DateTime.now();
         final doc = buildReportePorCobrador(
           titulo: 'Reporte por cobrador',
           empresaNombre: empresaNombre,
-          periodo: Fmt.mes(now),
+          periodo: rango.periodoLabel,
           cobradorNombre: seleccionado['nombre'] as String,
           rows: rows,
         );
@@ -300,13 +448,13 @@ class _DescargarPdfMenu extends ConsumerWidget {
           filename: 'clientes_${now.year}_${now.month}.pdf',
         );
       } else if (tipo == 'fiscal') {
-        await _generarFiscal(context, empresaNombre);
+        await _generarFiscal(context, empresaNombre, rango);
       } else if (tipo == 'eficiencia') {
-        await _generarEficiencia(context, empresaNombre);
+        await _generarEficiencia(context, empresaNombre, rango);
       } else if (tipo == 'inactivos') {
         await _generarInactivos(context, empresaNombre);
       } else if (tipo == 'anulaciones') {
-        await _generarAnulaciones(context, empresaNombre);
+        await _generarAnulaciones(context, empresaNombre, rango);
       }
     } catch (e) {
       if (context.mounted) {
@@ -322,7 +470,7 @@ class _DescargarPdfMenu extends ConsumerWidget {
   // ---------------------------------------------------------------------------
 
   Future<void> _generarFiscal(
-      BuildContext context, String empresaNombre) async {
+      BuildContext context, String empresaNombre, RangoReporte rango) async {
     final rows = await ps.db.getAll('''
       SELECT strftime('%Y-%m', p.fecha_pago) AS mes,
              COALESCE(pl.nombre, 'Sin plan') AS plan_nombre,
@@ -334,16 +482,16 @@ class _DescargarPdfMenu extends ConsumerWidget {
    LEFT JOIN contratos ct ON ct.id = cu.contrato_id
    LEFT JOIN planes pl ON pl.id = ct.plan_id
        WHERE p.anulado = 0
-         AND date(p.fecha_pago) >= date('now', '-5 months', 'start of month')
+         AND date(p.fecha_pago) BETWEEN ? AND ?
        GROUP BY mes, plan_nombre, p.metodo
        ORDER BY mes DESC, plan_nombre, p.metodo
-    ''');
+    ''', [rango.desdeSql, rango.hastaSql]);
 
     final now = DateTime.now();
     final doc = buildReporteFiscal(
       titulo: 'Reporte fiscal / contable',
       empresaNombre: empresaNombre,
-      periodo: 'Últimos 6 meses — ${Fmt.mes(now)}',
+      periodo: rango.periodoLabel,
       rows: rows,
     );
     await Printing.sharePdf(
@@ -357,7 +505,7 @@ class _DescargarPdfMenu extends ConsumerWidget {
   // ---------------------------------------------------------------------------
 
   Future<void> _generarEficiencia(
-      BuildContext context, String empresaNombre) async {
+      BuildContext context, String empresaNombre, RangoReporte rango) async {
     final rows = await ps.db.getAll('''
       SELECT cb.nombre AS cobrador_nombre,
              COUNT(p.id) AS total_cobros,
@@ -367,23 +515,23 @@ class _DescargarPdfMenu extends ConsumerWidget {
                 FROM cuotas cq
                WHERE cq.cobrador_id = cb.id
                  AND cq.estado IN ('pendiente','parcial','pagada')
-                 AND date(cq.fecha_vencimiento) >= date('now', 'start of month')
+                 AND date(cq.fecha_vencimiento) BETWEEN ? AND ?
              ) AS cuotas_asignadas
         FROM cobradores cb
    LEFT JOIN pagos p ON p.cobrador_id = cb.id
                     AND p.anulado = 0
-                    AND date(p.fecha_pago) >= date('now', 'start of month')
+                    AND date(p.fecha_pago) BETWEEN ? AND ?
    LEFT JOIN cuotas cu ON cu.id = p.cuota_id
        WHERE cb.rol = 'cobrador' AND cb.activo = 1
        GROUP BY cb.id, cb.nombre
        ORDER BY monto_total DESC
-    ''');
+    ''', [rango.desdeSql, rango.hastaSql, rango.desdeSql, rango.hastaSql]);
 
     final now = DateTime.now();
     final doc = buildReporteEficiencia(
       titulo: 'Eficiencia por cobrador',
       empresaNombre: empresaNombre,
-      periodo: Fmt.mes(now),
+      periodo: rango.periodoLabel,
       rows: rows,
     );
     await Printing.sharePdf(
@@ -435,7 +583,7 @@ class _DescargarPdfMenu extends ConsumerWidget {
   // ---------------------------------------------------------------------------
 
   Future<void> _generarAnulaciones(
-      BuildContext context, String empresaNombre) async {
+      BuildContext context, String empresaNombre, RangoReporte rango) async {
     final rows = await ps.db.getAll('''
       SELECT p.fecha_pago,
              c.nombre AS cliente_nombre,
@@ -449,14 +597,15 @@ class _DescargarPdfMenu extends ConsumerWidget {
    LEFT JOIN cobradores cb_anulador ON cb_anulador.id = p.anulado_por
    LEFT JOIN recibos r ON r.pago_id = p.id
        WHERE p.anulado = 1
+         AND date(p.fecha_pago) BETWEEN ? AND ?
        ORDER BY p.anulado_en DESC, p.fecha_pago DESC
-    ''');
+    ''', [rango.desdeSql, rango.hastaSql]);
 
     final now = DateTime.now();
     final doc = buildReporteAnulaciones(
       titulo: 'Reporte de anulaciones',
       empresaNombre: empresaNombre,
-      periodo: Fmt.mes(now),
+      periodo: rango.periodoLabel,
       rows: rows,
     );
     await Printing.sharePdf(
@@ -488,7 +637,8 @@ class _DescargarPdfMenu extends ConsumerWidget {
     if (tipo == null || !context.mounted) return;
 
     try {
-      final csv = await _generarCsv(tipo);
+      final rango = ref.read(reporteRangoProvider);
+      final csv = await _generarCsv(tipo, rango);
       await Clipboard.setData(ClipboardData(text: csv));
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -520,7 +670,7 @@ class _DescargarPdfMenu extends ConsumerWidget {
     );
   }
 
-  Future<String> _generarCsv(String tipo) async {
+  Future<String> _generarCsv(String tipo, RangoReporte rango) async {
     switch (tipo) {
       case 'cobros':
         final rows = await ps.db.getAll('''
@@ -535,9 +685,9 @@ class _DescargarPdfMenu extends ConsumerWidget {
        LEFT JOIN cobradores cb ON cb.id = p.cobrador_id
        LEFT JOIN recibos r ON r.pago_id = p.id
            WHERE p.anulado = 0
-             AND date(p.fecha_pago) >= date('now', 'start of month')
+             AND date(p.fecha_pago) BETWEEN ? AND ?
            ORDER BY p.fecha_pago DESC
-        ''');
+        ''', [rango.desdeSql, rango.hastaSql]);
         return _toCsv(
           ['Fecha', 'Cliente', 'Monto', 'Método', 'Cobrador', 'Recibo', 'Grupo'],
           rows.map((r) => [
@@ -621,10 +771,10 @@ class _DescargarPdfMenu extends ConsumerWidget {
        LEFT JOIN contratos ct ON ct.id = cu.contrato_id
        LEFT JOIN planes pl ON pl.id = ct.plan_id
            WHERE p.anulado = 0
-             AND date(p.fecha_pago) >= date('now', '-5 months', 'start of month')
+             AND date(p.fecha_pago) BETWEEN ? AND ?
            GROUP BY mes, plan_nombre, p.metodo
            ORDER BY mes DESC, plan_nombre, p.metodo
-        ''');
+        ''', [rango.desdeSql, rango.hastaSql]);
         return _toCsv(
           ['Mes', 'Plan', 'Método', 'Monto total', 'Cantidad cobros'],
           rows.map((r) => [
@@ -646,17 +796,17 @@ class _DescargarPdfMenu extends ConsumerWidget {
                     FROM cuotas cq
                    WHERE cq.cobrador_id = cb.id
                      AND cq.estado IN ('pendiente','parcial','pagada')
-                     AND date(cq.fecha_vencimiento) >= date('now', 'start of month')
+                     AND date(cq.fecha_vencimiento) BETWEEN ? AND ?
                  ) AS cuotas_asignadas
             FROM cobradores cb
        LEFT JOIN pagos p ON p.cobrador_id = cb.id
                         AND p.anulado = 0
-                        AND date(p.fecha_pago) >= date('now', 'start of month')
+                        AND date(p.fecha_pago) BETWEEN ? AND ?
        LEFT JOIN cuotas cu ON cu.id = p.cuota_id
            WHERE cb.rol = 'cobrador' AND cb.activo = 1
            GROUP BY cb.id, cb.nombre
            ORDER BY monto_total DESC
-        ''');
+        ''', [rango.desdeSql, rango.hastaSql, rango.desdeSql, rango.hastaSql]);
         return _toCsv(
           ['Cobrador', 'Cobros', 'Clientes visitados', 'Monto total',
            'Cuotas asignadas', '% Éxito'],
@@ -722,8 +872,9 @@ class _DescargarPdfMenu extends ConsumerWidget {
        LEFT JOIN cobradores cb_anulador ON cb_anulador.id = p.anulado_por
        LEFT JOIN recibos r ON r.pago_id = p.id
            WHERE p.anulado = 1
+             AND date(p.fecha_pago) BETWEEN ? AND ?
            ORDER BY p.anulado_en DESC, p.fecha_pago DESC
-        ''');
+        ''', [rango.desdeSql, rango.hastaSql]);
         return _toCsv(
           ['Fecha', 'Cliente', 'Monto', 'Motivo', 'Anulado por', 'Recibo'],
           rows.map((r) => [
