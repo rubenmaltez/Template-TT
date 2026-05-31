@@ -250,7 +250,12 @@ en el log propio de esa hija. Se implementa con `kAuditCamposSuperficie`.
    - Ej: el log del **cliente** muestra cliente + visitas + fotos (completo) +
      contratos (solo superficie). NO muestra cuotas ni pagos: un pago a una
      cuota de un contrato es un evento del log de esa **cuota**, no del cliente.
-   - El log de la **cuota** muestra cuota + pagos (hijas hoja, completo).
+   - El log de la **cuota** muestra cuota + pagos + recibos (completo). El
+     recibo es nieto (cuota → pago → recibo): es la ÚNICA excepción permitida
+     a la regla de profundidad, justificada porque es hoja 1:1 del pago, no
+     tiene hijas propias, y su número/anulación son parte del rastro de dinero
+     (#5). Se vincula por el `pago_id` del snapshot del audit_log, no por JOIN
+     a `recibos` (las sync rules excluyen recibos anulados del cobrador).
 
 **Contrato al agregar una entidad/módulo editable nuevo:**
 1. Tabla con `tenant_id`, `id` + RLS. Si se crea/edita OFFLINE, agregar
@@ -280,7 +285,10 @@ device-time, cuando aparece queda en su hora real, no en la de sync. No se
 pierde data.
 
 **Cobertura actual:** trigger en clientes, contratos, cuotas, pagos, recibos,
-cargos_extra, visitas, fotos_cliente (0062) + **planes** (0076).
+cargos_extra, visitas, fotos_cliente (0062) + **planes** (0076). Los eventos de
+**recibos** (emitido / anulado) se SURFACEAN en el timeline de la cuota
+(`HistorialCuotaWidget`) con labels propios — antes el trigger los grababa pero
+ninguna UI los mostraba (#5).
 **Pendiente (documentado):** geografía (`departamentos` / `municipios` /
 `comunidades`) son tablas **globales sin `tenant_id`** → el trigger genérico no
 aplica tal cual (`audit_registrar` requiere tenant_id; `audit_log` scopa por

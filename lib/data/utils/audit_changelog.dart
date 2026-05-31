@@ -393,9 +393,10 @@ List<CampoChange> _snapshotAsCambios(
     // Omitir nulls y vacíos del snapshot (no aportan info).
     if (v == null) continue;
     if (v is String && v.isEmpty) continue;
-    // En creaciones, omitir montos en cero (ruido tipo "— → C$0.00"; toda
-    // cuota arranca con monto_pagado 0).
-    if (isCreate && kAuditMoneyKeys.contains(key)) {
+    // En creaciones, omitir montos/contadores en cero (ruido tipo
+    // "— → C$0.00" o "Reimpresiones: — → 0"; toda entidad arranca con esos en
+    // 0). reimpresiones aparece en el snapshot de un recibo recién emitido.
+    if (isCreate && (kAuditMoneyKeys.contains(key) || key == 'reimpresiones')) {
       final n = _asNum(v);
       if (n != null && n == 0) continue;
     }

@@ -228,6 +228,13 @@ class _CambioTile extends StatelessWidget {
           'anulacion' => (Icons.block, scheme.error, 'Pago anulado'),
           _ => (Icons.edit, scheme.primary, 'Pago editado'),
         };
+      case 'recibos':
+        return switch (accion) {
+          'create' => (Icons.receipt, scheme.tertiary, 'Recibo emitido'),
+          'delete' => (Icons.delete_outline, scheme.error, 'Recibo eliminado'),
+          'anulacion' => (Icons.block, scheme.error, 'Recibo anulado'),
+          _ => (Icons.edit, scheme.primary, 'Recibo actualizado'),
+        };
       case 'clientes':
         return switch (accion) {
           'create' =>
@@ -307,7 +314,21 @@ class _HistorialCuotaWidgetState extends ConsumerState<HistorialCuotaWidget> {
   }
 
   Stream<List<Map<String, dynamic>>> _buildStream() {
-    // Entries de la cuota + entries de sus pagos, unidas en una sola query.
+    // Entries de la cuota + sus pagos + los recibos de esos pagos, unidas en
+    // una sola query. El recibo es nieto de la cuota (cuota → pago → recibo),
+    // así que esto extiende deliberadamente la regla de profundidad: lo
+    // permitimos porque el recibo es hoja 1:1 del pago y su número/anulación
+    // son parte del rastro de dinero (ver #5 + nota en CLAUDE.md). No agrega
+    // sus propias hijas (no las tiene), así que no abre la puerta a nietas
+    // genéricas.
+    //
+    // El recibo se vincula por el `pago_id` DENTRO del snapshot JSON del
+    // audit_log (json_extract), NO por un JOIN a la tabla `recibos`: las sync
+    // rules excluyen los recibos anulados del cobrador, así que la fila local
+    // podría no existir — pero la entrada del audit_log SÍ baja (scopa por
+    // tenant). Mismo patrón que HistorialClienteWidget. json_extract corre
+    // sobre SQLite local (válido en ps.db.watch).
+    //
     // La subquery `IN (SELECT ...)` corre sobre SQLite local (válida acá; la
     // restricción de "sin subqueries" aplica a las SYNC RULES, no a las
     // queries de `ps.db.watch`). Orden ASC por ocurrido_en (device time, con
@@ -327,9 +348,12 @@ class _HistorialCuotaWidgetState extends ConsumerState<HistorialCuotaWidget> {
           OR (a.tabla = 'pagos' AND a.registro_id IN (
                 SELECT id FROM pagos WHERE cuota_id = ?
               ))
+          OR (a.tabla = 'recibos' AND json_extract(
+                COALESCE(a.valor_nuevo, a.valor_anterior), '\$.pago_id'
+              ) IN (SELECT id FROM pagos WHERE cuota_id = ?))
        ORDER BY COALESCE(a.ocurrido_en, a.created_at) ASC
       ''',
-      parameters: [widget.cuotaId, widget.cuotaId],
+      parameters: [widget.cuotaId, widget.cuotaId, widget.cuotaId],
     );
   }
 
