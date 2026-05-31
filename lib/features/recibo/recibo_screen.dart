@@ -870,76 +870,24 @@ class _AccionesImpresionState extends ConsumerState<_AccionesImpresion> {
   }
 }
 
-class _PostCobroActions extends StatefulWidget {
+class _PostCobroActions extends StatelessWidget {
   const _PostCobroActions({required this.clienteId});
   final String? clienteId;
 
   @override
-  State<_PostCobroActions> createState() => _PostCobroActionsState();
-}
-
-class _PostCobroActionsState extends State<_PostCobroActions> {
-  String? _nextCuotaId;
-  bool _checked = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _buscarSiguiente();
-  }
-
-  Future<void> _buscarSiguiente() async {
-    if (widget.clienteId == null) {
-      setState(() => _checked = true);
-      return;
-    }
-    final rows = await ps.db.getAll(
-      '''
-      SELECT cu.id FROM cuotas cu
-       WHERE cu.cliente_id = ?
-         AND cu.estado IN ('pendiente','parcial')
-       ORDER BY cu.periodo ASC
-       LIMIT 1
-      ''',
-      [widget.clienteId],
-    );
-    if (mounted) {
-      setState(() {
-        _nextCuotaId = rows.isNotEmpty ? rows.first['id'] as String : null;
-        _checked = true;
-      });
-    }
-  }
-
-  @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
+    final id = clienteId;
+    if (id == null) return const SizedBox.shrink();
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         const Divider(),
         const SizedBox(height: 8),
-        if (_checked && _nextCuotaId != null)
-          FilledButton.tonalIcon(
-            icon: const Icon(Icons.skip_next),
-            label: const Text('Cobrar siguiente cuota de este cliente'),
-            onPressed: () =>
-                context.pushReplacement('/cobro/$_nextCuotaId'),
-          ),
-        if (_checked && _nextCuotaId == null)
-          Text(
-            'No hay más cuotas pendientes de este cliente',
-            textAlign: TextAlign.center,
-            style: TextStyle(color: scheme.outline, fontSize: 13),
-          ),
-        if (widget.clienteId != null) ...[
-          const SizedBox(height: 8),
-          OutlinedButton.icon(
-            icon: const Icon(Icons.person),
-            label: const Text('Ver detalle del cliente'),
-            onPressed: () => context.go('/clientes/${widget.clienteId}'),
-          ),
-        ],
+        OutlinedButton.icon(
+          icon: const Icon(Icons.person),
+          label: const Text('Ver detalle del cliente'),
+          onPressed: () => context.go('/clientes/$id'),
+        ),
         const SizedBox(height: 24),
       ],
     );
