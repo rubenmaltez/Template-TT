@@ -130,12 +130,17 @@ class _EventoVisual {
     required this.tabla,
     required this.cambios,
     this.extraLineas = const [],
+    this.refNumero,
   });
   final Map<String, dynamic> row;
   final String accion;
   final String? tabla;
   final List<CampoChange> cambios;
   final List<CampoChange> extraLineas;
+  // Identificador de referencia para el subtítulo del card (ej. número de
+  // recibo en un evento de "Recibo anulado", donde el número no aparece en el
+  // diff porque no cambió). Null = no se muestra.
+  final String? refNumero;
 
 }
 
@@ -169,7 +174,8 @@ class _CambioTile extends StatelessWidget {
       title: Text(label,
           style: TextStyle(fontWeight: FontWeight.w600, color: color)),
       subtitle: Text(
-        '${Fmt.fechaCorta(fecha)} ${Fmt.hora(fecha)} · $autor',
+        '${Fmt.fechaCorta(fecha)} ${Fmt.hora(fecha)} · $autor'
+        '${evento.refNumero != null ? ' · Recibo ${evento.refNumero}' : ''}',
         style: TextStyle(color: scheme.outline, fontSize: 12),
       ),
       children: [
@@ -509,12 +515,19 @@ class _HistorialCuotaWidgetState extends ConsumerState<HistorialCuotaWidget> {
         }
       }
 
+      // Para un recibo anulado, el número no cambia (no aparece en el diff)
+      // pero es clave para el rastro de dinero → lo mostramos en el subtítulo.
+      final refNumero = (tabla == 'recibos' && accion == 'anulacion')
+          ? auditSnapshotField(row, 'numero_completo')
+          : null;
+
       eventos.add(_EventoVisual(
         row: row,
         accion: accion,
         tabla: tabla,
         cambios: cambios,
         extraLineas: extra,
+        refNumero: refNumero,
       ));
     }
 

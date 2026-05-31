@@ -251,6 +251,21 @@ String auditDetectarAccion(Map<String, dynamic> row) {
   return accion;
 }
 
+/// Lee un campo del snapshot de una fila del audit_log (valor_nuevo con
+/// fallback a valor_anterior). Útil para mostrar contexto que NO cambió en el
+/// diff —ej. el número de recibo en una anulación, que sobrevive idéntico y por
+/// eso no aparece como línea "antes → después". Devuelve null si no está o no
+/// parsea.
+String? auditSnapshotField(Map<String, dynamic> row, String key) {
+  final raw = (row['valor_nuevo'] ?? row['valor_anterior']) as String?;
+  if (raw == null) return null;
+  try {
+    final m = jsonDecode(raw);
+    if (m is Map && m[key] != null) return m[key].toString();
+  } catch (_) {}
+  return null;
+}
+
 /// Devuelve `true` si el campo `key` debe mostrarse para la tabla `tabla`,
 /// aplicando: skip global + allowlist (con fallback permisivo si la tabla no
 /// está en el catálogo).

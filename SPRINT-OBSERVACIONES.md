@@ -69,3 +69,19 @@ Backlog de 9 observaciones de Rubén (2026-05-31). Se atacan **EN ORDEN**.
   profundidad. Documentado en CLAUDE.md como excepción única (hoja 1:1 del
   pago, sin hijas, parte del rastro de dinero).
 - Sin migración ni redeploy de sync rules (no toca schema). Testing al final.
+- **Post-audit (3 agentes: Code/QA/UX):**
+  - Fix: el dialog de anular del COBRADOR (`historial_screen.dart`) también
+    se actualizó con la guía (Part B era 2/3).
+  - Fix: corregido un comentario engañoso — el cobrador NO sincroniza
+    `audit_log` (solo admin/admin_cobranza/impersonation), así que el timeline
+    de recibos aplica a esos roles; para el cobrador el widget muestra "Sin
+    movimientos" igual que antes.
+  - Fix: `ORDER BY` con desempate por tabla → orden causal fijo
+    pago→recibo→cuota.
+  - UX-C: el card "Recibo anulado" ahora muestra el número en el subtítulo
+    (vía helper `auditSnapshotField`; el número no cambia al anular y no salía
+    en el diff).
+  - Decisión: el historial del ícono 🕐 en `/admin/pagos` queda solo-pago (no
+    recibo); el log completo con recibo vive en el timeline de la cuota.
+  - Backlog (no bloquea): copy de anular duplicada en 3 archivos;
+    `auditDetectarAccion` usa `==1` y no `==true` (hardening futuro).
