@@ -120,6 +120,9 @@ class _CategoriaTab extends ConsumerWidget {
       'pagos.tarjeta_habilitada',
       // Orphaned — nunca leído por AppSettings.
       'cobranza.cargo_reconexion',
+      // Feature 'recrear pago' eliminada (#5): anular es void puro. El seed
+      // en DB (0045/0051) queda orphaned y se oculta acá (no se migra).
+      'cobranza.recrear_pago_anulado',
       // Templates sin implementar — confunden al admin.
       'recibo.template_57mm',
       'recibo.template_80mm',
@@ -402,7 +405,6 @@ class _SettingTileState extends State<_SettingTile> {
       'cobranza.cargo_reconexion_habilitado': 'Cobrar reconexión',
       'cobranza.cargo_reconexion': 'Monto reconexión automática',
       'cobranza.monto_reconexion': 'Monto de reconexión',
-      'cobranza.recrear_pago_anulado': 'Permitir recrear pagos anulados',
       'caja_chica.habilitada': 'Caja chica del cobrador',
       'audit.visible_admin_cobranza': 'Admin cobranza ve historial de cambios',
       'cobranza.cobrador_edita_fecha': 'Cobrador puede editar fecha',
@@ -490,9 +492,8 @@ int _sortOrder(String clave) {
     'cobranza.descuento_tipo': 21,
     'cobranza.descuento_max_monto': 22,
     'cobranza.descuento_max_porcentaje': 23,
-    // Reconexión (toggle padre → valor)
-    'cobranza.recrear_pago_anulado': 13,
     'cobranza.dias_cuotas_visibles': 5,
+    // Reconexión (toggle padre → valor)
     'cobranza.cargo_reconexion_habilitado': 30,
     'cobranza.monto_reconexion': 31,
     // Feature flag — feature real pendiente (ver migración 0063).

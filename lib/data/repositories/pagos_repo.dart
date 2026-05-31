@@ -587,48 +587,6 @@ class PagosRepo {
     final restar = (rows.first['restar'] as num).toDouble();
     return sumar - restar;
   }
-
-  /// Recrea un pago que fue anulado por error. Crea un pago NUEVO
-  /// (no desanula el viejo) con los mismos datos del original.
-  Future<CobroResultado> recrearPago({
-    required String pagoAnuladoId,
-    required String tenantId,
-    required String recreadorId,
-    required String prefijoRecibo,
-  }) async {
-    final original = await ps.db.getAll(
-      'SELECT * FROM pagos WHERE id = ?',
-      [pagoAnuladoId],
-    );
-    if (original.isEmpty) throw Exception('Pago no encontrado');
-    final p = original.first;
-
-    // Guard: verificar que la cuota no esté ya pagada por otro pago.
-    final cuotaRows = await ps.db.getAll(
-      'SELECT estado FROM cuotas WHERE id = ?',
-      [p['cuota_id']],
-    );
-    if (cuotaRows.isNotEmpty && cuotaRows.first['estado'] == 'pagada') {
-      throw Exception('La cuota ya fue pagada por otro cobro');
-    }
-
-    return registrarCobro(
-      tenantId: tenantId,
-      cobradorId: recreadorId,
-      prefijoRecibo: prefijoRecibo,
-      cuotaId: p['cuota_id'] as String,
-      montoCordobas: (p['monto_cordobas'] as num).toDouble(),
-      // Preservar el vuelto original: el pago recreado representa la misma
-      // operación con el cliente (entregó X, se le devolvió Y).
-      vueltoCordobas: (p['vuelto_cordobas'] as num? ?? 0).toDouble(),
-      moneda: Moneda.fromString(p['moneda'] as String),
-      montoOriginal: (p['monto_original'] as num).toDouble(),
-      tasaConversion: (p['tasa_conversion'] as num).toDouble(),
-      metodo: MetodoPago.fromString(p['metodo'] as String),
-      referencia: p['referencia'] as String?,
-      notas: 'Recreado desde pago anulado $pagoAnuladoId',
-    );
-  }
 }
 
 final pagosRepoProvider = Provider((_) => PagosRepo());

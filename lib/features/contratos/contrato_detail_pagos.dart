@@ -1,7 +1,7 @@
 part of 'contrato_detail_screen.dart';
 
 // Sección "Historial de pagos". Visible para TODOS los roles (cobrador
-// incluido) — las acciones destructivas (anular/recrear) siguen gateadas a
+// incluido) — la acción destructiva (anular) sigue gateada a
 // admin dentro del `_PagoDetalleSheet`. Consume `contratoPagosProvider` vía
 // Riverpod (mismo patrón que el resto del detalle, ver contrato_providers.dart).
 class _PagosSection extends ConsumerStatefulWidget {
@@ -284,14 +284,11 @@ class _PagoDetalleSheetState extends ConsumerState<_PagoDetalleSheet> {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final pago = Pago.fromRow(widget.row);
-    final settings = ref.watch(appSettingsProvider);
     final periodo = widget.row['periodo'] != null
         ? DateTime.parse(widget.row['periodo'] as String)
         : null;
 
     final puedeAnular = widget.esAdmin && !pago.anulado;
-    final puedeRecrear = pago.anulado &&
-        (widget.esAdmin || settings.recrearPagoAnulado);
 
     return SafeArea(
       child: Padding(
@@ -435,13 +432,6 @@ class _PagoDetalleSheetState extends ConsumerState<_PagoDetalleSheet> {
                       onPressed:
                           _ejecutandoAccion ? null : _anular,
                     ),
-                  if (puedeRecrear)
-                    OutlinedButton.icon(
-                      icon: Icon(Icons.replay, color: scheme.primary),
-                      label: const Text('Recrear pago'),
-                      onPressed:
-                          _ejecutandoAccion ? null : _recrear,
-                    ),
                 ],
               ],
               const SizedBox(height: 8),
@@ -507,63 +497,6 @@ class _PagoDetalleSheetState extends ConsumerState<_PagoDetalleSheet> {
     }
   }
 
-  Future<void> _recrear() async {
-    final confirmar = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        icon: const Icon(Icons.replay),
-        title: const Text('Recrear pago'),
-        content: const Text(
-          'Se va a crear un pago nuevo con los mismos datos del original. '
-          'El pago anulado queda como registro histórico.\n\n'
-          '¿Confirmar?',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Cancelar'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Recrear'),
-          ),
-        ],
-      ),
-    );
-    if (confirmar != true || !mounted) return;
-
-    final me = ref.read(cobradorActualProvider).valueOrNull;
-    if (me == null || me.prefijoRecibo == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-            content: Text('No tenés prefijo de recibo configurado')),
-      );
-      return;
-    }
-
-    setState(() => _ejecutandoAccion = true);
-    try {
-      await ref.read(pagosRepoProvider).recrearPago(
-            pagoAnuladoId: widget.row['id'] as String,
-            tenantId: me.tenantId,
-            recreadorId: me.id,
-            prefijoRecibo: me.prefijoRecibo!,
-          );
-      if (mounted) {
-        Navigator.of(context).pop();
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Pago recreado exitosamente')),
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        setState(() => _ejecutandoAccion = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error al recrear: $e')),
-        );
-      }
-    }
-  }
 }
 
 // Dialog de anulación — local al sheet para no acoplarse al
