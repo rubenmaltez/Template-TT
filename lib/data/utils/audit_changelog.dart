@@ -83,6 +83,34 @@ const Map<String, Set<String>> kAuditCamposVisiblesDefault = {
   'fotos_cliente': {
     'descripcion',
   },
+  'planes': {
+    'nombre',
+    'tipo',
+    'precio_mensual',
+    'activo',
+  },
+};
+
+// ---------------------------------------------------------------------------
+// Campos de SUPERFICIE para hijas "contenedoras" dentro del log de su padre.
+//
+// Regla de profundidad del change log: el log de un padre agrega solo sus
+// hijas DIRECTAS (un nivel), nunca nietas. Y para una hija que a su vez
+// contiene otras entidades (ej. contrato → cuotas → pagos), el log del padre
+// muestra solo sus eventos de SUPERFICIE (alta / baja / cambio de estado /
+// reasignación de cobrador), NO sus ediciones puntuales de campos. Esas
+// ediciones (precio, día de pago, plan, fechas) viven en el log propio de esa
+// hija.
+//
+// Se usa pasando este set como `camposVisibles` a `auditExtraerCambios` para
+// las filas de la hija contenedora: un update que solo tocó campos
+// no-superficie queda con `cambios` vacío y se oculta; create/delete y los
+// cambios de estado/cobrador siempre se ven.
+// ---------------------------------------------------------------------------
+const Map<String, Set<String>> kAuditCamposSuperficie = {
+  // En el log del CLIENTE, del contrato solo interesa: existe / se canceló /
+  // cambió de estado / se reasignó el cobrador.
+  'contratos': {'estado', 'cobrador_id'},
 };
 
 // ---------------------------------------------------------------------------
@@ -157,6 +185,12 @@ const Map<String, List<String>> kAuditCamposCatalogo = {
   'fotos_cliente': [
     'descripcion',
   ],
+  'planes': [
+    'nombre',
+    'tipo',
+    'precio_mensual',
+    'activo',
+  ],
 };
 
 // Label humano por entidad (para los títulos de las secciones del panel).
@@ -169,6 +203,7 @@ const Map<String, String> kAuditEntidadLabel = {
   'cargos_extra': 'Cargos manuales',
   'visitas': 'Visitas',
   'fotos_cliente': 'Fotos',
+  'planes': 'Planes',
 };
 
 // Columnas computadas / auto que se omiten en cualquier snapshot, además del

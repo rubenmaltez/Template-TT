@@ -50,7 +50,6 @@ class _HistorialCambiosWidgetState
    LEFT JOIN cobradores c ON c.id = a.user_id
        WHERE a.registro_id = ? AND a.tabla = ?
        ORDER BY COALESCE(a.ocurrido_en, a.created_at) DESC
-       LIMIT 50
       ''',
       parameters: [widget.registroId, widget.tabla],
     );
@@ -229,6 +228,41 @@ class _CambioTile extends StatelessWidget {
           'anulacion' => (Icons.block, scheme.error, 'Pago anulado'),
           _ => (Icons.edit, scheme.primary, 'Pago editado'),
         };
+      case 'clientes':
+        return switch (accion) {
+          'create' =>
+            (Icons.person_add_alt, scheme.tertiary, 'Cliente creado'),
+          'delete' => (Icons.delete_outline, scheme.error, 'Cliente eliminado'),
+          _ => (Icons.edit, scheme.primary, 'Cliente actualizado'),
+        };
+      case 'contratos':
+        return switch (accion) {
+          'create' => (Icons.assignment, scheme.tertiary, 'Contrato creado'),
+          'delete' =>
+            (Icons.delete_outline, scheme.error, 'Contrato eliminado'),
+          'anulacion' => (Icons.block, scheme.error, 'Contrato anulado'),
+          _ => (Icons.edit, scheme.primary, 'Contrato actualizado'),
+        };
+      case 'visitas':
+        return switch (accion) {
+          'create' =>
+            (Icons.where_to_vote_outlined, scheme.tertiary, 'Visita registrada'),
+          'delete' => (Icons.delete_outline, scheme.error, 'Visita eliminada'),
+          _ => (Icons.edit, scheme.primary, 'Visita actualizada'),
+        };
+      case 'fotos_cliente':
+        return switch (accion) {
+          'create' =>
+            (Icons.add_a_photo_outlined, scheme.tertiary, 'Foto agregada'),
+          'delete' => (Icons.delete_outline, scheme.error, 'Foto eliminada'),
+          _ => (Icons.edit, scheme.primary, 'Foto actualizada'),
+        };
+      case 'planes':
+        return switch (accion) {
+          'create' => (Icons.add_circle_outline, scheme.tertiary, 'Plan creado'),
+          'delete' => (Icons.delete_outline, scheme.error, 'Plan eliminado'),
+          _ => (Icons.edit, scheme.primary, 'Plan actualizado'),
+        };
       default:
         return switch (accion) {
           'create' => (Icons.add_circle_outline, scheme.tertiary, 'Creado'),
@@ -294,7 +328,6 @@ class _HistorialCuotaWidgetState extends ConsumerState<HistorialCuotaWidget> {
                 SELECT id FROM pagos WHERE cuota_id = ?
               ))
        ORDER BY COALESCE(a.ocurrido_en, a.created_at) ASC
-       LIMIT 100
       ''',
       parameters: [widget.cuotaId, widget.cuotaId],
     );
@@ -453,5 +486,142 @@ class _HistorialCuotaWidgetState extends ConsumerState<HistorialCuotaWidget> {
     }
 
     return eventos;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Timeline unificada de un CLIENTE: mezcla los cambios del propio cliente con
+// los de sus hijas DIRECTAS — visitas, fotos y contratos. Profundidad = UN
+// nivel: NO baja a cuotas/pagos (nietas/bisnietas), que viven en el log de su
+// cuota. Para los contratos (hija "contenedora") se muestran solo eventos de
+// superficie (alta/baja/estado/reasignación de cobrador), no sus ediciones
+// puntuales de precio/día/plan — esas están en el log del contrato. Ver
+// `kAuditCamposSuperficie`.
+//
+// El link a las hijas se lee del snapshot JSON (`json_extract` sobre
+// valor_nuevo con fallback a valor_anterior), NO de un `IN (SELECT...)`: así
+// una hija borrada físico (ej. una foto) sigue apareciendo en el historial,
+// porque su cliente_id vive dentro del snapshot aunque la fila ya no exista en
+// la tabla. json_extract corre sobre SQLite local (válido en `ps.db.watch`).
+// ---------------------------------------------------------------------------
+class HistorialClienteWidget extends ConsumerStatefulWidget {
+  const HistorialClienteWidget({super.key, required this.clienteId});
+  final String clienteId;
+
+  @override
+  ConsumerState<HistorialClienteWidget> createState() =>
+      _HistorialClienteWidgetState();
+}
+
+class _HistorialClienteWidgetState
+    extends ConsumerState<HistorialClienteWidget> {
+  late Stream<List<Map<String, dynamic>>> _stream;
+
+  @override
+  void initState() {
+    super.initState();
+    _stream = _buildStream();
+  }
+
+  @override
+  void didUpdateWidget(HistorialClienteWidget old) {
+    super.didUpdateWidget(old);
+    if (old.clienteId != widget.clienteId) {
+      setState(() => _stream = _buildStream());
+    }
+  }
+
+  Stream<List<Map<String, dynamic>>> _buildStream() {
+    // El cliente (por registro_id) + sus hijas directas (visitas/fotos/
+    // contratos) localizadas por el cliente_id DENTRO del snapshot JSON. Sin
+    // LIMIT: el historial muestra la vida completa del cliente. Orden DESC =
+    // lo más reciente primero.
+    return ps.db.watch(
+      '''
+      SELECT a.id, a.tabla, a.accion, a.campo,
+             a.valor_anterior, a.valor_nuevo,
+             a.user_id, a.user_rol, a.created_at, a.ocurrido_en,
+             c.nombre AS user_nombre
+        FROM audit_log a
+   LEFT JOIN cobradores c ON c.id = a.user_id
+       WHERE (a.tabla = 'clientes' AND a.registro_id = ?)
+          OR (a.tabla IN ('visitas', 'fotos_cliente', 'contratos')
+              AND json_extract(
+                    COALESCE(a.valor_nuevo, a.valor_anterior),
+                    '\$.cliente_id'
+                  ) = ?)
+       ORDER BY COALESCE(a.ocurrido_en, a.created_at) DESC
+      ''',
+      parameters: [widget.clienteId, widget.clienteId],
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final cfg = ref.watch(appSettingsProvider).auditCamposVisibles;
+    final lookups = ref.watch(auditLookupsProvider).valueOrNull;
+
+    return StreamBuilder(
+      stream: _stream,
+      builder: (context, snap) {
+        if (snap.hasError) {
+          return Padding(
+            padding: const EdgeInsets.all(24),
+            child: Center(
+              child: Text('Error al cargar el historial',
+                  style: TextStyle(color: scheme.error)),
+            ),
+          );
+        }
+        if (!snap.hasData) {
+          return const Padding(
+            padding: EdgeInsets.all(24),
+            child: Center(child: CircularProgressIndicator()),
+          );
+        }
+        final rows = snap.data!;
+        final eventos = <_EventoVisual>[];
+        for (final r in rows) {
+          final tabla = r['tabla'] as String?;
+          final accion = auditDetectarAccion(r);
+          // Hijas "contenedoras" (contrato): solo superficie. Un update que
+          // solo tocó campos no-superficie queda con `cambios` vacío y se
+          // oculta. Para las demás tablas, `superficie` es null → cae al
+          // allowlist normal (cfg per-tenant o el default por tabla).
+          final superficie = kAuditCamposSuperficie[tabla];
+          final cambios = auditExtraerCambios(
+            r,
+            camposVisibles: superficie ?? cfg[tabla],
+            lookups: lookups,
+          );
+          if (accion == 'update' && cambios.isEmpty) continue;
+          eventos.add(_EventoVisual(
+            row: r,
+            accion: accion,
+            tabla: tabla,
+            cambios: cambios,
+          ));
+        }
+
+        if (eventos.isEmpty) {
+          return Padding(
+            padding: const EdgeInsets.all(24),
+            child: Center(
+              child: Text('Sin cambios registrados',
+                  style: TextStyle(color: scheme.outline)),
+            ),
+          );
+        }
+
+        return ListView.separated(
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          itemCount: eventos.length,
+          separatorBuilder: (_, __) => const Divider(height: 1),
+          itemBuilder: (context, i) => _CambioTile(evento: eventos[i]),
+        );
+      },
+    );
   }
 }

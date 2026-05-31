@@ -24,7 +24,7 @@ class ClienteDetailScreen extends ConsumerStatefulWidget {
 class _ClienteDetailScreenState extends ConsumerState<ClienteDetailScreen> {
   final _visitasKey = GlobalKey<_VisitasSectionState>();
 
-  void _showHistorial(BuildContext context, String tabla, String registroId) {
+  void _showHistorial(BuildContext context) {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -50,10 +50,7 @@ class _ClienteDetailScreenState extends ConsumerState<ClienteDetailScreen> {
             Expanded(
               child: SingleChildScrollView(
                 controller: scrollCtrl,
-                child: HistorialCambiosWidget(
-                  tabla: tabla,
-                  registroId: registroId,
-                ),
+                child: HistorialClienteWidget(clienteId: widget.clienteId),
               ),
             ),
           ],
@@ -93,7 +90,7 @@ class _ClienteDetailScreenState extends ConsumerState<ClienteDetailScreen> {
             IconButton(
               icon: const Icon(Icons.history),
               tooltip: 'Historial de cambios',
-              onPressed: () => _showHistorial(context, 'clientes', widget.clienteId),
+              onPressed: () => _showHistorial(context),
             ),
         ],
       ),
