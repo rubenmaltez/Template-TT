@@ -25,6 +25,7 @@ class ImpresoraService {
     String? reciboTitulo,
     bool mostrarAdeudado = true,
     String? empresaWhatsapp,
+    List<Map<String, dynamic>>? multiRecibos,
   }) async {
     throw UnsupportedError('Impresión BT no disponible en web');
   }

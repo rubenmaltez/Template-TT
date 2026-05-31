@@ -114,9 +114,15 @@ Backlog de 9 observaciones de Rubén (2026-05-31). Se atacan **EN ORDEN**.
     monto en USD ni la tasa (solo córdobas), a diferencia del recibo single.
     Replicado el patrón: línea "Recibido US$X (tasa Y)" + "PAGADO US$X = C$Y"
     cuando moneda=USD (X = Σ monto_original del grupo).
-  - Backlog (no bloquea): (a) impresión Bluetooth de un cobro multi saca solo
-    la 1ª cuota (gap pre-existente, no regresión); (b) divergencia tasa
-    snapshot vs live entre preview y cobro (pre-existente, single+multi).
+  - Backlog cerrado (ex-pendiente, ahora hecho — "sin backlog"):
+    - (a) **#6a** Impresión Bluetooth de cobro múltiple: nuevo
+      `_generarBytesMulti` en `impresora_service_io.dart` itera las N cuotas
+      (línea por cuota + totales del grupo + USD), igual que pantalla/PDF.
+      `imprimir` rutea por `multiRecibos`; recibo_screen lo pasa.
+    - (b) **#6b** Divergencia de tasa: el preview ("Equivalente") y `esCompleto`
+      ahora usan `tasaEfectiva = _tasaSnapshot ?? settings.tasaUsd` (la MISMA
+      que `_confirmar`), no la tasa live. Sin divergencia si la tasa cambia
+      por sync entre elegir USD y confirmar.
 
 ### #7 — Data vieja / settings vacío al cambiar de usuario ✅
 - Causa raíz: `onDatabaseSwitched` (main.dart) invalidaba una lista HARDCODEADA

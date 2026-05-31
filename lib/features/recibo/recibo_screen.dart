@@ -785,6 +785,9 @@ class _AccionesImpresionState extends ConsumerState<_AccionesImpresion> {
         reciboTitulo: widget.settings.reciboTitulo,
         mostrarAdeudado: widget.settings.reciboMostrarAdeudado,
         empresaWhatsapp: widget.settings.empresaWhatsapp,
+        // #6a: si es cobro múltiple, imprimir las N cuotas del grupo (no solo
+        // la 1ª). El service cae al recibo single si multiRows es null/1.
+        multiRecibos: widget.multiRows,
       );
 
       if (!mounted) return;

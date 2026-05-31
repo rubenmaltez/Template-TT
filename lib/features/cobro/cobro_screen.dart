@@ -497,9 +497,13 @@ class _CobroScreenState extends ConsumerState<CobroScreen> {
       saldo += (_totalesACobrar[i] - _cuotas[i].montoPagado).clamp(0.0, double.infinity);
     }
 
-    final montoEnNio = _moneda == Moneda.usd
-        ? (double.tryParse(_montoCtrl.text) ?? 0) * settings.tasaUsd
-        : double.tryParse(_montoCtrl.text) ?? 0;
+    // Tasa EFECTIVA = la misma que usará _confirmar (#6b): el snapshot tomado
+    // al elegir USD, no la tasa live de settings. Si la tasa cambia por sync
+    // entre que el cobrador elige USD y confirma, el preview ("Equivalente")
+    // y el monto persistido coinciden — sin divergencia.
+    final tasaEfectiva =
+        _moneda == Moneda.usd ? (_tasaSnapshot ?? settings.tasaUsd) : 1.0;
+    final montoEnNio = (double.tryParse(_montoCtrl.text) ?? 0) * tasaEfectiva;
 
     final esCompleto = montoEnNio >= saldo - 0.01;
 
@@ -648,7 +652,7 @@ class _CobroScreenState extends ConsumerState<CobroScreen> {
             Padding(
               padding: const EdgeInsets.only(top: 6),
               child: Text(
-                'Equivalente: ${Fmt.cordobas(montoEnNio)} (tasa ${settings.tasaUsd})',
+                'Equivalente: ${Fmt.cordobas(montoEnNio)} (tasa $tasaEfectiva)',
                 style: Theme.of(context).textTheme.bodySmall,
               ),
             ),

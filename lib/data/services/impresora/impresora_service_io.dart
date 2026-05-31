@@ -50,20 +50,31 @@ class ImpresoraService {
     String? reciboTitulo,
     bool mostrarAdeudado = true,
     String? empresaWhatsapp,
+    List<Map<String, dynamic>>? multiRecibos,
   }) async {
-    return _enviarBytes(
-      macImpresora,
-      await _generarBytes(
-        recibo: recibo,
-        empresa: empresa,
-        anchoMm: anchoMm,
-        pieRecibo: pieRecibo,
-        esReimpresion: esReimpresion,
-        reciboTitulo: reciboTitulo,
-        mostrarAdeudado: mostrarAdeudado,
-        empresaWhatsapp: empresaWhatsapp,
-      ),
-    );
+    // Cobro múltiple: imprimir las N cuotas del grupo (#6a). Si viene una sola
+    // fila (o ninguna), cae al recibo single de siempre.
+    final bytes = (multiRecibos != null && multiRecibos.length > 1)
+        ? await _generarBytesMulti(
+            rows: multiRecibos,
+            empresa: empresa,
+            anchoMm: anchoMm,
+            pieRecibo: pieRecibo,
+            esReimpresion: esReimpresion,
+            reciboTitulo: reciboTitulo,
+            empresaWhatsapp: empresaWhatsapp,
+          )
+        : await _generarBytes(
+            recibo: recibo,
+            empresa: empresa,
+            anchoMm: anchoMm,
+            pieRecibo: pieRecibo,
+            esReimpresion: esReimpresion,
+            reciboTitulo: reciboTitulo,
+            mostrarAdeudado: mostrarAdeudado,
+            empresaWhatsapp: empresaWhatsapp,
+          );
+    return _enviarBytes(macImpresora, bytes);
   }
 
   /// Imprime un recibo de prueba para validar conexión + papel.
@@ -328,6 +339,200 @@ class ImpresoraService {
     }
 
     // WhatsApp de la empresa (configurable).
+    if (empresaWhatsapp != null && empresaWhatsapp.isNotEmpty) {
+      if (pieRecibo == null || pieRecibo.isEmpty) {
+        bytes.addAll(gen.hr());
+      } else {
+        bytes.addAll(gen.feed(1));
+      }
+      bytes.addAll(gen.text('WhatsApp: $empresaWhatsapp',
+          styles: const PosStyles(
+              align: PosAlign.center, codeTable: _codeTable)));
+    }
+
+    bytes.addAll(gen.feed(2));
+    bytes.addAll(gen.cut());
+    return bytes;
+  }
+
+  /// Genera el recibo de un cobro MÚLTIPLE (grupo de cuotas) — espeja el
+  /// ticket en pantalla/PDF (#6a). Antes la impresión Bluetooth de un cobro
+  /// multi sacaba solo la 1ª cuota. Itera las N filas: una línea por cuota +
+  /// totales del grupo (COBRADO/VUELTO/PAGADO), con manejo de USD.
+  Future<List<int>> _generarBytesMulti({
+    required List<Map<String, dynamic>> rows,
+    required Map<String, String> empresa,
+    required int anchoMm,
+    String? pieRecibo,
+    bool esReimpresion = false,
+    String? reciboTitulo,
+    String? empresaWhatsapp,
+  }) async {
+    final profile = await CapabilityProfile.load();
+    final gen = Generator(_size(anchoMm), profile);
+    final bytes = <int>[];
+    final first = rows.first;
+
+    if (esReimpresion) {
+      bytes.addAll(gen.text('*** REIMPRESIÓN ***',
+          styles: const PosStyles(
+              align: PosAlign.center, bold: true, codeTable: _codeTable)));
+      bytes.addAll(gen.feed(1));
+    }
+
+    // Encabezado: empresa (idéntico al single).
+    final hayEmpresa = (empresa['nombre'] ?? '').isNotEmpty ||
+        (empresa['direccion'] ?? '').isNotEmpty ||
+        (empresa['telefono'] ?? '').isNotEmpty ||
+        (empresa['ruc'] ?? '').isNotEmpty;
+    if ((empresa['nombre'] ?? '').isNotEmpty) {
+      bytes.addAll(gen.text(empresa['nombre']!.toUpperCase(),
+          styles: const PosStyles(
+              align: PosAlign.center,
+              bold: true,
+              height: PosTextSize.size2,
+              codeTable: _codeTable)));
+    }
+    if ((empresa['direccion'] ?? '').isNotEmpty) {
+      bytes.addAll(gen.text(empresa['direccion']!,
+          styles: const PosStyles(
+              align: PosAlign.center, codeTable: _codeTable)));
+    }
+    if ((empresa['telefono'] ?? '').isNotEmpty) {
+      bytes.addAll(gen.text('Tel: ${empresa['telefono']}',
+          styles: const PosStyles(
+              align: PosAlign.center, codeTable: _codeTable)));
+    }
+    if ((empresa['ruc'] ?? '').isNotEmpty) {
+      bytes.addAll(gen.text('RUC: ${empresa['ruc']}',
+          styles: const PosStyles(
+              align: PosAlign.center, codeTable: _codeTable)));
+    }
+    if (reciboTitulo != null && reciboTitulo.isNotEmpty) {
+      bytes.addAll(gen.text(reciboTitulo.toUpperCase(),
+          styles: const PosStyles(
+              align: PosAlign.center, bold: true, codeTable: _codeTable)));
+    }
+    if (hayEmpresa) bytes.addAll(gen.hr());
+
+    bytes.addAll(gen.text('COBRO MÚLTIPLE (${rows.length} cuotas)',
+        styles: const PosStyles(
+            align: PosAlign.center, bold: true, codeTable: _codeTable)));
+    bytes.addAll(gen.feed(1));
+
+    // Meta del grupo.
+    final emision = DateTime.parse(first['fecha_pago'] as String);
+    bytes.addAll(_doblColumna(gen, anchoMm, 'Recibos',
+        '${first['numero_completo']} - ${rows.last['numero_completo']}'));
+    bytes.addAll(_doblColumna(
+        gen, anchoMm, 'Fecha', DateFormat('dd/MM/yyyy').format(emision)));
+    bytes.addAll(
+        _doblColumna(gen, anchoMm, 'Hora', DateFormat('HH:mm').format(emision)));
+    if (first['cobrador_nombre'] != null) {
+      bytes.addAll(_doblColumna(
+          gen, anchoMm, 'Cobrador', first['cobrador_nombre'] as String));
+    }
+    bytes.addAll(gen.hr());
+
+    // Cliente.
+    bytes.addAll(_doblColumna(
+        gen, anchoMm, 'Cliente', first['cliente_nombre'] as String));
+    if (first['cliente_cedula'] != null) {
+      bytes.addAll(_doblColumna(
+          gen, anchoMm, 'Cédula', first['cliente_cedula'] as String));
+    }
+    bytes.addAll(gen.hr());
+
+    // Una línea por cuota (período → monto aplicado) + acumular totales.
+    var totalCobrado = 0.0;
+    var totalVuelto = 0.0;
+    var totalOriginal = 0.0;
+    for (final r in rows) {
+      totalCobrado += (r['monto_cordobas'] as num).toDouble();
+      totalVuelto += (r['vuelto_cordobas'] as num? ?? 0).toDouble();
+      totalOriginal += (r['monto_original'] as num? ?? 0).toDouble();
+      final periodo = DateTime.parse(r['periodo'] as String);
+      final label = Fmt.mesServicioLabel(
+        periodo,
+        r['plan_nombre'] == null ? null : (r['dia_pago'] as num?)?.toInt(),
+      );
+      bytes.addAll(_doblColumna(gen, anchoMm, label,
+          Fmt.cordobas((r['monto_cordobas'] as num).toDouble())));
+    }
+    final totalEntregado = totalCobrado + totalVuelto;
+    final esUsd = (first['moneda'] as String?) == 'USD';
+    bytes.addAll(gen.hr());
+
+    // Método.
+    bytes.addAll(_doblColumna(
+        gen, anchoMm, 'Método', (first['metodo'] as String).toUpperCase()));
+    if (first['referencia'] != null) {
+      bytes.addAll(
+          _doblColumna(gen, anchoMm, 'Ref.', first['referencia'] as String));
+    }
+    bytes.addAll(gen.feed(1));
+
+    // TOTAL COBRADO — destacado.
+    bytes.addAll(gen.row([
+      PosColumn(
+          text: 'TOTAL COBRADO',
+          width: 6,
+          styles: const PosStyles(
+              bold: true, height: PosTextSize.size2, codeTable: _codeTable)),
+      PosColumn(
+          text: Fmt.cordobas(totalCobrado),
+          width: 6,
+          styles: const PosStyles(
+              bold: true,
+              align: PosAlign.right,
+              height: PosTextSize.size2,
+              codeTable: _codeTable)),
+    ]));
+
+    if (totalVuelto > 0.01) {
+      bytes.addAll(gen.row([
+        PosColumn(
+            text: esUsd ? 'VUELTO (C\$)' : 'VUELTO',
+            width: 6,
+            styles: const PosStyles(bold: true, codeTable: _codeTable)),
+        PosColumn(
+            text: Fmt.cordobas(totalVuelto),
+            width: 6,
+            styles: const PosStyles(
+                bold: true, align: PosAlign.right, codeTable: _codeTable)),
+      ]));
+      final pagadoText = esUsd
+          ? 'US\$${totalOriginal.toStringAsFixed(2)}=${Fmt.cordobas(totalEntregado)}'
+          : Fmt.cordobas(totalEntregado);
+      bytes.addAll(gen.row([
+        PosColumn(
+            text: 'PAGADO',
+            width: 6,
+            styles: const PosStyles(bold: true, codeTable: _codeTable)),
+        PosColumn(
+            text: pagadoText,
+            width: 6,
+            styles: const PosStyles(
+                bold: true, align: PosAlign.right, codeTable: _codeTable)),
+      ]));
+    }
+
+    if (esUsd) {
+      final tasa = (first['tasa_conversion'] as num).toStringAsFixed(2);
+      bytes.addAll(gen.text(
+        'Equivalente a US\$${totalOriginal.toStringAsFixed(2)}  (tasa $tasa)',
+        styles: const PosStyles(align: PosAlign.center, codeTable: _codeTable),
+      ));
+    }
+
+    // Pie libre.
+    if (pieRecibo != null && pieRecibo.isNotEmpty) {
+      bytes.addAll(gen.hr());
+      bytes.addAll(gen.text(pieRecibo,
+          styles: const PosStyles(
+              align: PosAlign.center, codeTable: _codeTable)));
+    }
+    // WhatsApp.
     if (empresaWhatsapp != null && empresaWhatsapp.isNotEmpty) {
       if (pieRecibo == null || pieRecibo.isEmpty) {
         bytes.addAll(gen.hr());
