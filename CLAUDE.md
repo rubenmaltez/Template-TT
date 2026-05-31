@@ -203,9 +203,9 @@ Toda fila debe dar `violaciones = 0`.
 ### Trazabilidad / audit log (obligatorio para toda entidad)
 
 Toda creación, edición o eliminación de cualquier entidad operativa
-(clientes, contratos, cuotas, pagos, recibos, visitas, fotos, cargos) DEBE
-generar una fila en `audit_log` vía los triggers genéricos
-(`audit_changelog_trg`, migración 0047 + 0062). Reglas:
+(clientes, contratos, cuotas, pagos, recibos, visitas, fotos, cargos, planes)
+DEBE generar una fila en `audit_log` vía los triggers genéricos
+(`audit_changelog_trg`, migraciones 0047 + 0062 + 0069 + 0076). Reglas:
 
 1. **Creación** → row con `accion='create'`, `valor_anterior=NULL`,
    `valor_nuevo=` snapshot completo. El historial de toda entidad arranca
@@ -216,6 +216,77 @@ generar una fila en `audit_log` vía los triggers genéricos
    `AFTER INSERT OR UPDATE OR DELETE` con el guard `pg_trigger_depth() < 2`.
 5. El `HistorialCambiosWidget` renderiza los 3 casos. Verificar que toda
    entidad nueva tenga su historial accesible desde la UI.
+
+#### Modelo del change log (consistente para TODA entidad editable)
+
+El change log NO es opcional ni selectivo: **toda entidad que un usuario pueda
+crear/editar/borrar tiene su historial accesible desde su pantalla**, con el
+mismo modelo. Aplica a las entidades actuales y a CUALQUIER módulo/tabla que se
+agregue en el futuro.
+
+**Fuente de verdad = server.** Las filas del change log las genera el trigger
+`audit_changelog_trg` (server-side), NUNCA el cliente. El cliente solo escribe
+`ocurrido_en` (device-time) en la fila operativa; el trigger lo propaga a
+`audit_log`. Respeta "Server gana" y evita duplicar la lógica de snapshot en
+Dart (los triggers de Postgres no corren en SQLite local).
+
+**Dos patrones de UI:**
+- **Simple** — `HistorialCambiosWidget(tabla, registroId)`: entidad
+  self-contained. Muestra create/update/delete de esa fila. Ej: planes, recibo.
+- **Agregador** — widget dedicado (`HistorialCuotaWidget`,
+  `HistorialClienteWidget`): entidad que "posee" hijas. Une en UNA timeline
+  cronológica los cambios propios + los de sus hijas DIRECTAS. El link a las
+  hijas se lee del snapshot JSON
+  (`json_extract(COALESCE(valor_nuevo, valor_anterior), '$.<padre>_id')`), NO
+  de un `IN (SELECT...)`, para que las hijas borradas físico (ej. fotos) no
+  desaparezcan del historial.
+
+**Regla de profundidad (CRÍTICA):** el log del padre agrega solo sus hijas
+**DIRECTAS (un nivel)**, nunca nietas. Y para una hija que es a su vez
+**contenedora** de otras entidades (ej. contrato → cuotas → pagos), el padre
+muestra solo sus eventos de **superficie** (alta / baja / cambio de estado /
+reasignación de cobrador), NO sus ediciones puntuales de campos — esas viven
+en el log propio de esa hija. Se implementa con `kAuditCamposSuperficie`.
+   - Ej: el log del **cliente** muestra cliente + visitas + fotos (completo) +
+     contratos (solo superficie). NO muestra cuotas ni pagos: un pago a una
+     cuota de un contrato es un evento del log de esa **cuota**, no del cliente.
+   - El log de la **cuota** muestra cuota + pagos (hijas hoja, completo).
+
+**Contrato al agregar una entidad/módulo editable nuevo:**
+1. Tabla con `tenant_id`, `id` + RLS. Si se crea/edita OFFLINE, agregar
+   `ocurrido_en` (device-time); si es online-only del admin, se puede omitir
+   (el trigger cae a `created_at`).
+2. Trigger `AFTER INSERT OR UPDATE OR DELETE ... EXECUTE FUNCTION
+   audit_changelog_trg()`.
+3. Registrar la entidad en `audit_changelog.dart`: `kAuditCamposVisiblesDefault`
+   + `kAuditCamposCatalogo` + `kAuditEntidadLabel` (+ labels de campos en
+   `auditFieldLabel` si faltan).
+4. (Opcional) verbo/ícono propio en el switch `_labelFor` del `_CambioTile`.
+5. Exponer el historial en su pantalla de detalle (patrón Simple o Agregador).
+   Si la pantalla es una lista sin detalle, agregar un botón 🕐 por fila que
+   abra el bottom sheet (patrón de `planes` / `cliente`).
+6. Si es HIJA de un agregador existente, sumarla a la query del padre
+   (`tabla IN (...)` + filtro `$.<padre>_id`), respetando la regla de
+   profundidad (hoja → completo; contenedora → superficie).
+
+**Sin límites:** las queries del historial NO llevan `LIMIT` — el change log de
+una entidad muestra su vida completa.
+
+**Lifecycle online/offline:** online el flujo es write local → sync sube →
+trigger corre → `audit_log` baja → la UI muestra la entrada. Offline el dato
+operativo se ve YA (es local), pero la ENTRADA del change log aparece recién al
+sincronizar (el trigger es server-side); como `ocurrido_en` carga el
+device-time, cuando aparece queda en su hora real, no en la de sync. No se
+pierde data.
+
+**Cobertura actual:** trigger en clientes, contratos, cuotas, pagos, recibos,
+cargos_extra, visitas, fotos_cliente (0062) + **planes** (0076).
+**Pendiente (documentado):** geografía (`departamentos` / `municipios` /
+`comunidades`) son tablas **globales sin `tenant_id`** → el trigger genérico no
+aplica tal cual (`audit_registrar` requiere tenant_id; `audit_log` scopa por
+`current_tenant_id()`). Cerrar cuando se decida el modelo de atribución de
+tenant para tablas globales (o si geografía pasa a per-tenant). Es data casi
+estática, bajo valor de auditoría hoy.
 
 
 | Capa | Tecnología |

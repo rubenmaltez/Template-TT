@@ -74,6 +74,21 @@ Un setting guardado DEBE cambiar el comportamiento real de la app:
 - **Consistencia cross-pantalla**: saldo/recaudado dan idéntico en lista de
   clientes, detalle de contrato y reportes.
 
+### Change log / historial de cambios (toda entidad editable)
+- **Universal**: toda entidad que el usuario crea/edita/borra tiene historial
+  accesible desde su pantalla (ícono 🕐). Regla y contrato completo en CLAUDE.md
+  ("Modelo del change log").
+- **Quién lo genera**: el trigger server-side `audit_changelog_trg`, NO el
+  cliente. Offline el dato se ve al toque, pero la ENTRADA del historial aparece
+  recién al sincronizar; queda en su hora real porque `ocurrido_en` carga el
+  device-time.
+- **Profundidad**: el log de un padre muestra sus hijas DIRECTAS, nunca nietas.
+  Log del **cliente** = cliente + visitas + fotos (completo) + contratos (solo
+  superficie: alta/baja/estado/reasignación de cobrador). Un pago a una cuota
+  NO aparece en el log del cliente — vive en el log de esa **cuota** (cuota +
+  pagos).
+- **Sin límites**: el historial muestra la vida completa de la entidad.
+
 ---
 
 ## 2. Lifecycle de uso real (end-to-end)
@@ -126,6 +141,41 @@ consistentes → auditoría.
 ## 3. Historial de fixes
 
 > Más reciente arriba. Formato por ítem: error → fix → expectativa.
+
+### 2026-05-31 — Change log universal (cliente agregado + planes + regla)
+
+Sprint de trazabilidad. Commits `04e909f` + `65cc6df` (+ docs), migración
+**0076**. Sin cambios de schema/sync (solo trigger + UI + curaduría). Auditado
+estático (sin `flutter`/`dart` en el entorno; correr `flutter analyze` al pull).
+
+**A — Historial del cliente ahora es timeline agregada**
+- *Gap:* el detalle del cliente solo mostraba los cambios del propio registro
+  `clientes`. Las visitas, fotos y contratos del cliente tenían su audit en
+  `audit_log` pero no se veían desde el cliente.
+- *Fix:* `HistorialClienteWidget` une cliente + visitas + fotos + contratos en
+  una sola línea de tiempo. Hijas localizadas por `cliente_id` leído del
+  snapshot JSON (`json_extract`), así una foto borrada físico sigue apareciendo.
+- *Expectativa:* ver §1 "Change log / historial de cambios".
+
+**B — Contratos en el log del cliente = solo superficie**
+- *Decisión (Rubén):* desde el cliente se ve que un contrato existe / cambió de
+  estado / se reasignó cobrador, pero NO las ediciones puntuales (precio, día,
+  plan) ni los pagos de sus cuotas. Esos viven en el log del contrato / cuota.
+- *Fix:* `kAuditCamposSuperficie` restringe los campos visibles del contrato a
+  `{estado, cobrador_id}` dentro del log del cliente; un update que solo tocó
+  otros campos queda vacío y se oculta.
+
+**C — Planes entran al change log**
+- *Gap:* `planes` (editable por el admin) no tenía trigger de audit.
+- *Fix:* migración 0076 (`trg_changelog_planes`) + curaduría en
+  `audit_changelog.dart` + botón 🕐 por fila en la pantalla de planes.
+
+**D — Sin límites en el historial**
+- *Error:* las queries tenían `LIMIT 50` / `LIMIT 100`.
+- *Fix:* se quitaron; el historial muestra la vida completa de la entidad.
+
+**Pendiente:** geografía (departamentos/municipios/comunidades) son globales sin
+`tenant_id` → el trigger genérico no aplica; documentado en CLAUDE.md.
 
 ### 2026-05-30 (noche) — Facturación vencida + mes simbólico del recibo
 
