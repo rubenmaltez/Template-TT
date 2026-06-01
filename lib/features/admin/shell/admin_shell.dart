@@ -7,6 +7,7 @@ import '../../../data/providers/cobrador_provider.dart';
 import '../../../data/providers/crud_error_provider.dart';
 import '../../../data/providers/impersonation_provider.dart';
 import '../../../data/providers/sync_status_provider.dart';
+import '../../../data/repositories/settings_repo.dart';
 import '../../shared/widgets/impersonation_banner.dart';
 import '../../shared/widgets/update_banner.dart';
 import '../../auth/cambiar_password_dialog.dart';
@@ -309,6 +310,12 @@ const _adminMenu = [
         adminOnly: true),
     _MenuItem(Icons.history_edu, 'Auditoría', '/admin/audit', adminOnly: true),
   ]),
+  // Pantallas opcionales: las habilita el super_admin por tenant (toggle
+  // super_admin-only en settings). Sin habilitar, el item no aparece.
+  _MenuItem(Icons.payments, 'Pagos', '/admin/pagos',
+      adminOnly: true, settingKey: 'cobranza.pantalla_pagos'),
+  _MenuItem(Icons.notifications_active, 'Notificaciones', '/admin/notificaciones',
+      adminOnly: true, settingKey: 'cobranza.pantalla_notificaciones'),
   _MenuItem(Icons.bar_chart, 'Reportes', '/admin/reportes'),
   _MenuItem(Icons.map, 'Mapa', '/admin/mapa'),
   _MenuItem(Icons.settings, 'Configuración', '/admin/settings', adminOnly: true),
@@ -322,6 +329,7 @@ class _MenuItem {
     this.path, {
     this.adminOnly = false,
     this.superAdminOnly = false,
+    this.settingKey,
     this.children = const [],
   });
   final IconData icon;
@@ -329,6 +337,9 @@ class _MenuItem {
   final String path;
   final bool adminOnly;
   final bool superAdminOnly;
+  // Si está seteado, el item solo se muestra cuando ese setting booleano está
+  // en ON (pantallas opcionales que habilita el super_admin por tenant).
+  final String? settingKey;
   final List<_MenuItem> children;
 }
 
@@ -337,7 +348,11 @@ bool _menuVisible(
   required bool esSuperAdmin,
   required bool tieneAccesoAdmin,
   bool impersonating = false,
+  Set<String> pantallasOn = const {},
 }) {
+  // Pantallas opcionales gateadas por un setting per-tenant (las habilita el
+  // super_admin). Si el item tiene settingKey y no está en ON, no se muestra.
+  if (m.settingKey != null && !pantallasOn.contains(m.settingKey)) return false;
   // Cuando el super_admin está impersonando, ocultar el item de
   // /super/* — el router lo bloquearía de todas formas, pero es
   // mejor no mostrar una opción que no funciona.
@@ -396,11 +411,18 @@ class _AdminRail extends ConsumerWidget {
     final esSuperAdmin = cobrador?.esSuperAdmin ?? false;
     final impersonating =
         ref.watch(impersonatedTenantIdProvider).valueOrNull != null;
+    final settings = ref.watch(appSettingsProvider);
+    final pantallasOn = <String>{
+      if (settings.pantallaPagosHabilitada) 'cobranza.pantalla_pagos',
+      if (settings.pantallaNotificacionesHabilitada)
+        'cobranza.pantalla_notificaciones',
+    };
     final items = _adminMenu
         .where((m) => _menuVisible(m,
             esSuperAdmin: esSuperAdmin,
             tieneAccesoAdmin: tieneAccesoAdmin,
-            impersonating: impersonating))
+            impersonating: impersonating,
+            pantallasOn: pantallasOn))
         .toList();
     // Los grupos (con children) no se "seleccionan" como tile plano — su
     // estado activo lo maneja el _ExpandableMenuItem mirando sus hijos.
@@ -474,11 +496,18 @@ class _AdminDrawer extends ConsumerWidget {
     final esSuperAdmin = cobrador?.esSuperAdmin ?? false;
     final impersonating =
         ref.watch(impersonatedTenantIdProvider).valueOrNull != null;
+    final settings = ref.watch(appSettingsProvider);
+    final pantallasOn = <String>{
+      if (settings.pantallaPagosHabilitada) 'cobranza.pantalla_pagos',
+      if (settings.pantallaNotificacionesHabilitada)
+        'cobranza.pantalla_notificaciones',
+    };
     final items = _adminMenu
         .where((m) => _menuVisible(m,
             esSuperAdmin: esSuperAdmin,
             tieneAccesoAdmin: tieneAccesoAdmin,
-            impersonating: impersonating))
+            impersonating: impersonating,
+            pantallasOn: pantallasOn))
         .toList();
 
     return Drawer(

@@ -183,6 +183,15 @@ class AppSettings {
   /// está en ON.
   bool get comprobanteHabilitado =>
       settingValue<bool>(_map, 'cobranza.comprobante_habilitado', false);
+
+  /// Pantallas admin opcionales, habilitadas por el super_admin por tenant
+  /// (toggles super_admin-only en settings). Default FALSE → el item del menú no
+  /// aparece. `/admin/pagos` (historial de pagos + anular) y
+  /// `/admin/notificaciones` (gestión de mora).
+  bool get pantallaPagosHabilitada =>
+      settingValue<bool>(_map, 'cobranza.pantalla_pagos', false);
+  bool get pantallaNotificacionesHabilitada =>
+      settingValue<bool>(_map, 'cobranza.pantalla_notificaciones', false);
   bool get pagoParcialPermitido =>
       settingValue<bool>(_map, 'cobranza.pago_parcial', true);
   bool get pagoAdelantadoPermitido =>

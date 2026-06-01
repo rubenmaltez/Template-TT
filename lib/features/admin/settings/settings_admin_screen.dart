@@ -162,6 +162,9 @@ class _CategoriaTab extends ConsumerWidget {
     const superAdminOnly = {
       'cobranza.comprobante_habilitado',
       'cobranza.foto_obligatoria',
+      // Pantallas admin opcionales: el super_admin las habilita por tenant.
+      'cobranza.pantalla_pagos',
+      'cobranza.pantalla_notificaciones',
     };
     final settingsFiltrados = settings
         .where((s) =>
@@ -455,6 +458,8 @@ class _SettingTileState extends State<_SettingTile> {
       'cobranza.cobrador_edita_cobros': 'Cobrador puede editar cobros',
       'cobranza.comprobante_habilitado': 'Habilitar foto de comprobante',
       'cobranza.foto_obligatoria': 'Foto comprobante obligatoria',
+      'cobranza.pantalla_pagos': 'Pantalla de pagos del tenant (admin)',
+      'cobranza.pantalla_notificaciones': 'Pantalla de notificaciones de mora',
       'cobranza.pago_parcial': 'Permitir pago parcial',
       'cobranza.pago_adelantado': 'Permitir pago adelantado (multi-cuota)',
       'cobranza.dias_cuotas_visibles': 'Días de cuotas visibles al cobrador',
@@ -530,6 +535,8 @@ int _sortOrder(String clave) {
     'cobranza.pago_adelantado': 3,
     'cobranza.comprobante_habilitado': 4,
     'cobranza.foto_obligatoria': 5,
+    'cobranza.pantalla_pagos': 6,
+    'cobranza.pantalla_notificaciones': 7,
     // Cobrador permisos
     'cobranza.cobrador_edita_fecha': 10,
     'cobranza.cobrador_anula_cobros': 11,
