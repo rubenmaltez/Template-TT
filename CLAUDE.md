@@ -58,7 +58,9 @@ chicos/medianos de Centroamérica:
 1. El admin del ISP carga su catálogo (planes, clientes, contratos).
 2. El sistema genera cuotas mensuales automáticamente desde el contrato.
 3. El cobrador sale a campo con la app móvil-first (offline-first), cobra
-   con foto del comprobante y geo del cobro, imprime recibo Bluetooth térmico.
+   con foto del comprobante, imprime recibo Bluetooth térmico. (La geo del
+   cobro NO está implementada — se quitó `GpsService`; el cobro guarda
+   lat/lng null.)
 4. Vuelve la conexión → PowerSync sincroniza → super_admin y admin ven
    reportes y auditoría.
 
@@ -115,7 +117,8 @@ cobradores, audit, geografía, settings (guardia explícita en el router).
 - `/perfil` — datos del cobrador, config impresora Bluetooth.
 - `/clientes/:id` — detalle de un cliente (push, fuera del shell).
 - `/cobro/:cuotaId` — flow de cobro: monto, método, foto del comprobante,
-  geo del cobro, imprimir recibo.
+  imprimir recibo. (Geo del cobro NO implementada: `GpsService` se quitó, el
+  cobro guarda lat/lng null.)
 - `/recibo/:reciboId` — preview del recibo.
 - `/perfil/impresora` — pairing Bluetooth con la impresora térmica.
 
@@ -435,7 +438,12 @@ de redeployar. Sin redeploy, PowerSync no ve las columnas nuevas.
 - departamentos, municipios, comunidades (globales)
 - cobradores (campos selectivos, no `SELECT *`)
 
-**Última versión deployada**: Sync Rules version 4 (0037), deployed May 26, 2026.
+**Schema version ACTUAL (fuente de verdad)**: `_schemaVersion = 16` en
+`lib/powersync/db.dart` (cada user tiene su SQLite `sitecsa_{uid}_v16.db`).
+Las menciones a "Schema v4" / "Schema v6" más abajo son registros históricos
+de sprints viejos (BULK 12, etc.), NO el valor actual — el real es 16. Cada
+bump de schema redeploya sync rules. Verificar siempre el número en `db.dart`,
+no confiar en los logs de sprint.
 
 ### Proceso mandatorio de fixes y features (lifecycle)
 
@@ -642,10 +650,16 @@ Rubén prefiere Supabase Dashboard sobre CLI por ahora. Workflows:
 3. Dashboard → Edge Functions → click función → tab "Code" → Ctrl+A → Delete → Ctrl+V → Deploy updates.
 4. Verificar timestamp "a few seconds ago" en la lista.
 
-### Limitación conocida del Dashboard
-NO soporta multi-file via paste — `_shared/passwords.ts` no funcionaría. Por eso
-`generarPasswordSegura` está **duplicada inline** en crear-tenant y reenviar-invitacion
-(comentado en código). Si migramos a CLI en el futuro, mover a `_shared/`.
+### Helpers compartidos de Edge Functions (`_shared/`)
+Ya existe `supabase/functions/_shared/` y todas las funciones lo importan:
+`passwords.ts` (`generarPasswordSegura`), `auth_errors.ts` (`humanizeAuthError`)
+y `response.ts` (`corsHeaders`, `jsonError`). Ya NO hay copias inline
+duplicadas. **Nota de deploy por Dashboard**: el Dashboard no soporta subir
+varios archivos en un paste; al editar una función por Dashboard hay que
+asegurarse de que los `_shared/*.ts` ya estén deployados (se mantienen vía
+CLI/repo). El bundler de Edge Functions resuelve los imports relativos en
+deploy, así que el código fuente queda DRY aunque el flujo de Dashboard sea
+por-función.
 
 ---
 
@@ -724,9 +738,10 @@ Estos viven acá hasta que se ataquen explícitamente. NO re-flag en audits.
       crashes offline subidos tarde. Agregar como columna o detail.
     - **User agent del browser**: el cliente lo deja null hoy (no usamos
       `package:web`). Útil para diagnosticar bugs específicos de browser.
-- **Edge Functions — `humanizeAuthError` duplicado en 5 funciones**. Cada Edge
-  Function tiene su propia copia inline del helper (limitación del Dashboard
-  que no soporta `_shared/`). Cuando migremos a CLI, consolidar en `_shared/`.
+- ~~**Edge Functions — `humanizeAuthError` duplicado en 5 funciones**~~.
+  RESUELTO: consolidado en `supabase/functions/_shared/auth_errors.ts`; las 6
+  funciones lo importan. Ya no hay copias inline. (Mismo `_shared/` aloja
+  `passwords.ts` y `response.ts`.)
 - **`invokeEdgeFunction` workaround `_humanizarError` duplicado**. Aparece copy-
   pasted en `tenant_dialogs_invitar.dart`, `cobradores_admin_screen.dart` y
   en el catch defensivo del helper mismo. Cuando el SDK arregle el type mismatch
@@ -758,10 +773,10 @@ Estos viven acá hasta que se ataquen explícitamente. NO re-flag en audits.
     - `reenviar-invitacion`: ventana entre `deleteUser` y `createUser` sin
       lock — explotable solo con super_admins concurrentes (Rubén es 1 en
       producción, marcado como hardening defensivo).
-    - `cambiar-email-cobrador` pre-flight cap a 1000 users: `listUsers` con
-      `perPage:1000` cubre hasta 1000 totales. Si el sistema crece más allá,
-      el pre-flight da falsos negativos silenciosos → vuelve la polución
-      del audit. Migrar a RPC SECURITY DEFINER cuando importe.
+    - ~~`cambiar-email-cobrador` pre-flight cap a 1000 users~~. RESUELTO: el
+      pre-flight ya usa una RPC SECURITY DEFINER que consulta `auth.users`
+      directamente, sin el tope de `listUsers({ perPage: 1000 })`. Sin falsos
+      negativos por escala.
     - `invitar-cobrador`: ghost user si una excepción tira post-
       `createUser` exitoso (path no-email). El user queda creado con
       password aleatoria que nadie verá. Recuperable vía

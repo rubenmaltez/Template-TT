@@ -147,6 +147,9 @@ class _CategoriaTab extends ConsumerWidget {
       'recibo.monto_en_letras',
       // El layout se edita con el diseñador visual, nunca como texto crudo.
       'recibo.layout',
+      // Feature sin implementar (caja chica del cobrador: tabla + UI
+      // pendientes). Se oculta hasta que exista la feature real.
+      'caja_chica.habilitada',
     };
 
     // La tab Recibos ES el diseñador completo (2 columnas: editor + preview en

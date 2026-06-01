@@ -50,11 +50,13 @@ class ReciboPreview extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final settings = ref.watch(appSettingsProvider);
-    // Logo reactivo: si el toggle está activo y hay logo configurado, se
-    // muestra el real; si no, null (igual que en el recibo real).
-    final logoUrl = settings.imprimirLogoEnRecibo
-        ? ref.watch(logoEmpresaUrlProvider).valueOrNull
-        : null;
+    // Logo reactivo: una sola fuente de verdad, la visibilidad del bloque
+    // `logo` del layout. Si está visible y hay logo configurado, se muestra
+    // el real; si no, null (igual que en el recibo real).
+    final logoVisible =
+        settings.reciboLayout.any((b) => b.id == 'logo' && b.visible);
+    final logoUrl =
+        logoVisible ? ref.watch(logoEmpresaUrlProvider).valueOrNull : null;
     final scheme = Theme.of(context).colorScheme;
 
     return Card(

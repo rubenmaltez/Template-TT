@@ -208,13 +208,6 @@ class AppSettings {
   String get descuentoProntoPagoTipo =>
       settingValue<String>(_map, 'cuotas.descuento_pronto_pago_tipo', 'porcentaje');
 
-  /// Feature flag: gestión de caja chica del cobrador (asignación diaria
-  /// y reconciliación de efectivo al cierre). Default false. Migración 0063
-  /// agrega el toggle; la feature real (tabla cajas_chicas + UI) está
-  /// pendiente — usar este getter cuando se implemente para gatear la UI.
-  bool get cajaChicaHabilitada =>
-      settingValue<bool>(_map, 'caja_chica.habilitada', false);
-
   bool get auditVisibleAdminCobranza =>
       settingValue<bool>(_map, 'audit.visible_admin_cobranza', false);
 
@@ -233,17 +226,9 @@ class AppSettings {
   String get empresaLogoPath =>
       settingValue<String>(_map, 'empresa.logo_path', '');
 
-  /// Si el recibo debe incluir el logo (toggle en tab Recibos).
-  bool get imprimirLogoEnRecibo =>
-      settingValue<bool>(_map, 'recibo.imprimir_logo', true);
-
   /// Título del documento en el recibo (ej: "COBRO", "RECIBO").
   String get reciboTitulo =>
       settingValue<String>(_map, 'recibo.titulo', 'RECIBO');
-
-  /// Mostrar monto en letras en el recibo.
-  bool get reciboMontoEnLetras =>
-      settingValue<bool>(_map, 'recibo.monto_en_letras', true);
 
   /// Mostrar tabla de meses adeudados en el recibo.
   bool get reciboMostrarAdeudado =>
@@ -252,10 +237,6 @@ class AppSettings {
   /// Mostrar WhatsApp de la empresa en el recibo.
   String get empresaWhatsapp =>
       settingValue<String>(_map, 'empresa.whatsapp', '');
-
-  /// Mostrar datos de la empresa (nombre/dir/tel/RUC) en el recibo (#8b).
-  bool get reciboMostrarEmpresa =>
-      settingValue<bool>(_map, 'recibo.mostrar_empresa', true);
 
   /// Mostrar la cédula del cliente en el recibo (#8b).
   bool get reciboMostrarCedula =>
@@ -268,24 +249,6 @@ class AppSettings {
   /// visible en los totales).
   List<ReciboBloque> get reciboLayout =>
       ReciboLayout.fromRaw(_map?['recibo.layout']?.valor);
-
-  /// Orden de los bloques de TEXTO del pie del recibo: 'pie' (pie libre) y
-  /// 'whatsapp' (#8b). Saneo defensivo: descarta ids desconocidos y agrega los
-  /// faltantes al final, así nunca se "pierde" un bloque por un setting viejo.
-  List<String> get reciboOrdenPie {
-    const validos = ['pie', 'whatsapp'];
-    final raw =
-        settingValue<String>(_map, 'recibo.orden_pie', 'pie,whatsapp');
-    final pedidos = raw
-        .split(',')
-        .map((s) => s.trim())
-        .where(validos.contains)
-        .toList();
-    for (final v in validos) {
-      if (!pedidos.contains(v)) pedidos.add(v);
-    }
-    return pedidos;
-  }
 
   /// Config del CHANGE LOG (Fase C): qué campos se muestran en el historial
   /// de cambios, por entidad. Lee el setting `audit.campos_visibles`, un map

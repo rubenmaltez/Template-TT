@@ -110,12 +110,14 @@ class _ReciboScreenState extends ConsumerState<ReciboScreen> {
   @override
   Widget build(BuildContext context) {
     final settings = ref.watch(appSettingsProvider);
-    // Logo URL firmada. Solo se carga si `imprimirLogoEnRecibo` está
-    // activo y hay un path configurado. El provider es reactivo: si
-    // el admin cambia el logo en settings, se refresca.
-    final logoUrl = settings.imprimirLogoEnRecibo
-        ? ref.watch(logoEmpresaUrlProvider).valueOrNull
-        : null;
+    // Logo URL firmada. Una sola fuente de verdad: el bloque `logo` del
+    // layout del recibo. Solo se carga si ese bloque está visible (y hay
+    // un path configurado). El provider es reactivo: si el admin cambia el
+    // logo o la visibilidad del bloque en settings, se refresca.
+    final logoVisible =
+        settings.reciboLayout.any((b) => b.id == 'logo' && b.visible);
+    final logoUrl =
+        logoVisible ? ref.watch(logoEmpresaUrlProvider).valueOrNull : null;
 
     final maxWidth = _previewWidthPx(settings.formatoReciboMm);
 

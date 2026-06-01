@@ -1,7 +1,7 @@
 /// Lógica pura del estado de una cuota en función del total pagado y
 /// cargos extra. **Espeja exactamente** la función SQL
-/// `recalcular_cuota_desde_pagos` (migración 0007) — cualquier cambio
-/// acá debe replicarse en el server y viceversa.
+/// `recalcular_cuota_desde_pagos` (migración 0012/0018/0075) — cualquier
+/// cambio acá debe replicarse en el server y viceversa.
 ///
 /// **Por qué extraída a función pura**: facilita testing (sin
 /// dependencias de Provider / BD), y permite que múltiples flows del

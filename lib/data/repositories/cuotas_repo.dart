@@ -2,22 +2,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../powersync/db.dart' as ps;
 import '../models/cuota.dart';
-import '../providers/db_epoch_provider.dart';
 
 class CuotasRepo {
   const CuotasRepo();
-
-  Stream<List<Cuota>> watchCobrables() {
-    return ps.db
-        .watch(
-          '''
-          SELECT * FROM cuotas
-           WHERE estado IN ('pendiente','parcial')
-           ORDER BY fecha_vencimiento ASC
-          ''',
-        )
-        .map((rows) => rows.map(Cuota.fromRow).toList());
-  }
 
   Future<Cuota?> getById(String id) async {
     final rows = await ps.db.getAll('SELECT * FROM cuotas WHERE id = ?', [id]);
@@ -53,8 +40,3 @@ class CuotasRepo {
 }
 
 final cuotasRepoProvider = Provider((_) => const CuotasRepo());
-
-final cuotasCobrablesProvider = StreamProvider<List<Cuota>>((ref) {
-  ref.watch(dbEpochProvider); // recrea al cambiar de DB (#7)
-  return ref.watch(cuotasRepoProvider).watchCobrables();
-});
