@@ -140,6 +140,11 @@ const _hidden = {
   'recibo.monto_en_letras',
   // El layout se edita con el diseñador visual, nunca como texto crudo.
   'recibo.layout',
+  // Mismo caso que recibo.layout: JSON {tabla: [campos]} que se edita SÓLO con
+  // la pantalla dedicada "Campos del historial" (audit_campos_screen, link en la
+  // tab Avanzado). Como texto crudo se corrompe el change log. Lo crea esa
+  // pantalla al vuelo (no está en ningún seed) — por eso se colaba al "Otros".
+  'audit.campos_visibles',
   // Feature sin implementar (caja chica del cobrador: tabla + UI
   // pendientes). Se oculta hasta que exista la feature real.
   'caja_chica.habilitada',
