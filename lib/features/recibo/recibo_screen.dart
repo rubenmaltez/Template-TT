@@ -7,6 +7,7 @@ import 'package:printing/printing.dart';
 
 import '../../data/models/pago.dart';
 import '../../data/models/recibo_layout.dart';
+import '../../data/providers/cobrador_provider.dart';
 import '../../data/providers/impresora_provider.dart';
 import '../../data/providers/logo_empresa_provider.dart';
 import '../../data/repositories/settings_repo.dart';
@@ -119,6 +120,12 @@ class _ReciboScreenState extends ConsumerState<ReciboScreen> {
     final logoUrl =
         logoVisible ? ref.watch(logoEmpresaUrlProvider).valueOrNull : null;
 
+    // Rol del usuario: el admin navega DENTRO del AdminShell (con panel
+    // lateral); el cobrador a sus rutas full-screen. Sin esto, "home" y "ver
+    // detalle del cliente" mandaban al admin a las rutas del cobrador (/ y
+    // /clientes/:id), que viven fuera del shell → quedaba sin menú izquierdo.
+    final esAdmin =
+        ref.watch(cobradorActualProvider).valueOrNull?.tieneAccesoAdmin ?? false;
     final maxWidth = _previewWidthPx(settings.formatoReciboMm);
 
     return Scaffold(
@@ -127,7 +134,7 @@ class _ReciboScreenState extends ConsumerState<ReciboScreen> {
         actions: [
           IconButton(
             icon: const Icon(Icons.home),
-            onPressed: () => context.go('/'),
+            onPressed: () => context.go(esAdmin ? '/admin' : '/'),
           ),
         ],
       ),
@@ -1075,14 +1082,20 @@ class _AccionesImpresionState extends ConsumerState<_AccionesImpresion> {
   }
 }
 
-class _PostCobroActions extends StatelessWidget {
+class _PostCobroActions extends ConsumerWidget {
   const _PostCobroActions({required this.clienteId});
   final String? clienteId;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final id = clienteId;
     if (id == null) return const SizedBox.shrink();
+    // Ruta según rol: el admin va al detalle dentro del AdminShell (con panel
+    // lateral). El cobrador a /clientes/:id (full-screen). Antes era fijo a
+    // /clientes/:id y el admin quedaba sin menú izquierdo.
+    final esAdmin =
+        ref.watch(cobradorActualProvider).valueOrNull?.tieneAccesoAdmin ?? false;
+    final clientePath = esAdmin ? '/admin/clientes/$id' : '/clientes/$id';
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -1091,7 +1104,7 @@ class _PostCobroActions extends StatelessWidget {
         OutlinedButton.icon(
           icon: const Icon(Icons.person),
           label: const Text('Ver detalle del cliente'),
-          onPressed: () => context.go('/clientes/$id'),
+          onPressed: () => context.go(clientePath),
         ),
         const SizedBox(height: 24),
       ],
