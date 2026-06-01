@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../powersync/db.dart' as ps;
+import '../models/recibo_layout.dart';
 import '../models/setting.dart';
 import '../providers/db_epoch_provider.dart';
 
@@ -243,6 +244,14 @@ class AppSettings {
   /// Mostrar la cédula del cliente en el recibo (#8b).
   bool get reciboMostrarCedula =>
       settingValue<bool>(_map, 'recibo.mostrar_cedula', true);
+
+  /// Layout configurable del recibo (rework "diseñador de recibo"): lista
+  /// ORDENADA de bloques, cada uno con visibilidad + tamaño de letra. Default =
+  /// orden del catálogo, todo visible, normal. Parseo robusto: ver
+  /// `ReciboLayout.fromRaw` (sanea ids desconocidos, completa faltantes, fuerza
+  /// visible en los totales).
+  List<ReciboBloque> get reciboLayout =>
+      ReciboLayout.fromRaw(_map['recibo.layout']?.valor);
 
   /// Orden de los bloques de TEXTO del pie del recibo: 'pie' (pie libre) y
   /// 'whatsapp' (#8b). Saneo defensivo: descarta ids desconocidos y agrega los

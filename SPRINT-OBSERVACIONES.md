@@ -148,6 +148,37 @@ Backlog de 9 observaciones de Rubén (2026-05-31). Se atacan **EN ORDEN**.
     bug: todo provider global nuevo que lea ps.db debe observar el epoch.
 - Sin migración ni sync rules. Audit pendiente.
 
+### Rework "diseñador de recibo" (feedback de testing) — EN PROGRESO
+Pedido de Rubén: que TODO el recibo sea toggleable + reordenable (datasets de
+cliente/cuota/contrato como bloques), con fases header/body/footer, mover info
+a cualquier parte, y tamaño de letra por bloque. Es un rework grande sobre el
+MVP de #8b. Decisiones confirmadas:
+- **Granularidad: por BLOQUE** (Opción A) — un dataset es una unidad; sub-toggles
+  para campos puntuales (ej. cédula).
+- **Totales (dinero): movible pero NO ocultable** — el comprobante siempre
+  muestra cuánto se cobró.
+- **Tamaño de letra: enum 3 niveles** (Chico/Normal/Grande) — la térmica ESC/POS
+  no hace px libres; los 3 renderers lo mapean consistente.
+
+**Modelo:** el recibo = lista ordenada de bloques, cada uno {visible, size}.
+Render lineal. Zonas header/body/footer = agrupación visual del editor.
+
+**Plan por fases:**
+- **① Fundación ✅** (este commit): modelo `recibo_layout.dart` (catálogo de 12
+  bloques + parseo robusto `ReciboLayout.fromRaw` que sanea ids desconocidos,
+  completa faltantes y fuerza visible en totales) + getter `reciboLayout` en
+  AppSettings + migración **0080** (siembra layout default, todo visible) +
+  tests del parser.
+- **② Motor de render** (pendiente): los 3 renderers (pantalla/PDF/Bluetooth ×
+  single/multi) iteran el layout en vez del orden hardcodeado; aplican
+  visibilidad + tamaño; totales siempre correctos. Money-critical → con audit.
+- **③ Editor UI** (pendiente): reemplaza los toggles sueltos + el editor de
+  orden del pie por un diseñador unificado (zonas + toggle + tamaño + drag)
+  sobre la preview en vivo.
+- **④ Audit de plata + testing** (pendiente).
+Los settings viejos (mostrar_empresa/cedula, orden_pie, etc.) quedan vigentes
+hasta la fase ② (cuando el render migre al layout).
+
 ### Full audit (4 lentes, a pedido pre-pull) ✅
 Segunda ronda, 4 agentes con lentes distintos sobre `46acf9c~1..HEAD`:
 💰 dinero · 🔒 seguridad/multi-tenant · 🎨 UX/QA · ⚙️ compilación.
