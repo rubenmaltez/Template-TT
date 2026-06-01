@@ -11,7 +11,6 @@ import '../../../data/providers/logo_empresa_provider.dart';
 import '../../../data/repositories/settings_repo.dart';
 import '../../shared/widgets/empty_state.dart';
 import 'recibo_layout_editor.dart';
-import 'recibo_preview.dart';
 
 /// Panel de configuración. Agrupa settings por categoría en pestañas.
 /// Sólo admin puede editar la mayoría; admin_cobranza puede tocar las
@@ -143,7 +142,17 @@ class _CategoriaTab extends ConsumerWidget {
       'recibo.imprimir_logo',
       'recibo.mostrar_empresa',
       'recibo.monto_en_letras',
+      // El layout se edita con el diseñador visual, nunca como texto crudo.
+      'recibo.layout',
     };
+
+    // La tab Recibos ES el diseñador completo (2 columnas: editor + preview en
+    // vivo). Ocupa toda la altura; no usa los tiles genéricos ni el preview de
+    // arriba — ancho, título, pie, cédula, saldo y bloques se editan ahí.
+    if (categoria == 'recibos') {
+      return ReciboLayoutEditor(tenantId: tenantId);
+    }
+
     final settingsFiltrados = settings
         .where((s) => !_hidden.contains(s.clave))
         .toList();
@@ -162,8 +171,6 @@ class _CategoriaTab extends ConsumerWidget {
         // Widget de logo al inicio de la tab Empresa.
         if (categoria == 'empresa' && esAdmin)
           _LogoUploadWidget(tenantId: tenantId),
-        // Vista previa EN VIVO del recibo al inicio de la tab Recibos (#8a).
-        if (categoria == 'recibos') const ReciboPreview(),
         ...settingsFiltrados.map((s) {
           final puedeEditar = esAdmin || s.editablePor == 'admin_cobranza';
           return _SettingTile(
@@ -182,9 +189,6 @@ class _CategoriaTab extends ConsumerWidget {
             },
           );
         }),
-        // Diseñador de bloques del recibo (rework), al final de la tab Recibos.
-        if (categoria == 'recibos')
-          ReciboLayoutEditor(tenantId: tenantId),
         // Entrada al panel de campos del historial (Fase C). Oculta salvo
         // para super_admin; la pantalla destino igual defiende con un gate.
         if (categoria == 'cobranza' && esSuperAdmin) ...[
