@@ -9,6 +9,7 @@ import '../../../data/repositories/settings_repo.dart';
 import '../../../data/utils/formatters.dart';
 import '../../../powersync/db.dart' as ps;
 import 'pdf/reporte_anulaciones_pdf.dart';
+import 'pdf/reporte_arqueo_pdf.dart';
 import 'pdf/reporte_clientes_pdf.dart';
 import 'pdf/reporte_cobros_pdf.dart';
 import 'pdf/reporte_eficiencia_pdf.dart';
@@ -54,11 +55,31 @@ class RangoReporte {
       label: 'Mes pasado',
     );
   }
+
+  /// Día de hoy (desde = hasta = hoy). Default del arqueo de caja.
+  static RangoReporte hoy() {
+    final now = DateTime.now();
+    final dia = DateTime(now.year, now.month, now.day);
+    return RangoReporte(desde: dia, hasta: dia, label: 'Hoy');
+  }
+
+  /// Día de ayer (desde = hasta = ayer). Para cerrar la caja del día previo.
+  static RangoReporte ayer() {
+    final now = DateTime.now();
+    final dia =
+        DateTime(now.year, now.month, now.day).subtract(const Duration(days: 1));
+    return RangoReporte(desde: dia, hasta: dia, label: 'Ayer');
+  }
 }
 
 /// Rango activo para reportes descargables. Default: mes actual.
 final reporteRangoProvider =
     StateProvider<RangoReporte>((ref) => RangoReporte.mesActual());
+
+/// Rango propio del arqueo / cierre por cobrador. Default: HOY (el arqueo se
+/// hace por día, no por mes). Independiente de [reporteRangoProvider].
+final reporteArqueoRangoProvider =
+    StateProvider<RangoReporte>((ref) => RangoReporte.hoy());
 
 class ReportesAdminScreen extends ConsumerWidget {
   const ReportesAdminScreen({super.key});
@@ -72,6 +93,8 @@ class ReportesAdminScreen extends ConsumerWidget {
           padding: const EdgeInsets.all(24),
           children: [
             const _RangoReportesCard(),
+            const SizedBox(height: 16),
+            const _ArqueoCajaCard(),
             const SizedBox(height: 16),
             const _RecaudacionMensualCard(),
             const SizedBox(height: 16),
@@ -194,6 +217,168 @@ class _RangoReportesCard extends ConsumerWidget {
     }
   }
 }
+
+/// Card del arqueo / cierre por cobrador. READ-ONLY: lee pagos del rango y
+/// genera el PDF de cuadre de caja (efectivo por moneda + electrónico).
+/// Tiene rango PROPIO con default HOY (chips Hoy/Ayer/Personalizado…),
+/// independiente del rango de los demás reportes.
+class _ArqueoCajaCard extends ConsumerWidget {
+  const _ArqueoCajaCard();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final rango = ref.watch(reporteArqueoRangoProvider);
+    final scheme = Theme.of(context).colorScheme;
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.point_of_sale, color: scheme.primary),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('Arqueo / cierre por cobrador',
+                          style: Theme.of(context).textTheme.titleMedium),
+                      const SizedBox(height: 2),
+                      Text(
+                        'Efectivo por moneda (US\$/C\$) + electrónico, para cuadrar caja',
+                        style: TextStyle(
+                            color: scheme.onSurfaceVariant, fontSize: 12),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            // Selector compacto de rango propio del arqueo.
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: [
+                ChoiceChip(
+                  label: const Text('Hoy'),
+                  selected: rango.label == 'Hoy',
+                  onSelected: (_) => ref
+                      .read(reporteArqueoRangoProvider.notifier)
+                      .state = RangoReporte.hoy(),
+                ),
+                ChoiceChip(
+                  label: const Text('Ayer'),
+                  selected: rango.label == 'Ayer',
+                  onSelected: (_) => ref
+                      .read(reporteArqueoRangoProvider.notifier)
+                      .state = RangoReporte.ayer(),
+                ),
+                ChoiceChip(
+                  label: const Text('Personalizado…'),
+                  selected: rango.label == 'Personalizado',
+                  onSelected: (_) => _elegirCustom(context, ref),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Rango: ${rango.label} · ${rango.periodoLabel}',
+              style: TextStyle(color: scheme.outline, fontSize: 11),
+            ),
+            const SizedBox(height: 12),
+            Align(
+              alignment: Alignment.centerRight,
+              child: FilledButton.icon(
+                onPressed: () => _generar(context, ref, rango),
+                icon: const Icon(Icons.picture_as_pdf, size: 18),
+                label: const Text('Generar PDF'),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _elegirCustom(BuildContext context, WidgetRef ref) async {
+    final now = DateTime.now();
+    final actual = ref.read(reporteArqueoRangoProvider);
+    final picked = await showDateRangePicker(
+      context: context,
+      firstDate: DateTime(now.year - 5),
+      lastDate: now, // sin futuro: la "fecha de cobro" no aplica a futuro
+      initialDateRange: DateTimeRange(start: actual.desde, end: actual.hasta),
+    );
+    if (picked == null) return;
+    ref.read(reporteArqueoRangoProvider.notifier).state = RangoReporte(
+      desde: DateTime(picked.start.year, picked.start.month, picked.start.day),
+      hasta: DateTime(picked.end.year, picked.end.month, picked.end.day),
+      label: 'Personalizado',
+    );
+  }
+
+  Future<void> _generar(
+      BuildContext context, WidgetRef ref, RangoReporte rango) async {
+    try {
+      final empresaNombre =
+          ref.read(empresaNombreProvider).valueOrNull ?? 'ISP';
+      final tasaActual = ref.read(appSettingsProvider).tasaUsd;
+      final rows =
+          await ps.db.getAll(_arqueoSql, [rango.desdeSql, rango.hastaSql]);
+
+      final now = DateTime.now();
+      final doc = buildReporteArqueo(
+        titulo: 'Arqueo / cierre por cobrador',
+        empresaNombre: empresaNombre,
+        periodo: rango.periodoLabel,
+        rows: rows,
+        tasaActual: tasaActual,
+      );
+      await Printing.sharePdf(
+        bytes: await doc.save(),
+        filename: 'arqueo_${now.year}_${now.month}_${now.day}.pdf',
+      );
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error generando arqueo: $e')),
+        );
+      }
+    }
+  }
+}
+
+/// Query del arqueo / cierre por cobrador. Una fila por cobrador con los
+/// efectivos separados por moneda (US$/C$, montos en `monto_original`), el
+/// vuelto total, los electrónicos por método, y el recaudado contable
+/// (`monto_cordobas`). Params: [desde, hasta] (date-only, inclusive).
+/// SQLite-válida: usa SUM(CASE WHEN…), NO FILTER. Compartida por PDF y CSV.
+const String _arqueoSql = '''
+  SELECT cb.nombre AS cobrador_nombre,
+         COUNT(p.id) AS total_cobros,
+         COALESCE(SUM(CASE WHEN p.metodo='efectivo' AND p.moneda='USD' THEN p.monto_original ELSE 0 END),0) AS efectivo_usd,
+         SUM(CASE WHEN p.metodo='efectivo' AND p.moneda='USD' THEN 1 ELSE 0 END) AS efectivo_usd_qty,
+         COALESCE(SUM(CASE WHEN p.metodo='efectivo' AND p.moneda='NIO' THEN p.monto_original ELSE 0 END),0) AS efectivo_nio,
+         SUM(CASE WHEN p.metodo='efectivo' AND p.moneda='NIO' THEN 1 ELSE 0 END) AS efectivo_nio_qty,
+         COALESCE(SUM(CASE WHEN p.metodo='efectivo' THEN p.vuelto_cordobas ELSE 0 END),0) AS efectivo_vuelto,
+         COALESCE(SUM(CASE WHEN p.metodo='efectivo' THEN p.monto_cordobas ELSE 0 END),0) AS efectivo_ingreso,
+         COALESCE(SUM(CASE WHEN p.metodo='transferencia' THEN p.monto_cordobas ELSE 0 END),0) AS transferencia,
+         SUM(CASE WHEN p.metodo='transferencia' THEN 1 ELSE 0 END) AS transferencia_qty,
+         COALESCE(SUM(CASE WHEN p.metodo='deposito' THEN p.monto_cordobas ELSE 0 END),0) AS deposito,
+         SUM(CASE WHEN p.metodo='deposito' THEN 1 ELSE 0 END) AS deposito_qty,
+         COALESCE(SUM(CASE WHEN p.metodo='tarjeta' THEN p.monto_cordobas ELSE 0 END),0) AS tarjeta,
+         SUM(CASE WHEN p.metodo='tarjeta' THEN 1 ELSE 0 END) AS tarjeta_qty,
+         COALESCE(SUM(p.monto_cordobas),0) AS ingreso_total
+    FROM cobradores cb
+    JOIN pagos p ON p.cobrador_id = cb.id AND p.anulado = 0
+                AND date(p.fecha_pago) BETWEEN ? AND ?
+   GROUP BY cb.id, cb.nombre
+   ORDER BY ingreso_total DESC
+''';
 
 class _DescargarPdfMenu extends ConsumerWidget {
   const _DescargarPdfMenu({required this.diasGracia});
@@ -631,14 +816,19 @@ class _DescargarPdfMenu extends ConsumerWidget {
           _csvOpcion(ctx, 'eficiencia', Icons.speed, 'Eficiencia cobradores'),
           _csvOpcion(ctx, 'inactivos', Icons.person_off, 'Clientes inactivos'),
           _csvOpcion(ctx, 'anulaciones', Icons.cancel_outlined, 'Anulaciones'),
+          _csvOpcion(ctx, 'arqueo', Icons.point_of_sale, 'Arqueo / cierre'),
         ],
       ),
     );
     if (tipo == null || !context.mounted) return;
 
     try {
-      final rango = ref.read(reporteRangoProvider);
-      final csv = await _generarCsv(tipo, rango);
+      // El arqueo usa su rango propio (HOY por default); el resto, el global.
+      final rango = tipo == 'arqueo'
+          ? ref.read(reporteArqueoRangoProvider)
+          : ref.read(reporteRangoProvider);
+      final tasaUsd = ref.read(appSettingsProvider).tasaUsd;
+      final csv = await _generarCsv(tipo, rango, tasaUsd);
       await Clipboard.setData(ClipboardData(text: csv));
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -670,7 +860,8 @@ class _DescargarPdfMenu extends ConsumerWidget {
     );
   }
 
-  Future<String> _generarCsv(String tipo, RangoReporte rango) async {
+  Future<String> _generarCsv(
+      String tipo, RangoReporte rango, double tasaUsd) async {
     switch (tipo) {
       case 'cobros':
         final rows = await ps.db.getAll('''
@@ -885,6 +1076,41 @@ class _DescargarPdfMenu extends ConsumerWidget {
             r['anulado_por_nombre']?.toString() ?? '',
             r['numero_recibo']?.toString() ?? '',
           ]).toList(),
+        );
+
+      case 'arqueo':
+        final rows = await ps.db.getAll(_arqueoSql, [
+          rango.desdeSql,
+          rango.hastaSql,
+        ]);
+        return _toCsv(
+          [
+            'Cobrador', 'Total cobros', 'Efectivo USD', 'Efectivo C\$',
+            'Vuelto C\$', 'Efectivo neto C\$', 'Transferencia', 'Depósito',
+            'Tarjeta', 'Equivalente total C\$', 'Ingreso total',
+          ],
+          rows.map((r) {
+            double d(String k) => ((r[k] as num?) ?? 0).toDouble();
+            final efectivoNetoC = d('efectivo_nio') - d('efectivo_vuelto');
+            final equivalenteTotalC = efectivoNetoC +
+                d('efectivo_usd') * tasaUsd +
+                d('transferencia') +
+                d('deposito') +
+                d('tarjeta');
+            return [
+              r['cobrador_nombre']?.toString() ?? '',
+              r['total_cobros']?.toString() ?? '0',
+              d('efectivo_usd').toString(),
+              d('efectivo_nio').toString(),
+              d('efectivo_vuelto').toString(),
+              efectivoNetoC.toString(),
+              d('transferencia').toString(),
+              d('deposito').toString(),
+              d('tarjeta').toString(),
+              equivalenteTotalC.toString(),
+              d('ingreso_total').toString(),
+            ];
+          }).toList(),
         );
 
       default:

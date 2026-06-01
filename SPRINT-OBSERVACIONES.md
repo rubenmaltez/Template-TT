@@ -183,6 +183,23 @@ Render lineal. Zonas header/body/footer = agrupación visual del editor.
   orden_pie). Borrado `recibo_pie_order_editor.dart`.
 - **④ Audit de plata + testing** (pendiente: testing manual de Rubén + correr
   migración 0080).
+
+### Contabilidad / reportería USD + arqueo (feedback de testing) ✅
+- **Tab Moneda removido**: la moneda principal siempre es NIO; el USD es método
+  de pago alterno (con tasa). `moneda.principal` queda huérfano (nadie lo lee).
+- **USD solo efectivo**: el toggle NIO/USD aparece solo si el método es Efectivo
+  (el dólar es plata en mano). Cambiar de método fuerza córdobas.
+- **Foto de comprobante gateada**: setting `cobranza.comprobante_habilitado`
+  (default FALSE, migración **0081**). El picker de foto en el cobro aparece solo
+  si está ON; default OFF → la transferencia guarda solo el N° de referencia
+  (cero Storage). El toggle (+ foto_obligatoria) se muestran SOLO al super_admin.
+- **Reporte nuevo "Arqueo / cierre por cobrador"** (`reporte_arqueo_pdf.dart`):
+  desglose por cobrador de efectivo US$/C$ (caja física), vuelto, neto a
+  entregar, electrónico por método, equivalente total en C$ a tasa actual, e
+  ingreso contable (Σ monto_cordobas). Rango propio default HOY (+ Ayer/custom).
+  PDF + CSV. READ-ONLY, no toca el modelo. Verificado: SQL SQLite-válida +
+  matemática de caja exacta (neto = recibido − vuelto; equiv = neto + US$×tasa +
+  electrónicos).
 Los settings viejos (mostrar_empresa/cedula, orden_pie, etc.) quedan vigentes
 hasta la fase ② (cuando el render migre al layout).
 
