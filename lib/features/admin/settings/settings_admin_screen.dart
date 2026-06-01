@@ -156,8 +156,17 @@ class _CategoriaTab extends ConsumerWidget {
       return ReciboLayoutEditor(tenantId: tenantId);
     }
 
+    // Settings que SOLO ve el super_admin (entrando al tenant). Los admins del
+    // tenant no los ven: la foto de comprobante consume Storage, así que se
+    // habilita por decisión del dueño del SaaS, no del tenant.
+    const superAdminOnly = {
+      'cobranza.comprobante_habilitado',
+      'cobranza.foto_obligatoria',
+    };
     final settingsFiltrados = settings
-        .where((s) => !_hidden.contains(s.clave))
+        .where((s) =>
+            !_hidden.contains(s.clave) &&
+            (esSuperAdmin || !superAdminOnly.contains(s.clave)))
         .toList();
 
     // Orden lógico en vez de alfabético.
@@ -444,6 +453,7 @@ class _SettingTileState extends State<_SettingTile> {
       'cobranza.cobrador_edita_fecha': 'Cobrador puede editar fecha',
       'cobranza.cobrador_anula_cobros': 'Cobrador puede anular cobros',
       'cobranza.cobrador_edita_cobros': 'Cobrador puede editar cobros',
+      'cobranza.comprobante_habilitado': 'Habilitar foto de comprobante',
       'cobranza.foto_obligatoria': 'Foto comprobante obligatoria',
       'cobranza.pago_parcial': 'Permitir pago parcial',
       'cobranza.pago_adelantado': 'Permitir pago adelantado (multi-cuota)',
@@ -518,7 +528,8 @@ int _sortOrder(String clave) {
     'cobranza.modo_ruta': 1,
     'cobranza.pago_parcial': 2,
     'cobranza.pago_adelantado': 3,
-    'cobranza.foto_obligatoria': 4,
+    'cobranza.comprobante_habilitado': 4,
+    'cobranza.foto_obligatoria': 5,
     // Cobrador permisos
     'cobranza.cobrador_edita_fecha': 10,
     'cobranza.cobrador_anula_cobros': 11,

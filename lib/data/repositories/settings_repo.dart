@@ -176,6 +176,13 @@ class AppSettings {
       settingValue<bool>(_map, 'cobranza.cobrador_edita_cobros', false);
   bool get fotoObligatoria =>
       settingValue<bool>(_map, 'cobranza.foto_obligatoria', false);
+
+  /// Switch maestro de la foto de comprobante. Default FALSE → el cobro NO sube
+  /// fotos (cero consumo de Storage). Solo el super_admin lo habilita por tenant
+  /// (el toggle vive gateado en settings). `fotoObligatoria` solo aplica si esto
+  /// está en ON.
+  bool get comprobanteHabilitado =>
+      settingValue<bool>(_map, 'cobranza.comprobante_habilitado', false);
   bool get pagoParcialPermitido =>
       settingValue<bool>(_map, 'cobranza.pago_parcial', true);
   bool get pagoAdelantadoPermitido =>

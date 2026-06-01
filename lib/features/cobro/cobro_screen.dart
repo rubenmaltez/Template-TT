@@ -268,7 +268,8 @@ class _CobroScreenState extends ConsumerState<CobroScreen> {
     // P3: si el tenant exige foto del comprobante, no dejar confirmar sin foto.
     // Solo aplica a métodos con comprobante — en efectivo el picker no se
     // muestra y _fotoPath siempre es null, así que no bloqueamos ahí.
-    if (settings.fotoObligatoria &&
+    if (settings.comprobanteHabilitado &&
+        settings.fotoObligatoria &&
         _metodo.requiereComprobante &&
         _fotoPath == null) {
       setState(() => _error =
@@ -607,6 +608,14 @@ class _CobroScreenState extends ConsumerState<CobroScreen> {
                 // Si el método ya no requiere comprobante, descartar
                 // la foto adjunta para no asociarla a un pago en efectivo.
                 if (!m.requiereComprobante) _fotoPath = null;
+                // USD solo es válido con efectivo (plata en mano). Al cambiar a
+                // otro método, forzar córdobas + limpiar monto/snapshot (igual
+                // que _cambiarMoneda) para que no quede un monto en USD colgado.
+                if (m != MetodoPago.efectivo && _moneda != Moneda.nio) {
+                  _moneda = Moneda.nio;
+                  _tasaSnapshot = null;
+                  _montoCtrl.clear();
+                }
               });
             },
           ),
@@ -620,10 +629,13 @@ class _CobroScreenState extends ConsumerState<CobroScreen> {
               // Funciona igual en single y multi-cuota: una sola tasa para toda
               // la transacción; la distribución multi vive en
               // CobroCalculo.distribuirMulti (pura + testeada).
-              if (settings.usdHabilitado) _MonedaToggle(
-                actual: _moneda,
-                onChanged: (m) => _cambiarMoneda(m, settings),
-              ),
+              // USD solo con efectivo: el dólar es plata en mano (no hay
+              // transferencias en USD en este flujo). Con otro método, NIO fijo.
+              if (settings.usdHabilitado && _metodo == MetodoPago.efectivo)
+                _MonedaToggle(
+                  actual: _moneda,
+                  onChanged: (m) => _cambiarMoneda(m, settings),
+                ),
             ],
           ),
           const SizedBox(height: 8),
@@ -667,17 +679,26 @@ class _CobroScreenState extends ConsumerState<CobroScreen> {
               validator: (v) {
                 final hayFoto = _fotoPath != null;
                 final hayRef = (v ?? '').trim().isNotEmpty;
-                if (_metodo.requiereComprobante && !hayRef && !hayFoto) {
-                  return 'Ingresá referencia o adjuntá foto';
+                // Con foto-comprobante habilitada (super_admin): referencia O
+                // foto. Sin ella (default): solo se exige la referencia.
+                if (!hayRef && !(settings.comprobanteHabilitado && hayFoto)) {
+                  return settings.comprobanteHabilitado
+                      ? 'Ingresá referencia o adjuntá foto'
+                      : 'Ingresá el número de referencia';
                 }
                 return null;
               },
             ),
-            const SizedBox(height: 12),
-            _FotoComprobantePicker(
-              path: _fotoPath,
-              onPicked: (p) => setState(() => _fotoPath = p),
-            ),
+            // Foto del comprobante: solo si el super_admin la habilitó para el
+            // tenant (default OFF → la transferencia guarda solo la referencia,
+            // cero consumo de disco).
+            if (settings.comprobanteHabilitado) ...[
+              const SizedBox(height: 12),
+              _FotoComprobantePicker(
+                path: _fotoPath,
+                onPicked: (p) => setState(() => _fotoPath = p),
+              ),
+            ],
           ],
 
           const SizedBox(height: 24),
