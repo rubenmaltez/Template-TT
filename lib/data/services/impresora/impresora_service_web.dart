@@ -1,3 +1,5 @@
+import '../../models/recibo_layout.dart';
+
 /// Stub web: impresión Bluetooth no aplica en navegador.
 class ImpresoraBT {
   /// Nombre de la impresora pareada (vacío en web).
@@ -25,10 +27,10 @@ class ImpresoraService {
     String? reciboTitulo,
     bool mostrarAdeudado = true,
     String? empresaWhatsapp,
-    // #8b: visibilidad/orden de bloques presentacionales del recibo.
-    bool mostrarEmpresa = true,
+    // Sub-toggle que SE MANTIENE (cédula dentro del bloque `cliente`).
     bool mostrarCedula = true,
-    List<String> ordenPie = const ['pie', 'whatsapp'],
+    // Layout configurable del recibo (supersede mostrarEmpresa/ordenPie).
+    List<ReciboBloque> layout = const [],
     List<Map<String, dynamic>>? multiRecibos,
   }) async {
     throw UnsupportedError('Impresión BT no disponible en web');

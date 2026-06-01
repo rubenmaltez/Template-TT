@@ -169,13 +169,20 @@ Render lineal. Zonas header/body/footer = agrupación visual del editor.
   completa faltantes y fuerza visible en totales) + getter `reciboLayout` en
   AppSettings + migración **0080** (siembra layout default, todo visible) +
   tests del parser.
-- **② Motor de render** (pendiente): los 3 renderers (pantalla/PDF/Bluetooth ×
-  single/multi) iteran el layout en vez del orden hardcodeado; aplican
-  visibilidad + tamaño; totales siempre correctos. Money-critical → con audit.
-- **③ Editor UI** (pendiente): reemplaza los toggles sueltos + el editor de
-  orden del pie por un diseñador unificado (zonas + toggle + tamaño + drag)
-  sobre la preview en vivo.
-- **④ Audit de plata + testing** (pendiente).
+- **② Motor de render ✅**: los 6 paths (pantalla/PDF/Bluetooth × single/multi)
+  iteran `settings.reciboLayout` con un helper por bloque; aplican visibilidad +
+  tamaño (escala 0.85/1.0/1.3 en pantalla/PDF; size1/size2 en ESC/POS). **El
+  bloque de totales quedó INTACTO** (mismas fórmulas Σ monto_cordobas/vuelto/
+  original — verificado por diff + balance 0/0/0 + firmas io/web). Sub-toggles
+  cédula/adeudado se mantienen. Cambios intencionales: Bluetooth ahora imprime
+  "monto en letras" (unifica con pantalla/PDF; se puede ocultar) y el USD/saldo
+  pasaron a sus bloques (metodo/cuota).
+- **③ Editor UI ✅**: `ReciboLayoutEditor` (lista reordenable: drag + toggle +
+  tamaño por bloque, totales no-ocultable) reemplaza al editor de orden del pie.
+  Toggles superseded ocultos (imprimir_logo, mostrar_empresa, monto_en_letras,
+  orden_pie). Borrado `recibo_pie_order_editor.dart`.
+- **④ Audit de plata + testing** (pendiente: testing manual de Rubén + correr
+  migración 0080).
 Los settings viejos (mostrar_empresa/cedula, orden_pie, etc.) quedan vigentes
 hasta la fase ② (cuando el render migre al layout).
 

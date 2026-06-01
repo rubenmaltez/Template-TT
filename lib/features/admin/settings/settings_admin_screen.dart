@@ -10,7 +10,7 @@ import '../../../data/providers/cobrador_provider.dart';
 import '../../../data/providers/logo_empresa_provider.dart';
 import '../../../data/repositories/settings_repo.dart';
 import '../../shared/widgets/empty_state.dart';
-import 'recibo_pie_order_editor.dart';
+import 'recibo_layout_editor.dart';
 import 'recibo_preview.dart';
 
 /// Panel de configuración. Agrupa settings por categoría en pestañas.
@@ -137,6 +137,12 @@ class _CategoriaTab extends ConsumerWidget {
       // Orden del pie: se edita con el widget ReorderableListView dedicado
       // (#8b), no como campo de texto CSV.
       'recibo.orden_pie',
+      // Superseded por el diseñador de bloques (recibo.layout): la visibilidad
+      // del logo/empresa/monto-en-letras ahora se controla desde el editor de
+      // bloques, no con toggles sueltos. Se ocultan para no confundir.
+      'recibo.imprimir_logo',
+      'recibo.mostrar_empresa',
+      'recibo.monto_en_letras',
     };
     final settingsFiltrados = settings
         .where((s) => !_hidden.contains(s.clave))
@@ -176,9 +182,9 @@ class _CategoriaTab extends ConsumerWidget {
             },
           );
         }),
-        // Editor de orden del pie del recibo (#8b), al final de la tab Recibos.
+        // Diseñador de bloques del recibo (rework), al final de la tab Recibos.
         if (categoria == 'recibos')
-          ReciboPieOrderEditor(tenantId: tenantId),
+          ReciboLayoutEditor(tenantId: tenantId),
         // Entrada al panel de campos del historial (Fase C). Oculta salvo
         // para super_admin; la pantalla destino igual defiende con un gate.
         if (categoria == 'cobranza' && esSuperAdmin) ...[

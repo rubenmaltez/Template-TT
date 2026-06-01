@@ -6,6 +6,7 @@ import 'package:http/http.dart' as http;
 import 'package:printing/printing.dart';
 
 import '../../data/models/pago.dart';
+import '../../data/models/recibo_layout.dart';
 import '../../data/providers/impresora_provider.dart';
 import '../../data/providers/logo_empresa_provider.dart';
 import '../../data/repositories/settings_repo.dart';
@@ -235,20 +236,30 @@ class ReciboTicket extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    final emision = DateTime.parse(row['fecha_pago'] as String);
-    final periodoCuota = DateTime.parse(row['periodo'] as String);
-    final diaPago = (row['dia_pago'] as num?)?.toInt();
-    final esManual = row['plan_nombre'] == null;
-    // Regla del 15 sobre día de pago del cliente, no fecha de emisión.
-    // Para cuotas manuales (sin contrato) mostramos el mes del periodo directamente.
-    final periodoLabel = diaPago != null
-        ? Fmt.periodoRecibo(diaPago, periodoCuota)
-        : Fmt.mes(periodoCuota);
-    // Saldo de la cuota tras este pago (para "mostrar adeudado" en el recibo).
-    final saldoCuota = ((row['cuota_monto'] as num).toDouble() +
-            (row['cargos_neto'] as num? ?? 0).toDouble()) -
-        (row['monto_pagado_cuota'] as num? ?? row['monto_cordobas'] as num)
-            .toDouble();
+
+    // Se ITERA el layout configurable: cada bloque se construye en
+    // `_buildBloque` (devuelve [] si no hay nada que mostrar) y entre bloques
+    // se emite un separador (gap chico entre dos bloques de header, Divider en
+    // el resto). El contenido/orden lo manda `settings.reciboLayout`; el bloque
+    // `totales` (dinero) sigue intacto, solo cambia su posición.
+    final children = <Widget>[];
+    String? zonaPrev;
+    for (final b in settings.reciboLayout) {
+      if (!b.visible) continue;
+      final contenido = _buildBloque(context, b.id, _scaleDe(b.size));
+      if (contenido.isEmpty) continue;
+      final zona = reciboBloqueInfo(b.id)?.zona ?? ReciboZona.body;
+      if (children.isNotEmpty) {
+        // Entre dos bloques de header: gap chico (sin divider). Resto: Divider.
+        if (zonaPrev == 'header' && zona == ReciboZona.header) {
+          children.add(const SizedBox(height: 4));
+        } else {
+          children.add(const Divider());
+        }
+      }
+      children.addAll(contenido);
+      zonaPrev = zona == ReciboZona.header ? 'header' : 'otro';
+    }
 
     return Container(
       decoration: BoxDecoration(
@@ -267,197 +278,255 @@ class ReciboTicket extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
-            // Logo de la empresa (si está configurado y el toggle activo).
-            if (logoUrl != null)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 8),
-                child: Image.network(
-                  logoUrl!,
-                  height: 60,
-                  fit: BoxFit.contain,
-                  errorBuilder: (_, __, ___) => const SizedBox.shrink(),
-                ),
-              ),
-            // Bloque empresa (nombre/dir/tel/RUC): solo si el toggle está activo (#8b).
-            if (settings.reciboMostrarEmpresa) ...[
-              if (settings.empresaNombre.isNotEmpty)
-                Text(
-                  settings.empresaNombre.toUpperCase(),
-                  style: const TextStyle(
-                      fontWeight: FontWeight.bold, fontSize: 16),
-                  textAlign: TextAlign.center,
-                ),
-              if (settings.empresaDireccion.isNotEmpty)
-                Text(settings.empresaDireccion, textAlign: TextAlign.center),
-              if (settings.empresaTelefono.isNotEmpty)
-                Text('Tel: ${settings.empresaTelefono}'),
-              if (settings.empresaRuc.isNotEmpty)
-                Text('RUC: ${settings.empresaRuc}'),
-            ],
-            if (settings.reciboTitulo.isNotEmpty)
-              Padding(
-                padding: const EdgeInsets.only(top: 6),
-                child: Text(
-                  settings.reciboTitulo.toUpperCase(),
-                  style: const TextStyle(
-                      fontWeight: FontWeight.bold, fontSize: 14),
-                  textAlign: TextAlign.center,
-                ),
-              ),
-            const Divider(),
-
-            _ticketRow('Recibo Nº', row['numero_completo'] as String),
-            _ticketRow('Fecha', Fmt.fechaCorta(emision)),
-            _ticketRow('Hora', Fmt.hora(emision)),
-            _ticketRow('Cobrador', row['cobrador_nombre'] as String),
-            const Divider(),
-
-            _ticketRow('Cliente', row['cliente_nombre'] as String),
-            if (settings.reciboMostrarCedula && row['cliente_cedula'] != null)
-              _ticketRow('Cédula', row['cliente_cedula'] as String),
-            const Divider(),
-
-            _ticketRow('Servicio', esManual
-                ? (row['cuota_descripcion'] as String? ?? 'Cuota manual')
-                : row['plan_nombre'] as String),
-            _ticketRow('Período', periodoLabel[0].toUpperCase() + periodoLabel.substring(1)),
-            _ticketRow('Cuota base', Fmt.cordobas(row['cuota_monto'] as num)),
-            if (settings.reciboMostrarAdeudado && saldoCuota > 0.01)
-              _ticketRow('Saldo cuota', Fmt.cordobas(saldoCuota)),
-
-            // Cantidad en letras (si está habilitado en settings).
-            if (settings.reciboMontoEnLetras)
-              Padding(
-                padding: const EdgeInsets.symmetric(vertical: 4),
-                child: Text(
-                  montoALetras(
-                    (row['monto_cordobas'] as num).toDouble(),
-                    moneda: (row['moneda'] as String?) ?? 'NIO',
-                  ),
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600),
-                ),
-              ),
-
-            const Divider(),
-
-            _ticketRow('Método',
-                MetodoPago.fromString(row['metodo'] as String).label.toUpperCase()),
-            if (row['referencia'] != null)
-              _ticketRow('Ref.', row['referencia'] as String),
-            if ((row['moneda'] as String) == 'USD')
-              _ticketRow(
-                'Recibido',
-                'US\$${(row['monto_original'] as num).toStringAsFixed(2)} '
-                    '(tasa ${(row['tasa_conversion'] as num).toStringAsFixed(2)})',
-              ),
-            const SizedBox(height: 8),
-            // COBRADO = monto aplicado a la cuota (lo que entra a la caja).
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                const Text('COBRADO',
-                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
-                Text(
-                  Fmt.cordobas(row['monto_cordobas'] as num),
-                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
-                ),
-              ],
-            ),
-            // VUELTO + PAGADO: si hubo vuelto, mostrar ambos. Si no, solo
-            // COBRADO es suficiente (PAGADO == COBRADO en ese caso).
-            Builder(builder: (_) {
-              final vuelto =
-                  (row['vuelto_cordobas'] as num? ?? 0).toDouble();
-              if (vuelto <= 0.01) return const SizedBox.shrink();
-              final cobrado = (row['monto_cordobas'] as num).toDouble();
-              final entregado = cobrado + vuelto;
-              final scheme = Theme.of(context).colorScheme;
-              final esUsd = (row['moneda'] as String) == 'USD';
-              return Column(
-                children: [
-                  Padding(
-                    padding: const EdgeInsets.only(top: 4),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Text(
-                          esUsd ? 'VUELTO (en C\$)' : 'VUELTO',
-                          style: TextStyle(
-                            fontWeight: FontWeight.w600,
-                            fontSize: 13,
-                            color: scheme.primary,
-                          ),
-                        ),
-                        Text(
-                          Fmt.cordobas(vuelto),
-                          style: TextStyle(
-                            fontWeight: FontWeight.w600,
-                            fontSize: 13,
-                            color: scheme.primary,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  Padding(
-                    padding: const EdgeInsets.only(top: 4),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        const Text('PAGADO',
-                            style: TextStyle(
-                              fontWeight: FontWeight.bold,
-                              fontSize: 14,
-                            )),
-                        Text(
-                          esUsd
-                              ? 'US\$${(row['monto_original'] as num).toStringAsFixed(2)} = ${Fmt.cordobas(entregado)}'
-                              : Fmt.cordobas(entregado),
-                          style: const TextStyle(
-                            fontWeight: FontWeight.bold,
-                            fontSize: 14,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              );
-            }),
-
-            // Bloques de texto del pie (pie libre + WhatsApp) en el orden
-            // configurado (#8b). Cada bloque lleva su propio Divider arriba.
-            for (final id in settings.reciboOrdenPie) ...[
-              if (id == 'pie' && settings.pieRecibo.isNotEmpty) ...[
-                const Divider(),
-                Text(settings.pieRecibo, textAlign: TextAlign.center),
-              ] else if (id == 'whatsapp' &&
-                  settings.empresaWhatsapp.isNotEmpty) ...[
-                const Divider(),
-                Text('WhatsApp: ${settings.empresaWhatsapp}',
-                    textAlign: TextAlign.center),
-              ],
-            ],
-
-            const SizedBox(height: 8),
-            if (row['impreso_en'] != null)
+            ...children,
+            // Badge de reimpresión: NO es un bloque del layout, va SIEMPRE al
+            // final (es metadata de la impresión, no del contenido).
+            if (row['impreso_en'] != null) ...[
+              const SizedBox(height: 8),
               Text(
                 'Reimpresión #${(row['reimpresiones'] as int? ?? 0) + 1}',
-                style: TextStyle(fontSize: 10, color: Theme.of(context).colorScheme.outline),
+                style: TextStyle(
+                    fontSize: 10, color: scheme.outline),
               ),
+            ],
           ],
         ),
       ),
     );
   }
 
-  Widget _ticketRow(String label, String value) {
+  /// Multiplicador de fontSize según el tamaño del bloque (chico/normal/grande).
+  double _scaleDe(ReciboTextoSize s) => switch (s) {
+        ReciboTextoSize.chico => 0.85,
+        ReciboTextoSize.grande => 1.3,
+        ReciboTextoSize.normal => 1.0,
+      };
+
+  /// Construye las líneas de UN bloque del recibo single. Devuelve [] si el
+  /// bloque no tiene nada que mostrar (logo null, empresa toda vacía, pie
+  /// vacío, etc.) — el loop del build salta los vacíos y su separador.
+  List<Widget> _buildBloque(BuildContext context, String id, double k) {
+    switch (id) {
+      case 'logo':
+        if (logoUrl == null) return const [];
+        return [
+          Image.network(
+            logoUrl!,
+            height: 60 * k,
+            fit: BoxFit.contain,
+            errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+          ),
+        ];
+      case 'empresa':
+        final out = <Widget>[];
+        if (settings.empresaNombre.isNotEmpty) {
+          out.add(Text(
+            settings.empresaNombre.toUpperCase(),
+            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16 * k),
+            textAlign: TextAlign.center,
+          ));
+        }
+        if (settings.empresaDireccion.isNotEmpty) {
+          out.add(Text(settings.empresaDireccion,
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 13 * k)));
+        }
+        if (settings.empresaTelefono.isNotEmpty) {
+          out.add(Text('Tel: ${settings.empresaTelefono}',
+              style: TextStyle(fontSize: 13 * k)));
+        }
+        if (settings.empresaRuc.isNotEmpty) {
+          out.add(Text('RUC: ${settings.empresaRuc}',
+              style: TextStyle(fontSize: 13 * k)));
+        }
+        return out;
+      case 'titulo':
+        if (settings.reciboTitulo.isEmpty) return const [];
+        return [
+          Text(
+            settings.reciboTitulo.toUpperCase(),
+            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14 * k),
+            textAlign: TextAlign.center,
+          ),
+        ];
+      case 'meta':
+        final emision = DateTime.parse(row['fecha_pago'] as String);
+        return [
+          _ticketRow('Recibo Nº', row['numero_completo'] as String, k),
+          _ticketRow('Fecha', Fmt.fechaCorta(emision), k),
+          _ticketRow('Hora', Fmt.hora(emision), k),
+          _ticketRow('Cobrador', row['cobrador_nombre'] as String, k),
+        ];
+      case 'cliente':
+        return [
+          _ticketRow('Cliente', row['cliente_nombre'] as String, k),
+          if (settings.reciboMostrarCedula && row['cliente_cedula'] != null)
+            _ticketRow('Cédula', row['cliente_cedula'] as String, k),
+        ];
+      case 'servicio':
+        final periodoCuota = DateTime.parse(row['periodo'] as String);
+        final diaPago = (row['dia_pago'] as num?)?.toInt();
+        final esManual = row['plan_nombre'] == null;
+        // Regla del 15 sobre día de pago del cliente, no fecha de emisión.
+        // Cuotas manuales (sin contrato): mes del periodo directo.
+        final periodoLabel = diaPago != null
+            ? Fmt.periodoRecibo(diaPago, periodoCuota)
+            : Fmt.mes(periodoCuota);
+        return [
+          _ticketRow(
+              'Servicio',
+              esManual
+                  ? (row['cuota_descripcion'] as String? ?? 'Cuota manual')
+                  : row['plan_nombre'] as String,
+              k),
+          _ticketRow('Período',
+              periodoLabel[0].toUpperCase() + periodoLabel.substring(1), k),
+        ];
+      case 'cuota':
+        // Saldo de la cuota tras este pago (sub-toggle `mostrar_adeudado`).
+        final saldoCuota = ((row['cuota_monto'] as num).toDouble() +
+                (row['cargos_neto'] as num? ?? 0).toDouble()) -
+            (row['monto_pagado_cuota'] as num? ?? row['monto_cordobas'] as num)
+                .toDouble();
+        return [
+          _ticketRow('Cuota base', Fmt.cordobas(row['cuota_monto'] as num), k),
+          if (settings.reciboMostrarAdeudado && saldoCuota > 0.01)
+            _ticketRow('Saldo cuota', Fmt.cordobas(saldoCuota), k),
+        ];
+      case 'metodo':
+        return [
+          _ticketRow(
+              'Método',
+              MetodoPago.fromString(row['metodo'] as String)
+                  .label
+                  .toUpperCase(),
+              k),
+          if (row['referencia'] != null)
+            _ticketRow('Ref.', row['referencia'] as String, k),
+          if ((row['moneda'] as String) == 'USD')
+            _ticketRow(
+              'Recibido',
+              'US\$${(row['monto_original'] as num).toStringAsFixed(2)} '
+                  '(tasa ${(row['tasa_conversion'] as num).toStringAsFixed(2)})',
+              k,
+            ),
+        ];
+      case 'letras':
+        return [
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 4),
+            child: Text(
+              montoALetras(
+                (row['monto_cordobas'] as num).toDouble(),
+                moneda: (row['moneda'] as String?) ?? 'NIO',
+              ),
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 11 * k, fontWeight: FontWeight.w600),
+            ),
+          ),
+        ];
+      case 'totales':
+        // EL BLOQUE DE DINERO. Matemática y contenido IDÉNTICOS al original:
+        // COBRADO siempre, + VUELTO/PAGADO si hubo vuelto (con manejo USD).
+        // Solo cambió su posición (la da el layout).
+        final scheme = Theme.of(context).colorScheme;
+        final vuelto = (row['vuelto_cordobas'] as num? ?? 0).toDouble();
+        final cobrado = (row['monto_cordobas'] as num).toDouble();
+        final entregado = cobrado + vuelto;
+        final esUsd = (row['moneda'] as String) == 'USD';
+        return [
+          // COBRADO = monto aplicado a la cuota (lo que entra a la caja).
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text('COBRADO',
+                  style:
+                      TextStyle(fontWeight: FontWeight.bold, fontSize: 15 * k)),
+              Text(
+                Fmt.cordobas(row['monto_cordobas'] as num),
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15 * k),
+              ),
+            ],
+          ),
+          // VUELTO + PAGADO: si hubo vuelto, mostrar ambos. Si no, solo
+          // COBRADO es suficiente (PAGADO == COBRADO en ese caso).
+          if (vuelto > 0.01) ...[
+            Padding(
+              padding: const EdgeInsets.only(top: 4),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    esUsd ? 'VUELTO (en C\$)' : 'VUELTO',
+                    style: TextStyle(
+                      fontWeight: FontWeight.w600,
+                      fontSize: 13 * k,
+                      color: scheme.primary,
+                    ),
+                  ),
+                  Text(
+                    Fmt.cordobas(vuelto),
+                    style: TextStyle(
+                      fontWeight: FontWeight.w600,
+                      fontSize: 13 * k,
+                      color: scheme.primary,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.only(top: 4),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text('PAGADO',
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 14 * k,
+                      )),
+                  Text(
+                    esUsd
+                        ? 'US\$${(row['monto_original'] as num).toStringAsFixed(2)} = ${Fmt.cordobas(entregado)}'
+                        : Fmt.cordobas(entregado),
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 14 * k,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ];
+      case 'pie':
+        if (settings.pieRecibo.isEmpty) return const [];
+        return [
+          Text(settings.pieRecibo,
+              textAlign: TextAlign.center, style: TextStyle(fontSize: 13 * k)),
+        ];
+      case 'whatsapp':
+        if (settings.empresaWhatsapp.isEmpty) return const [];
+        return [
+          Text('WhatsApp: ${settings.empresaWhatsapp}',
+              textAlign: TextAlign.center, style: TextStyle(fontSize: 13 * k)),
+        ];
+      default:
+        return const [];
+    }
+  }
+
+  Widget _ticketRow(String label, String value, [double k = 1]) {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        SizedBox(width: 90, child: Text('$label:')),
-        Expanded(child: Text(value, textAlign: TextAlign.right)),
+        SizedBox(
+            width: 90,
+            child: Text('$label:', style: TextStyle(fontSize: 13 * k))),
+        Expanded(
+            child: Text(value,
+                textAlign: TextAlign.right,
+                style: TextStyle(fontSize: 13 * k))),
       ],
     );
   }
@@ -476,19 +545,29 @@ class _MultiReciboTicket extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    final first = rows.first;
-    final emision = DateTime.parse(first['fecha_pago'] as String);
-    var totalCobrado = 0.0;
-    var totalVuelto = 0.0;
-    var totalOriginal = 0.0; // Σ monto_original = lo entregado en moneda original.
-    for (final r in rows) {
-      totalCobrado += (r['monto_cordobas'] as num).toDouble();
-      totalVuelto += (r['vuelto_cordobas'] as num? ?? 0).toDouble();
-      totalOriginal += (r['monto_original'] as num? ?? 0).toDouble();
+
+    // Se ITERA el MISMO layout configurable que el recibo single. Los ids
+    // mapean a su contenido MULTI (lista de N cuotas, totales sumados, etc.).
+    // El bloque `totales` (dinero) mantiene su matemática IDÉNTICA; solo cambia
+    // su posición (la da el layout).
+    final children = <Widget>[];
+    String? zonaPrev;
+    for (final b in settings.reciboLayout) {
+      if (!b.visible) continue;
+      final contenido = _buildBloque(context, b.id, _scaleDe(b.size));
+      if (contenido.isEmpty) continue;
+      final zona = reciboBloqueInfo(b.id)?.zona ?? ReciboZona.body;
+      if (children.isNotEmpty) {
+        // Entre dos bloques de header: gap chico (sin divider). Resto: Divider.
+        if (zonaPrev == 'header' && zona == ReciboZona.header) {
+          children.add(const SizedBox(height: 4));
+        } else {
+          children.add(const Divider());
+        }
+      }
+      children.addAll(contenido);
+      zonaPrev = zona == ReciboZona.header ? 'header' : 'otro';
     }
-    final totalEntregado = totalCobrado + totalVuelto;
-    // Todo el grupo comparte moneda/tasa (registrarCobroMultiple usa una sola).
-    final esUsd = (first['moneda'] as String?) == 'USD';
 
     return Container(
       decoration: BoxDecoration(
@@ -506,175 +585,261 @@ class _MultiReciboTicket extends StatelessWidget {
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.center,
-          children: [
-            if (logoUrl != null)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 8),
-                child: Image.network(
-                  logoUrl!,
-                  height: 60,
-                  fit: BoxFit.contain,
-                  errorBuilder: (_, __, ___) => const SizedBox.shrink(),
-                ),
-              ),
-            // Bloque empresa (nombre/dir/tel/RUC): solo si el toggle está activo (#8b).
-            if (settings.reciboMostrarEmpresa) ...[
-              if (settings.empresaNombre.isNotEmpty)
-                Text(
-                  settings.empresaNombre.toUpperCase(),
-                  style:
-                      const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-                  textAlign: TextAlign.center,
-                ),
-              if (settings.empresaDireccion.isNotEmpty)
-                Text(settings.empresaDireccion, textAlign: TextAlign.center),
-              if (settings.empresaTelefono.isNotEmpty)
-                Text('Tel: ${settings.empresaTelefono}'),
-              if (settings.empresaRuc.isNotEmpty)
-                Text('RUC: ${settings.empresaRuc}'),
-            ],
-            if (settings.reciboTitulo.isNotEmpty)
-              Padding(
-                padding: const EdgeInsets.only(top: 6),
-                child: Text(
-                  settings.reciboTitulo.toUpperCase(),
-                  style: const TextStyle(
-                      fontWeight: FontWeight.bold, fontSize: 14),
-                  textAlign: TextAlign.center,
-                ),
-              ),
-            const Divider(),
-
-            Text('COBRO MÚLTIPLE (${rows.length} cuotas)',
-                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
-            const SizedBox(height: 4),
-            _ticketRow('Recibos', '${rows.first['numero_completo']} - ${rows.last['numero_completo']}'),
-            _ticketRow('Fecha', Fmt.fechaCorta(emision)),
-            _ticketRow('Hora', Fmt.hora(emision)),
-            _ticketRow('Cobrador', first['cobrador_nombre'] as String),
-            const Divider(),
-
-            _ticketRow('Cliente', first['cliente_nombre'] as String),
-            if (settings.reciboMostrarCedula && first['cliente_cedula'] != null)
-              _ticketRow('Cédula', first['cliente_cedula'] as String),
-            const Divider(),
-
-            for (final r in rows)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 2),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Expanded(
-                      child: Text(
-                        Fmt.mesServicioLabel(
-                          DateTime.parse(r['periodo'] as String),
-                          r['plan_nombre'] == null
-                              ? null
-                              : (r['dia_pago'] as num?)?.toInt(),
-                        ),
-                        style: const TextStyle(fontSize: 12),
-                      ),
-                    ),
-                    Text(Fmt.cordobas(r['monto_cordobas'] as num),
-                        style: const TextStyle(fontSize: 12)),
-                  ],
-                ),
-              ),
-
-            const Divider(),
-            _ticketRow('Método', MetodoPago.fromString(first['metodo'] as String).label.toUpperCase()),
-            if (first['referencia'] != null)
-              _ticketRow('Ref.', first['referencia'] as String),
-            if (esUsd)
-              _ticketRow(
-                'Recibido',
-                'US\$${totalOriginal.toStringAsFixed(2)} '
-                    '(tasa ${(first['tasa_conversion'] as num).toStringAsFixed(2)})',
-              ),
-
-            if (settings.reciboMontoEnLetras)
-              Padding(
-                padding: const EdgeInsets.symmetric(vertical: 4),
-                child: Text(
-                  // Monto en letras corresponde al COBRADO (lo que entró
-                  // a la caja del ISP), no a lo entregado por el cliente.
-                  montoALetras(totalCobrado,
-                      moneda: (first['moneda'] as String?) ?? 'NIO'),
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600),
-                ),
-              ),
-
-            const SizedBox(height: 8),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                const Text('TOTAL COBRADO',
-                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
-                Text(Fmt.cordobas(totalCobrado),
-                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
-              ],
-            ),
-            if (totalVuelto > 0.01) ...[
-              const SizedBox(height: 4),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text(esUsd ? 'VUELTO (en C\$)' : 'VUELTO',
-                      style: TextStyle(
-                        fontWeight: FontWeight.w600,
-                        fontSize: 13,
-                        color: scheme.primary,
-                      )),
-                  Text(Fmt.cordobas(totalVuelto),
-                      style: TextStyle(
-                        fontWeight: FontWeight.w600,
-                        fontSize: 13,
-                        color: scheme.primary,
-                      )),
-                ],
-              ),
-              const SizedBox(height: 4),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  const Text('PAGADO',
-                      style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
-                  Text(
-                      esUsd
-                          ? 'US\$${totalOriginal.toStringAsFixed(2)} = ${Fmt.cordobas(totalEntregado)}'
-                          : Fmt.cordobas(totalEntregado),
-                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
-                ],
-              ),
-            ],
-
-            // Bloques de texto del pie (pie libre + WhatsApp) en el orden
-            // configurado (#8b). Cada bloque lleva su propio Divider arriba.
-            for (final id in settings.reciboOrdenPie) ...[
-              if (id == 'pie' && settings.pieRecibo.isNotEmpty) ...[
-                const Divider(),
-                Text(settings.pieRecibo, textAlign: TextAlign.center),
-              ] else if (id == 'whatsapp' &&
-                  settings.empresaWhatsapp.isNotEmpty) ...[
-                const Divider(),
-                Text('WhatsApp: ${settings.empresaWhatsapp}',
-                    textAlign: TextAlign.center),
-              ],
-            ],
-          ],
+          children: children,
         ),
       ),
     );
   }
 
-  Widget _ticketRow(String label, String value) {
+  /// Multiplicador de fontSize según el tamaño del bloque (chico/normal/grande).
+  /// Idéntico al del recibo single — la térmica mapea aparte.
+  double _scaleDe(ReciboTextoSize s) => switch (s) {
+        ReciboTextoSize.chico => 0.85,
+        ReciboTextoSize.grande => 1.3,
+        ReciboTextoSize.normal => 1.0,
+      };
+
+  /// Construye las líneas de UN bloque del recibo MULTI. Devuelve [] si el
+  /// bloque no tiene nada que mostrar. El bloque `servicio` va vacío en multi
+  /// (la lista de cuotas del bloque `cuota` ya lo cubre).
+  List<Widget> _buildBloque(BuildContext context, String id, double k) {
+    final first = rows.first;
+    switch (id) {
+      case 'logo':
+        if (logoUrl == null) return const [];
+        return [
+          Image.network(
+            logoUrl!,
+            height: 60 * k,
+            fit: BoxFit.contain,
+            errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+          ),
+        ];
+      case 'empresa':
+        final out = <Widget>[];
+        if (settings.empresaNombre.isNotEmpty) {
+          out.add(Text(
+            settings.empresaNombre.toUpperCase(),
+            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16 * k),
+            textAlign: TextAlign.center,
+          ));
+        }
+        if (settings.empresaDireccion.isNotEmpty) {
+          out.add(Text(settings.empresaDireccion,
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 13 * k)));
+        }
+        if (settings.empresaTelefono.isNotEmpty) {
+          out.add(Text('Tel: ${settings.empresaTelefono}',
+              style: TextStyle(fontSize: 13 * k)));
+        }
+        if (settings.empresaRuc.isNotEmpty) {
+          out.add(Text('RUC: ${settings.empresaRuc}',
+              style: TextStyle(fontSize: 13 * k)));
+        }
+        return out;
+      case 'titulo':
+        if (settings.reciboTitulo.isEmpty) return const [];
+        return [
+          Text(
+            settings.reciboTitulo.toUpperCase(),
+            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14 * k),
+            textAlign: TextAlign.center,
+          ),
+        ];
+      case 'meta':
+        final emision = DateTime.parse(first['fecha_pago'] as String);
+        return [
+          Text('COBRO MÚLTIPLE (${rows.length} cuotas)',
+              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14 * k)),
+          const SizedBox(height: 4),
+          _ticketRow('Recibos',
+              '${rows.first['numero_completo']} - ${rows.last['numero_completo']}',
+              k),
+          _ticketRow('Fecha', Fmt.fechaCorta(emision), k),
+          _ticketRow('Hora', Fmt.hora(emision), k),
+          _ticketRow('Cobrador', first['cobrador_nombre'] as String, k),
+        ];
+      case 'cliente':
+        return [
+          _ticketRow('Cliente', first['cliente_nombre'] as String, k),
+          if (settings.reciboMostrarCedula && first['cliente_cedula'] != null)
+            _ticketRow('Cédula', first['cliente_cedula'] as String, k),
+        ];
+      case 'servicio':
+        // En multi la lista de cuotas (bloque `cuota`) ya cubre el servicio.
+        return const [];
+      case 'cuota':
+        // La LISTA de N cuotas: período → monto aplicado de cada una.
+        return [
+          for (final r in rows)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 2),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Expanded(
+                    child: Text(
+                      Fmt.mesServicioLabel(
+                        DateTime.parse(r['periodo'] as String),
+                        r['plan_nombre'] == null
+                            ? null
+                            : (r['dia_pago'] as num?)?.toInt(),
+                      ),
+                      style: TextStyle(fontSize: 12 * k),
+                    ),
+                  ),
+                  Text(Fmt.cordobas(r['monto_cordobas'] as num),
+                      style: TextStyle(fontSize: 12 * k)),
+                ],
+              ),
+            ),
+        ];
+      case 'metodo':
+        final totalOriginal = _totalOriginal();
+        final esUsd = (first['moneda'] as String?) == 'USD';
+        return [
+          _ticketRow('Método',
+              MetodoPago.fromString(first['metodo'] as String).label.toUpperCase(),
+              k),
+          if (first['referencia'] != null)
+            _ticketRow('Ref.', first['referencia'] as String, k),
+          if (esUsd)
+            _ticketRow(
+              'Recibido',
+              'US\$${totalOriginal.toStringAsFixed(2)} '
+                  '(tasa ${(first['tasa_conversion'] as num).toStringAsFixed(2)})',
+              k,
+            ),
+        ];
+      case 'letras':
+        final totalCobrado = _totalCobrado();
+        return [
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 4),
+            child: Text(
+              // Monto en letras corresponde al COBRADO (lo que entró
+              // a la caja del ISP), no a lo entregado por el cliente.
+              montoALetras(totalCobrado,
+                  moneda: (first['moneda'] as String?) ?? 'NIO'),
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 11 * k, fontWeight: FontWeight.w600),
+            ),
+          ),
+        ];
+      case 'totales':
+        // EL BLOQUE DE DINERO (multi). Matemática y contenido IDÉNTICOS al
+        // original: TOTAL COBRADO + VUELTO/PAGADO sumados (con manejo USD =
+        // Σ monto_original). Solo cambió su posición (la da el layout).
+        final scheme = Theme.of(context).colorScheme;
+        final totalCobrado = _totalCobrado();
+        final totalVuelto = _totalVuelto();
+        final totalOriginal = _totalOriginal();
+        final totalEntregado = totalCobrado + totalVuelto;
+        // Todo el grupo comparte moneda/tasa (registrarCobroMultiple usa una sola).
+        final esUsd = (first['moneda'] as String?) == 'USD';
+        return [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text('TOTAL COBRADO',
+                  style:
+                      TextStyle(fontWeight: FontWeight.bold, fontSize: 15 * k)),
+              Text(Fmt.cordobas(totalCobrado),
+                  style:
+                      TextStyle(fontWeight: FontWeight.bold, fontSize: 15 * k)),
+            ],
+          ),
+          if (totalVuelto > 0.01) ...[
+            const SizedBox(height: 4),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(esUsd ? 'VUELTO (en C\$)' : 'VUELTO',
+                    style: TextStyle(
+                      fontWeight: FontWeight.w600,
+                      fontSize: 13 * k,
+                      color: scheme.primary,
+                    )),
+                Text(Fmt.cordobas(totalVuelto),
+                    style: TextStyle(
+                      fontWeight: FontWeight.w600,
+                      fontSize: 13 * k,
+                      color: scheme.primary,
+                    )),
+              ],
+            ),
+            const SizedBox(height: 4),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text('PAGADO',
+                    style:
+                        TextStyle(fontWeight: FontWeight.bold, fontSize: 14 * k)),
+                Text(
+                    esUsd
+                        ? 'US\$${totalOriginal.toStringAsFixed(2)} = ${Fmt.cordobas(totalEntregado)}'
+                        : Fmt.cordobas(totalEntregado),
+                    style:
+                        TextStyle(fontWeight: FontWeight.bold, fontSize: 14 * k)),
+              ],
+            ),
+          ],
+        ];
+      case 'pie':
+        if (settings.pieRecibo.isEmpty) return const [];
+        return [
+          Text(settings.pieRecibo,
+              textAlign: TextAlign.center, style: TextStyle(fontSize: 13 * k)),
+        ];
+      case 'whatsapp':
+        if (settings.empresaWhatsapp.isEmpty) return const [];
+        return [
+          Text('WhatsApp: ${settings.empresaWhatsapp}',
+              textAlign: TextAlign.center, style: TextStyle(fontSize: 13 * k)),
+        ];
+      default:
+        return const [];
+    }
+  }
+
+  // Totales del grupo. Mismas sumas que antes (sin cambios de matemática).
+  double _totalCobrado() {
+    var t = 0.0;
+    for (final r in rows) {
+      t += (r['monto_cordobas'] as num).toDouble();
+    }
+    return t;
+  }
+
+  double _totalVuelto() {
+    var t = 0.0;
+    for (final r in rows) {
+      t += (r['vuelto_cordobas'] as num? ?? 0).toDouble();
+    }
+    return t;
+  }
+
+  // Σ monto_original = lo entregado en moneda original.
+  double _totalOriginal() {
+    var t = 0.0;
+    for (final r in rows) {
+      t += (r['monto_original'] as num? ?? 0).toDouble();
+    }
+    return t;
+  }
+
+  Widget _ticketRow(String label, String value, [double k = 1]) {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        SizedBox(width: 90, child: Text('$label:')),
-        Expanded(child: Text(value, textAlign: TextAlign.right)),
+        SizedBox(
+            width: 90,
+            child: Text('$label:', style: TextStyle(fontSize: 13 * k))),
+        Expanded(
+            child: Text(value,
+                textAlign: TextAlign.right,
+                style: TextStyle(fontSize: 13 * k))),
       ],
     );
   }
@@ -800,10 +965,12 @@ class _AccionesImpresionState extends ConsumerState<_AccionesImpresion> {
         reciboTitulo: widget.settings.reciboTitulo,
         mostrarAdeudado: widget.settings.reciboMostrarAdeudado,
         empresaWhatsapp: widget.settings.empresaWhatsapp,
-        // #8b: visibilidad/orden de bloques presentacionales del recibo.
-        mostrarEmpresa: widget.settings.reciboMostrarEmpresa,
+        // Sub-toggle que SE MANTIENE: cédula dentro del bloque `cliente`.
         mostrarCedula: widget.settings.reciboMostrarCedula,
-        ordenPie: widget.settings.reciboOrdenPie,
+        // Layout configurable: orden + visibilidad + tamaño por bloque. La
+        // térmica itera la misma lista que pantalla/PDF (supersede
+        // mostrarEmpresa/ordenPie).
+        layout: widget.settings.reciboLayout,
         // #6a: si es cobro múltiple, imprimir las N cuotas del grupo (no solo
         // la 1ª). El service cae al recibo single si multiRows es null/1.
         multiRecibos: widget.multiRows,
