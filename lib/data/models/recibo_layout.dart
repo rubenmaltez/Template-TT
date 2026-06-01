@@ -73,6 +73,7 @@ const kReciboBloquesCatalogo = <ReciboBloqueInfo>[
   ReciboBloqueInfo('letras', 'Monto en letras', ReciboZona.body),
   ReciboBloqueInfo('totales', 'Totales (cobrado / vuelto / pagado)', ReciboZona.body,
       hideable: false),
+  ReciboBloqueInfo('mora', 'Detalle de mora', ReciboZona.body),
   ReciboBloqueInfo('pie', 'Pie libre', ReciboZona.footer),
   ReciboBloqueInfo('whatsapp', 'WhatsApp', ReciboZona.footer),
 ];

@@ -17,6 +17,7 @@ import '../../powersync/db.dart' as ps;
 import '../shared/widgets/empty_state.dart';
 import '../shared/widgets/foto_comprobante_view.dart';
 import '../shared/widgets/impersonation_banner.dart';
+import 'recibo_mora.dart';
 import 'recibo_pdf.dart';
 
 /// Preview visual del recibo + acción para imprimir.
@@ -58,6 +59,7 @@ class _ReciboScreenState extends ConsumerState<ReciboScreen> {
                p.monto_cordobas, p.vuelto_cordobas, p.moneda, p.monto_original,
                p.tasa_conversion, p.metodo, p.referencia, p.fecha_pago,
                p.foto_comprobante_path, p.grupo_cobro,
+               cu.id AS cuota_id, cu.contrato_id,
                cu.periodo, cu.monto AS cuota_monto,
                cu.monto_pagado AS monto_pagado_cuota,
                cu.cargos_neto,
@@ -86,6 +88,7 @@ class _ReciboScreenState extends ConsumerState<ReciboScreen> {
                p.monto_cordobas, p.vuelto_cordobas, p.moneda, p.monto_original,
                p.tasa_conversion, p.metodo, p.referencia, p.fecha_pago,
                p.foto_comprobante_path,
+               cu.id AS cuota_id, cu.contrato_id,
                cu.periodo, cu.monto AS cuota_monto,
                cu.monto_pagado AS monto_pagado_cuota,
                cu.cargos_neto,
@@ -228,7 +231,10 @@ class _ReciboScreenState extends ConsumerState<ReciboScreen> {
 
 /// Ticket visual de un recibo de cobro single-cuota. Público para reusarlo en
 /// la vista previa del diseñador de recibos en settings (#8a).
-class ReciboTicket extends StatelessWidget {
+///
+/// `ConsumerWidget` (no `StatelessWidget`) porque el bloque `mora` necesita
+/// `ref.watch(moraContratoProvider)` para listar los meses en mora del contrato.
+class ReciboTicket extends ConsumerWidget {
   const ReciboTicket({
     super.key,
     required this.row,
@@ -243,7 +249,7 @@ class ReciboTicket extends StatelessWidget {
   final String? logoUrl;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final scheme = Theme.of(context).colorScheme;
 
     // Se ITERA el layout configurable: cada bloque se construye en
@@ -255,7 +261,7 @@ class ReciboTicket extends StatelessWidget {
     String? zonaPrev;
     for (final b in settings.reciboLayout) {
       if (!b.visible) continue;
-      final contenido = _buildBloque(context, b.id, _scaleDe(b.size));
+      final contenido = _buildBloque(context, ref, b.id, _scaleDe(b.size));
       if (contenido.isEmpty) continue;
       final zona = reciboBloqueInfo(b.id)?.zona ?? ReciboZona.body;
       if (children.isNotEmpty) {
@@ -314,7 +320,8 @@ class ReciboTicket extends StatelessWidget {
   /// Construye las líneas de UN bloque del recibo single. Devuelve [] si el
   /// bloque no tiene nada que mostrar (logo null, empresa toda vacía, pie
   /// vacío, etc.) — el loop del build salta los vacíos y su separador.
-  List<Widget> _buildBloque(BuildContext context, String id, double k) {
+  List<Widget> _buildBloque(
+      BuildContext context, WidgetRef ref, String id, double k) {
     switch (id) {
       case 'logo':
         if (logoUrl == null) return const [];
@@ -508,6 +515,48 @@ class ReciboTicket extends StatelessWidget {
             ),
           ],
         ];
+      case 'mora':
+        // Detalle de mora del MISMO contrato: meses pendiente/parcial pasados
+        // de gracia, excluyendo la cuota recién cobrada en este recibo. NO es
+        // dinero del comprobante (no toca la matemática de `cuota`/`totales`):
+        // es un resumen informativo de lo que el cliente aún debe del contrato.
+        final contratoId = row['contrato_id'] as String?;
+        if (contratoId == null) return const []; // cuota manual: sin contrato
+        final mora = (ref
+                    .watch(moraContratoProvider((
+                      contratoId: contratoId,
+                      diasGracia: settings.diasGracia,
+                    )))
+                    .valueOrNull ??
+                const [])
+            .where((m) => m['cuota_id'] != row['cuota_id'])
+            .toList();
+        if (mora.isEmpty) return const [];
+        final totalMora = mora.fold<double>(
+            0, (s, m) => s + (m['saldo'] as num).toDouble());
+        return [
+          Text('EN MORA',
+              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13 * k),
+              textAlign: TextAlign.center),
+          const SizedBox(height: 2),
+          for (final m in mora)
+            _ticketRow(
+              Fmt.mes(DateTime.parse(m['periodo'] as String)),
+              Fmt.cordobas(m['saldo'] as num),
+              k,
+            ),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text('TOTAL MORA',
+                  style:
+                      TextStyle(fontWeight: FontWeight.bold, fontSize: 13 * k)),
+              Text(Fmt.cordobas(totalMora),
+                  style:
+                      TextStyle(fontWeight: FontWeight.bold, fontSize: 13 * k)),
+            ],
+          ),
+        ];
       case 'pie':
         if (settings.pieRecibo.isEmpty) return const [];
         return [
@@ -541,7 +590,9 @@ class ReciboTicket extends StatelessWidget {
   }
 }
 
-class _MultiReciboTicket extends StatelessWidget {
+/// `ConsumerWidget` (no `StatelessWidget`) porque el bloque `mora` necesita
+/// `ref.watch(moraContratoProvider)` para listar los meses en mora del contrato.
+class _MultiReciboTicket extends ConsumerWidget {
   const _MultiReciboTicket({
     required this.rows,
     required this.settings,
@@ -552,7 +603,7 @@ class _MultiReciboTicket extends StatelessWidget {
   final String? logoUrl;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final scheme = Theme.of(context).colorScheme;
 
     // Se ITERA el MISMO layout configurable que el recibo single. Los ids
@@ -563,7 +614,7 @@ class _MultiReciboTicket extends StatelessWidget {
     String? zonaPrev;
     for (final b in settings.reciboLayout) {
       if (!b.visible) continue;
-      final contenido = _buildBloque(context, b.id, _scaleDe(b.size));
+      final contenido = _buildBloque(context, ref, b.id, _scaleDe(b.size));
       if (contenido.isEmpty) continue;
       final zona = reciboBloqueInfo(b.id)?.zona ?? ReciboZona.body;
       if (children.isNotEmpty) {
@@ -611,7 +662,8 @@ class _MultiReciboTicket extends StatelessWidget {
   /// Construye las líneas de UN bloque del recibo MULTI. Devuelve [] si el
   /// bloque no tiene nada que mostrar. El bloque `servicio` va vacío en multi
   /// (la lista de cuotas del bloque `cuota` ya lo cubre).
-  List<Widget> _buildBloque(BuildContext context, String id, double k) {
+  List<Widget> _buildBloque(
+      BuildContext context, WidgetRef ref, String id, double k) {
     final first = rows.first;
     switch (id) {
       case 'logo':
@@ -795,6 +847,49 @@ class _MultiReciboTicket extends StatelessWidget {
             ),
           ],
         ];
+      case 'mora':
+        // Detalle de mora del contrato (multi): excluye TODAS las cuotas del
+        // grupo recién cobrado, así solo figura lo que aún se debe. Mismo
+        // resumen informativo que el single — no toca la matemática del dinero.
+        final contratoId = first['contrato_id'] as String?;
+        if (contratoId == null) return const []; // cuota manual: sin contrato
+        final cobradas =
+            rows.map((r) => r['cuota_id']).whereType<Object>().toSet();
+        final mora = (ref
+                    .watch(moraContratoProvider((
+                      contratoId: contratoId,
+                      diasGracia: settings.diasGracia,
+                    )))
+                    .valueOrNull ??
+                const [])
+            .where((m) => !cobradas.contains(m['cuota_id']))
+            .toList();
+        if (mora.isEmpty) return const [];
+        final totalMora = mora.fold<double>(
+            0, (s, m) => s + (m['saldo'] as num).toDouble());
+        return [
+          Text('EN MORA',
+              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13 * k),
+              textAlign: TextAlign.center),
+          const SizedBox(height: 2),
+          for (final m in mora)
+            _ticketRow(
+              Fmt.mes(DateTime.parse(m['periodo'] as String)),
+              Fmt.cordobas(m['saldo'] as num),
+              k,
+            ),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text('TOTAL MORA',
+                  style:
+                      TextStyle(fontWeight: FontWeight.bold, fontSize: 13 * k)),
+              Text(Fmt.cordobas(totalMora),
+                  style:
+                      TextStyle(fontWeight: FontWeight.bold, fontSize: 13 * k)),
+            ],
+          ),
+        ];
       case 'pie':
         if (settings.pieRecibo.isEmpty) return const [];
         return [
@@ -902,15 +997,36 @@ class _AccionesImpresionState extends ConsumerState<_AccionesImpresion> {
         }
       }
 
-      final doc = widget.multiRows != null
+      // Detalle de mora del contrato para el bloque `mora` del PDF. El PDF no
+      // tiene `ref` ni hace IO, así que la mora se calcula acá (mismo
+      // `fetchMoraContrato` que el provider de pantalla) y se pasa hecha.
+      // Single: excluir la cuota cobrada. Multi: excluir TODAS las del grupo.
+      // Cuota manual (contrato_id null) → mora vacía.
+      final multiRows = widget.multiRows;
+      final contratoId = (multiRows != null ? multiRows.first : widget.recibo)[
+          'contrato_id'] as String?;
+      final excluir = (multiRows != null
+              ? multiRows.map((r) => r['cuota_id'])
+              : [widget.recibo['cuota_id']])
+          .whereType<Object>()
+          .toSet();
+      final moraRows = contratoId == null
+          ? const <Map<String, dynamic>>[]
+          : (await fetchMoraContrato(contratoId, widget.settings.diasGracia))
+              .where((m) => !excluir.contains(m['cuota_id']))
+              .toList();
+
+      final doc = multiRows != null
           ? await buildMultiReciboPdf(
-              rows: widget.multiRows!,
+              rows: multiRows,
               settings: widget.settings,
-              logoBytes: logoBytes)
+              logoBytes: logoBytes,
+              moraRows: moraRows)
           : await buildReciboPdf(
               row: widget.recibo,
               settings: widget.settings,
-              logoBytes: logoBytes);
+              logoBytes: logoBytes,
+              moraRows: moraRows);
       final bytes = await doc.save();
       final numero = (widget.recibo['numero_completo'] as String?) ?? widget.reciboId;
       final filename =

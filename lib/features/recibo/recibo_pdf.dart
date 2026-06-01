@@ -26,10 +26,16 @@ double _anchoPuntos(int mm) {
 ///
 /// [logoBytes] opcional: si se provee, se renderiza el logo de la empresa
 /// centrado horizontalmente arriba del nombre de la empresa.
+///
+/// [moraRows] = detalle de mora del contrato YA filtrado por el call-site
+/// (excluida la cuota cobrada). Estas funciones no tienen `ref` ni hacen IO,
+/// así que la mora se calcula afuera (`fetchMoraContrato`) y se pasa hecha.
+/// Vacío → el bloque `mora` no se muestra.
 Future<pw.Document> buildReciboPdf({
   required Map<String, dynamic> row,
   required AppSettings settings,
   Uint8List? logoBytes,
+  List<Map<String, dynamic>> moraRows = const [],
 }) async {
   final doc = pw.Document();
   final ancho = _anchoPuntos(settings.formatoReciboMm);
@@ -44,7 +50,7 @@ Future<pw.Document> buildReciboPdf({
   for (final b in settings.reciboLayout) {
     if (!b.visible) continue;
     final contenido = _pdfBloqueSingle(b.id, _pdfScale(b.size), row, settings,
-        logoBytes: logoBytes);
+        logoBytes: logoBytes, moraRows: moraRows);
     if (contenido.isEmpty) continue;
     final zona = reciboBloqueInfo(b.id)?.zona ?? ReciboZona.body;
     if (children.isNotEmpty) {
@@ -97,6 +103,7 @@ List<pw.Widget> _pdfBloqueSingle(
   Map<String, dynamic> row,
   AppSettings settings, {
   Uint8List? logoBytes,
+  List<Map<String, dynamic>> moraRows = const [],
 }) {
   switch (id) {
     case 'logo':
@@ -230,6 +237,11 @@ List<pw.Widget> _pdfBloqueSingle(
         // VUELTO + PAGADO si hubo vuelto.
         ..._vueltoIfNeeded(row, k),
       ];
+    case 'mora':
+      // Detalle de mora del contrato (ya filtrado por el call-site). Resumen
+      // informativo de lo que el cliente aún debe — no toca la matemática del
+      // dinero del recibo (`cuota`/`totales`).
+      return _pdfBloqueMoraRows(moraRows, k);
     case 'pie':
       if (settings.pieRecibo.isEmpty) return const [];
       return [
@@ -253,10 +265,15 @@ List<pw.Widget> _pdfBloqueSingle(
 ///
 /// [logoBytes] opcional: si se provee, se renderiza el logo de la empresa
 /// centrado horizontalmente arriba del nombre de la empresa.
+///
+/// [moraRows] = detalle de mora del contrato YA filtrado por el call-site
+/// (excluidas TODAS las cuotas del grupo). Vacío → el bloque `mora` no se
+/// muestra. Ver `buildReciboPdf` para el razonamiento del parámetro.
 Future<pw.Document> buildMultiReciboPdf({
   required List<Map<String, dynamic>> rows,
   required AppSettings settings,
   Uint8List? logoBytes,
+  List<Map<String, dynamic>> moraRows = const [],
 }) async {
   final doc = pw.Document();
   final ancho = _anchoPuntos(settings.formatoReciboMm);
@@ -269,7 +286,7 @@ Future<pw.Document> buildMultiReciboPdf({
   for (final b in settings.reciboLayout) {
     if (!b.visible) continue;
     final contenido = _pdfBloqueMulti(b.id, _pdfScale(b.size), rows, settings,
-        logoBytes: logoBytes);
+        logoBytes: logoBytes, moraRows: moraRows);
     if (contenido.isEmpty) continue;
     final zona = reciboBloqueInfo(b.id)?.zona ?? ReciboZona.body;
     if (children.isNotEmpty) {
@@ -306,6 +323,7 @@ List<pw.Widget> _pdfBloqueMulti(
   List<Map<String, dynamic>> rows,
   AppSettings settings, {
   Uint8List? logoBytes,
+  List<Map<String, dynamic>> moraRows = const [],
 }) {
   final first = rows.first;
   switch (id) {
@@ -485,6 +503,10 @@ List<pw.Widget> _pdfBloqueMulti(
           ),
         ],
       ];
+    case 'mora':
+      // Detalle de mora del contrato (ya filtrado por el call-site, excluidas
+      // las cuotas del grupo). Resumen informativo — no toca el dinero.
+      return _pdfBloqueMoraRows(moraRows, k);
     case 'pie':
       if (settings.pieRecibo.isEmpty) return const [];
       return [
@@ -502,6 +524,39 @@ List<pw.Widget> _pdfBloqueMulti(
     default:
       return const [];
   }
+}
+
+/// Bloque `mora` en PDF (compartido single + multi): título "EN MORA", una
+/// línea por mes (`Fmt.mes` ↔ `Fmt.cordobas(saldo)`), y "TOTAL MORA" con la
+/// suma. `moraRows` ya viene filtrado por el call-site; vacío → [].
+List<pw.Widget> _pdfBloqueMoraRows(
+    List<Map<String, dynamic>> moraRows, double k) {
+  if (moraRows.isEmpty) return const [];
+  final totalMora = moraRows.fold<double>(
+      0, (s, m) => s + (m['saldo'] as num).toDouble());
+  return [
+    pw.Text('EN MORA',
+        style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 9 * k),
+        textAlign: pw.TextAlign.center),
+    pw.SizedBox(height: 2),
+    for (final m in moraRows)
+      _pdfRow(
+        Fmt.mes(DateTime.parse(m['periodo'] as String)),
+        Fmt.cordobas(m['saldo'] as num),
+        k,
+      ),
+    pw.Row(
+      mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+      children: [
+        pw.Text('TOTAL MORA',
+            style:
+                pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 9 * k)),
+        pw.Text(Fmt.cordobas(totalMora),
+            style:
+                pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 9 * k)),
+      ],
+    ),
+  ];
 }
 
 // Totales del grupo (multi). Mismas sumas que antes (sin cambios de matemática).
