@@ -1,9 +1,9 @@
-/// Modelo del LAYOUT configurable del recibo — "diseñador de recibo" (rework).
-///
-/// El recibo se renderiza como una LISTA ORDENADA de bloques; cada bloque tiene
-/// visibilidad y tamaño de letra. Los 3 renderers (pantalla / PDF / Bluetooth)
-/// iteran exactamente la misma lista para salir consistentes. Granularidad por
-/// BLOQUE (Opción A): un dataset (cliente, cuota, etc.) es una unidad.
+// Modelo del LAYOUT configurable del recibo — "diseñador de recibo" (rework).
+//
+// El recibo se renderiza como una LISTA ORDENADA de bloques; cada bloque tiene
+// visibilidad y tamaño de letra. Los 3 renderers (pantalla / PDF / Bluetooth)
+// iteran exactamente la misma lista para salir consistentes. Granularidad por
+// BLOQUE (Opción A): un dataset (cliente, cuota, etc.) es una unidad.
 
 /// Tamaño de letra de un bloque. Enum de 3 niveles a propósito: la térmica
 /// ESC/POS solo soporta ~3 tamaños reales (normal / doble), así que pantalla y

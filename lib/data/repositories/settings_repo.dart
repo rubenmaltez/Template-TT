@@ -251,7 +251,7 @@ class AppSettings {
   /// `ReciboLayout.fromRaw` (sanea ids desconocidos, completa faltantes, fuerza
   /// visible en los totales).
   List<ReciboBloque> get reciboLayout =>
-      ReciboLayout.fromRaw(_map['recibo.layout']?.valor);
+      ReciboLayout.fromRaw(_map?['recibo.layout']?.valor);
 
   /// Orden de los bloques de TEXTO del pie del recibo: 'pie' (pie libre) y
   /// 'whatsapp' (#8b). Saneo defensivo: descarta ids desconocidos y agrega los
