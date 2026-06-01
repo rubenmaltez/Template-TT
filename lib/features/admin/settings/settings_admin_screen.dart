@@ -22,7 +22,10 @@ class SettingsAdminScreen extends ConsumerWidget {
     ('empresa', 'Empresa', Icons.business),
     ('cobranza', 'Cobranza', Icons.receipt_long),
     ('pagos', 'Pagos', Icons.payments),
-    ('moneda', 'Moneda', Icons.currency_exchange),
+    // Tab "Moneda" removido: la moneda principal SIEMPRE es córdoba (NIO). El
+    // dólar es método de pago ALTERNO (con tasa de cambio, vuelto en córdobas),
+    // no una moneda principal — el setting confundía. moneda.principal queda
+    // huérfano en la DB (nadie lo lee; la app ya asume NIO).
     // Tab "Cuotas" removido a pedido (cuotas manuales / editar monto fuera de
     // scope por ahora). El feature sigue en el código; solo se oculta de
     // settings. Los settings cuotas.* quedan huérfanos en la DB (sin tab).
