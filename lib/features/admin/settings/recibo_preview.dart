@@ -85,7 +85,7 @@ class ReciboPreview extends ConsumerWidget {
             ),
             const SizedBox(height: 4),
             Text(
-              'Datos de ejemplo — se actualiza al cambiar los ajustes de abajo.',
+              'Datos de ejemplo — se actualiza al instante con tus cambios.',
               style: TextStyle(fontSize: 12, color: scheme.outline),
             ),
             const SizedBox(height: 12),

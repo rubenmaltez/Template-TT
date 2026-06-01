@@ -114,32 +114,12 @@ class ReciboLayoutEditor extends ConsumerWidget {
               width: 360,
               child: ListView(
                 padding: const EdgeInsets.all(16),
-                children: const [
-                  _PreviewHeader(),
-                  SizedBox(height: 12),
-                  ReciboPreview(),
-                ],
+                children: const [ReciboPreview()],
               ),
             ),
           ],
         );
       },
-    );
-  }
-}
-
-class _PreviewHeader extends StatelessWidget {
-  const _PreviewHeader();
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    return Row(
-      children: [
-        Icon(Icons.visibility, size: 18, color: scheme.primary),
-        const SizedBox(width: 8),
-        Text('Vista previa',
-            style: TextStyle(fontWeight: FontWeight.w600, color: scheme.primary)),
-      ],
     );
   }
 }
