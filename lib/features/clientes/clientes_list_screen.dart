@@ -256,7 +256,7 @@ class _ComunidadChipState extends State<_ComunidadChip> {
 
 /// Query principal: clientes + comunidad + agregados de cuotas pendientes.
 /// Hace JOINs locales (SQLite soporta a diferencia de sync rules).
-class _ClientesList extends StatelessWidget {
+class _ClientesList extends StatefulWidget {
   const _ClientesList({
     required this.query,
     required this.comunidadId,
@@ -276,32 +276,60 @@ class _ClientesList extends StatelessWidget {
   final VoidCallback onLoadMore;
 
   @override
-  Widget build(BuildContext context) {
-    final like = '%$query%';
+  State<_ClientesList> createState() => _ClientesListState();
+}
+
+class _ClientesListState extends State<_ClientesList> {
+  // Stream cacheado: se crea en initState y SOLO se recrea cuando cambian los
+  // parámetros de la query (didUpdateWidget). Antes el ps.db.watch estaba inline
+  // en build() → re-suscribía la query de PowerSync en cada rebuild del padre
+  // (cambio de settings/filtros) y causaba flicker (anti-patrón del backlog).
+  late Stream<List<Map<String, dynamic>>> _stream;
+
+  @override
+  void initState() {
+    super.initState();
+    _stream = _buildStream();
+  }
+
+  @override
+  void didUpdateWidget(_ClientesList old) {
+    super.didUpdateWidget(old);
+    if (old.query != widget.query ||
+        old.comunidadId != widget.comunidadId ||
+        old.soloConMora != widget.soloConMora ||
+        old.diasGracia != widget.diasGracia ||
+        old.pageSize != widget.pageSize) {
+      _stream = _buildStream();
+    }
+  }
+
+  Stream<List<Map<String, dynamic>>> _buildStream() {
+    final like = '%${widget.query}%';
     // Para el campo teléfono, sanitizamos el query a sólo dígitos.
     // Razón: post-sprint del validator, los teléfonos se guardan sin
     // espacios ni guiones (`+50588888888`). Si el cobrador busca
     // `"8888-8888"` en campo, el LIKE raw no matchea. Strip a dígitos
     // y matchea. Si el query no tiene dígitos, dejamos el like raw
     // (no matchea teléfonos pero tampoco rompe nombre/cédula).
-    final digits = sanitizePhoneForWhatsApp(query);
+    final digits = sanitizePhoneForWhatsApp(widget.query);
     final likeTelefono = digits.isEmpty ? like : '%$digits%';
-    final params = <Object?>[diasGracia];
+    final params = <Object?>[widget.diasGracia];
     final where = <String>['c.activo = 1'];
 
-    if (query.isNotEmpty) {
+    if (widget.query.isNotEmpty) {
       where.add('(lower(c.nombre) LIKE ? OR c.cedula LIKE ? OR c.telefono LIKE ? OR lower(coalesce(c.codigo,\'\')) LIKE ?)');
       params..add(like)..add(like)..add(likeTelefono)..add(like);
     }
-    if (comunidadId != null) {
+    if (widget.comunidadId != null) {
       where.add('c.comunidad_id = ?');
-      params.add(comunidadId);
+      params.add(widget.comunidadId);
     }
 
-    final having = soloConMora ? 'HAVING cuotas_vencidas > 0' : '';
+    final having = widget.soloConMora ? 'HAVING cuotas_vencidas > 0' : '';
 
     // LIMIT al final de los params para binding posicional.
-    params.add(pageSize);
+    params.add(widget.pageSize);
 
     final sql = '''
       SELECT
@@ -328,8 +356,20 @@ class _ClientesList extends StatelessWidget {
        LIMIT ?
     ''';
 
+    return ps.db.watch(sql, parameters: params);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final query = widget.query;
+    final comunidadId = widget.comunidadId;
+    final soloConMora = widget.soloConMora;
+    final pageSize = widget.pageSize;
+    final loadingMore = widget.loadingMore;
+    final onLoadMore = widget.onLoadMore;
+
     return StreamBuilder<List<Map<String, dynamic>>>(
-      stream: ps.db.watch(sql, parameters: params),
+      stream: _stream,
       initialData: const [],
       builder: (context, snap) {
         if (snap.hasError) {
