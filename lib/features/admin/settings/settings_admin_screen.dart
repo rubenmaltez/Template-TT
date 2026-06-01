@@ -24,7 +24,9 @@ class SettingsAdminScreen extends ConsumerWidget {
     ('cobranza', 'Cobranza', Icons.receipt_long),
     ('pagos', 'Pagos', Icons.payments),
     ('moneda', 'Moneda', Icons.currency_exchange),
-    ('cuotas', 'Cuotas', Icons.calendar_month),
+    // Tab "Cuotas" removido a pedido (cuotas manuales / editar monto fuera de
+    // scope por ahora). El feature sigue en el código; solo se oculta de
+    // settings. Los settings cuotas.* quedan huérfanos en la DB (sin tab).
     ('recibos', 'Recibos', Icons.print),
   ];
 
@@ -122,6 +124,10 @@ class _CategoriaTab extends ConsumerWidget {
       'pagos.tarjeta_habilitada',
       // Orphaned — nunca leído por AppSettings.
       'cobranza.cargo_reconexion',
+      // Modo de ruta: setting huérfano (0 usos en el código, sin getter). El
+      // mapa del cobrador no lo lee. Se oculta hasta implementar ruta
+      // planificada vs libre.
+      'cobranza.modo_ruta',
       // Feature 'recrear pago' eliminada (#5): anular es void puro. El seed
       // en DB (0045/0051) queda orphaned y se oculta acá (no se migra).
       'cobranza.recrear_pago_anulado',
@@ -347,16 +353,21 @@ class _SettingTileState extends State<_SettingTile> {
     }
 
     if (s.tipo == 'boolean') {
+      // Efectivo es el método por defecto e inmutable: el toggle queda fijo en
+      // ON y deshabilitado (no se puede dejar al cobrador sin métodos de pago).
+      final esEfectivoFijo = s.clave == 'pagos.metodo_efectivo';
       return SwitchListTile.adaptive(
-        title: Text(_boolValor ? 'Activado' : 'Desactivado'),
+        title: Text(esEfectivoFijo
+            ? 'Activado (método por defecto)'
+            : (_boolValor ? 'Activado' : 'Desactivado')),
         contentPadding: EdgeInsets.zero,
-        value: _boolValor,
-        onChanged: enabled
-            ? (v) {
+        value: esEfectivoFijo ? true : _boolValor,
+        onChanged: (esEfectivoFijo || !enabled)
+            ? null
+            : (v) {
                 setState(() => _boolValor = v);
                 widget.onSave(v);
-              }
-            : null,
+              },
       );
     }
 

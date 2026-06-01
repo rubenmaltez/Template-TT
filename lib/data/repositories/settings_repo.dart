@@ -139,11 +139,10 @@ class AppSettings {
   double get montoReconexion =>
       settingValue<num>(_map, 'cobranza.monto_reconexion', 0).toDouble();
 
-  // Efectivo: la migración 0040 introdujo `pagos.metodo_efectivo` que
-  // permite al admin deshabilitar efectivo. Default true (siempre visible
-  // a menos que el admin lo apague explícitamente).
-  bool get efectivoHabilitado =>
-      settingValue<bool>(_map, 'pagos.metodo_efectivo', true);
+  // Efectivo es el método de pago POR DEFECTO e INMUTABLE: siempre disponible.
+  // No se puede desactivar (sino el cobrador podría quedar sin ningún método y
+  // se rompería el cobro). El toggle en settings se muestra fijo en ON.
+  bool get efectivoHabilitado => true;
 
   // Transferencia: chequeamos la clave original de 0010 y la de 0040 (OR).
   // Esto cubre tenants que tengan una, la otra, o ambas.
