@@ -118,9 +118,8 @@ class _AppBottomNav extends ConsumerWidget {
   int _indexFor(String path) {
     if (path.startsWith('/clientes')) return 1;
     if (path.startsWith('/mapa')) return 2;
-    // Historial se accede desde Perfil → mantenemos Perfil resaltado.
-    if (path.startsWith('/perfil') || path.startsWith('/historial')) return 3;
-    return 0; // Cobros: '/' y pushes sin tab propia (/cobro, /recibo).
+    if (path.startsWith('/perfil')) return 3;
+    return 0; // Cobros: '/' y pushes sin tab propia.
   }
 
   @override

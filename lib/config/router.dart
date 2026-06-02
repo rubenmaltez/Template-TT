@@ -313,7 +313,6 @@ final routerProvider = Provider<GoRouter>((ref) {
           GoRoute(path: '/',          builder: (_, s) => _titled('Cobros', const CuotasListScreen())),
           GoRoute(path: '/clientes',  builder: (_, s) => _titled('Clientes', const ClientesListScreen())),
           GoRoute(path: '/mapa',      builder: (_, s) => _titled('Mapa', const MapaScreen())),
-          GoRoute(path: '/historial', builder: (_, s) => _titled('Historial', const HistorialScreen())),
           GoRoute(path: '/perfil',    builder: (_, s) => _titled('Mi perfil', const PerfilScreen())),
         ],
       ),
@@ -411,6 +410,10 @@ final routerProvider = Provider<GoRouter>((ref) {
       ),
 
       // ── Rutas push del cobrador (con back propio) ──────────────────────
+      GoRoute(
+        path: '/historial',
+        builder: (_, __) => const HistorialScreen(),
+      ),
       GoRoute(
         path: '/clientes/:id',
         builder: (_, s) => ClienteDetailScreen(clienteId: s.pathParameters['id']!),

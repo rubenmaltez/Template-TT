@@ -45,44 +45,47 @@ class _HistorialScreenState extends ConsumerState<HistorialScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return StreamBuilder<List<Map<String, dynamic>>>(
-      stream: _historialStream,
-      initialData: const [],
-      builder: (context, snap) {
-        if (snap.hasError) {
-          return Center(child: Text('Error: ${snap.error}'));
-        }
-        final rows = snap.data!;
-        if (rows.isEmpty) {
-          return const EmptyState(
-            icon: Icons.history,
-            titulo: 'Sin cobros aún',
-            descripcion: 'Tus cobros van a aparecer acá.',
+    return Scaffold(
+      appBar: AppBar(title: const Text('Historial de cobros')),
+      body: StreamBuilder<List<Map<String, dynamic>>>(
+        stream: _historialStream,
+        initialData: const [],
+        builder: (context, snap) {
+          if (snap.hasError) {
+            return Center(child: Text('Error: ${snap.error}'));
+          }
+          final rows = snap.data!;
+          if (rows.isEmpty) {
+            return const EmptyState(
+              icon: Icons.history,
+              titulo: 'Sin cobros aún',
+              descripcion: 'Tus cobros van a aparecer acá.',
+            );
+          }
+          final byDay = groupBy<Map<String, dynamic>, String>(
+            rows,
+            (r) => (r['fecha_pago'] as String).substring(0, 10),
           );
-        }
-        final byDay = groupBy<Map<String, dynamic>, String>(
-          rows,
-          (r) => (r['fecha_pago'] as String).substring(0, 10),
-        );
 
-        return ListView.builder(
-          padding: const EdgeInsets.only(bottom: 80),
-          itemCount: byDay.length,
-          itemBuilder: (_, i) {
-            final entry = byDay.entries.elementAt(i);
-            final dia = DateTime.parse(entry.key);
-            final total = entry.value.fold<double>(
-              0,
-              (sum, r) => sum + (r['monto_cordobas'] as num).toDouble(),
-            );
-            return _GrupoDia(
-              dia: dia,
-              total: total,
-              pagos: entry.value,
-            );
-          },
-        );
-      },
+          return ListView.builder(
+            padding: const EdgeInsets.only(bottom: 80),
+            itemCount: byDay.length,
+            itemBuilder: (_, i) {
+              final entry = byDay.entries.elementAt(i);
+              final dia = DateTime.parse(entry.key);
+              final total = entry.value.fold<double>(
+                0,
+                (sum, r) => sum + (r['monto_cordobas'] as num).toDouble(),
+              );
+              return _GrupoDia(
+                dia: dia,
+                total: total,
+                pagos: entry.value,
+              );
+            },
+          );
+        },
+      ),
     );
   }
 }
