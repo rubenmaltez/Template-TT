@@ -111,8 +111,9 @@ cobradores, audit, geografía, settings (guardia explícita en el router).
 - `/` — pantalla inicio con resumen del día.
 - `/clientes` — lista de clientes asignados.
 - `/cuotas` — cuotas pendientes (ordenadas por mora descendente).
-- `/mapa` — clientes geolocalizados (planificada o libre según setting
-  `cobranza.modo_ruta`).
+- `/mapa` — clientes geolocalizados (flutter_map + OSM). NOTA: el setting
+  `cobranza.modo_ruta` (planificada vs libre) NO está implementado — el mapa
+  siempre es modo libre y el toggle está oculto en settings. Aspiracional.
 - `/historial` — sus cobros anteriores.
 - `/perfil` — datos del cobrador, config impresora Bluetooth.
 - `/clientes/:id` — detalle de un cliente (push, fuera del shell).

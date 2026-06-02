@@ -251,14 +251,17 @@ final routerProvider = Provider<GoRouter>((ref) {
       }
 
       // Guard por rol en rutas admin-only: admin_cobranza no accede a
-      // Cobradores / Auditoría / Geografía / Settings (alineado con el
-      // menú del shell).
+      // Cobradores / Planes / Geografía / Auditoría / Settings ni a las
+      // pantallas opcionales Pagos / Notificaciones (alineado con el menú
+      // del shell, que las marca adminOnly).
       const soloAdmin = [
         '/admin/cobradores',
         '/admin/audit',
         '/admin/geografia',
         '/admin/settings',
         '/admin/planes',
+        '/admin/pagos',
+        '/admin/notificaciones',
       ];
       if (rol == 'admin_cobranza' &&
           soloAdmin.any((p) => loc == p || loc.startsWith('$p/'))) {
