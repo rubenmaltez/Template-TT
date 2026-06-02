@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../data/providers/cobrador_provider.dart';
 import '../../data/repositories/settings_repo.dart';
 import '../../data/utils/formatters.dart';
 import '../../powersync/db.dart' as ps;
@@ -96,6 +97,20 @@ class _CuotasListScreenState extends ConsumerState<CuotasListScreen>
   @override
   Widget build(BuildContext context) {
     final settings = ref.watch(appSettingsProvider);
+
+    // Safety-net del cold-start: '/' (= Cobros) es la landing del cobrador.
+    // Si el router aún no resolvió el rol y un admin/admin_cobranza/super_admin
+    // cayó acá, lo reencaminamos a /admin cuando llega su rol. Redundante con el
+    // redirect del router, pero evita el flash de la pantalla del cobrador
+    // (paridad con el viejo HomeScreen eliminado).
+    final cobrador = ref.watch(cobradorActualProvider).valueOrNull;
+    if ((cobrador != null && cobrador.tieneAccesoAdmin) ||
+        cobrador?.esAdminCobranza == true) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (context.mounted) context.go('/admin');
+      });
+    }
+
     final diasGracia = settings.diasGracia;
     final diasVisibles = settings.diasCuotasVisibles;
     final multiCuotaEnabled = settings.pagoAdelantadoPermitido;
