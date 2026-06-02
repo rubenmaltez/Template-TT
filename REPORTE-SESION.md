@@ -154,6 +154,37 @@ consistentes → auditoría.
 
 > Más reciente arriba. Formato por ítem: error → fix → expectativa.
 
+### 2026-06-02 (noche) — Backlog del audit liquidado + tests de `pagos_repo`
+
+Continuación del audit total: se liquidó **todo el backlog accionable** y se
+escribió la **primera suite de tests de repo del dinero**.
+
+**Backlog liquidado** (migración 0088 + fixes de código)
+- *L2/L3:* RLS de storage `comprobantes-pago` ya no exige extensión `.jpg`
+  (acepta cualquier subida del path del tenant); `super_admin_all` agregada a
+  tablas que la heredaban implícita.
+- *F2:* generación de mora ahora considera `cargos_neto` en el saldo.
+- *S2:* `cambiar-email-cobrador` con guard de signOut reforzado.
+- *INV11:* nueva invariante SQL — contrato fijo activo tiene exactamente
+  `duracion_meses` cuotas (regla #5).
+- *Dead code:* eliminado `app_version_label.dart` (huérfano).
+- *Expectativa:* `invariantes_dinero.sql` da 11 filas en 0 tras el deploy.
+
+**Tests de `pagos_repo`** (el gap de cobertura #1, ahora cerrado)
+- *Error/gap:* el repo que mueve el dinero (`registrarCobro` / `Multiple` /
+  `anular` / `editar`) tenía 0 tests de repo — solo la matemática pura
+  (`cobro_calculo`) estaba cubierta.
+- *Fix:* `test/data/repositories/pagos_repo_test.dart` — **14 tests** contra una
+  PowerSyncDatabase REAL (no mocks): cobro completo/parcial/sobrepago-vuelto/USD/
+  cargos_extra/multi-cuota/correlativo/anular/editar-guard, cada uno aserta contra
+  la DB. Requirió un refactor MÍNIMO de inyección de DB en `pagos_repo`
+  (`PagosRepo({db})` → `_dbOrGlobal`), cero cambios de lógica (provider intacto).
+- *Setup:* corre con `flutter test` + el core nativo `powersync_x64.dll` (de
+  `powersync_flutter_libs`, pub cache) en la raíz del repo. Sin él, los tests se
+  auto-saltean con mensaje claro. Documentado en la cabecera del test + gitignore.
+- *Expectativa:* `flutter test test/data/repositories/pagos_repo_test.dart` →
+  `+14: All tests passed!`. Verde verificado en Windows.
+
 ### 2026-06-02 (tarde) — Audit EXHAUSTIVO TOTAL (5 agentes) + 2 fixes
 
 Audit completo de toda la app (5 agentes en paralelo: integridad DB, dinero,

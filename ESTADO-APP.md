@@ -24,7 +24,7 @@
 | **Frontend correctness** | 🟢 LIMPIO | 0 SQL incompatible con SQLite, 0 `date('now')` pelados (norma TZ 100% en 30+ queries), 0 rutas rotas, 0 stream-lifecycle latentes, guards de rol coherentes. 1 archivo dead code. |
 | **Seguridad multi-tenant** | 🟢 SAFE | Aislamiento RLS sólido; super-only enforced server-side (0085/0086); impersonación con defensa en capas (guards cliente + `validar_tenant_coherente` server); 6 edge functions robustas. 5 LOW (hardening), S4 corregido. |
 | **QA funcional** | 🟢 AMPLIA | Todos los roles/módulos/tabs mapeados y funcionales con data real. ~5 features son flag/stub (documentadas). Reportes (8 PDF + 8 CSV + arqueo) completos. |
-| **Tests automatizados** | 🔴 BAJO | Solo unit de funciones puras; 0 tests de repos de dinero, 0 integración, 0 widget. |
+| **Tests automatizados** | 🟡 MEDIO | Unit de funciones puras + suite de repo de `pagos_repo` (**14 tests, pasan**) contra PowerSyncDatabase real: cobro/parcial/vuelto/USD/cargos_neto/multi-cuota/correlativo/anular/editar-guard. Falta integración y widget. |
 
 **Sin findings CRITICAL/HIGH abiertos.** El audit total no encontró bugs graves;
 la app está en estado sólido y consistente end-to-end.
@@ -139,15 +139,21 @@ pantallas opcionales, **descuentos**, **reconexión** (todos super-only, gateado
 ## 5. Cobertura de tests — gaps prioritizados
 
 8 archivos unit puros (`cobro_calculo`, `pago`, `formatters`, `validators`, `cobrador_helpers`,
-`edge_functions`, `cuota_estado`, `error_log_entry`). **0 widget, 0 integración, 0 repos.**
+`edge_functions`, `cuota_estado`, `error_log_entry`) + **`pagos_repo_test.dart` (14 tests de
+repo)** contra una PowerSyncDatabase real (no mocks). **0 widget, 0 integración.**
 
 Gaps por riesgo (dinero primero):
-1. **P0** — `pagos_repo.registrarCobro` / `Multiple` / `anular` / `editar` (correlativo, estado, vuelto, cargos_neto). Core del dinero, sin test de repo.
+1. ✅ **HECHO** — ~~`pagos_repo` (correlativo, estado, vuelto, cargos_neto)~~: suite de 14 tests
+   (completo/parcial/sobrepago-vuelto/USD/cargos_extra/multi-cuota/correlativo/anular/editar-guard),
+   aserta contra la DB, verifica invariantes #1/#3/#4. Corre con `flutter test` + el core nativo
+   `powersync_x64.dll` en la raíz (instrucciones en la cabecera del test).
 2. **P1** — orden consecutivo multi-select; auto-detección de cargos; Edge Functions (rollback/ghost-user).
-3. **P1** — invariantes SQL de regla #5/#6 (total fijo) — gap detectado en el audit.
-4. **P2** — matriz de redirects del router.
+3. ✅ **HECHO** — ~~invariantes SQL de regla #5/#6 (total fijo)~~: INV11 agregada (contrato fijo
+   activo tiene exactamente `duracion_meses` cuotas).
+4. **P2** — matriz de redirects del router; widget tests.
 
-**Mitigación**: `invariantes_dinero.sql` (10 invariantes) cubre la DATA, no el CÓDIGO. Correr post-deploy.
+**Mitigación**: `invariantes_dinero.sql` (**11 invariantes**) cubre la DATA; `pagos_repo_test.dart`
+cubre el CÓDIGO de la transacción de cobro. Correr ambos tras cada deploy que toque dinero.
 
 ---
 
@@ -165,12 +171,18 @@ compacto · vista Cobros del admin · **timezone Nicaragua end-to-end** (cliente
 
 ## 7. Próximos pasos sugeridos (orden de ROI)
 
-> El backlog accionable del audit quedó **liquidado** (§3). Lo que queda son
-> FEATURES (no bugs), a decidir como esfuerzo propio:
+> El backlog accionable del audit quedó **liquidado** (§3) y los **tests de
+> `pagos_repo` están hechos y pasan** (§5). Lo que queda son FEATURES (no bugs),
+> a decidir como esfuerzo propio:
 
-1. **Tests de `pagos_repo`** (P0): el dinero merece tests de repo, no solo de la matemática pura. El gap de cobertura más importante. (Esfuerzo: suite de tests con mocks de PowerSync.)
-2. **Flags muertos `modo_ruta` / `caja_chica`**: hoy ocultos e inocuos. Decidir IMPLEMENTAR (construir la feature) o QUITAR los seeds/getters (cleanup).
+1. ✅ **HECHO** — ~~Tests de `pagos_repo`~~: suite de 14 tests de repo contra una
+   PowerSyncDatabase real (no mocks), verde. Era el gap de cobertura más importante.
+2. **Flags muertos `modo_ruta` / `caja_chica`**: hoy ocultos e inocuos. Decisión actual:
+   **dejarlos ocultos**. Reabrir si se decide implementar la feature o limpiar los seeds/getters.
 3. **Geo del cobro**: re-introducir captura de lat/lng en el cobro (se quitó `GpsService`).
+   Decisión actual: **no por ahora**.
+4. **CI** (opcional): correr `flutter test` + `flutter analyze` en GitHub Actions, con el core
+   `powersync_x64.dll` cacheado, para que la suite de dinero corra sola en cada push.
 
 ---
 
