@@ -7,6 +7,7 @@ import '../../../config/router.dart';
 import '../../../data/models/pago.dart';
 import '../../../data/repositories/settings_repo.dart';
 import '../../../data/utils/formatters.dart';
+import '../../../features/shared/widgets/rango_fechas_dialog.dart';
 import '../../../powersync/db.dart' as ps;
 import 'pdf/reporte_anulaciones_pdf.dart';
 import 'pdf/reporte_arqueo_pdf.dart';
@@ -200,12 +201,11 @@ class _RangoReportesCard extends ConsumerWidget {
     } else if (opcion == 'custom') {
       final now = DateTime.now();
       final actual = ref.read(reporteRangoProvider);
-      final picked = await showDateRangePicker(
-        context: context,
+      final picked = await mostrarRangoFechas(
+        context,
         firstDate: DateTime(now.year - 5),
         lastDate: now, // sin futuro: "fecha de cobro" no tiene sentido a futuro
-        initialDateRange:
-            DateTimeRange(start: actual.desde, end: actual.hasta),
+        inicial: DateTimeRange(start: actual.desde, end: actual.hasta),
       );
       if (picked == null) return;
       notifier.state = RangoReporte(
@@ -307,11 +307,11 @@ class _ArqueoCajaCard extends ConsumerWidget {
   Future<void> _elegirCustom(BuildContext context, WidgetRef ref) async {
     final now = DateTime.now();
     final actual = ref.read(reporteArqueoRangoProvider);
-    final picked = await showDateRangePicker(
-      context: context,
+    final picked = await mostrarRangoFechas(
+      context,
       firstDate: DateTime(now.year - 5),
       lastDate: now, // sin futuro: la "fecha de cobro" no aplica a futuro
-      initialDateRange: DateTimeRange(start: actual.desde, end: actual.hasta),
+      inicial: DateTimeRange(start: actual.desde, end: actual.hasta),
     );
     if (picked == null) return;
     ref.read(reporteArqueoRangoProvider.notifier).state = RangoReporte(
