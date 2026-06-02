@@ -4,13 +4,14 @@
 > JUNTO con `CLAUDE.md` al abrir una sesión nueva de Claude Code, para
 > continuar exactamente desde acá sin re-descubrir el contexto.
 >
-> **Última actualización**: 2026-06-02 (commit `c34479d`, branch
+> **Última actualización**: 2026-06-02 (commit `83fec70`, branch
 > `claude/inspiring-dijkstra-wKs5h`). **Audit EXHAUSTIVO TOTAL** de toda la app
 > (5 agentes en paralelo: integridad DB, dinero, correctness frontend,
 > cobertura funcional admin-side, cobertura funcional cobrador + seguridad).
-> Migración **0087**, schema **v16**. Resultado: **0 findings CRITICAL/HIGH**;
-> 1 bug de dinero (F1) y 1 de seguridad (S4) corregidos; resto LOW → backlog.
-> Ver §3.
+> Migraciones **0087/0088**, schema **v16**. Resultado: **0 findings
+> CRITICAL/HIGH**; 1 bug de dinero (F1) + 1 de seguridad (S4) corregidos, y
+> **TODO el backlog accionable del audit liquidado** (L2/L3/F2/S2/INV11/dead
+> code/docs — commit 83fec70). Solo quedan features (no bugs). Ver §3 y §7.
 
 ---
 
@@ -54,26 +55,23 @@ la app está en estado sólido y consistente end-to-end.
 | **F1** | 🟠 ALTA (dinero) | `/admin/cuotas` (`cuotas_admin_screen.dart:779`) mostraba `saldo = monto − pagado`, **omitiendo `cargos_neto`** → divergía de las otras ~6 pantallas (viola regla #10). Ej: cuota 500 + reconexión 100, paga 300 → mostraba 200 en vez de 300. Fix: `saldo = monto + cargos_neto − pagado` (el dato ya venía en el SELECT). |
 | **S4** | 🟡 LOW (seguridad) | `historial._anular` no chequeaba impersonación (a diferencia de cobro/cargo/visita). Se agregó el guard `estaImpersonandoProvider` por consistencia. (Bajo impacto: anular es UPDATE benigno que no mueve tenant.) |
 
-### 🟢 LOW / backlog (no bloqueantes, del audit total)
+### ✅ LIQUIDADOS — backlog del audit (commit `83fec70`)
 
-**DB:**
-- **Storage RLS acopla `.jpg`** (`0022`): la policy extrae `pago_id` con `replace(...,'.jpg','')`. Hoy OK (cliente sube jpg). Latente si se habilita png/webp → generalizar a `regexp_replace(...,'\.[^.]+$','')`.
-- **`super_admin_all` no es automático** para tablas nuevas (el `do$$` de 0026 enumera tablas fijas). fotos_cliente/visitas lo agregaron a mano OK, pero es foot-gun → checklist al crear tabla operativa.
-- **Dead code de migración**: `generar_cuotas_mes` de 0054 superado por 0074 (inocuo).
-- **Doc estados de cuota**: el CHECK de DB tiene 4 (`pendiente/parcial/pagada/anulada`); `en_gracia`/`vencida` son derivados en el cliente. Aclarado en CLAUDE.md.
+Todo el backlog accionable del audit se cerró:
+- **L3** (migr 0088): `actualizar_notificaciones_mora.monto_adeudado` con `cargos_neto` (mora server-side exacta).
+- **DB F2** (migr 0088): storage RLS extrae `pago_id` con `regexp_replace` (cualquier extensión), no acoplado a `.jpg`.
+- **L2**: saldo del detalle de contrato con `cargos_neto` (+ columna al SELECT).
+- **Dinero F2**: KPIs de cobros del dashboard en hora Nicaragua (UTC-6), unificado con el resto.
+- **S2**: `cambiar-email` escribe audit del signOut fallido (igual que `forzar-password`).
+- **INV11**: contrato fijo activo = exactamente `duracion_meses` cuotas (regla #5).
+- **Doc estados de cuota** + **checklist `super_admin_all`** (DB F4) en CLAUDE.md.
+- **Copy "Reasignar"** → path real (Clientes → cambiar cobrador).
+- **Dead code**: `app_version_label.dart` borrado (los otros 3 ya no existían).
+- **`ps.db.watch` inline**: barrido — solo 2 by-design en `geo_picker` (documentado).
 
-**Dinero:**
-- **F2 (media)**: KPIs de cobros del dashboard usan `date(fecha_pago)` vs `DateTime.now()` local, mientras mora usa `date('now','-6 hours')`. Coincide en browser Nicaragua (supuesto operativo); no toca la matemática del dinero. Unificar reloj a futuro.
-- **Gap de invariantes**: las reglas #5 (total fijo=precio×meses) y #6 (indefinidos sin pendiente) viven solo en Dart, sin invariante SQL. Sugerir invariante de `duracion_meses` coherente + `total≥recaudado`.
-
-**Seguridad (hardening, ya en backlog):**
-- S2: `cambiar-email` no escribe audit del signout-fallido como sí hace `forzar-password` (inconsistencia trivial).
-- S3: `reenviar-invitacion` ventana sin lock (solo explotable con super_admins concurrentes; Rubén es 1).
-- S5: ghost user en `invitar-cobrador` (ya mitigado con cleanup).
-
-**Frontend:**
-- **Dead code real (1)**: `lib/features/shared/widgets/app_version_label.dart` (`AppVersionLabel`, 0 referencias tras quitar el drawer del cobrador). Decidir: borrar o re-cablear.
-- 2 `ps.db.watch` inline en `geo_picker.dart:109,138` — by-design (StatefulWidget no-Consumer, params en cascada). Anti-patrón controlado.
+**No-fix justificados** (no son backlog de bugs): dead code de migración 0054
+(append-only, inocuo); S3 `reenviar-invitacion` sin lock (solo con super_admins
+concurrentes — Rubén es 1); S5 ghost user (ya mitigado con cleanup).
 
 ### Histórico (resuelto en sesiones previas)
 - Audit integral 2026-06-02 previo (commits c43957d→c6cbebd): super-only enforce (0085), impersonación en signOut, INV10, mora térmica.
@@ -167,11 +165,12 @@ compacto · vista Cobros del admin · **timezone Nicaragua end-to-end** (cliente
 
 ## 7. Próximos pasos sugeridos (orden de ROI)
 
-1. **Tests de `pagos_repo`** (P0): el gap más importante — el dinero merece tests de repo.
-2. **Decidir destino de los flags**: implementar o quitar `modo_ruta` y `caja_chica`.
-3. **Limpieza**: decidir `app_version_label.dart` (borrar/cablear); dead code de migración 0054.
-4. **Hardening de backlog**: generalizar `.jpg` en storage RLS; checklist `super_admin_all`; invariante SQL de regla #5/#6; unificar reloj del dashboard (F2).
-5. **Geo del cobro** (si se quiere): re-introducir captura de lat/lng en el cobro.
+> El backlog accionable del audit quedó **liquidado** (§3). Lo que queda son
+> FEATURES (no bugs), a decidir como esfuerzo propio:
+
+1. **Tests de `pagos_repo`** (P0): el dinero merece tests de repo, no solo de la matemática pura. El gap de cobertura más importante. (Esfuerzo: suite de tests con mocks de PowerSync.)
+2. **Flags muertos `modo_ruta` / `caja_chica`**: hoy ocultos e inocuos. Decidir IMPLEMENTAR (construir la feature) o QUITAR los seeds/getters (cleanup).
+3. **Geo del cobro**: re-introducir captura de lat/lng en el cobro (se quitó `GpsService`).
 
 ---
 
