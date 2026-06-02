@@ -79,30 +79,6 @@ const kGruposCobranza = <SettingGroup>[
     ],
   ),
   SettingGroup(
-    titulo: 'Descuentos',
-    icono: Icons.percent,
-    entradas: [
-      SettingEntry(
-        'cobranza.descuentos_habilitados',
-        hijos: [
-          'cobranza.descuento_tipo',
-          'cobranza.descuento_max_monto',
-          'cobranza.descuento_max_porcentaje',
-        ],
-      ),
-    ],
-  ),
-  SettingGroup(
-    titulo: 'Reconexión',
-    icono: Icons.power,
-    entradas: [
-      SettingEntry(
-        'cobranza.cargo_reconexion_habilitado',
-        hijos: ['cobranza.monto_reconexion'],
-      ),
-    ],
-  ),
-  SettingGroup(
     titulo: 'Permisos',
     icono: Icons.lock_open,
     entradas: [
@@ -140,10 +116,11 @@ const kGruposPagos = <SettingGroup>[
 ];
 
 /// Grupos de la tab Avanzado (solo super_admin). Incluye los settings que
-/// consumen recursos del SaaS (foto de comprobante → Storage) y las pantallas
-/// admin opcionales que el dueño del SaaS habilita por tenant. La entrada
-/// "Campos del historial" se renderiza aparte (es un link a otra pantalla,
-/// no un setting) — ver `_GrupoHistorialLink` en el screen.
+/// consumen recursos del SaaS (foto de comprobante → Storage), las pantallas
+/// admin opcionales, y los módulos que el dueño del SaaS habilita por tenant
+/// (descuentos, reconexión). La entrada "Campos del historial" se renderiza
+/// aparte (es un link a otra pantalla, no un setting) — ver
+/// `_GrupoHistorialLink` en el screen.
 const kGruposAvanzado = <SettingGroup>[
   SettingGroup(
     titulo: 'Foto de comprobante',
@@ -161,6 +138,30 @@ const kGruposAvanzado = <SettingGroup>[
     entradas: [
       SettingEntry('cobranza.pantalla_pagos'),
       SettingEntry('cobranza.pantalla_notificaciones'),
+    ],
+  ),
+  SettingGroup(
+    titulo: 'Descuentos',
+    icono: Icons.percent,
+    entradas: [
+      SettingEntry(
+        'cobranza.descuentos_habilitados',
+        hijos: [
+          'cobranza.descuento_tipo',
+          'cobranza.descuento_max_monto',
+          'cobranza.descuento_max_porcentaje',
+        ],
+      ),
+    ],
+  ),
+  SettingGroup(
+    titulo: 'Reconexión',
+    icono: Icons.power,
+    entradas: [
+      SettingEntry(
+        'cobranza.cargo_reconexion_habilitado',
+        hijos: ['cobranza.monto_reconexion'],
+      ),
     ],
   ),
 ];

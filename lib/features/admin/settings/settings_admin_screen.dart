@@ -159,6 +159,15 @@ const _superAdminOnly = {
   // Pantallas admin opcionales: el super_admin las habilita por tenant.
   'cobranza.pantalla_pagos',
   'cobranza.pantalla_notificaciones',
+  // Descuentos (manual en campo): módulo que el super_admin habilita por
+  // tenant (0086). El admin no lo ve ni lo puede activar.
+  'cobranza.descuentos_habilitados',
+  'cobranza.descuento_tipo',
+  'cobranza.descuento_max_monto',
+  'cobranza.descuento_max_porcentaje',
+  // Reconexión: ídem, super_admin-only por tenant (0086).
+  'cobranza.cargo_reconexion_habilitado',
+  'cobranza.monto_reconexion',
 };
 
 class _CategoriaTab extends ConsumerWidget {
