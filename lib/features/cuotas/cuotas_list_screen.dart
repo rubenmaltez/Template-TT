@@ -123,16 +123,10 @@ class _CuotasListScreenState extends ConsumerState<CuotasListScreen>
     final multiCuotaEnabled = settings.pagoAdelantadoPermitido;
     final scheme = Theme.of(context).colorScheme;
 
-    final now = DateTime.now();
-    final hoyIso =
-        DateTime(now.year, now.month, now.day).toIso8601String().substring(0, 10);
-
     return Stack(
       children: [
         Column(
           children: [
-            // Franja compacta de KPIs del día (reemplaza el dashboard "Inicio").
-            _KpiStrip(diasGracia: diasGracia, hoyIso: hoyIso),
             Material(
               color: scheme.surface,
               child: TabBar(
@@ -200,132 +194,6 @@ class _CuotasListScreenState extends ConsumerState<CuotasListScreen>
             ),
           ),
       ],
-    );
-  }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Franja de KPIs del día: Cobrado hoy · Por cobrar · En mora
-// ─────────────────────────────────────────────────────────────────────────────
-
-class _KpiStrip extends StatefulWidget {
-  const _KpiStrip({required this.diasGracia, required this.hoyIso});
-  final int diasGracia;
-  final String hoyIso;
-
-  @override
-  State<_KpiStrip> createState() => _KpiStripState();
-}
-
-class _KpiStripState extends State<_KpiStrip> {
-  // Stream cacheado en initState (anti-patrón ps.db.watch inline en build).
-  late Stream<List<Map<String, dynamic>>> _stream;
-
-  @override
-  void initState() {
-    super.initState();
-    _stream = _build();
-  }
-
-  @override
-  void didUpdateWidget(_KpiStrip old) {
-    super.didUpdateWidget(old);
-    if (old.diasGracia != widget.diasGracia || old.hoyIso != widget.hoyIso) {
-      setState(() => _stream = _build());
-    }
-  }
-
-  Stream<List<Map<String, dynamic>>> _build() => ps.db.watch(
-        '''
-        SELECT
-          (SELECT COALESCE(SUM(monto_cordobas), 0) FROM pagos
-             WHERE date(fecha_pago) = ? AND anulado = 0) AS cobrado_hoy,
-          (SELECT COALESCE(SUM(monto + COALESCE(cargos_neto, 0) - monto_pagado), 0)
-             FROM cuotas WHERE estado IN ('pendiente','parcial')) AS por_cobrar,
-          (SELECT COUNT(*) FROM cuotas
-             WHERE estado IN ('pendiente','parcial')
-               AND date(fecha_vencimiento, '+' || ? || ' days') < date('now')
-          ) AS en_mora
-        ''',
-        parameters: [widget.hoyIso, widget.diasGracia],
-      );
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    return StreamBuilder<List<Map<String, dynamic>>>(
-      stream: _stream,
-      initialData: const [],
-      builder: (context, snap) {
-        final r = (snap.data != null && snap.data!.isNotEmpty)
-            ? snap.data!.first
-            : const <String, dynamic>{};
-        final cobradoHoy = (r['cobrado_hoy'] as num?)?.toDouble() ?? 0;
-        final porCobrar = (r['por_cobrar'] as num?)?.toDouble() ?? 0;
-        final enMora = (r['en_mora'] as num?)?.toInt() ?? 0;
-        return Container(
-          color: scheme.surfaceContainerLow,
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
-          child: Row(
-            children: [
-              _KpiCell(
-                label: 'Cobrado hoy',
-                value: Fmt.cordobas(cobradoHoy),
-                color: scheme.primary,
-              ),
-              _kpiDivider(scheme),
-              _KpiCell(
-                label: 'Por cobrar',
-                value: Fmt.cordobas(porCobrar),
-                color: scheme.onSurface,
-              ),
-              _kpiDivider(scheme),
-              _KpiCell(
-                label: 'En mora',
-                value: '$enMora',
-                color: enMora > 0 ? scheme.error : scheme.onSurface,
-              ),
-            ],
-          ),
-        );
-      },
-    );
-  }
-
-  Widget _kpiDivider(ColorScheme scheme) =>
-      Container(width: 1, height: 28, color: scheme.outlineVariant);
-}
-
-class _KpiCell extends StatelessWidget {
-  const _KpiCell({
-    required this.label,
-    required this.value,
-    required this.color,
-  });
-  final String label;
-  final String value;
-  final Color color;
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    return Expanded(
-      child: Column(
-        children: [
-          Text(
-            value,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(
-              fontSize: 15,
-              fontWeight: FontWeight.bold,
-              color: color,
-            ),
-          ),
-          const SizedBox(height: 2),
-          Text(label, style: TextStyle(fontSize: 11, color: scheme.outline)),
-        ],
-      ),
     );
   }
 }
