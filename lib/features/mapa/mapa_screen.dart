@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:latlong2/latlong.dart';
 
+import '../../data/providers/cobrador_provider.dart';
 import '../../data/repositories/settings_repo.dart';
 import '../../powersync/db.dart' as ps;
 import '../shared/widgets/empty_state.dart';
@@ -48,6 +49,10 @@ class _MapaScreenState extends ConsumerState<MapaScreen> {
 
   // Estado del filtro de chips (default: todos los marcadores).
   _FiltroEstado _filtro = _FiltroEstado.todos;
+  // Filtros SOLO para admin (el cobrador ve solo sus propios clientes, no
+  // tiene sentido filtrar por cobrador/zona). null = todos / todas.
+  String? _cobradorId;
+  String? _comunidadId;
   // Toggle de capa: false = calle (OSM), true = satélite (Esri).
   bool _satelite = false;
 
@@ -55,6 +60,9 @@ class _MapaScreenState extends ConsumerState<MapaScreen> {
       ps.db.watch(
         '''
         SELECT c.id, c.nombre, c.latitud, c.longitud,
+               c.cobrador_id, c.comunidad_id,
+               co.nombre AS comunidad,
+               cob.nombre AS cobrador_nombre,
                COALESCE(SUM(CASE WHEN cu.estado IN ('pendiente','parcial') THEN 1 ELSE 0 END), 0) AS pendientes,
                COALESCE(SUM(CASE WHEN cu.estado IN ('pendiente','parcial')
                    AND date(cu.fecha_vencimiento, '+' || ? || ' days') < date('now')
@@ -68,10 +76,13 @@ class _MapaScreenState extends ConsumerState<MapaScreen> {
                    AND COALESCE(ct.estado, 'activo') = 'activo') AS contratos_activos
           FROM clientes c
      LEFT JOIN cuotas cu ON cu.cliente_id = c.id
+     LEFT JOIN comunidades co ON co.id = c.comunidad_id
+     LEFT JOIN cobradores cob ON cob.id = c.cobrador_id
          WHERE c.activo = 1
            AND c.latitud IS NOT NULL
            AND c.longitud IS NOT NULL
-         GROUP BY c.id, c.nombre, c.latitud, c.longitud
+         GROUP BY c.id, c.nombre, c.latitud, c.longitud,
+                  c.cobrador_id, c.comunidad_id, co.nombre, cob.nombre
         ''',
         // diasGracia x2: vencidas + en_gracia, en orden de aparición.
         parameters: [diasGracia, diasGracia],
@@ -88,6 +99,11 @@ class _MapaScreenState extends ConsumerState<MapaScreen> {
   @override
   Widget build(BuildContext context) {
     final diasGracia = ref.watch(appSettingsProvider).diasGracia;
+
+    // Vista admin: el cobrador puro ve solo sus clientes → no necesita los
+    // filtros por cobrador/zona. Los mostramos solo si NO es cobrador.
+    final cobrador = ref.watch(cobradorActualProvider).valueOrNull;
+    final esAdminView = cobrador != null && !cobrador.esCobrador;
 
     // Recrea el stream si diasGracia cambió (o en el primer build).
     // Patrón setState explícito para que StreamBuilder reciba la nueva
@@ -124,24 +140,44 @@ class _MapaScreenState extends ConsumerState<MapaScreen> {
         // para que el encuadre inicial sea estable al cambiar de filtro.
         final center = _calcularCentro(rows);
 
-        // Filtra qué clientes se muestran según el chip seleccionado.
-        // Reusa _estadoDe (misma derivación que el color del marcador).
-        final visibles = _filtro == _FiltroEstado.todos
-            ? rows
-            : rows.where((r) {
-                switch (_filtro) {
-                  case _FiltroEstado.todos:
-                    return true;
-                  case _FiltroEstado.mora:
-                    return _estadoDe(r) == _EstadoCliente.mora;
-                  case _FiltroEstado.gracia:
-                    return _estadoDe(r) == _EstadoCliente.gracia;
-                  case _FiltroEstado.pendiente:
-                    return _estadoDe(r) == _EstadoCliente.pendiente;
-                  case _FiltroEstado.alDia:
-                    return _estadoDe(r) == _EstadoCliente.alDia;
-                }
-              }).toList();
+        // Opciones de los dropdowns (solo admin): cobradores y zonas
+        // distintas presentes en las filas cargadas, sin queries extra.
+        // null = "Todos"/"Todas".
+        final cobradorOpciones = esAdminView ? _opcionesDistinct(
+          rows,
+          idKey: 'cobrador_id',
+          labelKey: 'cobrador_nombre',
+        ) : const <({String id, String label})>[];
+        final comunidadOpciones = esAdminView ? _opcionesDistinct(
+          rows,
+          idKey: 'comunidad_id',
+          labelKey: 'comunidad',
+        ) : const <({String id, String label})>[];
+
+        // El cobrador puro no ve los dropdowns; sus filtros quedan null para
+        // que nunca recorten su set de clientes.
+        final cobradorId = esAdminView ? _cobradorId : null;
+        final comunidadId = esAdminView ? _comunidadId : null;
+
+        // Filtra qué clientes se muestran combinando las 3 condiciones:
+        // estado (chips, _estadoDe) + cobrador + zona (dropdowns admin).
+        // _estadoDe se reusa para que filtro y color del marcador no diverjan.
+        final visibles = rows.where((r) {
+          final pasaEstado = _filtro == _FiltroEstado.todos ||
+              switch (_filtro) {
+                _FiltroEstado.todos => true,
+                _FiltroEstado.mora => _estadoDe(r) == _EstadoCliente.mora,
+                _FiltroEstado.gracia => _estadoDe(r) == _EstadoCliente.gracia,
+                _FiltroEstado.pendiente =>
+                  _estadoDe(r) == _EstadoCliente.pendiente,
+                _FiltroEstado.alDia => _estadoDe(r) == _EstadoCliente.alDia,
+              };
+          final pasaCobrador =
+              cobradorId == null || r['cobrador_id'] == cobradorId;
+          final pasaComunidad =
+              comunidadId == null || r['comunidad_id'] == comunidadId;
+          return pasaEstado && pasaCobrador && pasaComunidad;
+        }).toList();
 
         return Stack(
           children: [
@@ -167,16 +203,35 @@ class _MapaScreenState extends ConsumerState<MapaScreen> {
                 _AttributionBanner(satelite: _satelite),
               ],
             ),
-            // Fila de chips de filtro por estado (overlay arriba).
+            // Fila de chips de filtro por estado (overlay arriba) +, solo
+            // para admin, una segunda fila con dropdowns de cobrador y zona.
             Positioned(
               top: 8,
               left: 8,
               right: 56, // deja lugar para el botón de capa
               child: SafeArea(
                 bottom: false,
-                child: _FiltroChips(
-                  seleccionado: _filtro,
-                  onChanged: (f) => setState(() => _filtro = f),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _FiltroChips(
+                      seleccionado: _filtro,
+                      onChanged: (f) => setState(() => _filtro = f),
+                    ),
+                    if (esAdminView) ...[
+                      const SizedBox(height: 6),
+                      _FiltrosAdmin(
+                        cobradorId: cobradorId,
+                        comunidadId: comunidadId,
+                        cobradorOpciones: cobradorOpciones,
+                        comunidadOpciones: comunidadOpciones,
+                        onCobradorChanged: (v) =>
+                            setState(() => _cobradorId = v),
+                        onComunidadChanged: (v) =>
+                            setState(() => _comunidadId = v),
+                      ),
+                    ],
+                  ],
                 ),
               ),
             ),
@@ -207,6 +262,27 @@ class _MapaScreenState extends ConsumerState<MapaScreen> {
       sumLng += (r['longitud'] as num).toDouble();
     }
     return LatLng(sumLat / rows.length, sumLng / rows.length);
+  }
+
+  /// Deriva las opciones de un dropdown desde las filas ya cargadas: pares
+  /// (id, label) distintos, ignorando filas con id null, ordenados por label.
+  /// Sin queries extra — todo sale del stream del mapa.
+  List<({String id, String label})> _opcionesDistinct(
+    List<Map<String, dynamic>> rows, {
+    required String idKey,
+    required String labelKey,
+  }) {
+    final byId = <String, String>{};
+    for (final r in rows) {
+      final id = r[idKey] as String?;
+      if (id == null) continue;
+      byId[id] = (r[labelKey] as String?) ?? id;
+    }
+    final opciones = byId.entries
+        .map((e) => (id: e.key, label: e.value))
+        .toList()
+      ..sort((a, b) => a.label.toLowerCase().compareTo(b.label.toLowerCase()));
+    return opciones;
   }
 
   Marker _markerFor(BuildContext context, Map<String, dynamic> r) {
@@ -393,6 +469,101 @@ class _FiltroChips extends StatelessWidget {
             onSelected: (_) => onChanged(estado),
           ),
       ],
+    );
+  }
+}
+
+/// Segunda fila de filtros del overlay, SOLO para la vista admin: dropdowns
+/// de cobrador y zona (comunidad). Las opciones se derivan de las filas del
+/// mapa; null = "Todos"/"Todas". El cobrador puro no ve esta fila.
+class _FiltrosAdmin extends StatelessWidget {
+  const _FiltrosAdmin({
+    required this.cobradorId,
+    required this.comunidadId,
+    required this.cobradorOpciones,
+    required this.comunidadOpciones,
+    required this.onCobradorChanged,
+    required this.onComunidadChanged,
+  });
+
+  final String? cobradorId;
+  final String? comunidadId;
+  final List<({String id, String label})> cobradorOpciones;
+  final List<({String id, String label})> comunidadOpciones;
+  final ValueChanged<String?> onCobradorChanged;
+  final ValueChanged<String?> onComunidadChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return Wrap(
+      spacing: 6,
+      runSpacing: 4,
+      children: [
+        _DropdownFiltro(
+          hint: 'Cobrador',
+          todosLabel: 'Todos',
+          value: cobradorId,
+          opciones: cobradorOpciones,
+          onChanged: onCobradorChanged,
+        ),
+        _DropdownFiltro(
+          hint: 'Zona',
+          todosLabel: 'Todas',
+          value: comunidadId,
+          opciones: comunidadOpciones,
+          onChanged: onComunidadChanged,
+        ),
+      ],
+    );
+  }
+}
+
+/// Dropdown compacto con fondo opaco (legible sobre el tile del mapa) y una
+/// opción "Todos/Todas" (value null) al inicio.
+class _DropdownFiltro extends StatelessWidget {
+  const _DropdownFiltro({
+    required this.hint,
+    required this.todosLabel,
+    required this.value,
+    required this.opciones,
+    required this.onChanged,
+  });
+
+  final String hint;
+  final String todosLabel;
+  final String? value;
+  final List<({String id, String label})> opciones;
+  final ValueChanged<String?> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    // Si el value seleccionado ya no está entre las opciones (ej. el cliente
+    // del cobrador filtrado dejó de tener filas), caemos a null para no
+    // romper el assert de DropdownButton (value debe existir en items).
+    final valido =
+        value != null && opciones.any((o) => o.id == value) ? value : null;
+    return Container(
+      decoration: BoxDecoration(
+        color: scheme.surface,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: scheme.outlineVariant),
+      ),
+      padding: const EdgeInsets.symmetric(horizontal: 10),
+      child: DropdownButtonHideUnderline(
+        child: DropdownButton<String?>(
+          value: valido,
+          hint: Text(hint, style: Theme.of(context).textTheme.bodySmall),
+          isDense: true,
+          borderRadius: BorderRadius.circular(8),
+          items: [
+            DropdownMenuItem<String?>(value: null, child: Text(todosLabel)),
+            for (final o in opciones)
+              DropdownMenuItem<String?>(value: o.id, child: Text(o.label)),
+          ],
+          onChanged: onChanged,
+        ),
+      ),
     );
   }
 }
