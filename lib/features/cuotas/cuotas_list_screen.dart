@@ -442,34 +442,32 @@ class _CuotasListState extends State<_CuotasList> {
     // Nicaragua (UTC-6) de noche difiere un día → "Vencen hoy" no matcheaba y
     // los rangos quedaban corridos. Pasamos el día local como parámetro para
     // que TODOS los filtros coincidan con lo que ve el cobrador.
-    final now = DateTime.now();
-    final hoyLocal =
-        DateTime(now.year, now.month, now.day).toIso8601String().substring(0, 10);
-
-    // Filtro por rango: solo vencidas + próximos N días.
+    // Día de HOY en hora de Nicaragua (UTC-6, sin DST): date('now','-6 hours').
+    // NUNCA date('now') pelado (es UTC → corre 1 día de noche). Norma general
+    // de la app para lógica de límite de día — ver CLAUDE.md.
     final rangoFilter = widget.filtro == _Filtro.todas
         ? "AND cu.estado IN ('pendiente','parcial') "
-            "AND date(cu.fecha_vencimiento) <= date(?, '+${widget.diasVisibles} days')"
+            "AND date(cu.fecha_vencimiento) <= date('now', '-6 hours', '+${widget.diasVisibles} days')"
         : '';
 
     final (String extra, List<Object?> params) = switch (widget.filtro) {
-      _Filtro.todas => (rangoFilter, <Object?>[hoyLocal]),
+      _Filtro.todas => (rangoFilter, <Object?>[]),
       _Filtro.mora => (
           "AND cu.estado IN ('pendiente','parcial') "
-              "AND date(cu.fecha_vencimiento, '+' || ? || ' days') < ?",
-          <Object?>[widget.diasGracia, hoyLocal],
+              "AND date(cu.fecha_vencimiento, '+' || ? || ' days') < date('now', '-6 hours')",
+          <Object?>[widget.diasGracia],
         ),
       _Filtro.gracia => (
           "AND cu.estado IN ('pendiente','parcial') "
-              "AND date(cu.fecha_vencimiento) < ? "
-              "AND date(cu.fecha_vencimiento, '+' || ? || ' days') >= ?",
-          <Object?>[hoyLocal, widget.diasGracia, hoyLocal],
+              "AND date(cu.fecha_vencimiento) < date('now', '-6 hours') "
+              "AND date(cu.fecha_vencimiento, '+' || ? || ' days') >= date('now', '-6 hours')",
+          <Object?>[widget.diasGracia],
         ),
       _Filtro.parciales => ("AND cu.estado = 'parcial'", <Object?>[]),
       _Filtro.hoy => (
           "AND cu.estado IN ('pendiente','parcial') "
-              "AND date(cu.fecha_vencimiento) = ?",
-          <Object?>[hoyLocal],
+              "AND date(cu.fecha_vencimiento) = date('now', '-6 hours')",
+          <Object?>[],
         ),
     };
 
@@ -695,7 +693,7 @@ class _TabPorClienteState extends State<_TabPorCliente> {
       SELECT c.id, c.nombre,
              co.nombre AS comunidad,
              COUNT(cu.id) AS cuotas_pend,
-             SUM(CASE WHEN cu.fecha_vencimiento < date('now')
+             SUM(CASE WHEN date(cu.fecha_vencimiento) < date('now', '-6 hours')
                       THEN 1 ELSE 0 END) AS cuotas_vencidas,
              COALESCE(SUM(cu.monto + COALESCE(cu.cargos_neto, 0) - cu.monto_pagado), 0) AS saldo_pendiente,
              MIN(cu.fecha_vencimiento) AS vence_mas_vieja

@@ -103,7 +103,7 @@ class _Sparkline7dState extends State<_Sparkline7d> {
              COALESCE(SUM(monto_cordobas), 0) AS total
         FROM pagos
        WHERE anulado = 0
-         AND date(fecha_pago) >= date('now', '-6 days')
+         AND date(fecha_pago) >= date('now', '-6 hours', '-6 days')
        GROUP BY date(fecha_pago)
        ORDER BY dia
     ''');

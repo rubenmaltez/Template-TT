@@ -48,7 +48,7 @@ class _CuotasAdminScreenState extends ConsumerState<CuotasAdminScreen> {
     }
     if (_estado == 'pendiente') {
       where.add("cu.estado IN ('pendiente','parcial')");
-      where.add("cu.fecha_vencimiento <= date('now', '+$_diasVisibles days')");
+      where.add("cu.fecha_vencimiento <= date('now', '-6 hours', '+$_diasVisibles days')");
     } else if (_estado != 'todas') {
       where.add('cu.estado = ?');
       params.add(_estado);

@@ -66,11 +66,11 @@ class _MapaScreenState extends ConsumerState<MapaScreen> {
                cob.nombre AS cobrador_nombre,
                COALESCE(SUM(CASE WHEN cu.estado IN ('pendiente','parcial') THEN 1 ELSE 0 END), 0) AS pendientes,
                COALESCE(SUM(CASE WHEN cu.estado IN ('pendiente','parcial')
-                   AND date(cu.fecha_vencimiento, '+' || ? || ' days') < date('now')
+                   AND date(cu.fecha_vencimiento, '+' || ? || ' days') < date('now', '-6 hours')
                  THEN 1 ELSE 0 END), 0) AS vencidas,
                COALESCE(SUM(CASE WHEN cu.estado IN ('pendiente','parcial')
-                   AND date(cu.fecha_vencimiento) < date('now')
-                   AND date(cu.fecha_vencimiento, '+' || ? || ' days') >= date('now')
+                   AND date(cu.fecha_vencimiento) < date('now', '-6 hours')
+                   AND date(cu.fecha_vencimiento, '+' || ? || ' days') >= date('now', '-6 hours')
                  THEN 1 ELSE 0 END), 0) AS en_gracia,
                (SELECT COUNT(*) FROM contratos ct
                  WHERE ct.cliente_id = c.id

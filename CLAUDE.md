@@ -506,6 +506,20 @@ específicos que han causado bugs en producción:
    - `grep -rn 'ILIKE\|ANY(\|ARRAY\[' lib/` → funciones Postgres-only.
    - **Scope: TODO el codebase**, no solo archivos modificados.
 
+**1b. Zona horaria / día local (CRÍTICO — norma general):**
+   - Para lógica de LÍMITE DE DÍA (vencidas, mora, gracia, "vencen hoy",
+     rangos por fecha, conteos "este mes" / "últimos N días") usar SIEMPRE
+     `date('now', '-6 hours')` y `julianday('now', '-6 hours')` — **NUNCA
+     `date('now')` pelado**. SQLite `date('now')` es UTC; el negocio opera en
+     hora de Nicaragua (UTC-6, sin DST), así que el `-6 hours` da el día
+     correcto en web y nativo, y coincide con los badges de la UI
+     (`DateTime.now()` local). **Aplica a TODO módulo actual y futuro.**
+   - `grep -rn "date('now')\|julianday('now')" lib/ --include="*.dart"` →
+     cada uno DEBE llevar `'-6 hours'` (los pelados corren 1 día de noche).
+   - Server-side (cron / RPC en Postgres) corre en UTC; si una feature
+     necesita el día Nicaragua server-side, usar
+     `now() AT TIME ZONE 'America/Managua'`.
+
 **2. Stream lifecycle con Riverpod (CRÍTICO):**
    - Si un widget es `ConsumerStatefulWidget` y usa `ref.watch()` en
      `build()`, los streams creados en `initState()` DEBEN ser

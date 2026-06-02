@@ -49,7 +49,7 @@ class _CobradoresAdminScreenState
              (SELECT COALESCE(SUM(monto_cordobas), 0) FROM pagos
                WHERE cobrador_id = co.id
                  AND anulado = 0
-                 AND date(fecha_pago) >= date('now', 'start of month')
+                 AND date(fecha_pago) >= date('now', '-6 hours', 'start of month')
              ) AS cobrado_mes
         FROM cobradores co
        ORDER BY co.activo DESC, co.rol, co.nombre

@@ -532,14 +532,14 @@ class _DescargarPdfMenu extends ConsumerWidget {
                  COUNT(cu.id) AS cuotas_vencidas,
                  COALESCE(SUM(cu.monto + COALESCE(cu.cargos_neto, 0)
                    - cu.monto_pagado), 0) AS monto_adeudado,
-                 CAST(julianday('now') - julianday(MIN(cu.fecha_vencimiento))
+                 CAST(julianday('now', '-6 hours') - julianday(MIN(cu.fecha_vencimiento))
                    AS INTEGER) AS dias_mora
             FROM cuotas cu
             JOIN clientes c ON c.id = cu.cliente_id
        LEFT JOIN comunidades co ON co.id = c.comunidad_id
            WHERE cu.estado IN ('pendiente','parcial')
              AND date(cu.fecha_vencimiento, '+' || ? || ' days')
-                 < date('now')
+                 < date('now', '-6 hours')
            GROUP BY c.id, c.nombre, co.nombre
            ORDER BY dias_mora DESC
         ''', [diasGracia]);
@@ -736,7 +736,7 @@ class _DescargarPdfMenu extends ConsumerWidget {
       SELECT c.nombre, co.nombre AS comunidad,
              c.telefono,
              MAX(p.fecha_pago) AS ultimo_pago,
-             CAST(julianday('now') - julianday(MAX(p.fecha_pago))
+             CAST(julianday('now', '-6 hours') - julianday(MAX(p.fecha_pago))
                AS INTEGER) AS dias_sin_pago
         FROM clientes c
    LEFT JOIN comunidades co ON co.id = c.comunidad_id
@@ -745,7 +745,7 @@ class _DescargarPdfMenu extends ConsumerWidget {
        WHERE c.activo = 1
        GROUP BY c.id, c.nombre, co.nombre, c.telefono
       HAVING MAX(p.fecha_pago) IS NULL
-          OR MAX(p.fecha_pago) < date('now', '-$mesesInactividad months')
+          OR MAX(p.fecha_pago) < date('now', '-6 hours', '-$mesesInactividad months')
        ORDER BY ultimo_pago ASC
     ''');
 
@@ -899,14 +899,14 @@ class _DescargarPdfMenu extends ConsumerWidget {
                  COUNT(cu.id) AS cuotas_vencidas,
                  COALESCE(SUM(cu.monto + COALESCE(cu.cargos_neto, 0)
                    - cu.monto_pagado), 0) AS monto_adeudado,
-                 CAST(julianday('now') - julianday(MIN(cu.fecha_vencimiento))
+                 CAST(julianday('now', '-6 hours') - julianday(MIN(cu.fecha_vencimiento))
                    AS INTEGER) AS dias_mora
             FROM cuotas cu
             JOIN clientes c ON c.id = cu.cliente_id
        LEFT JOIN comunidades co ON co.id = c.comunidad_id
            WHERE cu.estado IN ('pendiente','parcial')
              AND date(cu.fecha_vencimiento, '+' || ? || ' days')
-                 < date('now')
+                 < date('now', '-6 hours')
            GROUP BY c.id, c.nombre, co.nombre
            ORDER BY dias_mora DESC
         ''', [diasGracia]);
@@ -1025,7 +1025,7 @@ class _DescargarPdfMenu extends ConsumerWidget {
           SELECT c.nombre, co.nombre AS comunidad,
                  c.telefono,
                  MAX(p.fecha_pago) AS ultimo_pago,
-                 CAST(julianday('now') - julianday(MAX(p.fecha_pago))
+                 CAST(julianday('now', '-6 hours') - julianday(MAX(p.fecha_pago))
                    AS INTEGER) AS dias_sin_pago
             FROM clientes c
        LEFT JOIN comunidades co ON co.id = c.comunidad_id
@@ -1034,7 +1034,7 @@ class _DescargarPdfMenu extends ConsumerWidget {
            WHERE c.activo = 1
            GROUP BY c.id, c.nombre, co.nombre, c.telefono
           HAVING MAX(p.fecha_pago) IS NULL
-              OR MAX(p.fecha_pago) < date('now', '-$mesesInactividad months')
+              OR MAX(p.fecha_pago) < date('now', '-6 hours', '-$mesesInactividad months')
            ORDER BY ultimo_pago ASC
         ''');
         return _toCsv(
@@ -1151,7 +1151,7 @@ class _RecaudacionMensualCardState extends State<_RecaudacionMensualCard> {
              COUNT(*) AS qty
         FROM pagos
        WHERE anulado = 0
-         AND date(fecha_pago) >= date('now', '-5 months', 'start of month')
+         AND date(fecha_pago) >= date('now', '-6 hours', '-5 months', 'start of month')
        GROUP BY mes
        ORDER BY mes
       ''',
@@ -1260,7 +1260,7 @@ class _CobradoresMesCardState extends State<_CobradoresMesCard> {
         FROM cobradores co
    LEFT JOIN pagos p ON p.cobrador_id = co.id
                     AND p.anulado = 0
-                    AND date(p.fecha_pago) >= date('now', 'start of month')
+                    AND date(p.fecha_pago) >= date('now', '-6 hours', 'start of month')
        WHERE co.rol = 'cobrador' AND co.activo = 1
        GROUP BY co.id, co.nombre, co.prefijo_recibo
        ORDER BY total DESC
@@ -1354,7 +1354,7 @@ class _MoraPorComunidadCardState extends State<_MoraPorComunidadCard> {
         JOIN comunidades co ON co.id = c.comunidad_id
         JOIN municipios m ON m.id = co.municipio_id
        WHERE cu.estado IN ('pendiente','parcial')
-         AND date(cu.fecha_vencimiento, '+' || ? || ' days') < date('now')
+         AND date(cu.fecha_vencimiento, '+' || ? || ' days') < date('now', '-6 hours')
        GROUP BY co.id, co.nombre, m.nombre
        ORDER BY adeudo DESC
        LIMIT 10

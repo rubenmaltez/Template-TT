@@ -339,7 +339,7 @@ class _ClientesListState extends State<_ClientesList> {
         c.latitud, c.longitud,
         COALESCE(SUM(CASE WHEN cu.estado IN ('pendiente','parcial') THEN 1 ELSE 0 END), 0) AS cuotas_pendientes,
         COALESCE(SUM(CASE WHEN cu.estado IN ('pendiente','parcial')
-            AND date(cu.fecha_vencimiento, '+' || ? || ' days') < date('now')
+            AND date(cu.fecha_vencimiento, '+' || ? || ' days') < date('now', '-6 hours')
           THEN 1 ELSE 0 END), 0) AS cuotas_vencidas,
         COALESCE(SUM(CASE WHEN cu.estado IN ('pendiente','parcial')
                           THEN cu.monto + COALESCE(cu.cargos_neto, 0) - cu.monto_pagado

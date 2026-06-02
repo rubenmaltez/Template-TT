@@ -359,7 +359,7 @@ class _ContratosSectionState extends State<_ContratosSection> {
               AND estado = 'pagada') AS cuotas_pagadas,
              (SELECT COUNT(*) FROM cuotas WHERE contrato_id = ct.id
               AND estado IN ('pendiente','parcial')
-              AND fecha_vencimiento < date('now')) AS cuotas_vencidas
+              AND fecha_vencimiento < date('now', '-6 hours')) AS cuotas_vencidas
         FROM contratos ct
    LEFT JOIN planes p ON p.id = ct.plan_id
        WHERE ct.cliente_id = ?

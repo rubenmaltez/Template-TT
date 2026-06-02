@@ -205,12 +205,12 @@ final operativoKpisProvider = StreamProvider<OperativoKpis>((ref) {
          FROM cuotas WHERE estado IN ('pendiente','parcial')) AS saldo,
       (SELECT COUNT(*) FROM cuotas
          WHERE estado IN ('pendiente','parcial')
-           AND date(fecha_vencimiento, '+' || ? || ' days') < date('now')
+           AND date(fecha_vencimiento, '+' || ? || ' days') < date('now', '-6 hours')
       ) AS vencidas,
       (SELECT COALESCE(SUM(monto + COALESCE(cargos_neto, 0) - monto_pagado), 0)
          FROM cuotas
          WHERE estado IN ('pendiente','parcial')
-           AND date(fecha_vencimiento, '+' || ? || ' days') < date('now')
+           AND date(fecha_vencimiento, '+' || ? || ' days') < date('now', '-6 hours')
       ) AS saldo_vencido
     ''',
     parameters: [diasGracia, diasGracia],
@@ -266,13 +266,13 @@ final distribucionCuotasProvider = StreamProvider<DistribucionCuotas>((ref) {
       COUNT(CASE WHEN estado = 'pagada' THEN 1 END) AS pagada,
       COUNT(CASE WHEN estado = 'parcial' THEN 1 END) AS parcial,
       COUNT(CASE WHEN estado = 'pendiente'
-                AND fecha_vencimiento >= date('now') THEN 1 END) AS al_dia,
+                AND fecha_vencimiento >= date('now', '-6 hours') THEN 1 END) AS al_dia,
       COUNT(CASE WHEN estado IN ('pendiente','parcial')
-                AND fecha_vencimiento < date('now')
-                AND date(fecha_vencimiento, '+' || ? || ' days') >= date('now')
+                AND fecha_vencimiento < date('now', '-6 hours')
+                AND date(fecha_vencimiento, '+' || ? || ' days') >= date('now', '-6 hours')
            THEN 1 END) AS en_gracia,
       COUNT(CASE WHEN estado IN ('pendiente','parcial')
-                AND date(fecha_vencimiento, '+' || ? || ' days') < date('now')
+                AND date(fecha_vencimiento, '+' || ? || ' days') < date('now', '-6 hours')
            THEN 1 END) AS vencida
       FROM cuotas
      WHERE estado != 'anulada'

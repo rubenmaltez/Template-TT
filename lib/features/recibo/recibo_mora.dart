@@ -18,7 +18,7 @@ Future<List<Map<String, dynamic>>> fetchMoraContrato(
       FROM cuotas cu
      WHERE cu.contrato_id = ?
        AND cu.estado IN ('pendiente','parcial')
-       AND date(cu.fecha_vencimiento, '+' || ? || ' days') < date('now')
+       AND date(cu.fecha_vencimiento, '+' || ? || ' days') < date('now', '-6 hours')
        AND (cu.monto + COALESCE(cu.cargos_neto, 0) - cu.monto_pagado) > 0.01
      ORDER BY cu.periodo ASC
   ''', [contratoId, diasGracia]);
