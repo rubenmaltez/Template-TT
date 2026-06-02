@@ -58,12 +58,12 @@ class WarningBox extends StatelessWidget {
 String warningClientesHuerfanos(int n) {
   if (n == 1) {
     return 'Tiene 1 cliente asignado que va a quedar sin cobrador. '
-        'Reasignalo primero desde el panel del tenant '
-        '(Cobradores → Reasignar).';
+        'Reasignalo primero desde Clientes '
+        '(seleccionalo → cambiar cobrador).';
   }
   return 'Tiene $n clientes asignados que van a quedar sin cobrador. '
-      'Reasignalos primero desde el panel del tenant '
-      '(Cobradores → Reasignar).';
+      'Reasignalos primero desde Clientes '
+      '(seleccionalos → cambiar cobrador).';
 }
 
 /// Dialog de confirmación + ejecución del reenvío de invitación. El

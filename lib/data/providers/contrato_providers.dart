@@ -45,7 +45,8 @@ final contratoCuotasProvider = StreamProvider.autoDispose
     .family<List<Map<String, dynamic>>, String>((ref, contratoId) {
   return ps.db.watch(
     '''
-    SELECT cu.id, cu.monto, cu.monto_pagado, cu.fecha_vencimiento,
+    SELECT cu.id, cu.monto, cu.monto_pagado, cu.cargos_neto,
+           cu.fecha_vencimiento,
            cu.periodo, cu.estado, cu.contrato_id,
            cu.descripcion, cu.tipo_cargo_manual, ct.dia_pago
       FROM cuotas cu

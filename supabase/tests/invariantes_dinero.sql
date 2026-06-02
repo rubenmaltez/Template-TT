@@ -200,6 +200,28 @@ inv10 AS (
       AND ce.tenant_id <> cu.tenant_id
     LIMIT 10
   ) t
+),
+
+-- INV 11: un contrato FIJO (duracion_meses) activo debe tener EXACTAMENTE
+-- duracion_meses cuotas generadas. La regla #5 (total = precio×meses) presupone
+-- que se generaron `meses` cuotas; si la generación under/over-generó, el total
+-- fijo no cuadra con sus cuotas. Indefinidos (duracion_meses NULL/0) se excluyen
+-- (#6: no tienen total fijo). Las cuotas manuales tienen contrato_id NULL → no
+-- cuentan; las anuladas conservan contrato_id → sí cuentan (no se borran).
+inv11 AS (
+  SELECT 'INV11: contrato fijo activo tiene exactamente duracion_meses cuotas (#5)' AS invariante,
+         COUNT(*) AS violaciones,
+         COALESCE(string_agg(id::text, ', ' ORDER BY id), '') AS ejemplo_ids
+  FROM (
+    SELECT ct.id
+    FROM public.contratos ct
+    WHERE COALESCE(ct.estado, 'activo') = 'activo'
+      AND ct.duracion_meses IS NOT NULL
+      AND ct.duracion_meses > 0
+      AND (SELECT COUNT(*) FROM public.cuotas cu WHERE cu.contrato_id = ct.id)
+          <> ct.duracion_meses
+    LIMIT 10
+  ) t
 )
 
 SELECT * FROM inv1
@@ -212,4 +234,5 @@ UNION ALL SELECT * FROM inv7
 UNION ALL SELECT * FROM inv8
 UNION ALL SELECT * FROM inv9
 UNION ALL SELECT * FROM inv10
+UNION ALL SELECT * FROM inv11
 ORDER BY invariante;

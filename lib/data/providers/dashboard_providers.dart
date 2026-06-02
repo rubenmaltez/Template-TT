@@ -142,14 +142,18 @@ class DistribucionCuotas {
 }
 
 ({String hoy, String inicioSemana, String inicioMes}) _dashboardDates() {
-  final now = DateTime.now();
-  final hoy = DateTime(now.year, now.month, now.day)
+  // Base en hora Nicaragua (UTC-6, sin DST). `fecha_pago` se crea en
+  // Nicaragua; el admin que mira el dashboard puede estar en otra TZ, y el
+  // resto de la app ya usa Nicaragua (`date('now','-6 hours')`). Esto unifica
+  // el reloj para que los KPIs de hoy/semana/mes no se corran por TZ.
+  final base = DateTime.now().toUtc().subtract(const Duration(hours: 6));
+  final hoy = DateTime(base.year, base.month, base.day)
       .toIso8601String()
       .substring(0, 10);
   final inicioMes =
-      DateTime(now.year, now.month, 1).toIso8601String().substring(0, 10);
-  final inicioSemana = DateTime(now.year, now.month, now.day)
-      .subtract(Duration(days: now.weekday - 1))
+      DateTime(base.year, base.month, 1).toIso8601String().substring(0, 10);
+  final inicioSemana = DateTime(base.year, base.month, base.day)
+      .subtract(Duration(days: base.weekday - 1))
       .toIso8601String()
       .substring(0, 10);
   return (hoy: hoy, inicioSemana: inicioSemana, inicioMes: inicioMes);

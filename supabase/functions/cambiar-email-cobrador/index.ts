@@ -240,8 +240,23 @@ serve(async (req) => {
       "global",
     );
     if (signOutErr) {
-      // No bloqueamos — el email ya cambió.
+      // No bloqueamos — el email ya cambió. Pero el target mantiene su JWT
+      // viejo hasta ~1h. Registramos en audit_log para trazabilidad, mismo
+      // patrón que forzar-password (consistencia S2 del audit total).
       console.error("cambiar-email: signOut global falló", signOutErr);
+      await admin.from("audit_log").insert({
+        tenant_id: tc.tenant_id,
+        tabla: "auth.users",
+        registro_id: body.cobrador_id,
+        campo: "session_invalidation",
+        valor_anterior: null,
+        valor_nuevo: {
+          action: "email_change_signout_failed",
+          error: signOutErr.message,
+        },
+        user_id: user.id,
+        user_rol: "super_admin",
+      });
     }
 
     return new Response(

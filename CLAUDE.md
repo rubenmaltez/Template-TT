@@ -158,6 +158,12 @@ para `auth.admin.*` y rollbacks.
 1. **Multi-tenant con RLS** — toda tabla operativa tiene `tenant_id` NOT
    NULL. Las policies usan `current_tenant_id()`. Super_admin bypassa con
    `is_super_admin()`. NUNCA crear una tabla sin RLS o sin tenant_id.
+   **Checklist al agregar una tabla operativa**: (a) `tenant_id` NOT NULL + FK;
+   (b) RLS scopeada por `current_tenant_id()`; (c) agregar a mano su policy
+   `super_admin_all` (`for all using is_super_admin() with check is_super_admin()`)
+   — el bloque `do$$` de 0026 enumera tablas FIJAS, las nuevas NO la heredan
+   (foot-gun: fotos_cliente/visitas la agregaron a mano en 0053/0056);
+   (d) trigger `audit_changelog_trg`; (e) declararla en `schema.dart` + sync rules.
 2. **Offline-first** — el cobrador debe poder operar sin internet. Cualquier
    feature nueva que requiera conexión sincrónica debe declararse
    explícitamente (no es el default).
@@ -703,17 +709,16 @@ por-función.
 
 Estos viven acá hasta que se ataquen explícitamente. NO re-flag en audits.
 
-- **`ps.db.watch` inline en `build()` — anti-patrón a barrer del repo**.
-  Resuelto en `geografia_admin_screen.dart` (Screen + tiles convertidos
-  a StatefulWidget con stream `late final` en initState). Quedan
-  ~25 callsites más con el mismo anti-patrón: clientes, contratos,
-  planes, cuotas, pagos, audit, recibo, historial, perfil, geo_picker,
-  reportes, etc. Hoy no crashean porque sus widgets parent no reciben
-  triggers de rebuild externos, pero replican el bug latente. Sprint
-  propio de hardening cuando aparezca el primer crash o cuando se
-  toque alguna de esas pantallas por otra razón. Patrón fix:
-  StatefulWidget + `late final Stream` en `initState`, `didUpdateWidget`
-  defensivo si los params del query dependen del widget.
+- ~~**`ps.db.watch` inline en `build()` — anti-patrón a barrer del repo**~~.
+  RESUELTO (audit total 2026-06-02): el barrido está prácticamente completo.
+  El resto de las pantallas ya migró a `late final Stream` en `initState` /
+  `_buildStream()` / provider (verificado: 0 callsites inline en
+  ConsumerStatefulWidget con `ref.watch` en build). Quedan SOLO 2 callsites
+  inline en `geo_picker.dart:109,138` (municipios/comunidades) y son
+  **by-design**: el widget es `StatefulWidget` plano (NO Consumer, no
+  `ref.watch` en build), así que rebuilds externos no lo afectan; sus params
+  cambian en cascada (depto→municipio→comunidad) con su propio `setState`.
+  Anti-patrón controlado, no crash-prone.
 - **OfflineBanner follow-ups del sprint debounce**:
     - **Indicador de red inestable**: el debounce de 3s silencia flickers
       rápidos (`false → true → false` en <3s) — bueno para ocultar el

@@ -357,7 +357,8 @@ class _CuotaRow extends StatelessWidget {
     final estado = row['estado'] as String? ?? 'pendiente';
     final monto = (row['monto'] as num? ?? 0).toDouble();
     final montoPagado = (row['monto_pagado'] as num? ?? 0).toDouble();
-    final saldo = monto - montoPagado;
+    final cargosNeto = (row['cargos_neto'] as num? ?? 0).toDouble();
+    final saldo = monto + cargosNeto - montoPagado;
     final periodo = DateTime.parse(row['periodo'] as String);
     final vence = DateTime.parse(row['fecha_vencimiento'] as String);
 
