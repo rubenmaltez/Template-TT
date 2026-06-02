@@ -32,6 +32,10 @@ class ImpresoraService {
     // Layout configurable del recibo (supersede mostrarEmpresa/ordenPie).
     List<ReciboBloque> layout = const [],
     List<Map<String, dynamic>>? multiRecibos,
+    // Detalle de mora del contrato (ya filtrado por el call-site). Espeja la
+    // firma del service io para que el conditional import compile aunque acá
+    // no se use (BT no aplica en web).
+    List<Map<String, dynamic>> moraRows = const [],
   }) async {
     throw UnsupportedError('Impresión BT no disponible en web');
   }

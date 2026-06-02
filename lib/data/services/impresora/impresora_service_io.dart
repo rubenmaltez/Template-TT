@@ -63,6 +63,12 @@ class ImpresoraService {
     // Supersede a mostrarEmpresa/ordenPie (que la daban antes).
     List<ReciboBloque> layout = const [],
     List<Map<String, dynamic>>? multiRecibos,
+    // Detalle de mora del contrato YA filtrado por el call-site (excluida la
+    // cuota cobrada en single; excluidas TODAS las del grupo en multi). Igual
+    // que en el PDF: el service no tiene `ref` ni hace IO, así que la mora se
+    // calcula afuera (`fetchMoraContrato`) y se pasa hecha. Vacío → el bloque
+    // `mora` no se imprime.
+    List<Map<String, dynamic>> moraRows = const [],
   }) async {
     // Si el caller no pasó layout (o llegó vacío), caer al default del catálogo.
     final layoutFinal = layout.isEmpty ? ReciboLayout.porDefecto : layout;
@@ -79,6 +85,7 @@ class ImpresoraService {
             empresaWhatsapp: empresaWhatsapp,
             mostrarCedula: mostrarCedula,
             layout: layoutFinal,
+            moraRows: moraRows,
           )
         : await _generarBytes(
             recibo: recibo,
@@ -91,6 +98,7 @@ class ImpresoraService {
             empresaWhatsapp: empresaWhatsapp,
             mostrarCedula: mostrarCedula,
             layout: layoutFinal,
+            moraRows: moraRows,
           );
     return _enviarBytes(macImpresora, bytes);
   }
@@ -153,6 +161,7 @@ class ImpresoraService {
     bool mostrarCedula = true,
     String? empresaWhatsapp,
     required List<ReciboBloque> layout,
+    List<Map<String, dynamic>> moraRows = const [],
   }) async {
     final profile = await CapabilityProfile.load();
     final gen = Generator(_size(anchoMm), profile);
@@ -187,6 +196,7 @@ class ImpresoraService {
         empresaWhatsapp: empresaWhatsapp,
         mostrarAdeudado: mostrarAdeudado,
         mostrarCedula: mostrarCedula,
+        moraRows: moraRows,
       );
       if (contenido.isEmpty) continue;
       final zona = reciboBloqueInfo(b.id)?.zona ?? ReciboZona.body;
@@ -223,6 +233,7 @@ class ImpresoraService {
     String? empresaWhatsapp,
     bool mostrarAdeudado = true,
     bool mostrarCedula = true,
+    List<Map<String, dynamic>> moraRows = const [],
   }) {
     final bytes = <int>[];
     switch (id) {
@@ -439,6 +450,12 @@ class ImpresoraService {
                 height: size,
                 codeTable: _codeTable)));
         return bytes;
+      case 'mora':
+        // Detalle de mora del contrato (ya filtrado por el call-site, excluida
+        // la cuota cobrada). Resumen informativo de lo que el cliente aún debe
+        // — NO toca la matemática del dinero (`cuota`/`totales`). Vacío (cuota
+        // manual sin contrato, o sin meses en mora) → bloque vacío.
+        return _bloqueMoraBytes(gen, anchoMm, moraRows, size);
       default:
         return const [];
     }
@@ -459,6 +476,7 @@ class ImpresoraService {
     String? empresaWhatsapp,
     bool mostrarCedula = true,
     required List<ReciboBloque> layout,
+    List<Map<String, dynamic>> moraRows = const [],
   }) async {
     final profile = await CapabilityProfile.load();
     final gen = Generator(_size(anchoMm), profile);
@@ -487,6 +505,7 @@ class ImpresoraService {
         pieRecibo: pieRecibo,
         empresaWhatsapp: empresaWhatsapp,
         mostrarCedula: mostrarCedula,
+        moraRows: moraRows,
       );
       if (contenido.isEmpty) continue;
       final zona = reciboBloqueInfo(b.id)?.zona ?? ReciboZona.body;
@@ -517,6 +536,7 @@ class ImpresoraService {
     String? pieRecibo,
     String? empresaWhatsapp,
     bool mostrarCedula = true,
+    List<Map<String, dynamic>> moraRows = const [],
   }) {
     final bytes = <int>[];
     final first = rows.first;
@@ -709,9 +729,55 @@ class ImpresoraService {
                 height: size,
                 codeTable: _codeTable)));
         return bytes;
+      case 'mora':
+        // Detalle de mora del contrato (ya filtrado por el call-site, excluidas
+        // TODAS las cuotas del grupo). Mismo resumen informativo que el single
+        // — NO toca la matemática del dinero. Vacío → bloque vacío.
+        return _bloqueMoraBytes(gen, anchoMm, moraRows, size);
       default:
         return const [];
     }
+  }
+
+  /// Bloque `mora` en bytes ESC/POS (compartido single + multi): título "EN
+  /// MORA" centrado, una línea por mes (`Fmt.mes` ↔ `Fmt.cordobas(saldo)` en
+  /// dos columnas), y "TOTAL MORA" con la suma. `moraRows` ya viene filtrado
+  /// por el call-site; vacío → []. Mismos labels/orden que pantalla y PDF.
+  List<int> _bloqueMoraBytes(Generator gen, int anchoMm,
+      List<Map<String, dynamic>> moraRows, PosTextSize size) {
+    if (moraRows.isEmpty) return const [];
+    final bytes = <int>[];
+    final totalMora = moraRows.fold<double>(
+        0, (s, m) => s + (m['saldo'] as num).toDouble());
+    bytes.addAll(gen.text('EN MORA',
+        styles: PosStyles(
+            align: PosAlign.center,
+            bold: true,
+            height: size,
+            codeTable: _codeTable)));
+    for (final m in moraRows) {
+      bytes.addAll(_doblColumna(
+        gen,
+        anchoMm,
+        Fmt.mes(DateTime.parse(m['periodo'] as String)),
+        Fmt.cordobas(m['saldo'] as num),
+        size,
+      ));
+    }
+    bytes.addAll(gen.row([
+      PosColumn(
+        text: 'TOTAL MORA',
+        width: 6,
+        styles: const PosStyles(bold: true, codeTable: _codeTable),
+      ),
+      PosColumn(
+        text: Fmt.cordobas(totalMora),
+        width: 6,
+        styles: const PosStyles(
+            bold: true, align: PosAlign.right, codeTable: _codeTable),
+      ),
+    ]));
+    return bytes;
   }
 
   // Totales del grupo (multi). Mismas sumas que antes (sin cambios de matemática).

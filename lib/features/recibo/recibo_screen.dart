@@ -1075,6 +1075,26 @@ class _AccionesImpresionState extends ConsumerState<_AccionesImpresion> {
     try {
       final service = ref.read(impresoraServiceProvider);
       final esReimpresion = widget.recibo['impreso_en'] != null;
+
+      // Detalle de mora del contrato para el bloque `mora` de la térmica. El
+      // service no tiene `ref` ni hace IO, así que la mora se calcula acá
+      // (mismo `fetchMoraContrato` que pantalla/PDF) y se pasa hecha. Single:
+      // excluir la cuota cobrada. Multi: excluir TODAS las del grupo. Cuota
+      // manual (contrato_id null) → mora vacía → el bloque no imprime nada.
+      final multiRows = widget.multiRows;
+      final contratoId = (multiRows != null ? multiRows.first : widget.recibo)[
+          'contrato_id'] as String?;
+      final excluir = (multiRows != null
+              ? multiRows.map((r) => r['cuota_id'])
+              : [widget.recibo['cuota_id']])
+          .whereType<Object>()
+          .toSet();
+      final moraRows = contratoId == null
+          ? const <Map<String, dynamic>>[]
+          : (await fetchMoraContrato(contratoId, widget.settings.diasGracia))
+              .where((m) => !excluir.contains(m['cuota_id']))
+              .toList();
+
       final ok = await service.imprimir(
         macImpresora: fav.mac,
         recibo: widget.recibo,
@@ -1099,6 +1119,9 @@ class _AccionesImpresionState extends ConsumerState<_AccionesImpresion> {
         // #6a: si es cobro múltiple, imprimir las N cuotas del grupo (no solo
         // la 1ª). El service cae al recibo single si multiRows es null/1.
         multiRecibos: widget.multiRows,
+        // Detalle de mora del contrato para el bloque `mora` (paridad con
+        // pantalla/PDF). Ya filtrado arriba; vacío → el bloque no imprime.
+        moraRows: moraRows,
       );
 
       if (!mounted) return;
