@@ -308,31 +308,39 @@ class _CuotasListState extends State<_CuotasList> {
   }
 
   Stream<List<Map<String, dynamic>>> _buildStream() {
+    // "Hoy" en hora LOCAL del dispositivo, idéntico al que usan los badges de
+    // la fila (DateTime.now() local). SQLite date('now') es UTC: en zonas como
+    // Nicaragua (UTC-6) de noche difiere un día → "Vencen hoy" no matcheaba y
+    // los rangos quedaban corridos. Pasamos el día local como parámetro para
+    // que TODOS los filtros coincidan con lo que ve el cobrador.
+    final now = DateTime.now();
+    final hoyLocal =
+        DateTime(now.year, now.month, now.day).toIso8601String().substring(0, 10);
+
     // Filtro por rango: solo vencidas + próximos N días.
-    // Los filtros específicos (mora, gracia, etc.) siguen funcionando igual.
     final rangoFilter = widget.filtro == _Filtro.todas
         ? "AND cu.estado IN ('pendiente','parcial') "
-            "AND cu.fecha_vencimiento <= date('now', '+${widget.diasVisibles} days')"
+            "AND date(cu.fecha_vencimiento) <= date(?, '+${widget.diasVisibles} days')"
         : '';
 
     final (String extra, List<Object?> params) = switch (widget.filtro) {
-      _Filtro.todas => (rangoFilter, <Object?>[]),
+      _Filtro.todas => (rangoFilter, <Object?>[hoyLocal]),
       _Filtro.mora => (
           "AND cu.estado IN ('pendiente','parcial') "
-              "AND date(cu.fecha_vencimiento, '+' || ? || ' days') < date('now')",
-          <Object?>[widget.diasGracia],
+              "AND date(cu.fecha_vencimiento, '+' || ? || ' days') < ?",
+          <Object?>[widget.diasGracia, hoyLocal],
         ),
       _Filtro.gracia => (
           "AND cu.estado IN ('pendiente','parcial') "
-              "AND cu.fecha_vencimiento < date('now') "
-              "AND date(cu.fecha_vencimiento, '+' || ? || ' days') >= date('now')",
-          <Object?>[widget.diasGracia],
+              "AND date(cu.fecha_vencimiento) < ? "
+              "AND date(cu.fecha_vencimiento, '+' || ? || ' days') >= ?",
+          <Object?>[hoyLocal, widget.diasGracia, hoyLocal],
         ),
       _Filtro.parciales => ("AND cu.estado = 'parcial'", <Object?>[]),
       _Filtro.hoy => (
           "AND cu.estado IN ('pendiente','parcial') "
-              "AND cu.fecha_vencimiento = date('now')",
-          <Object?>[],
+              "AND date(cu.fecha_vencimiento) = ?",
+          <Object?>[hoyLocal],
         ),
     };
 
