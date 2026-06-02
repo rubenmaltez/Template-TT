@@ -323,6 +323,9 @@ final routerProvider = Provider<GoRouter>((ref) {
         routes: [
           GoRoute(path: '/admin',
               builder: (_, s) => _titled('Resumen', const DashboardAdminScreen())),
+          GoRoute(path: '/admin/cobros',
+              builder: (_, s) =>
+                  _titled('Cobros', const CuotasListScreen(adminMode: true))),
           GoRoute(path: '/admin/clientes',
               builder: (_, s) => _titled('Clientes', const ClientesAdminScreen())),
           GoRoute(path: '/admin/clientes/nuevo',

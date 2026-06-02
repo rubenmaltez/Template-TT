@@ -302,6 +302,9 @@ class _SyncIndicator extends ConsumerWidget {
 const _adminMenu = [
   _MenuItem(Icons.dashboard, 'Resumen', '/admin'),
   _MenuItem(Icons.people, 'Clientes', '/admin/clientes'),
+  // Operativo: admin y admin_cobranza ven la vista de Cobros (misma pantalla
+  // del cobrador, con filtros por cobrador/zona). NO adminOnly a propósito.
+  _MenuItem(Icons.point_of_sale, 'Cobros', '/admin/cobros'),
   _MenuItem(Icons.admin_panel_settings, 'Administración', '/admin/cobradores',
       adminOnly: true, children: [
     _MenuItem(Icons.groups, 'Personal', '/admin/cobradores', adminOnly: true),
