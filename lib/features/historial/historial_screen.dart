@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../data/models/pago.dart';
 import '../../data/providers/cobrador_provider.dart';
+import '../../data/providers/impersonation_provider.dart';
 import '../../data/repositories/pagos_repo.dart';
 import '../../data/repositories/settings_repo.dart';
 import '../../data/utils/formatters.dart';
@@ -244,6 +245,16 @@ class _GrupoDia extends ConsumerWidget {
     WidgetRef ref,
     Map<String, dynamic> pago,
   ) async {
+    // Guard de impersonación (consistencia con cobro/cargo/visita): el
+    // super_admin impersonando no opera en campo. anularPago no mueve tenant,
+    // pero se bloquea por coherencia.
+    if (ref.read(estaImpersonandoProvider)) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text(
+            'No se puede anular mientras gestionás un tenant como super_admin.'),
+      ));
+      return;
+    }
     final motivo = await showDialog<String?>(
       context: context,
       builder: (_) => const _AnularCobroDialog(),

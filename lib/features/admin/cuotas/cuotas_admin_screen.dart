@@ -776,7 +776,12 @@ class _CuotaCard extends ConsumerWidget {
     final estado = row['estado'] as String;
     final monto = (row['monto'] as num).toDouble();
     final pagado = (row['monto_pagado'] as num? ?? 0).toDouble();
-    final saldo = monto - pagado;
+    // Saldo canónico = monto + cargos_neto − pagado, igual que el resto de las
+    // pantallas (clientes, detalle de contrato, reportes, mora). Sin cargos_neto
+    // divergía (regla #10 de consistencia cross-pantalla). El dato ya viene en
+    // el SELECT.
+    final cargosNeto = (row['cargos_neto'] as num? ?? 0).toDouble();
+    final saldo = monto + cargosNeto - pagado;
     final vence = DateTime.parse(row['fecha_vencimiento'] as String);
     final periodo = DateTime.parse(row['periodo'] as String);
     final planNombre = row['plan'] as String?;
