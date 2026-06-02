@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -41,6 +43,7 @@ class _ContratoFormScreenState extends ConsumerState<ContratoFormScreen> {
   // tenant, inmutable una vez asignado (server lo refuerza; solo super lo cambia).
   String? _codigoDupInfo; // nombre del cliente del contrato en conflicto, o null
   bool _codigoYaAsignado = false;
+  Timer? _dupDebounce; // chequeo de código duplicado en vivo (como cliente).
   _Duracion _duracion = _Duracion.unAno;
   bool _activo = true;
   bool _cargando = true;
@@ -105,6 +108,7 @@ class _ContratoFormScreenState extends ConsumerState<ContratoFormScreen> {
   void dispose() {
     _costoCtrl.dispose();
     _notasCtrl.dispose();
+    _dupDebounce?.cancel();
     _codigoCtrl.dispose();
     // Reset defensivo del form_dirty_provider: el shell que watchea
     // este provider no debe ver dirty=true tras desmontar el form.
@@ -494,11 +498,15 @@ class _ContratoFormScreenState extends ConsumerState<ContratoFormScreen> {
                     controller: _codigoCtrl,
                     enabled: !codigoBloqueado,
                     decoration: InputDecoration(
-                      labelText: 'Código de contrato (opcional)',
+                      labelText: 'Código de contrato *',
                       hintText: 'Ej. CT00012',
                       helperText: codigoBloqueado
                           ? 'Inmutable: no se puede cambiar una vez asignado.'
                           : 'Identificador del contrato. No se puede repetir.',
+                      errorText: _codigoDupInfo != null
+                          ? 'Ya existe un contrato con ese código '
+                              '(cliente $_codigoDupInfo)'
+                          : null,
                       prefixIcon: const Icon(Icons.tag),
                     ),
                     textCapitalization: TextCapitalization.characters,
@@ -509,6 +517,27 @@ class _ContratoFormScreenState extends ConsumerState<ContratoFormScreen> {
                           newV.copyWith(text: newV.text.toUpperCase())),
                       LengthLimitingTextInputFormatter(30),
                     ],
+                    validator: (v) {
+                      if (codigoBloqueado) return null;
+                      if ((v ?? '').trim().isEmpty) {
+                        return 'El código es obligatorio';
+                      }
+                      if (_codigoDupInfo != null) {
+                        return 'Ya existe un contrato con ese código '
+                            '(cliente $_codigoDupInfo)';
+                      }
+                      return null;
+                    },
+                    onChanged: (_) {
+                      _dupDebounce?.cancel();
+                      _dupDebounce = Timer(
+                        const Duration(milliseconds: 350),
+                        () async {
+                          await _verificarCodigoDuplicado();
+                          if (mounted) setState(() {});
+                        },
+                      );
+                    },
                     textInputAction: TextInputAction.next,
                   ),
                   const SizedBox(height: 12),
