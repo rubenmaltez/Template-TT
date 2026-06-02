@@ -69,6 +69,13 @@ dev_dependencies:
     sdk: flutter
   flutter_lints: ^4.0.0
 
+  # Harness de tests del repo de dinero (pagos_repo): abre una
+  # PowerSyncDatabase in-memory/temp sobre el core nativo `powersync-sqlite-core`.
+  # `path` arma paths temporales únicos; `sqlite3` carga la extensión nativa en
+  # el VM de `flutter test`. Ver test/data/repositories/pagos_repo_test.dart.
+  path: ^1.9.0
+  sqlite3: ^2.4.0
+
   # Empaquetado MSIX para distribución Windows
   msix: ^3.16.8
 

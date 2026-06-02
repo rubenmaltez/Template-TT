@@ -1,4 +1,5 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:powersync/powersync.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:uuid/uuid.dart';
 
@@ -38,8 +39,12 @@ class CargoAutoInfo {
 }
 
 class PagosRepo {
-  PagosRepo();
+  /// [db] permite inyectar una `PowerSyncDatabase` para tests. En producción
+  /// queda null y el repo usa la global `ps.db` (no se cambia el wiring).
+  PagosRepo({PowerSyncDatabase? db}) : _db = db;
   final _uuid = const Uuid();
+  final PowerSyncDatabase? _db;
+  PowerSyncDatabase get _dbOrGlobal => _db ?? ps.db;
 
   /// Registra un cobro: inserta pago + recibo en una transacción local.
   /// El trigger SQL del server actualizará cuota.monto_pagado/estado.
@@ -92,7 +97,7 @@ class PagosRepo {
       }
     } catch (_) {}
 
-    await ps.db.writeTransaction((tx) async {
+    await _dbOrGlobal.writeTransaction((tx) async {
       if (cargosAuto != null) {
         for (final cargo in cargosAuto) {
           await tx.execute(
@@ -273,7 +278,7 @@ class PagosRepo {
       if (sr.isNotEmpty) _pisoMulti = (sr.first['correlativo'] as num).toInt();
     } catch (_) {}
 
-    await ps.db.writeTransaction((tx) async {
+    await _dbOrGlobal.writeTransaction((tx) async {
       // Insertar cargos automáticos (reconexión / pronto pago) antes de
       // los pagos para que el delta de cargos_extra ya los incluya.
       if (cargosAuto != null) {
@@ -407,7 +412,7 @@ class PagosRepo {
     final now = DateTime.now().toIso8601String();
     // Hora REAL del dispositivo (UTC) para el change log — offline-first.
     final ocurridoEn = DateTime.now().toUtc().toIso8601String();
-    await ps.db.writeTransaction((tx) async {
+    await _dbOrGlobal.writeTransaction((tx) async {
       // Snapshot del monto antes de marcar anulado, para ajustar cuota local.
       final pagoRows = await tx.getAll(
         'SELECT cuota_id, monto_cordobas FROM pagos WHERE id = ? AND anulado = 0',
@@ -478,7 +483,7 @@ class PagosRepo {
   }) async {
     // Hora REAL del dispositivo (UTC) para el change log — offline-first.
     final ocurridoEn = DateTime.now().toUtc().toIso8601String();
-    await ps.db.writeTransaction((tx) async {
+    await _dbOrGlobal.writeTransaction((tx) async {
       // Leer el pago actual para obtener cuota_id y monto previo.
       final pagoRows = await tx.getAll(
         'SELECT cuota_id, monto_cordobas, vuelto_cordobas, moneda FROM pagos WHERE id = ? AND anulado = 0',
