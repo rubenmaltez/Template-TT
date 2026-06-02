@@ -116,6 +116,18 @@ class _PagosAdminScreenState extends ConsumerState<PagosAdminScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // Pantalla opcional gateada por super_admin (cobranza.pantalla_pagos). Si
+    // está OFF el menú no la muestra; este guard bloquea el acceso por URL
+    // directa (defensa en profundidad — la RLS 0085 ya impide que el admin la
+    // active). El super_admin la habilita desde el panel de settings.
+    if (!ref.watch(appSettingsProvider).pantallaPagosHabilitada) {
+      return const EmptyState(
+        icon: Icons.lock_outline,
+        titulo: 'Sección no habilitada',
+        descripcion: 'Esta sección no está habilitada para tu empresa. '
+            'El administrador del sistema puede activarla.',
+      );
+    }
     return Column(
       children: [
         Padding(
