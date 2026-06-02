@@ -140,8 +140,11 @@ para `auth.admin.*` y rollbacks.
 - `cobradores` — todos los users del tenant (admins + cobradores).
   Replica `auth.users.id`.
 - `clientes` + `contratos` + `planes` — catálogo del ISP.
-- `cuotas` — generadas mensualmente del contrato (estados:
-  `pendiente` / `parcial` / `pagada` / `en_gracia` / `vencida` / `anulada`).
+- `cuotas` — generadas mensualmente del contrato. Estados PERSISTIDOS en DB
+  (CHECK): `pendiente` / `parcial` / `pagada` / `anulada` (los únicos que el
+  trigger escribe). `en_gracia` y `vencida` son estados DERIVADOS en el cliente
+  (Dart, desde `fecha_vencimiento` + días de gracia) — nunca se escriben en DB,
+  no intentar `UPDATE estado='vencida'` (choca el CHECK).
 - `pagos` + `recibos` — registros de cobranza, con foto en Storage
   `comprobantes-pago/{tenant}/comp/{pago_id}.{jpg|png|webp}`.
 - `cargos_extra` — descuentos/cargos sobre cuotas.

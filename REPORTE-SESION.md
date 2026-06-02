@@ -154,6 +154,38 @@ consistentes → auditoría.
 
 > Más reciente arriba. Formato por ítem: error → fix → expectativa.
 
+### 2026-06-02 (tarde) — Audit EXHAUSTIVO TOTAL (5 agentes) + 2 fixes
+
+Audit completo de toda la app (5 agentes en paralelo: integridad DB, dinero,
+correctness frontend, cobertura funcional admin-side, cobertura funcional
+cobrador + seguridad). **0 findings CRITICAL/HIGH.** La app está sólida y
+consistente end-to-end. Commit `c34479d`. Auditado estático (correr
+`flutter analyze` al pull). Sin migración.
+
+**F1 — `/admin/cuotas` mostraba el saldo sin `cargos_neto`** (🟠 ALTA, dinero)
+- *Error:* `cuotas_admin_screen.dart:779` calculaba `saldo = monto − pagado`,
+  omitiendo `cargos_neto` (cargos/descuentos de la cuota). Las otras ~6
+  pantallas (clientes, detalle de contrato, reportes, mora, recibo) usan
+  `monto + cargos_neto − pagado`. Ej: cuota C$500 + reconexión C$100, paga
+  C$300 → esta pantalla mostraba C$200, el resto C$300. Viola la regla #10
+  (consistencia cross-pantalla).
+- *Fix:* `saldo = monto + COALESCE(cargos_neto,0) − pagado` (el dato ya venía
+  en el SELECT, solo no se usaba).
+- *Expectativa:* el saldo de una cuota da idéntico en `/admin/cuotas`, lista de
+  clientes, detalle de contrato y reportes.
+
+**S4 — anular del historial sin guard de impersonación** (🟡 LOW, seguridad)
+- *Error:* `historial._anular` no chequeaba `estaImpersonandoProvider` (a
+  diferencia de cobro/cargo/visita). Bajo impacto (anular es UPDATE benigno que
+  no mueve tenant), pero inconsistente.
+- *Fix:* guard `estaImpersonandoProvider` al inicio de `_anular`, igual que las
+  otras acciones de campo.
+
+**Resto:** todo LOW → backlog (acoplamiento `.jpg` en storage RLS, `super_admin_all`
+no-automático, dead code `app_version_label.dart` + migración 0054, coherencia de
+reloj del dashboard, gap de invariantes regla #5/#6, hardening de edge functions).
+Ver ESTADO-APP §3.
+
 ### 2026-06-02 — Audit integral post-snapshot + 4 fixes
 
 Audit de 4 agentes en paralelo (integridad DB↔schema↔sync, dinero, frontend,
