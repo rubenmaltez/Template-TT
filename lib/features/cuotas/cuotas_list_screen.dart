@@ -41,12 +41,19 @@ class _CuotasListScreenState extends ConsumerState<CuotasListScreen>
   }
 
   Future<void> _marcarMoraComoVista() async {
+    // vista_por es uuid FK a cobradores(id): hay que escribir el id del
+    // cobrador, NUNCA el literal 'cobrador' — rompía el sync con "invalid
+    // input syntax for type uuid". Este UPDATE marca las no-vistas Y repara
+    // las que el bug previo dejó con el literal, reescribiendo un uuid válido.
+    final cobradorId = ref.read(cobradorActualProvider).valueOrNull?.id;
+    if (cobradorId == null) return;
     final now = DateTime.now().toUtc().toIso8601String();
     await ps.db.execute('''
       UPDATE notificaciones_mora
-      SET vista_en = ?, vista_por = 'cobrador'
-      WHERE vista_en IS NULL AND resuelta_en IS NULL
-    ''', [now]);
+      SET vista_en = COALESCE(vista_en, ?), vista_por = ?
+      WHERE resuelta_en IS NULL
+        AND (vista_en IS NULL OR vista_por = 'cobrador')
+    ''', [now, cobradorId]);
   }
 
   void _toggleSelect(String cuotaId, String? contratoId, [List<String>? orderedIds]) {
