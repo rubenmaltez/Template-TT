@@ -516,9 +516,14 @@ específicos que han causado bugs en producción:
      (`DateTime.now()` local). **Aplica a TODO módulo actual y futuro.**
    - `grep -rn "date('now')\|julianday('now')" lib/ --include="*.dart"` →
      cada uno DEBE llevar `'-6 hours'` (los pelados corren 1 día de noche).
-   - Server-side (cron / RPC en Postgres) corre en UTC; si una feature
-     necesita el día Nicaragua server-side, usar
-     `now() AT TIME ZONE 'America/Managua'`.
+   - Server-side (Postgres): **NO** cambiar el timezone global de la DB (rompe
+     el wire-format de TODOS los `timestamptz` → PowerSync/cliente). Para
+     funciones con lógica de límite de día (mora, generación de cuotas,
+     triggers de contrato) agregar `SET timezone = 'America/Managua'` a la
+     función (patrón de la migración 0087) — así su `current_date`/`now()` dan
+     el día Nicaragua aun llamadas ad-hoc (triggers). Los crons ya se agendan a
+     la medianoche Nicaragua (06:05 UTC). Alternativa puntual en una query
+     suelta: `(now() AT TIME ZONE 'America/Managua')::date`.
 
 **2. Stream lifecycle con Riverpod (CRÍTICO):**
    - Si un widget es `ConsumerStatefulWidget` y usa `ref.watch()` en
