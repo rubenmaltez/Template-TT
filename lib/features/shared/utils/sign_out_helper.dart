@@ -43,14 +43,22 @@ Future<void> confirmarSignOut(BuildContext context) async {
   // Limpiar impersonación activa (#9) antes de cerrar sesión: si el
   // super_admin estaba dentro de un tenant, salimos para no quedar "pegajoso"
   // al re-loguear. Sin reconectar PowerSync (el signOut desconecta igual).
-  await _limpiarImpersonacionSiActiva();
+  await limpiarImpersonacionSiActiva();
 
   await Supabase.instance.client.auth.signOut();
 }
 
 /// Si hay una impersonación activa (fila local), sale de ella antes del
 /// signOut. Best-effort: no bloquea el cierre de sesión si falla.
-Future<void> _limpiarImpersonacionSiActiva() async {
+///
+/// DEBE llamarse SIEMPRE antes de cualquier `auth.signOut()` crudo: la
+/// limpieza es un WRITE server-side (DELETE en `super_admin_impersonation`)
+/// que requiere el JWT del super_admin, así que tiene que correr mientras la
+/// sesión sigue viva. Después del signOut no hay sesión para autorizar el
+/// delete y la fila quedaría "pegajosa" (re-login impersonando el tenant
+/// viejo). Reusada por sync_gate_screen y set_password_screen además de
+/// confirmarSignOut.
+Future<void> limpiarImpersonacionSiActiva() async {
   try {
     final rows = await ps.db.getAll(
       'SELECT 1 FROM super_admin_impersonation LIMIT 1',

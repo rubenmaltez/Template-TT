@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../shared/utils/sign_out_helper.dart';
 import 'auth_flow_provider.dart';
 
 /// Pantalla a la que llega el user después de clickear un link de email
@@ -94,6 +95,11 @@ class _SetPasswordScreenState extends ConsumerState<SetPasswordScreen> {
   }
 
   Future<void> _noSoyYo() async {
+    // Limpiar impersonación activa (#9) ANTES del signOut: requiere el JWT
+    // vivo para autorizar el DELETE server-side. Cubre el caso raro de un
+    // super_admin impersonando que cae en este flow (invite/recovery) y se
+    // desloguea — evita que la fila quede "pegajosa" al re-loguear.
+    await limpiarImpersonacionSiActiva();
     await Supabase.instance.client.auth.signOut();
     // Limpiamos el flow para que el router no nos vuelva a mandar acá.
     ref.read(initialAuthFlowProvider.notifier).state = null;

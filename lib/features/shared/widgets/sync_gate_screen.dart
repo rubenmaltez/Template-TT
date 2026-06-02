@@ -6,6 +6,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../data/providers/sync_status_provider.dart';
 import '../../../powersync/db.dart' as ps;
+import '../utils/sign_out_helper.dart';
 
 /// Pantalla intermedia mostrada por el router mientras PowerSync confirma
 /// un sync tras cambio de identidad (login después de signOut, o switch
@@ -159,6 +160,11 @@ class _SyncGateScreenState extends ConsumerState<SyncGateScreen> {
     );
     if (confirmar != true) return;
     try {
+      // Limpiar impersonación activa (#9) ANTES del signOut: requiere el JWT
+      // vivo para autorizar el DELETE server-side. Si el super_admin estaba
+      // impersonando un tenant y el sync gate se colgó, esto evita que la fila
+      // quede "pegajosa" y re-loguee impersonando el tenant viejo.
+      await limpiarImpersonacionSiActiva();
       await Supabase.instance.client.auth.signOut();
       // El listener de main.dart dispara onSignOut → el redirect del
       // router lleva a /login. No hace falta navegación manual.
