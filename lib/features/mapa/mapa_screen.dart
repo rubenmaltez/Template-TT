@@ -500,6 +500,7 @@ class _FiltrosAdmin extends StatelessWidget {
       runSpacing: 4,
       children: [
         _DropdownFiltro(
+          icon: Icons.person_outline,
           hint: 'Cobrador',
           todosLabel: 'Todos',
           value: cobradorId,
@@ -507,6 +508,7 @@ class _FiltrosAdmin extends StatelessWidget {
           onChanged: onCobradorChanged,
         ),
         _DropdownFiltro(
+          icon: Icons.place_outlined,
           hint: 'Zona',
           todosLabel: 'Todas',
           value: comunidadId,
@@ -518,10 +520,12 @@ class _FiltrosAdmin extends StatelessWidget {
   }
 }
 
-/// Dropdown compacto con fondo opaco (legible sobre el tile del mapa) y una
-/// opción "Todos/Todas" (value null) al inicio.
+/// Chip desplegable: mismo look redondeado que los ChoiceChip de estado, con
+/// ícono + "Etiqueta: selección ▾". Abre un menú con "Todos/Todas" (value null)
+/// + las opciones. Se resalta (primaryContainer) cuando hay un filtro activo.
 class _DropdownFiltro extends StatelessWidget {
   const _DropdownFiltro({
+    required this.icon,
     required this.hint,
     required this.todosLabel,
     required this.value,
@@ -529,6 +533,7 @@ class _DropdownFiltro extends StatelessWidget {
     required this.onChanged,
   });
 
+  final IconData icon;
   final String hint;
   final String todosLabel;
   final String? value;
@@ -539,31 +544,89 @@ class _DropdownFiltro extends StatelessWidget {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     // Si el value seleccionado ya no está entre las opciones (ej. el cliente
-    // del cobrador filtrado dejó de tener filas), caemos a null para no
-    // romper el assert de DropdownButton (value debe existir en items).
+    // filtrado dejó de tener filas), caemos a null.
     final valido =
         value != null && opciones.any((o) => o.id == value) ? value : null;
-    return Container(
-      decoration: BoxDecoration(
-        color: scheme.surface,
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: scheme.outlineVariant),
-      ),
-      padding: const EdgeInsets.symmetric(horizontal: 10),
-      child: DropdownButtonHideUnderline(
-        child: DropdownButton<String?>(
-          value: valido,
-          hint: Text(hint, style: Theme.of(context).textTheme.bodySmall),
-          isDense: true,
-          borderRadius: BorderRadius.circular(8),
-          items: [
-            DropdownMenuItem<String?>(value: null, child: Text(todosLabel)),
-            for (final o in opciones)
-              DropdownMenuItem<String?>(value: o.id, child: Text(o.label)),
+    final activo = valido != null;
+    final seleccion =
+        activo ? opciones.firstWhere((o) => o.id == valido).label : todosLabel;
+
+    return PopupMenuButton<String?>(
+      tooltip: hint,
+      position: PopupMenuPosition.under,
+      onSelected: onChanged,
+      itemBuilder: (context) => [
+        PopupMenuItem<String?>(
+          value: null,
+          child: _MenuRow(label: todosLabel, seleccionado: !activo),
+        ),
+        if (opciones.isNotEmpty) const PopupMenuDivider(),
+        for (final o in opciones)
+          PopupMenuItem<String?>(
+            value: o.id,
+            child: _MenuRow(label: o.label, seleccionado: o.id == valido),
+          ),
+      ],
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(10, 7, 6, 7),
+        decoration: BoxDecoration(
+          color: activo ? scheme.primaryContainer : scheme.surface,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+            color: activo ? scheme.primary : scheme.outlineVariant,
+          ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon,
+                size: 16,
+                color: activo
+                    ? scheme.onPrimaryContainer
+                    : scheme.onSurfaceVariant),
+            const SizedBox(width: 6),
+            Text(
+              '$hint: $seleccion',
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: activo ? FontWeight.w600 : FontWeight.normal,
+                color: activo ? scheme.onPrimaryContainer : scheme.onSurface,
+              ),
+            ),
+            Icon(Icons.arrow_drop_down,
+                size: 18,
+                color: activo
+                    ? scheme.onPrimaryContainer
+                    : scheme.onSurfaceVariant),
           ],
-          onChanged: onChanged,
         ),
       ),
+    );
+  }
+}
+
+/// Ítem del menú del chip desplegable: check a la izquierda si está elegido.
+class _MenuRow extends StatelessWidget {
+  const _MenuRow({required this.label, required this.seleccionado});
+
+  final String label;
+  final bool seleccionado;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        SizedBox(
+          width: 18,
+          child: seleccionado
+              ? Icon(Icons.check, size: 18, color: scheme.primary)
+              : null,
+        ),
+        const SizedBox(width: 8),
+        Text(label),
+      ],
     );
   }
 }
