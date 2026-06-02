@@ -17,12 +17,39 @@ class MapaScreen extends ConsumerStatefulWidget {
   ConsumerState<MapaScreen> createState() => _MapaScreenState();
 }
 
+/// Estado de cobranza derivado de los counts de cuotas de un cliente.
+/// Es la ÚNICA fuente de verdad de la derivación: la usan tanto el color/
+/// ícono del marcador como el filtro de chips, para que los criterios
+/// coincidan exactamente (precedencia: mora > gracia > pendiente > al día).
+enum _EstadoCliente { mora, gracia, pendiente, alDia }
+
+/// Opción seleccionada en la fila de chips de filtro sobre el mapa.
+/// `todos` muestra todo; el resto matchea contra [_EstadoCliente].
+enum _FiltroEstado { todos, mora, gracia, pendiente, alDia }
+
+/// Deriva el estado de un cliente a partir de su row del stream, con la
+/// MISMA precedencia que usa el color/ícono del marcador.
+_EstadoCliente _estadoDe(Map<String, dynamic> r) {
+  final vencidas = (r['vencidas'] as int? ?? 0);
+  final enGracia = (r['en_gracia'] as int? ?? 0);
+  final pendientes = (r['pendientes'] as int? ?? 0);
+  if (vencidas > 0) return _EstadoCliente.mora;
+  if (enGracia > 0) return _EstadoCliente.gracia;
+  if (pendientes > 0) return _EstadoCliente.pendiente;
+  return _EstadoCliente.alDia;
+}
+
 class _MapaScreenState extends ConsumerState<MapaScreen> {
   // Cacheamos el stream de PowerSync en initState para evitar que cada
   // rebuild cree una nueva suscripción (anti-patrón ps.db.watch inline).
   // Se recrea cuando diasGracia cambia.
   late Stream<List<Map<String, dynamic>>> _clientesStream;
   int? _lastDiasGracia;
+
+  // Estado del filtro de chips (default: todos los marcadores).
+  _FiltroEstado _filtro = _FiltroEstado.todos;
+  // Toggle de capa: false = calle (OSM), true = satélite (Esri).
+  bool _satelite = false;
 
   Stream<List<Map<String, dynamic>>> _buildStream(int diasGracia) =>
       ps.db.watch(
@@ -93,26 +120,80 @@ class _MapaScreenState extends ConsumerState<MapaScreen> {
           );
         }
 
-        // Centro: promedio de los puntos. Si hay uno, usa ese.
+        // Centro: promedio de TODOS los puntos (no del subconjunto filtrado),
+        // para que el encuadre inicial sea estable al cambiar de filtro.
         final center = _calcularCentro(rows);
 
-        return FlutterMap(
-          options: MapOptions(
-            initialCenter: center,
-            initialZoom: 12.0,
-            interactionOptions: const InteractionOptions(
-              flags: InteractiveFlag.all & ~InteractiveFlag.rotate,
-            ),
-          ),
+        // Filtra qué clientes se muestran según el chip seleccionado.
+        // Reusa _estadoDe (misma derivación que el color del marcador).
+        final visibles = _filtro == _FiltroEstado.todos
+            ? rows
+            : rows.where((r) {
+                switch (_filtro) {
+                  case _FiltroEstado.todos:
+                    return true;
+                  case _FiltroEstado.mora:
+                    return _estadoDe(r) == _EstadoCliente.mora;
+                  case _FiltroEstado.gracia:
+                    return _estadoDe(r) == _EstadoCliente.gracia;
+                  case _FiltroEstado.pendiente:
+                    return _estadoDe(r) == _EstadoCliente.pendiente;
+                  case _FiltroEstado.alDia:
+                    return _estadoDe(r) == _EstadoCliente.alDia;
+                }
+              }).toList();
+
+        return Stack(
           children: [
-            TileLayer(
-              urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-              userAgentPackageName: 'com.ispbilling.app',
+            FlutterMap(
+              options: MapOptions(
+                initialCenter: center,
+                initialZoom: 12.0,
+                interactionOptions: const InteractionOptions(
+                  flags: InteractiveFlag.all & ~InteractiveFlag.rotate,
+                ),
+              ),
+              children: [
+                TileLayer(
+                  urlTemplate: _satelite
+                      ? 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'
+                      : 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                  userAgentPackageName: 'com.ispbilling.app',
+                ),
+                MarkerLayer(
+                  markers:
+                      visibles.map((r) => _markerFor(context, r)).toList(),
+                ),
+                _AttributionBanner(satelite: _satelite),
+              ],
             ),
-            MarkerLayer(
-              markers: rows.map((r) => _markerFor(context, r)).toList(),
+            // Fila de chips de filtro por estado (overlay arriba).
+            Positioned(
+              top: 8,
+              left: 8,
+              right: 56, // deja lugar para el botón de capa
+              child: SafeArea(
+                bottom: false,
+                child: _FiltroChips(
+                  seleccionado: _filtro,
+                  onChanged: (f) => setState(() => _filtro = f),
+                ),
+              ),
             ),
-            const _AttributionBanner(),
+            // Botón flotante para alternar calle ↔ satélite.
+            Positioned(
+              top: 8,
+              right: 8,
+              child: SafeArea(
+                bottom: false,
+                child: FloatingActionButton.small(
+                  heroTag: 'mapa_capa_toggle',
+                  tooltip: _satelite ? 'Ver calles' : 'Ver satélite',
+                  onPressed: () => setState(() => _satelite = !_satelite),
+                  child: Icon(_satelite ? Icons.map : Icons.layers),
+                ),
+              ),
+            ),
           ],
         );
       },
@@ -130,17 +211,30 @@ class _MapaScreenState extends ConsumerState<MapaScreen> {
 
   Marker _markerFor(BuildContext context, Map<String, dynamic> r) {
     final scheme = Theme.of(context).colorScheme;
-    final vencidas = (r['vencidas'] as int? ?? 0);
-    final enGracia = (r['en_gracia'] as int? ?? 0);
-    final pendientes = (r['pendientes'] as int? ?? 0);
+    // Reusa la derivación de estado compartida con el filtro de chips, así
+    // color/ícono y filtro nunca divergen.
+    final estado = _estadoDe(r);
     // En gracia → ámbar (entre el rojo de vencida y el normal de pendiente).
-    final color = vencidas > 0
-        ? scheme.error
-        : enGracia > 0
-            ? const Color(0xFFB45309)
-            : pendientes > 0
-                ? scheme.primary
-                : scheme.tertiary;
+    final Color color;
+    final IconData icono;
+    switch (estado) {
+      case _EstadoCliente.mora:
+        color = scheme.error;
+        icono = Icons.warning;
+        break;
+      case _EstadoCliente.gracia:
+        color = const Color(0xFFB45309);
+        icono = Icons.hourglass_bottom;
+        break;
+      case _EstadoCliente.pendiente:
+        color = scheme.primary;
+        icono = Icons.payments;
+        break;
+      case _EstadoCliente.alDia:
+        color = scheme.tertiary;
+        icono = Icons.check;
+        break;
+    }
 
     return Marker(
       point: LatLng(
@@ -161,13 +255,7 @@ class _MapaScreenState extends ConsumerState<MapaScreen> {
             ],
           ),
           child: Icon(
-            vencidas > 0
-                ? Icons.warning
-                : enGracia > 0
-                    ? Icons.hourglass_bottom
-                    : pendientes > 0
-                        ? Icons.payments
-                        : Icons.check,
+            icono,
             color: Colors.white,
             size: 20,
           ),
@@ -242,18 +330,69 @@ class _MapaScreenState extends ConsumerState<MapaScreen> {
 }
 
 class _AttributionBanner extends StatelessWidget {
-  const _AttributionBanner();
+  const _AttributionBanner({required this.satelite});
+
+  /// Cuando true, el tile es Esri World Imagery → atribución de Esri.
+  final bool satelite;
+
   @override
   Widget build(BuildContext context) {
-    return const Align(
+    return Align(
       alignment: Alignment.bottomLeft,
       child: Padding(
-        padding: EdgeInsets.all(4),
-        child: Text(
-          '© OpenStreetMap',
-          style: TextStyle(fontSize: 10, color: Colors.black54),
+        padding: const EdgeInsets.all(4),
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            color: Colors.white70,
+            borderRadius: BorderRadius.circular(4),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+            child: Text(
+              satelite
+                  ? '© Esri, Maxar, Earthstar Geographics'
+                  : '© OpenStreetMap',
+              style: const TextStyle(fontSize: 10, color: Colors.black87),
+            ),
+          ),
         ),
       ),
+    );
+  }
+}
+
+/// Fila de chips de filtro por estado de cobranza, sobre el mapa.
+/// Los criterios coinciden con [_estadoDe] (misma derivación que el color).
+class _FiltroChips extends StatelessWidget {
+  const _FiltroChips({required this.seleccionado, required this.onChanged});
+
+  final _FiltroEstado seleccionado;
+  final ValueChanged<_FiltroEstado> onChanged;
+
+  static const _opciones = <(_FiltroEstado, String)>[
+    (_FiltroEstado.todos, 'Todos'),
+    (_FiltroEstado.mora, 'En mora'),
+    (_FiltroEstado.gracia, 'En gracia'),
+    (_FiltroEstado.alDia, 'Al día'),
+    (_FiltroEstado.pendiente, 'Pendientes'),
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    return Wrap(
+      spacing: 6,
+      runSpacing: 4,
+      children: [
+        for (final (estado, label) in _opciones)
+          ChoiceChip(
+            label: Text(label),
+            selected: seleccionado == estado,
+            visualDensity: VisualDensity.compact,
+            // Fondo opaco para que se lea sobre el tile del mapa.
+            backgroundColor: Theme.of(context).colorScheme.surface,
+            onSelected: (_) => onChanged(estado),
+          ),
+      ],
     );
   }
 }
