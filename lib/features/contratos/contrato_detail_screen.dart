@@ -98,6 +98,9 @@ class _ContratoDetailScreenState extends ConsumerState<ContratoDetailScreen> {
     final cobrador = ref.watch(cobradorActualProvider).valueOrNull;
     final esAdmin = cobrador != null &&
         (cobrador.esAdmin || cobrador.esAdminCobranza || cobrador.esSuperAdmin);
+    // El change-log / auditoría se oculta al cobrador puro (least-privilege:
+    // si el rol aún no cargó → null → oculto). admin/admin_cobranza/super sí.
+    final verHistorial = cobrador != null && !cobrador.esCobrador;
     final settings = ref.watch(appSettingsProvider);
     final multiCuotaEnabled = settings.pagoAdelantadoPermitido;
     final diasGracia = settings.diasGracia;
@@ -106,7 +109,7 @@ class _ContratoDetailScreenState extends ConsumerState<ContratoDetailScreen> {
       appBar: AppBar(
         title: const Text('Detalle del contrato'),
         actions: [
-          if (esAdmin)
+          if (verHistorial)
             IconButton(
               icon: const Icon(Icons.history),
               tooltip: 'Historial de cambios',

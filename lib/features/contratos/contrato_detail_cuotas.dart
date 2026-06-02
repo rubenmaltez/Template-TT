@@ -36,6 +36,11 @@ class _CuotasSectionState extends ConsumerState<_CuotasSection> {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
+    // El botón de historial (🕐) de cada cuota se oculta al cobrador puro
+    // (least-privilege: si el rol aún no cargó → null → oculto).
+    // admin/admin_cobranza/super sí lo ven.
+    final cobrador = ref.watch(cobradorActualProvider).valueOrNull;
+    final verHistorial = cobrador != null && !cobrador.esCobrador;
     final contratoId = widget.contratoId;
     final diasGracia = widget.diasGracia;
     final multiSelect = widget.multiSelect;
@@ -218,6 +223,7 @@ class _CuotasSectionState extends ConsumerState<_CuotasSection> {
                             showCheckbox: selected.isNotEmpty,
                             esCobrable: esCobrable,
                             atenuada: atenuada,
+                            verHistorial: verHistorial,
                             onHistorial: () =>
                                 _showCuotaChangeLog(context, cuotaId),
                             onTap: () {
@@ -326,6 +332,7 @@ class _CuotaRow extends StatelessWidget {
     required this.showCheckbox,
     required this.esCobrable,
     required this.atenuada,
+    required this.verHistorial,
     required this.onTap,
     required this.onHistorial,
     this.onLongPress,
@@ -338,6 +345,8 @@ class _CuotaRow extends StatelessWidget {
   final bool esCobrable;
   // Pendiente que todavia no se puede cobrar (orden) → atenuada.
   final bool atenuada;
+  // Si false (cobrador puro), se oculta el botón 🕐 de historial.
+  final bool verHistorial;
   final VoidCallback onTap;
   final VoidCallback onHistorial;
   final VoidCallback? onLongPress;
@@ -475,15 +484,17 @@ class _CuotaRow extends StatelessWidget {
               ],
             ),
             // Historial de cambios de la cuota (separado del tap-a-cobrar).
-            IconButton(
-              icon: const Icon(Icons.history, size: 18),
-              tooltip: 'Historial de la cuota',
-              visualDensity: VisualDensity.compact,
-              constraints: const BoxConstraints(),
-              padding: const EdgeInsets.only(left: 8),
-              color: scheme.outline,
-              onPressed: onHistorial,
-            ),
+            // Oculto al cobrador puro (auditoría solo admin/admin_cobranza/super).
+            if (verHistorial)
+              IconButton(
+                icon: const Icon(Icons.history, size: 18),
+                tooltip: 'Historial de la cuota',
+                visualDensity: VisualDensity.compact,
+                constraints: const BoxConstraints(),
+                padding: const EdgeInsets.only(left: 8),
+                color: scheme.outline,
+                onPressed: onHistorial,
+              ),
             // Chevron de "tocar para cobrar" solo en la fila cobrable.
             if (esCobrable)
               Icon(Icons.chevron_right, size: 20, color: scheme.primary)

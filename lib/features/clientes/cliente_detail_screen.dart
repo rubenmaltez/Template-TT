@@ -67,6 +67,9 @@ class _ClienteDetailScreenState extends ConsumerState<ClienteDetailScreen> {
     final cobrador = ref.watch(cobradorActualProvider).valueOrNull;
     final impersonando = ref.watch(estaImpersonandoProvider);
     final esAdmin = cobrador?.tieneAccesoAdmin ?? false;
+    // El change-log / auditoría se oculta al cobrador puro (least-privilege:
+    // si el rol aún no cargó → null → oculto). admin/admin_cobranza/super sí.
+    final verHistorial = cobrador != null && !cobrador.esCobrador;
     final loc = GoRouterState.of(context).uri.path;
     final enAdminShell = loc.startsWith('/admin');
 
@@ -89,7 +92,7 @@ class _ClienteDetailScreenState extends ConsumerState<ClienteDetailScreen> {
                 context.push(editPath);
               },
             ),
-          if (esAdmin)
+          if (verHistorial)
             IconButton(
               icon: const Icon(Icons.history),
               tooltip: 'Historial de cambios',
