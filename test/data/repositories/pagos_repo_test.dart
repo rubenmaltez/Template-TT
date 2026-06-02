@@ -19,10 +19,16 @@ library;
 ///    — debe coincidir con el rango que pide `powersync: ^1.10.0`.
 ///      - Linux:   `libpowersync.so`
 ///      - macOS:   `libpowersync.dylib`
-///      - Windows: `powersync.dll`
+///      - Windows: `powersync_x64.dll`  (OJO: powersync_core 1.18 carga la
+///        extensión con el sufijo de arquitectura, NO `powersync.dll` como dicen
+///        los docs viejos. Si tu versión difiere, mirá el nombre en el error
+///        "Failed to load dynamic library '<nombre>'" y usá ese.)
+///    Atajo recomendado: si `powersync_flutter_libs` ya está en el pub cache,
+///    copiá su binario directo (garantiza versión compatible). En Windows:
+///    `...\powersync_flutter_libs-<v>\windows\powersync_x64.dll`.
 /// 2. Dejalo en la RAÍZ del repo (junto a `pubspec.yaml`) con ese nombre.
 ///    El harness lo busca ahí por defecto; se puede overridear con la env var
-///    `POWERSYNC_CORE_PATH=/ruta/al/libpowersync.so`.
+///    `POWERSYNC_CORE_PATH=/ruta/al/binario`.
 /// 3. `flutter pub get` (trae `path` + `sqlite3` de dev_dependencies) y luego
 ///    `flutter test test/data/repositories/pagos_repo_test.dart`.
 ///
@@ -728,7 +734,9 @@ String? _resolveCorePath() {
   final candidates = <String>[
     p.join(root, 'libpowersync.so'), // Linux
     p.join(root, 'libpowersync.dylib'), // macOS
-    p.join(root, 'powersync.dll'), // Windows
+    p.join(root, 'powersync_x64.dll'), // Windows (powersync_core 1.18, arch-suffix)
+    p.join(root, 'powersync.dll'), // Windows (nombre de docs / sin sufijo)
+    p.join(root, 'powersync_aarch64.dll'), // Windows ARM
     p.join(root, 'libpowersync_x64.so'),
     p.join(root, 'libpowersync_aarch64.so'),
   ];
