@@ -164,6 +164,42 @@ inv9 AS (
       AND cu.cobrador_id IS DISTINCT FROM ct.cobrador_id
     LIMIT 10
   ) cu
+),
+
+-- INV 10: coherencia de tenant entre una fila hija y su padre — lo mismo que
+-- enforça el trigger validar_tenant_coherente() (migración 0082). Si una hija
+-- quedó con un tenant_id distinto al de su padre, la data está scopeada mal y
+-- el dinero podría contarse en el tenant equivocado. Tres sub-checks unidos:
+--   pagos.tenant_id        debe == cuotas.tenant_id  (por pago.cuota_id)
+--   recibos.tenant_id      debe == pagos.tenant_id   (por recibo.pago_id)
+--   cargos_extra.tenant_id debe == cuotas.tenant_id  (por cargo.cuota_id)
+-- Hijas SIN padre se excluyen (FK NULL o sin match): igual que el trigger, que
+-- solo valida cuando el tenant del padre existe (`v_tenant_padre is not null`).
+-- Así un pago manual sin cuota no falsea el conteo.
+inv10 AS (
+  SELECT 'INV10: tenant_id de hija == tenant_id de su padre (0082)' AS invariante,
+         COUNT(*) AS violaciones,
+         COALESCE(string_agg(ofensor, ', ' ORDER BY ofensor), '') AS ejemplo_ids
+  FROM (
+    SELECT 'pago:' || p.id::text AS ofensor
+    FROM public.pagos p
+    JOIN public.cuotas cu ON cu.id = p.cuota_id
+    WHERE p.cuota_id IS NOT NULL
+      AND p.tenant_id <> cu.tenant_id
+    UNION ALL
+    SELECT 'recibo:' || r.id::text AS ofensor
+    FROM public.recibos r
+    JOIN public.pagos p ON p.id = r.pago_id
+    WHERE r.pago_id IS NOT NULL
+      AND r.tenant_id <> p.tenant_id
+    UNION ALL
+    SELECT 'cargo:' || ce.id::text AS ofensor
+    FROM public.cargos_extra ce
+    JOIN public.cuotas cu ON cu.id = ce.cuota_id
+    WHERE ce.cuota_id IS NOT NULL
+      AND ce.tenant_id <> cu.tenant_id
+    LIMIT 10
+  ) t
 )
 
 SELECT * FROM inv1
@@ -175,4 +211,5 @@ UNION ALL SELECT * FROM inv6
 UNION ALL SELECT * FROM inv7
 UNION ALL SELECT * FROM inv8
 UNION ALL SELECT * FROM inv9
+UNION ALL SELECT * FROM inv10
 ORDER BY invariante;
