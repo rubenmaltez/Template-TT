@@ -4,15 +4,21 @@
 > JUNTO con `CLAUDE.md` al abrir una sesión nueva de Claude Code, para
 > continuar exactamente desde acá sin re-descubrir el contexto.
 >
-> **Última actualización**: 2026-05-30 (commit `7a96887`, branch
-> `claude/inspiring-dijkstra-wKs5h`). Sprint facturación vencida + mes simbólico
-> del recibo (migración 0074, schema v15) — ver REPORTE-SESION §3.
+> **Última actualización**: 2026-06-02 (commit `c6cbebd`, branch
+> `claude/inspiring-dijkstra-wKs5h`). Audit integral post-snapshot (4 agentes:
+> integridad DB, dinero, frontend, seguridad/impersonación) — **sin bugs
+> nuevos**; 4 findings menores corregidos. Migración **0085**, schema **v16**.
+> Ver §3 y REPORTE-SESION §3.
 >
-> Generado por un audit exhaustivo de 5 agentes en paralelo (backend/DB,
-> dinero/contabilidad, frontend code quality, QA funcional por rol,
-> seguridad). **Los 6 findings MEDIUM del audit ya fueron corregidos**
-> (migraciones 0066-0068 + fixes Dart). Cuando se cierre un sprint que
-> cambie el estado, **actualizar este archivo**.
+> Entre este snapshot y el anterior (0074/v15) hubo sesiones interinas con las
+> migraciones 0075-0084: audit de planes (0076), código de contrato (0077),
+> coherencia de tenant (0078/0082), layout + bloques de recibo (0079-0080),
+> foto de comprobante (0081), blindaje de recalcular_cuota (0083) y pantallas
+> admin opcionales (0084).
+>
+> El snapshot original lo generó un audit de 5 agentes; **los 6 findings MEDIUM
+> ya fueron corregidos** (migraciones 0066-0068 + fixes Dart). Cuando se cierre
+> un sprint que cambie el estado, **actualizar este archivo**.
 
 ---
 
@@ -20,10 +26,10 @@
 
 | Dimensión | Estado | Resumen |
 |---|---|---|
-| **Backend / DB** | 🟢 SÓLIDO | 65 migraciones secuenciales sin gaps, RLS completo, triggers coherentes, schema chain v10 consistente |
-| **Dinero / contabilidad** | 🟢 SÓLIDO | Modelo de vuelto correcto y centralizado; recaudado reconcilia cross-pantalla; 9/9 invariantes en 0 |
+| **Backend / DB** | 🟢 SÓLIDO | 85 migraciones secuenciales sin gaps, RLS completo, triggers coherentes, schema chain v16 consistente |
+| **Dinero / contabilidad** | 🟢 SÓLIDO | Modelo de vuelto correcto y centralizado; recaudado reconcilia cross-pantalla; 10/10 invariantes en 0 (INV10 = coherencia de tenant) |
 | **Frontend code quality** | 🟢 BUENO | 0 SQL incompatible con SQLite, 0 rutas rotas, 0 providers faltantes, stream lifecycle disciplinado |
-| **Seguridad multi-tenant** | 🟢 SAFE | Aislamiento sólido; 1 vector de escalación in-tenant a endurecer (M1-SEC) |
+| **Seguridad multi-tenant** | 🟢 SAFE | Aislamiento sólido; settings super-only ahora enforced server-side (0085), no solo en UI |
 | **QA funcional** | 🟡 AMPLIA | Mayoría de flujos funcionales; 2 features son solo flags; multi-cuota limitado |
 | **Tests automatizados** | 🔴 BAJO | Solo unit tests de funciones puras; 0 tests de repos de dinero, 0 integración, 0 widget |
 | **CI/CD** | 🟢 NUEVO | CI creado (analyze + test + sql-compat) — correrá en cada push |
@@ -38,17 +44,28 @@ con vuelto) están resueltos (migraciones 0061/0064/0065).
 
 | Métrica | Valor |
 |---|---|
-| Archivos Dart (`lib/`) | ~131 (~35k LOC) |
-| Migraciones SQL | 74 (0001 → 0074) |
-| Funciones server-side (RPC/triggers) | ~52 |
+| Archivos Dart (`lib/`) | ~144 (~38k LOC) |
+| Migraciones SQL | 85 (0001 → 0085) |
+| Funciones server-side (RPC/triggers) | ~56 |
 | Edge Functions (Deno) | 6 |
-| Schema version (PowerSync) | v15 |
+| Schema version (PowerSync) | v16 |
 | Storage buckets | 4 (comprobantes-pago, fotos-clientes, logos-empresa, contratos-documentos) |
 | Tests automatizados | 8 archivos (todos unit de funciones puras) |
 
 ---
 
 ## 3. Findings abiertos (prioridad para próximos sprints)
+
+### ✅ RESUELTOS — audit integral post-snapshot (2026-06-02, commits c43957d→c6cbebd)
+
+| ID | Cómo se resolvió |
+|---|---|
+| **#1 Settings super-only** (🟠 Media) | Migración 0085: las 4 claves que controla el super_admin (foto comprobante, foto obligatoria, pantalla pagos/notificaciones) pasan a `editable_por='super_admin'`; `settings_write_admin` endurecida (el admin ya no las escribe; el super sí, vía `super_admin_all` 0026) + `seed_settings_super_only` para tenants nuevos. Guard de pantalla en `/admin/pagos` y `/admin/notificaciones`. Antes el gate era solo client-side → un admin podía re-activarlas por PowerSync/REST. |
+| **F3 Impersonación** (🟡 Baja) | `limpiarImpersonacionSiActiva()` (ahora pública) corre antes de los 2 `auth.signOut()` crudos (sync_gate, set_password). Antes un super_admin impersonando que cerraba sesión ahí re-logueaba en el tenant viejo. |
+| **O1 Test dinero** (🟡 Baja) | INV10 (coherencia de tenant: `pagos`/`recibos`/`cargos_extra` deben tener el `tenant_id` de su padre) en `invariantes_dinero.sql`. Cierra el último gap de cobertura del test. |
+| **#2 Recibo térmico** (🟡 Baja) | El bloque "Detalle de mora" ahora se imprime en Bluetooth (el caller `_imprimir` no pasaba `moraRows`; pantalla/PDF sí lo mostraban). |
+
+*Documentados (cosméticos, no se tocan)*: **O2** centavo de redondeo en multi-cuota USD (dentro de tolerancia del invariante); **O3** detalle de mora multi-cuota asume un solo contrato (caso normal del producto).
 
 ### ✅ RESUELTOS — los 6 MEDIUM del audit (2026-05-28, commits 06b0135→0bb3254)
 
@@ -119,12 +136,22 @@ Gaps por riesgo (dinero primero):
 5. **P1** — Edge Functions (rollback crear-tenant, ghost-user invitar-cobrador).
 6. **P2** — Matriz de redirects del router (guards de rol, impersonation, onboarding).
 
-**Mitigación actual**: `supabase/tests/invariantes_dinero.sql` (9 invariantes
-contables) cubre la correctitud de la DATA aunque no del CÓDIGO. Correr post-deploy.
+**Mitigación actual**: `supabase/tests/invariantes_dinero.sql` (10 invariantes
+contables, INV10 = coherencia de tenant) cubre la correctitud de la DATA aunque
+no del CÓDIGO. Correr post-deploy.
 
 ---
 
 ## 6. Lo que se hizo en la sesión que generó este snapshot
+
+**Sesión 2026-06-02 — Audit integral + fixes**: 4 agentes en paralelo auditaron
+el trabajo post-snapshot (integridad DB↔schema↔sync, dinero/contabilidad,
+correctness frontend, seguridad/impersonación). **Sin bugs reales nuevos.** Se
+corrigieron 4 findings menores (ver §3): enforcement server-side de los settings
+super-only (0085), limpieza de impersonación en los signOut crudos, INV10 en el
+test de dinero, y el bloque de mora en el recibo térmico.
+
+**Sesiones previas (grueso del snapshot):**
 
 - Migración a per-user PowerSync DB, change log, UX sprint (sesiones previas).
 - BULK 12: detalle de cliente unificado, detalle de contrato, fotos múltiples.

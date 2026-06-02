@@ -28,6 +28,18 @@ Cómo DEBE comportarse cada área. Si el código no cumple esto, es un bug.
 
 ### Settings que GATEAN comportamiento (no son decorativos)
 Un setting guardado DEBE cambiar el comportamiento real de la app:
+- **Settings super-only (gateados por el super_admin, no por el admin)**: cuatro
+  claves las controla SOLO el dueño del SaaS — `editable_por='super_admin'` +
+  RLS `settings_write_admin` endurecida (migración 0085). El admin NO las ve en
+  la UI (tab Avanzado solo super) ni las puede escribir server-side:
+  - `cobranza.comprobante_habilitado` ON → el cobro muestra el picker de foto
+    para métodos con comprobante; OFF → solo guarda el número de referencia
+    (no consume Storage). Es el switch maestro de la foto.
+  - `cobranza.foto_obligatoria` → sub-opción del anterior (solo aplica si la
+    foto está habilitada).
+  - `cobranza.pantalla_pagos` / `cobranza.pantalla_notificaciones` ON → aparece
+    el item en el menú admin y la pantalla es accesible; OFF → el menú la oculta
+    y el guard de pantalla bloquea el acceso por URL directa.
 - `cobranza.foto_obligatoria` ON → no se puede confirmar un cobro **con método
   que requiere comprobante** sin foto. (Efectivo no se bloquea: no muestra picker.)
 - `cobranza.pago_parcial` OFF → en cobro de una cuota se exige cubrir el **saldo
@@ -141,6 +153,54 @@ consistentes → auditoría.
 ## 3. Historial de fixes
 
 > Más reciente arriba. Formato por ítem: error → fix → expectativa.
+
+### 2026-06-02 — Audit integral post-snapshot + 4 fixes
+
+Audit de 4 agentes en paralelo (integridad DB↔schema↔sync, dinero, frontend,
+seguridad/impersonación) sobre el trabajo posterior al snapshot. **No encontró
+bugs reales nuevos.** Commits `c43957d`→`c6cbebd`, migración **0085** (RLS, sin
+cambios de schema/sync). Auditado estático (sin `flutter`/`dart` en el entorno;
+correr `flutter analyze` al pull). Migración 0085 se deploya por Dashboard.
+
+**#1 — Settings super-only solo se gateaban en la UI** (🟠 Media)
+- *Error:* las 4 claves que controla el dueño del SaaS por tenant (foto de
+  comprobante → consume Storage; pantallas admin opcionales) tenían el gate
+  `esSuperAdmin` solo client-side. Server-side, `settings_write_admin` (0004)
+  dejaba a CUALQUIER admin del tenant escribir CUALQUIER fila de `settings` →
+  un admin podía re-activar la foto o las pantallas que el super dejó en OFF,
+  escribiendo el setting por PowerSync/REST. No cruzaba tenants (RLS scopa),
+  pero anulaba el control de costo/política del SaaS.
+- *Fix:* migración 0085 — las 4 claves pasan a `editable_por='super_admin'`;
+  `settings_write_admin` agrega `editable_por <> 'super_admin'` (el admin ya no
+  las toca; el super sí, vía `super_admin_all` 0026); `seed_settings_super_only`
+  las siembra en tenants nuevos (el seed default no las incluía). Guard de
+  pantalla (`EmptyState`) en `/admin/pagos` y `/admin/notificaciones` para el
+  acceso por URL directa.
+- *Expectativa:* ver §1 "Settings super-only". El super_admin las prende/apaga
+  por tenant desde el tab Avanzado; el admin nunca las ve ni las escribe.
+
+**F3 — Impersonación no se limpiaba en 2 signOut crudos** (🟡 Baja)
+- *Error:* `sync_gate_screen` y `set_password_screen` llamaban `auth.signOut()`
+  directo, sin salir de impersonación. Un super_admin impersonando que cerraba
+  sesión ahí dejaba la fila viva → al re-loguear entraba impersonando el tenant
+  viejo.
+- *Fix:* `limpiarImpersonacionSiActiva()` (ahora pública) corre antes de ambos
+  signOut. La limpieza es un write server-side que necesita el JWT vivo → va
+  antes del signOut, no en un listener posterior.
+
+**O1 — Faltaba el invariante de coherencia de tenant** (🟡 Baja)
+- *Error:* el test `invariantes_dinero.sql` no verificaba lo que el trigger
+  `validar_tenant_coherente` (0082) enforça.
+- *Fix:* INV10 — `pagos`/`recibos`/`cargos_extra` deben tener el mismo
+  `tenant_id` que su padre.
+
+**#2 — El "Detalle de mora" no se imprimía en Bluetooth térmico** (🟡 Baja)
+- *Error:* el bloque `mora` salía en pantalla y PDF, pero el caller `_imprimir`
+  no pasaba `moraRows` al service térmico → salía vacío.
+- *Fix:* se computa igual que el PDF (`fetchMoraContrato` + filtro de cuotas del
+  grupo) y se pasa; stub web espeja la firma. Las 3 superficies quedan en paridad.
+- *Expectativa:* el recibo térmico muestra `EN MORA` + meses adeudados + `TOTAL
+  MORA`, igual que pantalla y PDF.
 
 ### 2026-05-31 — Change log universal (cliente agregado + planes + regla)
 
