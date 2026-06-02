@@ -42,7 +42,6 @@ import '../features/clientes/clientes_list_screen.dart';
 import '../features/cobro/cobro_screen.dart';
 import '../features/cuotas/cuotas_list_screen.dart';
 import '../features/historial/historial_screen.dart';
-import '../features/home/home_screen.dart';
 import '../features/impresora/impresora_setup_screen.dart';
 import '../features/mapa/mapa_screen.dart';
 import '../features/recibo/recibo_screen.dart';
@@ -305,13 +304,14 @@ final routerProvider = Provider<GoRouter>((ref) {
         builder: (_, __) => const OnboardingScreen(),
       ),
 
-      // ── Cobrador: ShellRoute con drawer ────────────────────────────────
+      // ── Cobrador: ShellRoute con bottom-nav (Cobros · Clientes · Mapa ·
+      //    Perfil). '/' es la landing = pantalla de Cobros (cuotas por
+      //    cliente + franja de KPIs). Historial se accede desde Perfil. ─────
       ShellRoute(
         builder: (_, __, child) => AppShell(child: child),
         routes: [
-          GoRoute(path: '/',          builder: (_, s) => _titled('Inicio', const HomeScreen())),
+          GoRoute(path: '/',          builder: (_, s) => _titled('Cobros', const CuotasListScreen())),
           GoRoute(path: '/clientes',  builder: (_, s) => _titled('Clientes', const ClientesListScreen())),
-          GoRoute(path: '/cuotas',    builder: (_, s) => _titled('Cuotas pendientes', const CuotasListScreen())),
           GoRoute(path: '/mapa',      builder: (_, s) => _titled('Mapa', const MapaScreen())),
           GoRoute(path: '/historial', builder: (_, s) => _titled('Historial', const HistorialScreen())),
           GoRoute(path: '/perfil',    builder: (_, s) => _titled('Mi perfil', const PerfilScreen())),

@@ -64,6 +64,16 @@ class PerfilScreen extends ConsumerWidget {
           (Icons.receipt, 'Prefijo recibo', cobrador.prefijoRecibo ?? 'No asignado'),
         ]),
         const SizedBox(height: 12),
+        Card(
+          child: ListTile(
+            leading: const Icon(Icons.history),
+            title: const Text('Historial de cobros'),
+            subtitle: const Text('Tus cobros anteriores'),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => context.push('/historial'),
+          ),
+        ),
+        const SizedBox(height: 12),
         const _SyncCard(),
         if (!kIsWeb) ...[
           const SizedBox(height: 12),
