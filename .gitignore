@@ -30,6 +30,14 @@ supabase/.temp/
 *.db-shm
 *.db-wal
 
+# Core nativo de PowerSync (powersync-sqlite-core) copiado a la raíz para correr
+# los tests de repo (test/data/repositories/pagos_repo_test.dart). Local, NO committear.
+powersync.dll
+libpowersync.so
+libpowersync.dylib
+libpowersync_x64.so
+libpowersync_aarch64.so
+
 # Platform-specific
 android/.gradle/
 android/local.properties
