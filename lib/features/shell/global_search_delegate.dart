@@ -97,11 +97,11 @@ class GlobalSearchDelegate extends SearchDelegate<String?> {
         FROM clientes c
    LEFT JOIN comunidades co ON co.id = c.comunidad_id
        WHERE c.activo = 1
-         AND (lower(c.nombre) LIKE ? OR lower(c.cedula) LIKE ? OR lower(c.telefono) LIKE ? OR lower(coalesce(c.codigo,'')) LIKE ?)
+         AND (lower(c.nombre) LIKE ? OR lower(c.cedula) LIKE ? OR lower(c.telefono) LIKE ? OR lower(coalesce(c.codigo,'')) LIKE ? OR c.id IN (SELECT cliente_id FROM contratos WHERE lower(coalesce(codigo,'')) LIKE ?))
        ORDER BY c.nombre
        LIMIT 10
       ''',
-      [q, q, q, q],
+      [q, q, q, q, q],
     );
     for (final c in clientes) {
       results.add(_SearchResult(

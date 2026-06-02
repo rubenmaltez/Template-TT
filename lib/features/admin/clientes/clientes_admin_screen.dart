@@ -560,7 +560,7 @@ class _ListaState extends State<_Lista> {
 
     if (widget.query.isNotEmpty) {
       where.add(
-          '(lower(c.nombre) LIKE ? OR lower(coalesce(c.cedula,\'\')) LIKE ? OR coalesce(c.telefono,\'\') LIKE ? OR lower(coalesce(c.codigo,\'\')) LIKE ?)');
+          '(lower(c.nombre) LIKE ? OR lower(coalesce(c.cedula,\'\')) LIKE ? OR coalesce(c.telefono,\'\') LIKE ? OR lower(coalesce(c.codigo,\'\')) LIKE ? OR c.id IN (SELECT cliente_id FROM contratos WHERE lower(coalesce(codigo,\'\')) LIKE ?))');
       final like = '%${widget.query}%';
       // Para el campo teléfono, sanitizamos el query a sólo dígitos.
       // Razón: post-sprint del validator, los teléfonos se guardan sin
@@ -570,7 +570,7 @@ class _ListaState extends State<_Lista> {
       // teléfonos pero tampoco rompe nombre/cédula).
       final digits = sanitizePhoneForWhatsApp(widget.query);
       final likeTelefono = digits.isEmpty ? like : '%$digits%';
-      params..add(like)..add(like)..add(likeTelefono)..add('%${widget.query.toLowerCase()}%');
+      params..add(like)..add(like)..add(likeTelefono)..add('%${widget.query.toLowerCase()}%')..add(like);
     }
     if (widget.cobradorFilter != null) {
       where.add('c.cobrador_id = ?');

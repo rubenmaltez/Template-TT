@@ -318,8 +318,8 @@ class _ClientesListState extends State<_ClientesList> {
     final where = <String>['c.activo = 1'];
 
     if (widget.query.isNotEmpty) {
-      where.add('(lower(c.nombre) LIKE ? OR c.cedula LIKE ? OR c.telefono LIKE ? OR lower(coalesce(c.codigo,\'\')) LIKE ?)');
-      params..add(like)..add(like)..add(likeTelefono)..add(like);
+      where.add('(lower(c.nombre) LIKE ? OR c.cedula LIKE ? OR c.telefono LIKE ? OR lower(coalesce(c.codigo,\'\')) LIKE ? OR c.id IN (SELECT cliente_id FROM contratos WHERE lower(coalesce(codigo,\'\')) LIKE ?))');
+      params..add(like)..add(like)..add(likeTelefono)..add(like)..add(like);
     }
     if (widget.comunidadId != null) {
       where.add('c.comunidad_id = ?');
@@ -343,7 +343,10 @@ class _ClientesListState extends State<_ClientesList> {
           THEN 1 ELSE 0 END), 0) AS cuotas_vencidas,
         COALESCE(SUM(CASE WHEN cu.estado IN ('pendiente','parcial')
                           THEN cu.monto + COALESCE(cu.cargos_neto, 0) - cu.monto_pagado
-                          ELSE 0 END), 0) AS saldo
+                          ELSE 0 END), 0) AS saldo,
+        (SELECT COUNT(*) FROM contratos ct
+          WHERE ct.cliente_id = c.id
+            AND COALESCE(ct.estado, 'activo') = 'activo') AS contratos_activos
         FROM clientes c
         LEFT JOIN comunidades co ON co.id = c.comunidad_id
         LEFT JOIN municipios  m  ON m.id = co.municipio_id
@@ -415,6 +418,7 @@ class _ClienteCard extends StatelessWidget {
     final scheme = Theme.of(context).colorScheme;
     final vencidas = (row['cuotas_vencidas'] as int? ?? 0);
     final pendientes = (row['cuotas_pendientes'] as int? ?? 0);
+    final contratos = (row['contratos_activos'] as int? ?? 0);
     final saldo = (row['saldo'] as num? ?? 0).toDouble();
     final tieneMora = vencidas > 0;
 
@@ -469,6 +473,15 @@ class _ClienteCard extends StatelessWidget {
                         spacing: 6,
                         runSpacing: 4,
                         children: [
+                          // Indicador de multi-contrato: que se vea de un vistazo
+                          // que el cliente tiene más de un servicio (la mora y el
+                          // saldo agregan todos los contratos).
+                          if (contratos >= 2)
+                            _MiniChip(
+                              icon: Icons.description_outlined,
+                              label: '$contratos contratos',
+                              color: scheme.primary,
+                            ),
                           if (tieneMora)
                             _MiniChip(
                               icon: Icons.warning,
