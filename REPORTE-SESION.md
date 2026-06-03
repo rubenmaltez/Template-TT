@@ -185,6 +185,17 @@ escribió la **primera suite de tests de repo del dinero**.
 - *Expectativa:* `flutter test test/data/repositories/pagos_repo_test.dart` →
   `+14: All tests passed!`. Verde verificado en Windows.
 
+**CI verde + tests del dinero corriendo en CI**
+- *Hallazgo:* `ci.yml` estaba en ROJO (pre-existente): 5 tests de `Fmt.periodoRecibo`
+  asertaban la vieja "regla del 15", pero la función se reescribió a facturación
+  vencida (`mesServicio`). La función está bien; los tests quedaron stale.
+- *Fix:* reescritos los 5 al modelo vencida (umbral en día 16 para mes anterior de
+  30 días, doble clamp en feb no bisiesto, rollover de año). Además `ci.yml` ahora
+  provisiona `libpowersync*.so` del pub cache + `LD_LIBRARY_PATH` (en Linux dlopen
+  no busca en el cwd) → los 14 tests de `pagos_repo` CORREN en CI, no se saltean.
+- *Expectativa:* `ci.yml` verde en cada push (`210 passed, 0 failed`), con el repo
+  de dinero cubierto automáticamente.
+
 ### 2026-06-02 (tarde) — Audit EXHAUSTIVO TOTAL (5 agentes) + 2 fixes
 
 Audit completo de toda la app (5 agentes en paralelo: integridad DB, dinero,

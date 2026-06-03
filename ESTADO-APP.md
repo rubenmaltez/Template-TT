@@ -24,7 +24,7 @@
 | **Frontend correctness** | 🟢 LIMPIO | 0 SQL incompatible con SQLite, 0 `date('now')` pelados (norma TZ 100% en 30+ queries), 0 rutas rotas, 0 stream-lifecycle latentes, guards de rol coherentes. 1 archivo dead code. |
 | **Seguridad multi-tenant** | 🟢 SAFE | Aislamiento RLS sólido; super-only enforced server-side (0085/0086); impersonación con defensa en capas (guards cliente + `validar_tenant_coherente` server); 6 edge functions robustas. 5 LOW (hardening), S4 corregido. |
 | **QA funcional** | 🟢 AMPLIA | Todos los roles/módulos/tabs mapeados y funcionales con data real. ~5 features son flag/stub (documentadas). Reportes (8 PDF + 8 CSV + arqueo) completos. |
-| **Tests automatizados** | 🟡 MEDIO | Unit de funciones puras + suite de repo de `pagos_repo` (**14 tests, pasan**) contra PowerSyncDatabase real: cobro/parcial/vuelto/USD/cargos_neto/multi-cuota/correlativo/anular/editar-guard. Falta integración y widget. |
+| **Tests automatizados** | 🟡 MEDIO | Unit de funciones puras + suite de repo de `pagos_repo` (14 tests) contra PowerSyncDatabase real (cobro/parcial/vuelto/USD/cargos_neto/multi-cuota/correlativo/anular/editar-guard). **CI verde: 210 passed** — los 14 del dinero corren en cada push. Falta integración y widget. |
 
 **Sin findings CRITICAL/HIGH abiertos.** El audit total no encontró bugs graves;
 la app está en estado sólido y consistente end-to-end.
@@ -42,7 +42,7 @@ la app está en estado sólido y consistente end-to-end.
 | Schema version (PowerSync) | v16 |
 | Tablas sincronizadas | 17 (operativas + globales) |
 | Storage buckets | comprobantes-pago, fotos-clientes, logos-empresa, contratos-documentos, geografia |
-| Tests automatizados | 8 archivos (unit puros) + `invariantes_dinero.sql` (10 invariantes) |
+| Tests automatizados | 8 archivos unit puros + `pagos_repo_test.dart` (14 repo) + `invariantes_dinero.sql` (11 invariantes). CI verde (210 passed). |
 
 ---
 
@@ -181,8 +181,10 @@ compacto · vista Cobros del admin · **timezone Nicaragua end-to-end** (cliente
    **dejarlos ocultos**. Reabrir si se decide implementar la feature o limpiar los seeds/getters.
 3. **Geo del cobro**: re-introducir captura de lat/lng en el cobro (se quitó `GpsService`).
    Decisión actual: **no por ahora**.
-4. **CI** (opcional): correr `flutter test` + `flutter analyze` en GitHub Actions, con el core
-   `powersync_x64.dll` cacheado, para que la suite de dinero corra sola en cada push.
+4. ✅ **HECHO** — ~~CI~~: `ci.yml` corre `flutter analyze` + `flutter test` (incl. los 14 tests de
+   `pagos_repo`, vía `libpowersync*.so` del pub cache + `LD_LIBRARY_PATH`) en cada push. Verde en
+   `c1da038` (**210 passed, 0 failed**). De paso se arreglaron 5 tests stale de `periodoRecibo`
+   que tenían el CI en rojo (asertaban la vieja "regla del 15"; la función ya usa facturación vencida).
 
 ---
 
