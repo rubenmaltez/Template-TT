@@ -12,6 +12,7 @@ import '../../data/providers/sync_status_provider.dart';
 import '../../data/utils/formatters.dart';
 import '../../powersync/db.dart' as ps;
 import '../auth/cambiar_password_dialog.dart';
+import '../shared/widgets/app_version_label.dart';
 import '../shared/widgets/empty_state.dart';
 
 class PerfilScreen extends ConsumerWidget {
@@ -93,6 +94,8 @@ class PerfilScreen extends ConsumerWidget {
           label: const Text('Cerrar sesión'),
           onPressed: () => confirmarSignOut(context),
         ),
+        const SizedBox(height: 16),
+        const AppVersionLabel(),
       ],
     );
   }

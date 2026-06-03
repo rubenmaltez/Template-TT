@@ -138,6 +138,7 @@ const kGruposAvanzado = <SettingGroup>[
     entradas: [
       SettingEntry('cobranza.pantalla_pagos'),
       SettingEntry('cobranza.pantalla_notificaciones'),
+      SettingEntry('cobranza.audit_visible_admin'),
     ],
   ),
   SettingGroup(

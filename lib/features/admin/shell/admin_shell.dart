@@ -8,6 +8,7 @@ import '../../../data/providers/crud_error_provider.dart';
 import '../../../data/providers/impersonation_provider.dart';
 import '../../../data/providers/sync_status_provider.dart';
 import '../../../data/repositories/settings_repo.dart';
+import '../../shared/widgets/app_version_label.dart';
 import '../../shared/widgets/impersonation_banner.dart';
 import '../../shared/widgets/update_banner.dart';
 import '../../auth/cambiar_password_dialog.dart';
@@ -52,53 +53,12 @@ class AdminShell extends ConsumerWidget {
     final impersonating =
         ref.watch(impersonatedTenantIdProvider).valueOrNull != null;
 
-    // Gate de carga inicial: mientras `empresaNombreProvider` no haya
-    // emitido su primer valor, no rendeamos el child. Sin esto, el
-    // redirect del router corre con empresaState=loading
-    // (hasValue=false → needsOnboarding=false), no manda al wizard, y
-    // un admin nuevo cae en el dashboard con KPIs en cero por una
-    // fracción de segundo antes del redirect a /admin/onboarding.
-    //
-    // IMPORTANTE: usamos el MISMO provider que consume el redirect
-    // (router.dart:158). Si watcheáramos un signal distinto (ej
-    // settingsMapProvider) podría liberar el gate antes que el router
-    // tenga su data — la race se mantendría. El gate scoped al content
-    // mantiene visible el sidebar/topbar — menos pérdida de contexto.
-    //
-    // Skip gate cuando super_admin está impersonando: la data del
-    // tenant llega vía el bucket impersonated_tenant y puede tardar
-    // un momento. Si gateamos en empresaNombreProvider, el super_admin
-    // vería "Cargando…" por cada entrada. Como el super_admin no
-    // necesita onboarding del tenant ajeno, lo dejamos pasar directo.
-    final empresaAsync = ref.watch(empresaNombreProvider);
-    final Widget bodyContent;
-    if (impersonating) {
-      bodyContent = OfflineBanner(child: child);
-    } else {
-      bodyContent = empresaAsync.when(
-        data: (_) => OfflineBanner(child: child),
-        loading: () => const Center(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              CircularProgressIndicator(),
-              SizedBox(height: 12),
-              Text('Cargando…'),
-            ],
-          ),
-        ),
-        error: (e, _) => Center(
-          child: Padding(
-            padding: const EdgeInsets.all(24),
-            child: Text(
-              'No se pudo cargar la configuración del ISP: $e',
-              textAlign: TextAlign.center,
-            ),
-          ),
-        ),
-      );
-    }
+    // El admin entra directo al dashboard. Ya NO hay wizard de onboarding
+    // (se quitó en v0.6.4): el admin configura empresa en Ajustes → Empresa
+    // y genera sus planes en Administración → Planes por su cuenta. Por eso
+    // tampoco gateamos la carga en `empresaNombreProvider` — sin redirect al
+    // wizard, no hay flash que enmascarar.
+    final Widget bodyContent = OfflineBanner(child: child);
 
     // Banners: update disponible (azul) + impersonación (amber).
     // Se apilan arriba del contenido. El update banner se auto-oculta
@@ -311,7 +271,11 @@ const _adminMenu = [
     _MenuItem(Icons.wifi, 'Planes', '/admin/planes', adminOnly: true),
     _MenuItem(Icons.location_city, 'Geografía', '/admin/geografia',
         adminOnly: true),
-    _MenuItem(Icons.history_edu, 'Auditoría', '/admin/audit', adminOnly: true),
+    // Auditoría: oculta para el admin por defecto. El super_admin la ve
+    // siempre; el admin sólo si el super habilita el toggle por tenant
+    // (cobranza.audit_visible_admin, migración 0089).
+    _MenuItem(Icons.history_edu, 'Auditoría', '/admin/audit',
+        adminOnly: true, settingKey: 'cobranza.audit_visible_admin'),
   ]),
   // Pantallas opcionales: las habilita el super_admin por tenant (toggle
   // super_admin-only en settings). Sin habilitar, el item no aparece.
@@ -353,9 +317,15 @@ bool _menuVisible(
   bool impersonating = false,
   Set<String> pantallasOn = const {},
 }) {
-  // Pantallas opcionales gateadas por un setting per-tenant (las habilita el
-  // super_admin). Si el item tiene settingKey y no está en ON, no se muestra.
-  if (m.settingKey != null && !pantallasOn.contains(m.settingKey)) return false;
+  // Pantallas/opciones gateadas por un setting per-tenant (las habilita el
+  // super_admin). El super_admin las ve SIEMPRE (acceso total al panel del
+  // tenant); el admin sólo si el setting está en ON. Si el item tiene
+  // settingKey, no es super_admin y el setting no está en ON, no se muestra.
+  if (m.settingKey != null &&
+      !esSuperAdmin &&
+      !pantallasOn.contains(m.settingKey)) {
+    return false;
+  }
   // Cuando el super_admin está impersonando, ocultar el item de
   // /super/* — el router lo bloquearía de todas formas, pero es
   // mejor no mostrar una opción que no funciona.
@@ -379,7 +349,27 @@ class _ExpandableMenuItem extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final scheme = Theme.of(context).colorScheme;
-    final algunHijoActivo = item.children.any(_matches);
+    // Los sub-ítems también respetan _menuVisible. Antes se renderizaban
+    // todos los children sin filtro (el gate del padre adminOnly alcanzaba),
+    // pero ahora "Auditoría" tiene settingKey: el admin sólo la ve si el
+    // super_admin habilitó el toggle por tenant; el super_admin la ve siempre.
+    final cobrador = ref.watch(cobradorActualProvider).valueOrNull;
+    final esSuperAdmin = cobrador?.esSuperAdmin ?? false;
+    final tieneAccesoAdmin = cobrador?.tieneAccesoAdmin ?? false;
+    final impersonating =
+        ref.watch(impersonatedTenantIdProvider).valueOrNull != null;
+    final settings = ref.watch(appSettingsProvider);
+    final pantallasOn = _pantallasOn(settings);
+    final visibleChildren = item.children
+        .where((child) => _menuVisible(child,
+            esSuperAdmin: esSuperAdmin,
+            tieneAccesoAdmin: tieneAccesoAdmin,
+            impersonating: impersonating,
+            pantallasOn: pantallasOn))
+        .toList();
+    // Si no quedó ningún hijo visible, no mostramos el grupo vacío.
+    if (visibleChildren.isEmpty) return const SizedBox.shrink();
+    final algunHijoActivo = visibleChildren.any(_matches);
     return ExpansionTile(
       leading: Icon(item.icon),
       title: Text(item.label),
@@ -387,7 +377,7 @@ class _ExpandableMenuItem extends ConsumerWidget {
       shape: const Border(),
       collapsedShape: const Border(),
       childrenPadding: const EdgeInsets.only(left: 16),
-      children: item.children.map((child) {
+      children: visibleChildren.map((child) {
         final selected = _matches(child);
         return ListTile(
           leading: Icon(child.icon, size: 20),
@@ -403,6 +393,15 @@ class _ExpandableMenuItem extends ConsumerWidget {
   }
 }
 
+/// Conjunto de settingKeys habilitados por el super_admin para este tenant.
+/// Centralizado para que el rail, el drawer y los grupos usen la misma lógica.
+Set<String> _pantallasOn(AppSettings settings) => <String>{
+      if (settings.pantallaPagosHabilitada) 'cobranza.pantalla_pagos',
+      if (settings.pantallaNotificacionesHabilitada)
+        'cobranza.pantalla_notificaciones',
+      if (settings.auditVisibleAdmin) 'cobranza.audit_visible_admin',
+    };
+
 class _AdminRail extends ConsumerWidget {
   const _AdminRail({required this.currentPath});
   final String currentPath;
@@ -415,11 +414,7 @@ class _AdminRail extends ConsumerWidget {
     final impersonating =
         ref.watch(impersonatedTenantIdProvider).valueOrNull != null;
     final settings = ref.watch(appSettingsProvider);
-    final pantallasOn = <String>{
-      if (settings.pantallaPagosHabilitada) 'cobranza.pantalla_pagos',
-      if (settings.pantallaNotificacionesHabilitada)
-        'cobranza.pantalla_notificaciones',
-    };
+    final pantallasOn = _pantallasOn(settings);
     final items = _adminMenu
         .where((m) => _menuVisible(m,
             esSuperAdmin: esSuperAdmin,
@@ -481,6 +476,7 @@ class _AdminRail extends ConsumerWidget {
               title: const Text('Cerrar sesión'),
               onTap: () => confirmarSignOut(context),
             ),
+            const AppVersionLabel(),
           ],
         ),
       ),
@@ -500,11 +496,7 @@ class _AdminDrawer extends ConsumerWidget {
     final impersonating =
         ref.watch(impersonatedTenantIdProvider).valueOrNull != null;
     final settings = ref.watch(appSettingsProvider);
-    final pantallasOn = <String>{
-      if (settings.pantallaPagosHabilitada) 'cobranza.pantalla_pagos',
-      if (settings.pantallaNotificacionesHabilitada)
-        'cobranza.pantalla_notificaciones',
-    };
+    final pantallasOn = _pantallasOn(settings);
     final items = _adminMenu
         .where((m) => _menuVisible(m,
             esSuperAdmin: esSuperAdmin,
@@ -560,6 +552,7 @@ class _AdminDrawer extends ConsumerWidget {
               title: const Text('Cerrar sesión'),
               onTap: () => confirmarSignOut(context),
             ),
+            const AppVersionLabel(),
           ],
         ),
       ),

@@ -15,7 +15,6 @@ import '../features/admin/cuotas/cuotas_admin_screen.dart';
 import '../features/admin/dashboard/dashboard_admin_screen.dart';
 import '../features/admin/geografia/geografia_admin_screen.dart';
 import '../features/admin/notificaciones/notificaciones_mora_screen.dart';
-import '../features/admin/onboarding/onboarding_screen.dart';
 import '../features/admin/pagos/pagos_admin_screen.dart';
 import '../features/admin/planes/planes_admin_screen.dart';
 import '../features/admin/reportes/reportes_admin_screen.dart';
@@ -28,6 +27,7 @@ import '../data/providers/impersonation_provider.dart';
 import '../data/providers/sync_ready_provider.dart';
 import '../data/providers/sync_status_provider.dart';
 import '../data/providers/mora_count_provider.dart';
+import '../data/repositories/settings_repo.dart';
 import '../features/auth/auth_flow_provider.dart';
 import '../features/auth/login_screen.dart';
 import '../features/auth/set_password_screen.dart';
@@ -64,41 +64,11 @@ final _rolUsuarioProvider = StreamProvider<String?>((ref) async* {
       .map((rows) => rows.isEmpty ? null : rows.first['rol'] as String?);
 });
 
-/// True si la row específica de `empresa.nombre` existe en el SQLite
-/// local. Sirve para distinguir "row aún no sincronizada" (sync en
-/// curso) vs "row sincronizada con valor vacío" (necesita onboarding).
-///
-/// **Por qué la row específica y no `COUNT(*) > 0`**: PowerSync puede
-/// materializar OTRAS rows de `settings` antes que `empresa.nombre`
-/// específicamente (ej. `cobranza.dias_gracia`). Un check de
-/// "al menos una row" flipparía a true antes de que llegue el valor
-/// real de `empresa.nombre` → `empresaNombreProvider` seguiría emitiendo
-/// `null` (rows.isEmpty=true para esa key) y el guard del router
-/// redirigiría a `/admin/onboarding` por ~50ms. Flash más cortito pero
-/// no eliminado. Gateando sobre la row específica el bug desaparece
-/// completamente.
-///
-/// **Por qué existe el bug originalmente**: durante el sync inicial
-/// post-cambio de identidad (típico tras `forzar-password-cobrador` que
-/// invalida la sesión vieja con signOut global), la tabla `settings`
-/// local arranca vacía. `empresaNombreProvider` emite `null`, el guard
-/// lo interpreta como "necesita onboarding" y redirige al wizard por
-/// ~1s antes de que llegue la row del seed (migración 0010).
-final empresaNombreRowExistsProvider = StreamProvider<bool>((ref) async* {
-  ref.watch(dbEpochProvider); // recrea al cambiar de DB (#7)
-  yield* ps.db
-      .watch(
-          "SELECT 1 FROM settings WHERE clave = 'empresa.nombre' LIMIT 1")
-      .map((rows) => rows.isNotEmpty);
-});
-
-/// Stream de `empresa.nombre` para detectar si falta onboarding del tenant.
-/// Si está vacío, redirigimos al wizard.
-///
-/// Público porque el AdminShell también lo consume — el gate de carga
-/// inicial tiene que usar EXACTAMENTE el mismo signal que esta lógica
-/// de redirect, sino la pantalla rendea con el redirect todavía
-/// pendiente y se ve un flash del dashboard antes del onboarding.
+/// Stream de `empresa.nombre`. Lo consume el reporte (nombre del ISP en los
+/// PDF/CSV). Antes también gateaba el wizard de onboarding, que se quitó en
+/// v0.6.4 — ahora el admin configura la empresa desde Ajustes. Se mantiene
+/// "vivo" con un `ref.listen` en el router para que el nombre esté listo
+/// cuando el reporte lo lee.
 final empresaNombreProvider = StreamProvider<String?>((ref) async* {
   ref.watch(dbEpochProvider); // recrea al cambiar de DB (#7)
   yield* ps.db
@@ -133,7 +103,6 @@ final routerProvider = Provider<GoRouter>((ref) {
   final authSub = auth.onAuthStateChange.listen((_) {
     ref.invalidate(_rolUsuarioProvider);
     ref.invalidate(empresaNombreProvider);
-    ref.invalidate(empresaNombreRowExistsProvider);
     ref.invalidate(cobradorActualProvider);
     ref.invalidate(impersonatedTenantIdProvider);
     ref.invalidate(syncStatusProvider);
@@ -145,12 +114,13 @@ final routerProvider = Provider<GoRouter>((ref) {
   // cambia (típicamente al primer sync). Sin esto, redirect llamaría
   // valueOrNull antes de que el stream tenga data y nadie se enteraría.
   ref.listen(_rolUsuarioProvider, (_, __) => refresh.poke());
-  // Idem para detectar setup completo del tenant.
+  // Mantiene vivo `empresaNombreProvider` (lo lee el reporte) y reevalúa el
+  // router cuando cambia.
   ref.listen(empresaNombreProvider, (_, __) => refresh.poke());
-  // empresaNombreRowExistsProvider participa del guard `needsOnboarding`
-  // — cuando flippa de false a true (la row de empresa.nombre llegó
-  // del sync), tenemos que reevaluar el redirect.
-  ref.listen(empresaNombreRowExistsProvider, (_, __) => refresh.poke());
+  // Cuando el super_admin cambia un toggle de tenant (ej. visibilidad de
+  // Auditoría), reevaluamos el redirect para echar al admin de una ruta que
+  // dejó de tener habilitada.
+  ref.listen(appSettingsProvider, (_, __) => refresh.poke());
   // Y para que SetPasswordScreen pueda limpiar el flow y desencadenar
   // una re-evaluación del redirect (sino quedaría atrapado en
   // /set-password después de actualizar la contraseña).
@@ -260,33 +230,14 @@ final routerProvider = Provider<GoRouter>((ref) {
         if (rol == 'admin' || rol == 'admin_cobranza') return '/admin';
       }
 
-      // Onboarding: si rol=admin y `empresa.nombre` está vacío, llevar al
-      // wizard. NO aplica a super_admin normal (vive en el tenant System,
-      // no necesita onboarding del producto) NI a super_admin impersonando
-      // (el tenant ya fue configurado por su admin — el super_admin no
-      // debería ver el wizard).
-      //
-      // empresaNombreRowExistsProvider gate: si la row específica de
-      // `empresa.nombre` aún no llegó del sync, `empresaState.value`
-      // será null por defecto (rows.isEmpty=true para esa key). Sin
-      // este guard, el redirect caería en /admin/onboarding tentativo
-      // hasta que llegue la row real. Esperamos a confirmar que la
-      // row existe localmente — recién ahí confiamos en que
-      // `empresa.nombre = null` (mapeado a null) es "vacío" real, no
-      // un artefacto del sync inicial.
-      if (rol == 'admin') {
-        final empresaState = ref.read(empresaNombreProvider);
-        final empresaRowExiste =
-            ref.read(empresaNombreRowExistsProvider).valueOrNull ?? false;
-        final needsOnboarding = empresaRowExiste &&
-            empresaState.hasValue &&
-            empresaState.value == null;
-        if (needsOnboarding && loc != '/admin/onboarding') {
-          return '/admin/onboarding';
-        }
-        if (!needsOnboarding && loc == '/admin/onboarding') {
-          return '/admin';
-        }
+      // Auditoría: el admin sólo accede a /admin/audit si el super_admin
+      // habilitó el toggle por tenant (cobranza.audit_visible_admin, 0089).
+      // El super_admin la ve siempre (rol != 'admin', no entra acá).
+      // admin_cobranza ya queda bloqueado por el guard `soloAdmin` de abajo.
+      if (rol == 'admin' &&
+          (loc == '/admin/audit' || loc.startsWith('/admin/audit/'))) {
+        final auditVisible = ref.read(appSettingsProvider).auditVisibleAdmin;
+        if (!auditVisible) return '/admin';
       }
 
       // Guard por rol en rutas admin-only: admin_cobranza no accede a
@@ -338,10 +289,6 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/sync-gate',
         builder: (_, __) => const SyncGateScreen(),
-      ),
-      GoRoute(
-        path: '/admin/onboarding',
-        builder: (_, __) => const OnboardingScreen(),
       ),
 
       // ── Cobrador: ShellRoute con bottom-nav (Cobros · Clientes · Mapa ·

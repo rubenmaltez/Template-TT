@@ -192,6 +192,14 @@ class AppSettings {
       settingValue<bool>(_map, 'cobranza.pantalla_pagos', false);
   bool get pantallaNotificacionesHabilitada =>
       settingValue<bool>(_map, 'cobranza.pantalla_notificaciones', false);
+
+  /// Visibilidad del panel de Auditoría (/admin/audit) para el admin del
+  /// tenant. Default FALSE → el item del menú no aparece y el router rebota la
+  /// ruta. Lo habilita el super_admin por tenant (toggle super_admin-only,
+  /// migración 0089). El super_admin lo ve siempre, sin importar este valor.
+  bool get auditVisibleAdmin =>
+      settingValue<bool>(_map, 'cobranza.audit_visible_admin', false);
+
   bool get pagoParcialPermitido =>
       settingValue<bool>(_map, 'cobranza.pago_parcial', true);
   bool get pagoAdelantadoPermitido =>

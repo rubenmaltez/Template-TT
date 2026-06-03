@@ -6,6 +6,7 @@ import 'package:flutter/semantics.dart' show SemanticsService;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../shared/widgets/app_version_label.dart';
 import '../shared/widgets/update_banner.dart';
 import 'auth_flow_provider.dart';
 
@@ -410,6 +411,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                     }),
                     child: const Text('Volver a iniciar sesión'),
                   ),
+                const SizedBox(height: 16),
+                const AppVersionLabel(),
               ],
             ),
           ),

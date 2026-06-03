@@ -159,6 +159,8 @@ const _superAdminOnly = {
   // Pantallas admin opcionales: el super_admin las habilita por tenant.
   'cobranza.pantalla_pagos',
   'cobranza.pantalla_notificaciones',
+  // Visibilidad del panel de Auditoría para el admin (0089): default OFF.
+  'cobranza.audit_visible_admin',
   // Descuentos (manual en campo): módulo que el super_admin habilita por
   // tenant (0086). El admin no lo ve ni lo puede activar.
   'cobranza.descuentos_habilitados',
@@ -894,6 +896,10 @@ class _SettingTileState extends State<_SettingTile> {
       'caja_chica.habilitada' =>
         'Permite asignar caja chica diaria al cobrador y reconciliar '
             'efectivo al final del día. (Feature en desarrollo)',
+      'cobranza.audit_visible_admin' =>
+        'Si está activo, el admin del tenant ve el panel de Auditoría '
+            '(historial de cambios) en su menú. Apagado, sólo vos (super_admin) '
+            'lo ves.',
       _ => null,
     };
   }
@@ -925,6 +931,7 @@ class _SettingTileState extends State<_SettingTile> {
       'cobranza.foto_obligatoria': 'Foto comprobante obligatoria',
       'cobranza.pantalla_pagos': 'Pantalla de pagos del tenant (admin)',
       'cobranza.pantalla_notificaciones': 'Pantalla de notificaciones de mora',
+      'cobranza.audit_visible_admin': 'Panel de Auditoría visible al admin',
       'cobranza.pago_parcial': 'Permitir pago parcial',
       'cobranza.pago_adelantado': 'Permitir pago adelantado (multi-cuota)',
       'cobranza.dias_cuotas_visibles': 'Días de cuotas visibles al cobrador',
