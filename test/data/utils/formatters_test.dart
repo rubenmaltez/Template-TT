@@ -171,39 +171,51 @@ void main() {
     });
   });
 
-  group('Fmt.periodoRecibo (regla del 15)', () {
-    // Regla operativa: clientes con día de pago ≤14 reciben recibo
-    // del mismo mes. Clientes con ≥15 reciben recibo del mes
-    // siguiente (cubren el mes que viene).
+  group('Fmt.periodoRecibo (facturación vencida)', () {
+    // Modelo VENCIDA (validado con Rubén, ver Fmt.mesServicio): el recibo
+    // muestra el MES DE SERVICIO, no el de vencimiento. El período cubierto va
+    // del día de pago del mes anterior al día de vencimiento; se muestra el mes
+    // que aporta MÁS días. `periodo` = primer día del mes de VENCIMIENTO.
+    // Para un mes anterior de 30 días el umbral cae en el día 16 (≤15 → mes
+    // anterior; ≥16 → mes de vencimiento), NO en 15 como la regla vieja.
 
-    test('día 14 (boundary) cobra el mismo mes', () {
-      // periodo = mayo, dia_pago = 14 → recibo cubre mayo.
-      final out = Fmt.periodoRecibo(14, DateTime(2026, 5, 1));
-      expect(out.toLowerCase(), contains('mayo'));
+    test('día 5: casi todo el período cae en el mes anterior → mes anterior', () {
+      // venc 5/may → 26 días de abril vs 4 de mayo → abril.
+      final out = Fmt.periodoRecibo(5, DateTime(2026, 5, 1));
+      expect(out.toLowerCase(), contains('abril'));
       expect(out, contains('2026'));
     });
 
-    test('día 15 (boundary) cobra el mes siguiente', () {
-      // periodo = mayo, dia_pago = 15 → recibo cubre junio.
+    test('día 15 (umbral bajo): el mes anterior aún aporta más → mes anterior', () {
+      // venc 15/may → 16 días de abril vs 14 de mayo → abril.
       final out = Fmt.periodoRecibo(15, DateTime(2026, 5, 1));
-      expect(out.toLowerCase(), contains('junio'));
+      expect(out.toLowerCase(), contains('abril'));
     });
 
-    test('día 1 cobra el mismo mes', () {
-      final out = Fmt.periodoRecibo(1, DateTime(2026, 5, 1));
+    test('día 16 (umbral alto): gana el mes de vencimiento → mes venc', () {
+      // venc 16/may → 15 días de abril vs 15 de mayo → mayo (el empate va a venc).
+      final out = Fmt.periodoRecibo(16, DateTime(2026, 5, 1));
       expect(out.toLowerCase(), contains('mayo'));
     });
 
-    test('día 30 cobra mes siguiente', () {
-      final out = Fmt.periodoRecibo(30, DateTime(2026, 5, 1));
-      expect(out.toLowerCase(), contains('junio'));
+    test('día 25: casi todo el período cae en el mes de vencimiento → mes venc', () {
+      // venc 25/may → 6 días de abril vs 24 de mayo → mayo.
+      final out = Fmt.periodoRecibo(25, DateTime(2026, 5, 1));
+      expect(out.toLowerCase(), contains('mayo'));
     });
 
-    test('día 15 en diciembre cobra enero del año siguiente', () {
-      // Edge case: rollover de año.
-      final out = Fmt.periodoRecibo(15, DateTime(2026, 12, 1));
-      expect(out.toLowerCase(), contains('enero'));
-      expect(out, contains('2027'));
+    test('día 31 en febrero (doble clamp al último día real) → mes venc', () {
+      // venc feb/2026 (no bisiesto, 28 días), día 31 → diaVenc=28, diaInicio=31
+      // (clamp a 31 de enero) → 1 día de enero vs 27 de febrero → febrero.
+      final out = Fmt.periodoRecibo(31, DateTime(2026, 2, 1));
+      expect(out.toLowerCase(), contains('febrero'));
+    });
+
+    test('rollover de año: enero con día 15 → diciembre del año anterior', () {
+      // venc 15/ene/2027 → 17 días de dic/2026 vs 14 de enero → diciembre 2026.
+      final out = Fmt.periodoRecibo(15, DateTime(2027, 1, 1));
+      expect(out.toLowerCase(), contains('diciembre'));
+      expect(out, contains('2026'));
     });
   });
 

@@ -72,5 +72,25 @@ jobs:
         # errores y warnings reales. Los errores de compilación SÍ fallan.
         run: flutter analyze --no-fatal-infos
 
+      - name: Provisionar powersync-sqlite-core (tests de pagos_repo)
+        # El repo de dinero (test/data/repositories/pagos_repo_test.dart) corre
+        # contra una PowerSyncDatabase REAL, que necesita el core nativo. Viene
+        # en el pub cache de powersync_flutter_libs (misma versión que la app);
+        # lo copiamos a la raíz con los nombres que el loader prueba en Linux.
+        # Fail-soft: si no aparece, NO rompe el build — el test se auto-saltea.
+        run: |
+          set -e
+          SO=$(find "$HOME/.pub-cache" "${PUB_CACHE:-/nonexistent}" \
+                 -path '*powersync_flutter_libs*/linux/*.so' 2>/dev/null | head -1)
+          if [ -z "$SO" ]; then
+            echo "⚠️  No se encontró libpowersync*.so en el pub cache;"
+            echo "    pagos_repo_test se saltará (no rompe el build)."
+          else
+            echo "core nativo: $SO"
+            cp "$SO" ./libpowersync.so
+            cp "$SO" ./libpowersync_x64.so
+            ls -la ./libpowersync*.so
+          fi
+
       - name: flutter test
         run: flutter test
