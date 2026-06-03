@@ -26,9 +26,17 @@ class ReciboLayoutEditor extends ConsumerWidget {
   ];
 
   void _save(WidgetRef ref, List<ReciboBloque> layout) {
-    ref
-        .read(settingsRepoProvider)
-        .update(tenantId, 'recibo.layout', ReciboLayout.toJson(layout));
+    // upsert (no update): los tenants creados DESPUÉS de la migración 0080 no
+    // tienen la fila `recibo.layout` sembrada (el trigger de alta llama
+    // seed_settings_default, que no la incluye). Con un UPDATE puro el toggle
+    // no afectaba ninguna fila y "rebotaba". upsert la inserta si falta.
+    ref.read(settingsRepoProvider).upsert(
+          tenantId,
+          'recibo.layout',
+          ReciboLayout.toJson(layout),
+          tipo: 'json',
+          categoria: 'recibos',
+        );
   }
 
   @override
@@ -154,8 +162,17 @@ class _AjustesGeneralesState extends ConsumerState<_AjustesGenerales> {
     super.dispose();
   }
 
-  void _save(String clave, dynamic valor) {
-    ref.read(settingsRepoProvider).update(widget.tenantId, clave, valor);
+  // upsert (no update): mismas claves de recibo pueden no estar sembradas en
+  // tenants nuevos (ver nota en ReciboLayoutEditor._save). upsert la crea si
+  // falta. `tipo` por clave para que la fila nueva quede bien tipada.
+  void _save(String clave, dynamic valor, {String tipo = 'string'}) {
+    ref.read(settingsRepoProvider).upsert(
+          widget.tenantId,
+          clave,
+          valor,
+          tipo: tipo,
+          categoria: 'recibos',
+        );
   }
 
   @override
@@ -177,7 +194,9 @@ class _AjustesGeneralesState extends ConsumerState<_AjustesGenerales> {
                 DropdownButton<int>(
                   value: ancho == 57 ? 57 : 80,
                   onChanged: (v) {
-                    if (v != null) _save('recibo.formato_default_mm', v);
+                    if (v != null) {
+                      _save('recibo.formato_default_mm', v, tipo: 'number');
+                    }
                   },
                   items: const [
                     DropdownMenuItem(value: 80, child: Text('80 mm (estándar)')),
@@ -394,9 +413,15 @@ class _BloqueRow extends ConsumerWidget {
                   scale: 0.8,
                   child: Switch(
                     value: _subValor(ref, subClave),
-                    onChanged: (v) => ref
-                        .read(settingsRepoProvider)
-                        .update(tenantId, subClave, v),
+                    // upsert: el sub-toggle (cédula/saldo) también puede no
+                    // tener su fila en tenants nuevos. Lo crea si falta.
+                    onChanged: (v) => ref.read(settingsRepoProvider).upsert(
+                          tenantId,
+                          subClave,
+                          v,
+                          tipo: 'boolean',
+                          categoria: 'recibos',
+                        ),
                   ),
                 ),
               ],
