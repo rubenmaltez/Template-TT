@@ -510,9 +510,12 @@ class _CobroScreenState extends ConsumerState<CobroScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(_esMultiCuota
-            ? 'Cobro múltiple (${_cuotas.length} cuotas)'
-            : _clienteRow?['nombre'] ?? 'Cobrar'),
+        title: Text(
+          _esMultiCuota
+              ? 'Cobro múltiple (${_cuotas.length} cuotas)'
+              : _clienteRow?['nombre'] ?? 'Cobrar',
+          overflow: TextOverflow.ellipsis,
+        ),
       ),
       body: Form(
         key: _formKey,

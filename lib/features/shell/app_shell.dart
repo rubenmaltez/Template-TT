@@ -38,7 +38,7 @@ class AppShell extends ConsumerWidget {
         (empresaNombre.isNotEmpty ? empresaNombre : 'SITECSA CRM');
     return Scaffold(
       appBar: AppBar(
-        title: Text(titulo),
+        title: Text(titulo, overflow: TextOverflow.ellipsis),
         actions: [
           IconButton(
             icon: const Icon(Icons.search),

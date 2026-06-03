@@ -76,7 +76,8 @@ class _ClienteDetailScreenState extends ConsumerState<ClienteDetailScreen> {
     return Scaffold(
       appBar: AppBar(
         title: clienteAsync.when(
-          data: (c) => Text(c?.nombre ?? 'Cliente'),
+          data: (c) => Text(c?.nombre ?? 'Cliente',
+              overflow: TextOverflow.ellipsis),
           loading: () => const Text('Cliente'),
           error: (_, __) => const Text('Cliente'),
         ),

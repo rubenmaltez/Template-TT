@@ -160,7 +160,7 @@ class AdminShell extends ConsumerWidget {
                 onPressed: () => _onBackPressed(context, location, parentRoute),
               )
             : null,
-        title: Text(titulo),
+        title: Text(titulo, overflow: TextOverflow.ellipsis),
         actions: const [_SyncIndicator(), SizedBox(width: 8)],
       ),
       body: bodyWithBanners,

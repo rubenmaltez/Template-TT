@@ -23,6 +23,11 @@ class SuperShell extends StatelessWidget {
     final loc = GoRouterState.of(context).matchedLocation;
     final enLogs = loc == '/super/logs';
     final enTenants = loc == '/super/tenants';
+    // En pantallas angostas (mobile) el AppBar se sobrecargaba: título largo
+    // ("Super Admin · Tenants") + badge de versión + ícono tenants + ícono
+    // logs + logout se superponían. En mobile ocultamos el badge de versión
+    // (dato secundario) y dejamos que el título use ellipsis con Flexible.
+    final esAngosta = MediaQuery.sizeOf(context).width < 600;
     // Back arrow context-aware:
     //   - /super/tenants/:tid/miembros/:cid → back a /super/tenants/:tid
     //   - /super/tenants/:id                → back a /super/tenants
@@ -49,25 +54,34 @@ class SuperShell extends StatelessWidget {
           children: [
             const Icon(Icons.shield, size: 18),
             const SizedBox(width: 8),
-            Text('Super Admin · $titulo'),
+            Flexible(
+              child: Text(
+                'Super Admin · $titulo',
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
           ],
         ),
         actions: [
-          FutureBuilder<PackageInfo>(
-            future: PackageInfo.fromPlatform(),
-            builder: (_, snap) => snap.hasData
-                ? Container(
-                    margin: const EdgeInsets.symmetric(horizontal: 8),
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                    decoration: BoxDecoration(
-                      color: scheme.outline.withValues(alpha: 0.15),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Text('v${snap.data!.version}',
-                        style: TextStyle(fontSize: 11, color: scheme.onPrimaryContainer)),
-                  )
-                : const SizedBox.shrink(),
-          ),
+          if (!esAngosta)
+            FutureBuilder<PackageInfo>(
+              future: PackageInfo.fromPlatform(),
+              builder: (_, snap) => snap.hasData
+                  ? Container(
+                      margin: const EdgeInsets.symmetric(horizontal: 8),
+                      padding:
+                          const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: scheme.outline.withValues(alpha: 0.15),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Text('v${snap.data!.version}',
+                          style: TextStyle(
+                              fontSize: 11,
+                              color: scheme.onPrimaryContainer)),
+                    )
+                  : const SizedBox.shrink(),
+            ),
           if (!enTenants)
             IconButton(
               icon: const Icon(Icons.business),

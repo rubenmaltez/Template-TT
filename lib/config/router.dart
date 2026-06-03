@@ -191,17 +191,51 @@ final routerProvider = Provider<GoRouter>((ref) {
         return '/';
       }
 
-      // Sync gate (R7): si la identidad cambió (signOut + signIn, o
-      // user switch) y PowerSync todavía no confirmó un sync posterior
-      // al cambio, esperamos en /sync-gate. Va DESPUÉS del set-password
-      // gate porque ese flow no toca la identidad de PowerSync — el
-      // user que setea contraseña ya es el dueño del cache.
+      // Sync gate (R7) + role-resolution gate: esperamos en /sync-gate si
+      //   (a) la identidad cambió (signOut + signIn, o user switch) y
+      //       PowerSync todavía no confirmó un sync posterior al cambio, O
+      //   (b) el usuario está autenticado pero el rol AÚN no resolvió a un
+      //       valor concreto desde el SQLite local — sea porque el stream
+      //       todavía no emitió (`AsyncLoading`, primer build / post-
+      //       invalidate del `_rolUsuarioProvider`) o porque emitió pero la
+      //       row de `cobradores` aún no se materializó (`AsyncData(null)`).
+      //
+      // El gate por rol cierra la ventana del flash de redirect: aunque
+      // `syncReady` ya sea true (PowerSync confirmó el checkpoint), el
+      // stream del rol puede no haber emitido todavía en este frame, o
+      // haber emitido `null` porque ese checkpoint trajo otras tablas
+      // (settings, etc.) antes que la row de `cobradores` del user. En
+      // ambos casos `rol` da null más abajo y la lógica de landing cae en
+      // el shell del cobrador (`/`) por ~1-2s antes de corregir cuando
+      // llega el rol → flash visible en super_admin y admin. Gateando
+      // mientras `rol == null` lo eliminamos por completo.
+      //
+      // Por qué NO se cuelga si el rol nunca materializa (desync real, la
+      // row de `cobradores` genuinamente no está): el gate vive en
+      // /sync-gate, y `SyncGateScreen` ofrece escape hatches propios —
+      // "Reintentar conexión" a los 120s y "Volver al login" a los 180s.
+      // El user nunca queda atascado en silencio. Y dejarlo entrar al
+      // shell del cobrador sin rol era el peor resultado igual (vería data
+      // vacía/rota porque las sync rules dependen del rol), así que el gate
+      // es estrictamente mejor que el viejo fallback conservador.
+      //
+      // Va DESPUÉS del set-password gate porque ese flow no toca la
+      // identidad de PowerSync — el user que setea contraseña ya es el
+      // dueño del cache.
       final syncReady = ref.read(syncReadyProvider);
+      final rol = ref.read(_rolUsuarioProvider).valueOrNull;
+      final rolNoResuelto = rol == null;
+      final mustWait = !syncReady || rolNoResuelto;
       final goingToGate = state.matchedLocation == '/sync-gate';
-      if (!syncReady) return goingToGate ? null : '/sync-gate';
+      // Mientras haya que esperar, mantenemos al user en /sync-gate
+      // (devolvemos null si ya está ahí → NO loop). Cuando termina la
+      // espera, lo sacamos del gate hacia su landing `/` (que la lógica de
+      // rol de abajo resuelve a /super/tenants · /admin · /).
+      if (mustWait) return goingToGate ? null : '/sync-gate';
       if (goingToGate) return '/';
 
-      final rol = ref.read(_rolUsuarioProvider).valueOrNull;
+      // A partir de acá el gate garantiza `rol != null` (pasó porque
+      // `rolNoResuelto == false`). Reusamos la `rol` ya leída arriba.
       final loc = state.matchedLocation;
       final impersonating =
           ref.read(impersonatedTenantIdProvider).valueOrNull != null;
