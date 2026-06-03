@@ -187,10 +187,15 @@ class _AplicarCargoDialogState extends ConsumerState<AplicarCargoDialog> {
     final s = ref.watch(appSettingsProvider);
     final tipos = _tiposDisponibles(s);
 
+    // Ancho responsive: 400 en desktop/tablet, 90% del viewport en mobile
+    // chico (un 400 fijo desborda el AlertDialog en pantallas ~360px).
+    final screenW = MediaQuery.sizeOf(context).width;
+    final dialogW = screenW < 460 ? screenW * 0.9 : 400.0;
+
     return AlertDialog(
       title: const Text('Aplicar cargo'),
       content: SizedBox(
-        width: 400,
+        width: dialogW,
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [

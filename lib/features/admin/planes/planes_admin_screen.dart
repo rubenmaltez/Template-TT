@@ -311,10 +311,14 @@ class _PlanFormDialogState extends ConsumerState<_PlanFormDialog> {
 
   @override
   Widget build(BuildContext context) {
+    // Ancho responsive: 400 en desktop/tablet, 90% del viewport en mobile
+    // chico (un 400 fijo desborda el AlertDialog en pantallas ~360px).
+    final screenW = MediaQuery.sizeOf(context).width;
+    final dialogW = screenW < 460 ? screenW * 0.9 : 400.0;
     return AlertDialog(
       title: Text(widget.plan == null ? 'Nuevo plan' : 'Editar plan'),
       content: SizedBox(
-        width: 400,
+        width: dialogW,
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [

@@ -850,10 +850,14 @@ class _SeleccionarCobradorDialogState
 
   @override
   Widget build(BuildContext context) {
+    // Ancho responsive: 400 en desktop/tablet, 90% del viewport en mobile
+    // chico (un 400 fijo desborda el AlertDialog en pantallas ~360px).
+    final screenW = MediaQuery.sizeOf(context).width;
+    final dialogW = screenW < 460 ? screenW * 0.9 : 400.0;
     return AlertDialog(
       title: const Text('Asignar cobrador'),
       content: SizedBox(
-        width: 400,
+        width: dialogW,
         child: StreamBuilder<List<Map<String, dynamic>>>(
           stream: _cobradoresStream,
           initialData: const [],
