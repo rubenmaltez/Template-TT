@@ -1,16 +1,18 @@
--- 0090 — Sembrar `recibo.layout` en tenants nuevos (faltaba en el seed de alta).
+-- 0090 — Sembrar settings de recibo faltantes en tenants nuevos.
 --
--- Bug: el layout configurable del recibo (0080) se sembró SOLO como backfill de
--- los tenants que existían en ese momento. La función de alta de tenant
--- (seed_settings_default, 0010/0045) NUNCA incluyó `recibo.layout`, así que un
--- tenant creado DESPUÉS de 0080 no tiene la fila. El editor de recibos guardaba
--- con un UPDATE puro → 0 filas afectadas → los toggles de visibilidad "rebotaban"
--- (no se podían desactivar).
+-- Bug: dos claves que toca el editor del recibo nunca entraron a la función de
+-- alta de tenant (seed_settings_default, 0010/0045) — se agregaron sólo como
+-- backfill puntual: `recibo.layout` (0080) y `recibo.mostrar_cedula` (0079). Un
+-- tenant creado DESPUÉS de esas migraciones no tiene esas filas. El editor de
+-- recibos guardaba con un UPDATE puro → 0 filas afectadas → los toggles
+-- "rebotaban" (no se podían desactivar). Las otras claves del editor
+-- (recibo.titulo, recibo.mostrar_adeudado, recibo.formato_default_mm,
+-- recibo.pie_libre) SÍ están en el seed 0045, así que esas ya funcionaban.
 --
 -- Fix de dos capas:
 --   - Cliente (v0.6.4): el editor pasa a `upsert` (crea la fila si falta).
---   - Servidor (esta migración): el trigger de alta siembra `recibo.layout`, y
---     se backfillea cualquier tenant que hoy no la tenga.
+--   - Servidor (esta migración): el trigger de alta siembra `recibo.layout` +
+--     `recibo.mostrar_cedula`, y se backfillea cualquier tenant que hoy no las tenga.
 --
 -- Default = mismo layout que 0080 (12 bloques, todo visible, tamaño normal). El
 -- cliente agrega el bloque `mora` al final si falta (ReciboLayout.fromRaw), igual
@@ -40,7 +42,9 @@ begin
     (tenant_id, clave, valor, tipo, categoria, descripcion, editable_por)
   values
     (p_tenant_id, 'recibo.layout', v_layout::jsonb, 'json', 'recibos',
-     'Layout del recibo: orden, visibilidad y tamaño de cada bloque', 'admin')
+     'Layout del recibo: orden, visibilidad y tamaño de cada bloque', 'admin'),
+    (p_tenant_id, 'recibo.mostrar_cedula', 'true'::jsonb, 'boolean', 'recibos',
+     'Mostrar la cédula del cliente en el recibo', 'admin')
   on conflict (tenant_id, clave) do nothing;
 end $$;
 
@@ -56,8 +60,9 @@ begin
 end;
 $$;
 
--- Backfill: cualquier tenant que hoy no tenga `recibo.layout` (creado entre 0080
--- y esta migración). ON CONFLICT DO NOTHING preserva el layout ya configurado.
+-- Backfill: cualquier tenant que hoy no tenga `recibo.layout` / `recibo.mostrar_cedula`
+-- (creado entre 0079/0080 y esta migración). ON CONFLICT DO NOTHING preserva lo
+-- ya configurado.
 do $$
 declare
   v_t record;
