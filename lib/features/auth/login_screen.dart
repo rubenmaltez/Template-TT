@@ -6,6 +6,7 @@ import 'package:flutter/semantics.dart' show SemanticsService;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../shared/widgets/update_banner.dart';
 import 'auth_flow_provider.dart';
 
 /// Pantalla de login.
@@ -207,7 +208,13 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     // el user clickea o cuando intenta loguear.
     final authError = ref.watch(initialAuthErrorProvider);
     return Scaffold(
-      body: Center(
+      // El banner de update tambien en login: si hay version nueva, se puede
+      // descargar antes de loguearse (full-width arriba; se auto-oculta si no hay).
+      body: Column(
+        children: [
+          const UpdateBanner(),
+          Expanded(
+            child: Center(
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 400),
           child: SingleChildScrollView(
@@ -408,6 +415,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
           ),
         ),
       ),
+          ),
+          ],
+        ),
     );
   }
 
