@@ -161,6 +161,10 @@ class _FiltrosBarState extends ConsumerState<_FiltrosBar> {
   late final TextEditingController _searchCtrl;
   Timer? _debounce;
 
+  // True mientras corre la RPC purge_error_logs (anti doble-tap +
+  // spinner en lugar del botón).
+  bool _purging = false;
+
   @override
   void initState() {
     super.initState();
@@ -172,6 +176,72 @@ class _FiltrosBarState extends ConsumerState<_FiltrosBar> {
     _debounce?.cancel();
     _searchCtrl.dispose();
     super.dispose();
+  }
+
+  /// Abre el diálogo de confirmación con las 2 opciones de retention y,
+  /// según la elegida, ejecuta la purga. Devuelve `null` (cancelar) o un
+  /// `DateTime` cutoff (`ts < cutoff` se borra).
+  Future<void> _onBorrarLogs() async {
+    final cutoff = await _confirmarPurga(context);
+    if (cutoff == null || !mounted) return;
+
+    setState(() => _purging = true);
+    try {
+      final borrados =
+          await ref.read(errorLogsRepoProvider).purgeBefore(cutoff);
+      // Refrescamos la lista con el mismo mecanismo que el RefreshIndicator
+      // de la pantalla (invalidate del provider autoDispose).
+      ref.invalidate(errorLogsListProvider);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text('$borrados ${borrados == 1 ? "log borrado" : "logs borrados"}'),
+        duration: const Duration(seconds: 2),
+      ));
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text('Error al borrar logs: $e'),
+        backgroundColor: Theme.of(context).colorScheme.error,
+      ));
+    } finally {
+      if (mounted) setState(() => _purging = false);
+    }
+  }
+
+  /// Diálogo con 2 acciones de purga + cancelar. Retorna el cutoff elegido
+  /// (`null` si cancela). "Borrar > 90 días" usa `now - 90d`; "Borrar todos"
+  /// usa `now` (todo log con `ts < ahora`, es decir todos los existentes).
+  Future<DateTime?> _confirmarPurga(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final ahora = DateTime.now();
+    return showDialog<DateTime>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Borrar logs de errores'),
+        content: const Text(
+          'Esta acción borra registros del backend de forma permanente. '
+          'Elegí qué borrar:',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Cancelar'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(
+              dialogContext,
+              ahora.subtract(const Duration(days: 90)),
+            ),
+            child: const Text('Borrar > 90 días'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, ahora),
+            style: TextButton.styleFrom(foregroundColor: scheme.error),
+            child: const Text('Borrar todos'),
+          ),
+        ],
+      ),
+    );
   }
 
   @override
@@ -252,6 +322,23 @@ class _FiltrosBarState extends ConsumerState<_FiltrosBar> {
                   },
                 ),
               ),
+              const SizedBox(width: 8),
+              // Acción de retention manual: purga logs viejos / todos.
+              // El guard real vive en la RPC (is_super_admin), esto es UI.
+              _purging
+                  ? const SizedBox(
+                      width: 40,
+                      height: 40,
+                      child: Padding(
+                        padding: EdgeInsets.all(10),
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      ),
+                    )
+                  : IconButton(
+                      icon: const Icon(Icons.delete_outline),
+                      tooltip: 'Borrar logs',
+                      onPressed: _onBorrarLogs,
+                    ),
             ],
           ),
           const SizedBox(height: 8),

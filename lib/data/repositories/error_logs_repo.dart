@@ -76,6 +76,23 @@ class ErrorLogsRepo {
         .map((e) => ErrorLogView.fromMap(Map<String, dynamic>.from(e as Map)))
         .toList();
   }
+
+  /// Purga los error_logs con `ts < before`. La RPC `purge_error_logs`
+  /// (migración 0037, SECURITY DEFINER con guard `is_super_admin()`)
+  /// devuelve el número de filas borradas (un `integer` de `ROW_COUNT`).
+  /// Mandamos `before` en UTC ISO-8601 porque la columna `ts` es
+  /// `timestamptz` y queremos comparar en el mismo huso del wire-format.
+  Future<int> purgeBefore(DateTime before) async {
+    final res = await _client.rpc(
+      'purge_error_logs',
+      params: {'p_before': before.toUtc().toIso8601String()},
+    );
+    // La RPC retorna un escalar integer. supabase_dart lo entrega como int,
+    // pero casteamos defensivamente por si llega como num/String.
+    if (res is int) return res;
+    if (res is num) return res.toInt();
+    return int.tryParse(res.toString()) ?? 0;
+  }
 }
 
 final errorLogsRepoProvider = Provider<ErrorLogsRepo>((ref) {
