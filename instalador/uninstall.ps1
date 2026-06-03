@@ -22,6 +22,14 @@ foreach ($p in $pkgs) {
   Remove-AppxPackage -Package $p.PackageFullName
 }
 
-Write-Host "`n[OK] SITECSA CRM desinstalada del PC (data local incluida)." -ForegroundColor Green
-Write-Host "     El certificado de confianza queda instalado (no molesta y sirve" -ForegroundColor DarkGray
-Write-Host "     para reinstalar sin volver a pedir permisos)." -ForegroundColor DarkGray
+# Limpiar AppData sobrante del paquete (sesion + SQLite local de PowerSync), por si
+# Windows lo retuvo tras el Remove-AppxPackage (pasa con updates in-place).
+Get-ChildItem "$env:LOCALAPPDATA\Packages" -Directory -Filter "*sitecsa*" -ErrorAction SilentlyContinue | ForEach-Object {
+  Write-Host "Limpiando cache local: $($_.Name) ..." -ForegroundColor Cyan
+  Remove-Item $_.FullName -Recurse -Force -ErrorAction SilentlyContinue
+}
+
+Write-Host "`n[OK] SITECSA CRM desinstalada + cache local borrada." -ForegroundColor Green
+Write-Host "     OJO: esto borra solo lo LOCAL. La data (clientes/cuotas/pagos) vive en" -ForegroundColor Yellow
+Write-Host "     Supabase (la nube) y se re-baja al loguearte. Para empezar de 0 de verdad" -ForegroundColor Yellow
+Write-Host "     hay que vaciar el BACKEND (ver el wipe SQL)." -ForegroundColor Yellow
