@@ -1,7 +1,7 @@
 name: isp_billing
 description: App de gestión de clientes y cobros para ISP (Nicaragua) — offline-first con PowerSync.
 publish_to: 'none'
-version: 0.6.1+061
+version: 0.6.2+062
 
 environment:
   sdk: '>=3.4.0 <4.0.0'
@@ -79,6 +79,10 @@ dev_dependencies:
   # Empaquetado MSIX para distribución Windows
   msix: ^3.16.8
 
+  # Genera iconos de Windows (.ico) y Android (mipmaps) desde un PNG fuente.
+  # Correr: dart run flutter_launcher_icons  (tras reemplazar el PNG fuente).
+  flutter_launcher_icons: ^0.13.1
+
 flutter:
   uses-material-design: true
 
@@ -94,5 +98,16 @@ msix_config:
   # Certificado self-signed para distribución B2B (no Microsoft Store).
   # Para producción: reemplazar con certificado comprado.
   store: false
+
+# Iconos de la app (Windows .ico + Android mipmaps). Fuente: el MISMO PNG que
+# usa el MSIX (assets/icon/app_icon.png) — reemplazá ese archivo por el logo
+# SITECSA (cuadrado, idealmente 1024x1024 con fondo) y corré:
+#   dart run flutter_launcher_icons
+flutter_launcher_icons:
+  image_path: "assets/icon/app_icon.png"
+  android: true
+  windows:
+    generate: true
+    icon_size: 256
 
 

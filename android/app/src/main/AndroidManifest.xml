@@ -1,6 +1,6 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <application
-        android:label="isp_billing"
+        android:label="SITECSA CRM"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
         <activity

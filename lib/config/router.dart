@@ -159,12 +159,9 @@ final routerProvider = Provider<GoRouter>((ref) {
   // identidad, syncReady flippa a true y queremos que el redirect
   // saque al user de /sync-gate hacia su pantalla por rol.
   ref.listen(syncReadyProvider, (_, __) => refresh.poke());
-  // El flash-gate del redirect también espera en /sync-gate mientras el rol no
-  // resolvió (rol == null). Sin este listen, cuando el rol pasa de null → un
-  // valor concreto el redirect NO se re-evalúa y el user queda COLGADO en
-  // /sync-gate hasta el escape de 180s (bug: sync-gate eterno con DB vacía).
-  // Con él, el gate libera apenas la row de `cobradores` materializa el rol.
-  ref.listen(_rolUsuarioProvider, (_, __) => refresh.poke());
+  // Grace timeout del sync gate (8s): cuando vence, el redirect debe
+  // re-evaluarse para liberar el gate aunque PowerSync no haya confirmado.
+  ref.listen(syncGateGraceProvider, (_, __) => refresh.poke());
   // Impersonación: cuando el super_admin entra o sale de un tenant,
   // re-evaluamos el redirect para moverlo entre /super/* y /admin/*.
   ref.listen(impersonatedTenantIdProvider, (_, __) => refresh.poke());
@@ -229,9 +226,12 @@ final routerProvider = Provider<GoRouter>((ref) {
       // identidad de PowerSync — el user que setea contraseña ya es el
       // dueño del cache.
       final syncReady = ref.read(syncReadyProvider);
+      final grace = ref.read(syncGateGraceProvider);
       final rol = ref.read(_rolUsuarioProvider).valueOrNull;
       final rolNoResuelto = rol == null;
-      final mustWait = !syncReady || rolNoResuelto;
+      // Espera mientras (sync no listo O rol no resuelto), PERO con tope: el
+      // grace timeout (8s) libera igual para no colgarse con DB vacía/sync lento.
+      final mustWait = (!syncReady || rolNoResuelto) && !grace;
       final goingToGate = state.matchedLocation == '/sync-gate';
       // Mientras haya que esperar, mantenemos al user en /sync-gate
       // (devolvemos null si ya está ahí → NO loop). Cuando termina la
