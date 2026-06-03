@@ -16,15 +16,23 @@ final cobradorActualProvider = StreamProvider<Cobrador?>((ref) async* {
     return;
   }
 
-  await for (final rows in ps.db.watch(
-    'SELECT * FROM cobradores WHERE id = ?',
-    parameters: [user.id],
-  )) {
-    if (rows.isEmpty) {
-      yield null;
-    } else {
-      yield Cobrador.fromRow(rows.first);
+  // El watch puede tirar ClosedException si la DB se cierra durante un switch
+  // de identidad/DB; el provider se recrea vía dbEpochProvider. Lo tragamos
+  // para no spamear el error log con ruido transitorio y benigno.
+  try {
+    await for (final rows in ps.db.watch(
+      'SELECT * FROM cobradores WHERE id = ?',
+      parameters: [user.id],
+    )) {
+      if (rows.isEmpty) {
+        yield null;
+      } else {
+        yield Cobrador.fromRow(rows.first);
+      }
     }
+  } catch (_) {
+    // DB cerrada / recreándose; el provider se reconstruye en la DB nueva.
+    yield null;
   }
 });
 

@@ -139,10 +139,21 @@ class AppTheme {
       ),
       chipTheme: ChipThemeData(
         backgroundColor: AppColors.surfaceContainer,
-        selectedColor: AppColors.primary.withValues(alpha: 0.15),
+        selectedColor: AppColors.primary.withValues(alpha: 0.18),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        side: BorderSide.none,
-        labelStyle: const TextStyle(fontSize: 13),
+        // Borde visible + label en textPrimary: sin color/borde los chips NO
+        // seleccionados quedaban casi ilegibles (gris claro sobre fondo claro).
+        side: const BorderSide(color: AppColors.outline),
+        labelStyle: const TextStyle(
+          fontSize: 13,
+          color: AppColors.textPrimary,
+          fontWeight: FontWeight.w500,
+        ),
+        secondaryLabelStyle: const TextStyle(
+          fontSize: 13,
+          color: AppColors.textPrimary,
+          fontWeight: FontWeight.w600,
+        ),
       ),
       dividerTheme: const DividerThemeData(
         color: AppColors.surfaceContainerHigh,
