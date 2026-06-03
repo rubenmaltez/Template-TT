@@ -4,7 +4,23 @@ La app se distribuye por **GitHub Releases**. El cliente (`lib/data/services/upd
 lee `version.json` del **latest release** y, si su `version` (semver) es mayor que la
 instalada, muestra el banner de update con el link al instalador de la plataforma.
 
-## Publicar una versión nueva
+## Forma fácil (recomendada): un solo comando
+
+```powershell
+.\build-release.ps1
+```
+Hace TODO: build Windows (MSIX) + Android (APK) **con el `.env.json` baked**, los renombra,
+los **copia al Escritorio**, y crea/actualiza el GitHub Release con los 3 assets. La versión
+sale del `pubspec.yaml`; para forzar otro tag: `.\build-release.ps1 -Tag v0.4.1`.
+
+Requisitos: `flutter`, `gh` (logueado con `gh auth login`), y `.env.json` en la raíz.
+
+Para **probar la app en PC** sin instalar nada, corré el `.exe` que deja el build (ya viene con el env):
+`.\build\windows\x64\runner\Release\isp_billing.exe`.
+
+---
+
+## Forma manual (si querés entender cada paso)
 
 1. **Bump de versión** en `pubspec.yaml` → `version: X.Y.Z+NNN`.
    - `X.Y.Z` = lo que compara el update service (semver major.minor.patch).

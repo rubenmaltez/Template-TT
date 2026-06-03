@@ -40,6 +40,12 @@ libpowersync.dylib
 libpowersync_x64.so
 libpowersync_aarch64.so
 
+# Instaladores y artefactos de release (los genera build-release.ps1, no se committean)
+SITECSA-CRM.msix
+SITECSA-CRM.apk
+*.cer
+version.json.bak
+
 # Platform-specific
 android/.gradle/
 android/local.properties
