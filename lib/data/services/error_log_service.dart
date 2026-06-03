@@ -45,6 +45,11 @@ class ErrorLogService {
   bool _flushing = false;
   String? _appVersion;
 
+  // Suscripción al auth state change. Se guarda para poder cancelarla en
+  // hot restart (dev) — sino cada init() acumula un listener nuevo sobre
+  // el anterior (mismo patrón que `_authSub` global en main.dart).
+  StreamSubscription? _authSub;
+
   // Rate limit: evita que un crash-loop llene la cola FIFO con cientos
   // de entries idénticas por segundo. Si el mismo error (tipo+mensaje)
   // se registró hace menos de 5s, skip.
@@ -106,7 +111,12 @@ class ErrorLogService {
     // diferente al actual — son del user anterior del browser y nunca
     // van a poder subirse (RLS rechazaría). Sin esta purga ocupan slots
     // del FIFO 200 indefinidamente.
-    Supabase.instance.client.auth.onAuthStateChange.listen((event) {
+    //
+    // Cancelar suscripción previa antes de re-suscribir (hot restart en
+    // dev) — sino se acumulan listeners y flushPending corre N veces por
+    // evento. Mismo patrón que el `_authSub` global de main.dart.
+    _authSub?.cancel();
+    _authSub = Supabase.instance.client.auth.onAuthStateChange.listen((event) {
       if (event.event == AuthChangeEvent.signedIn ||
           event.event == AuthChangeEvent.initialSession) {
         final uid = event.session?.user.id;
