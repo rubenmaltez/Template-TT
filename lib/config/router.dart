@@ -159,6 +159,12 @@ final routerProvider = Provider<GoRouter>((ref) {
   // identidad, syncReady flippa a true y queremos que el redirect
   // saque al user de /sync-gate hacia su pantalla por rol.
   ref.listen(syncReadyProvider, (_, __) => refresh.poke());
+  // El flash-gate del redirect también espera en /sync-gate mientras el rol no
+  // resolvió (rol == null). Sin este listen, cuando el rol pasa de null → un
+  // valor concreto el redirect NO se re-evalúa y el user queda COLGADO en
+  // /sync-gate hasta el escape de 180s (bug: sync-gate eterno con DB vacía).
+  // Con él, el gate libera apenas la row de `cobradores` materializa el rol.
+  ref.listen(_rolUsuarioProvider, (_, __) => refresh.poke());
   // Impersonación: cuando el super_admin entra o sale de un tenant,
   // re-evaluamos el redirect para moverlo entre /super/* y /admin/*.
   ref.listen(impersonatedTenantIdProvider, (_, __) => refresh.poke());
