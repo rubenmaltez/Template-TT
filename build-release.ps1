@@ -47,17 +47,35 @@ dart run msix:create @noBuild; Check "msix:create"
 Write-Host "==> Build Android APK (con env)..." -ForegroundColor Cyan
 flutter build apk --release --dart-define-from-file=.env.json; Check "flutter build apk"
 
-# 4) Nombres canonicos
+# 4) Dos juegos de nombres:
+#    - VERSIONADOS (SITECSA-CRM-vX.Y.Z.msix/.apk): se apilan en .\Releases\vX.Y.Z\
+#      + copia al Escritorio. Muestran la version en el nombre; son los que
+#      archivas y distribuis a mano.
+#    - FIJOS (SITECSA-CRM.msix/.apk): SOLO para subir al GitHub Release, para que
+#      el auto-update (version.json -> latest/download/<fijo>) resuelva sin
+#      editar URLs por version. Transitorios y gitignored.
 $msixPath = (Get-ChildItem -Recurse -Filter *.msix build\windows | Select-Object -First 1).FullName
 if (-not $msixPath) { throw "No se encontro el .msix generado bajo build\windows." }
-Copy-Item $msixPath ".\SITECSA-CRM.msix" -Force
-Copy-Item "build\app\outputs\flutter-apk\app-release.apk" ".\SITECSA-CRM.apk" -Force
+$apkPath  = "build\app\outputs\flutter-apk\app-release.apk"
+$msixVer  = "SITECSA-CRM-$Tag.msix"
+$apkVer   = "SITECSA-CRM-$Tag.apk"
 
-# 5) Copia al Escritorio
+# 4a) Carpeta de releases versionada (historico que se apila): .\Releases\vX.Y.Z\
+$relDir = Join-Path "Releases" $Tag
+New-Item -ItemType Directory -Force -Path $relDir | Out-Null
+Copy-Item $msixPath (Join-Path $relDir $msixVer) -Force
+Copy-Item $apkPath  (Join-Path $relDir $apkVer)  -Force
+Write-Host "==> Instaladores versionados en $relDir" -ForegroundColor Green
+
+# 4b) Copia versionada al Escritorio (comoda para mandar por WhatsApp/USB)
 $desk = [Environment]::GetFolderPath("Desktop")
-Copy-Item ".\SITECSA-CRM.msix" (Join-Path $desk "SITECSA-CRM.msix") -Force
-Copy-Item ".\SITECSA-CRM.apk"  (Join-Path $desk "SITECSA-CRM.apk")  -Force
-Write-Host "==> Instaladores copiados al Escritorio." -ForegroundColor Green
+Copy-Item (Join-Path $relDir $msixVer) (Join-Path $desk $msixVer) -Force
+Copy-Item (Join-Path $relDir $apkVer)  (Join-Path $desk $apkVer)  -Force
+Write-Host "==> Copias versionadas en el Escritorio." -ForegroundColor Green
+
+# 4c) Copias con nombre FIJO para el upload a GitHub (auto-update).
+Copy-Item (Join-Path $relDir $msixVer) ".\SITECSA-CRM.msix" -Force
+Copy-Item (Join-Path $relDir $apkVer)  ".\SITECSA-CRM.apk"  -Force
 
 # 6) version.json al dia (solo el campo version; las URLs usan latest/download y no cambian)
 $vj = Get-Content version.json -Raw | ConvertFrom-Json
@@ -76,5 +94,6 @@ if ($LASTEXITCODE -eq 0) {
 
 Write-Host "`n=== LISTO ===" -ForegroundColor Green
 Write-Host "Release:    https://github.com/$repo/releases/tag/$Tag" -ForegroundColor Green
-Write-Host "Escritorio: $desk\SITECSA-CRM.msix  +  SITECSA-CRM.apk" -ForegroundColor Green
+Write-Host "Archivo:    .\Releases\$Tag\  ($msixVer + $apkVer)" -ForegroundColor Green
+Write-Host "Escritorio: $msixVer  +  $apkVer" -ForegroundColor Green
 Write-Host "Probar PC:  .\build\windows\x64\runner\Release\isp_billing.exe  (ya viene con el env)`n" -ForegroundColor Green

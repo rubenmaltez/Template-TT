@@ -4,14 +4,15 @@
 > JUNTO con `CLAUDE.md` al abrir una sesión nueva de Claude Code, para
 > continuar exactamente desde acá sin re-descubrir el contexto.
 >
-> **Última actualización**: 2026-06-02 (commit `83fec70`, branch
-> `claude/inspiring-dijkstra-wKs5h`). **Audit EXHAUSTIVO TOTAL** de toda la app
-> (5 agentes en paralelo: integridad DB, dinero, correctness frontend,
-> cobertura funcional admin-side, cobertura funcional cobrador + seguridad).
-> Migraciones **0087/0088**, schema **v16**. Resultado: **0 findings
-> CRITICAL/HIGH**; 1 bug de dinero (F1) + 1 de seguridad (S4) corregidos, y
-> **TODO el backlog accionable del audit liquidado** (L2/L3/F2/S2/INV11/dead
-> code/docs — commit 83fec70). Solo quedan features (no bugs). Ver §3 y §7.
+> **Última actualización**: 2026-06-03 (branch `claude/stoic-tesla-cGkJ6`).
+> **Release v0.6.4** — ver §9. Cambios: Auditoría oculta para el admin por
+> defecto (toggle super-admin por tenant, migr **0089**); se quitó el wizard de
+> onboarding (el admin configura empresa/planes desde Ajustes); versión visible
+> en sidebar/login/perfil; **fix de los toggles del diseñador de recibo**
+> (`upsert` + migr **0090**). Reorg de distribución: `Install Steps/` (guías) +
+> `Releases\vX.Y.Z\` (instaladores versionados que se apilan). Schema **v16**
+> (sin cambios). Cada cambio pasó audit (correctness + QA + deployment-safety),
+> 0 findings. Snapshot previo: 2026-06-02, commit `83fec70` (audit total).
 
 ---
 
@@ -201,3 +202,57 @@ compacto · vista Cobros del admin · **timezone Nicaragua end-to-end** (cliente
 - Si una feature pasa de flag a implementada, moverla en §4/§4b.
 - Cuando se agreguen tests, actualizar §5.
 - NO reemplaza CLAUDE.md (reglas/proceso). Es el COMPLEMENTO de estado.
+
+---
+
+## 9. Release v0.6.4 (2026-06-03)
+
+Branch `claude/stoic-tesla-cGkJ6`. Cuatro cambios + reorg de distribución.
+Cada uno pasó audit (correctness + QA + deployment-safety), 0 findings.
+
+### Cambios funcionales
+1. **Auditoría oculta para el admin por defecto.** El item `/admin/audit` pasó a
+   ser super-only por tenant: nueva clave `cobranza.audit_visible_admin`
+   (default OFF, `editable_por='super_admin'`, migr **0089**). El super_admin la
+   ve **siempre** (incluso impersonando — bypass por rol en menú y router); el
+   admin solo si el super la habilita en Ajustes → Avanzado → "Pantallas
+   opcionales del admin"; `admin_cobranza` nunca (sigue gateado por `soloAdmin`).
+   Mismo patrón que `cobranza.pantalla_pagos`/`pantalla_notificaciones`.
+2. **Se quitó el wizard de onboarding.** Borrado `onboarding_screen.dart`, su
+   ruta, el redirect forzado, el provider `empresaNombreRowExistsProvider` y el
+   gate de carga de `admin_shell`. El admin entra directo al dashboard y
+   configura empresa en Ajustes → Empresa y planes en Administración → Planes.
+   `empresaNombreProvider` se mantiene (lo lee el reporte; vivo vía `ref.listen`).
+3. **Versión visible.** Nuevo `AppVersionLabel` (lee `package_info`) al pie del
+   sidebar admin (rail + drawer), en el login y en el perfil del cobrador.
+4. **Fix toggles del diseñador de recibo.** El editor guardaba con `update`
+   (UPDATE puro); los tenants creados después de 0080 no tienen la fila
+   `recibo.layout` (ni `recibo.mostrar_cedula`, agregada en 0079) sembrada → el
+   UPDATE afectaba 0 filas y el toggle rebotaba. Fix: el editor usa `upsert`
+   (crea la fila si falta) en sus 3 call sites; migr **0090** suma esas 2 claves
+   al seed de alta de tenant + backfillea los existentes. Correr 0090 repara
+   tenants viejos al instante (incluso en 0.6.3). `recibo.titulo` y
+   `recibo.mostrar_adeudado` ya estaban en el seed (0045).
+
+### Migraciones
+- **0089** — `cobranza.audit_visible_admin` (super-only, default OFF) en
+  `seed_settings_super_only` + backfill. Solo filas en `settings` → sin bump de
+  schema ni redeploy de sync rules.
+- **0090** — `seed_settings_recibo_layout` (recibo.layout + recibo.mostrar_cedula),
+  sumada al trigger `tenants_seed_settings_trg` + backfill. Idem: sin bump.
+
+### Reorg de distribución (orden absoluto)
+- **`Install Steps/`** — fuente única de cómo publicar e instalar: guías
+  numeradas (1 publicar, 2 PC, 3 Android) + `install-latest.ps1` + `uninstall.ps1`.
+  Reemplaza a la vieja `instalador/` (tenía copias **stale** de CLAUDE/ESTADO/
+  REPORTE — borradas; las canónicas viven en la raíz).
+- **`build-release.ps1`** — ahora archiva instaladores **versionados**
+  (`SITECSA-CRM-vX.Y.Z.msix/.apk`) en `Releases\vX.Y.Z\` (se apilan) + copia al
+  Escritorio, y sube a GitHub los de nombre **fijo** (`SITECSA-CRM.msix/.apk`)
+  para que el auto-update por `latest/download/` siga resolviendo. `Releases/`
+  gitignored.
+
+### Deploy
+Correr **0089 y 0090** en orden (Dashboard → SQL Editor), después
+`.\build-release.ps1`. Ninguna toca schema/sync rules. Ver
+`Install Steps/1-Publicar-nueva-version.md`.

@@ -43,6 +43,10 @@ libpowersync_aarch64.so
 # Instaladores y artefactos de release (los genera build-release.ps1, no se committean)
 SITECSA-CRM.msix
 SITECSA-CRM.apk
+SITECSA-CRM-v*.msix
+SITECSA-CRM-v*.apk
+# Archivo historico de instaladores versionados (se apila local, no al repo)
+Releases/
 *.cer
 version.json.bak
 

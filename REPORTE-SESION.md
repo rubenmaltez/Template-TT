@@ -40,6 +40,10 @@ Un setting guardado DEBE cambiar el comportamiento real de la app:
   - `cobranza.pantalla_pagos` / `cobranza.pantalla_notificaciones` ON → aparece
     el item en el menú admin y la pantalla es accesible; OFF → el menú la oculta
     y el guard de pantalla bloquea el acceso por URL directa.
+  - `cobranza.audit_visible_admin` ON → el admin del tenant ve el item Auditoría
+    (`/admin/audit`) en su menú y accede; OFF → oculto + el router lo rebota a
+    `/admin`. El **super_admin la ve siempre** (incluso impersonando), sin
+    importar este valor; `admin_cobranza` nunca (gateado por rol).
 - `cobranza.foto_obligatoria` ON → no se puede confirmar un cobro **con método
   que requiere comprobante** sin foto. (Efectivo no se bloquea: no muestra picker.)
 - `cobranza.pago_parcial` OFF → en cobro de una cuota se exige cubrir el **saldo
@@ -153,6 +157,67 @@ consistentes → auditoría.
 ## 3. Historial de fixes
 
 > Más reciente arriba. Formato por ítem: error → fix → expectativa.
+
+### 2026-06-03 — Release v0.6.4: auditoría super-only + quitar onboarding + fix recibos
+
+Branch `claude/stoic-tesla-cGkJ6`. Commits `401ec78` (base v0.6.4), `a393064` +
+`139ff1b` (fix recibos). Cada cambio pasó audit (correctness + QA +
+deployment-safety), 0 findings.
+
+**Auditoría oculta para el admin (toggle super-admin por tenant)**
+- *Pedido:* el panel de Auditoría no debe ser visible para el admin por defecto;
+  el super_admin lo habilita con un toggle en los settings del tenant.
+- *Fix:* nueva clave super-only `cobranza.audit_visible_admin` (default OFF,
+  migr 0089). El item `/admin/audit` del menú toma `settingKey`; `_menuVisible`
+  bypassa el gate para `esSuperAdmin` (el super la ve siempre, incl.
+  impersonando). Guard en el router echa al admin de la ruta si el toggle está
+  OFF. `admin_cobranza` sigue bloqueado por `soloAdmin`.
+- *Expectativa:* admin con toggle OFF no ve Auditoría ni accede por URL; el super
+  la prende en Ajustes → Avanzado y reaparece en la sesión del admin sin F5.
+
+**Quitar el wizard de onboarding**
+- *Pedido:* el admin no debe pasar por un setup inicial; entra y configura
+  empresa/planes desde Ajustes por su cuenta.
+- *Fix:* borrado `onboarding_screen.dart` + ruta + redirect forzado +
+  `empresaNombreRowExistsProvider` + gate de carga de `admin_shell`.
+  `empresaNombreProvider` se preserva (lo lee el reporte).
+- *Expectativa:* admin de tenant sin configurar entra directo al dashboard (sin
+  flash de wizard) y configura empresa en Ajustes → Empresa, planes en
+  Administración → Planes.
+
+**Versión visible en la app**
+- *Pedido:* la versión en la que estamos tiene que verse en la app.
+- *Fix:* `AppVersionLabel` (lee `package_info`) al pie del sidebar admin (rail +
+  drawer), login y perfil del cobrador. `pubspec` → `0.6.4+064`, `version.json`
+  → `0.6.4`.
+- *Expectativa:* "SITECSA CRM v0.6.4" visible en login, sidebar admin y perfil.
+
+**Fix: toggles del diseñador de recibo no se podían desactivar**
+- *Error:* en tenants creados después de la migr 0080, los toggles de
+  visibilidad de bloques del recibo "rebotaban" a ON. Causa: el editor guardaba
+  con `SettingsRepo.update` (UPDATE puro `WHERE tenant_id AND clave`), pero la
+  fila `recibo.layout` no estaba sembrada (el trigger de alta llama
+  `seed_settings_default`, que nunca incluyó esa clave — solo se backfilleó en
+  0080). UPDATE → 0 filas → no persistía. Igual `recibo.mostrar_cedula` (0079).
+- *Fix:* (cliente) el editor pasa a `SettingsRepo.upsert` (SELECT→UPDATE|INSERT)
+  en sus 3 call sites (layout, ajustes generales, sub-toggles), con tipo +
+  categoria. (servidor) migr 0090: `seed_settings_recibo_layout` siembra
+  `recibo.layout` + `recibo.mostrar_cedula`, sumada al trigger de alta +
+  backfill de tenants faltantes. Idempotente, sin bump de schema/sync rules.
+- *Expectativa:* apagar/prender cualquier bloque del recibo (y los sub-toggles
+  cédula/saldo) persiste y sobrevive al reload. Correr 0090 arregla tenants
+  viejos al instante, incluso en 0.6.3.
+
+**Reorg de distribución (orden absoluto)**
+- *Pedido:* instaladores con la versión en el nombre, apilados en una carpeta
+  `Releases\` local, y los comandos en una carpeta `Install Steps`.
+- *Fix:* `build-release.ps1` archiva `SITECSA-CRM-vX.Y.Z.msix/.apk` en
+  `Releases\vX.Y.Z\` (gitignored, se apila) + Escritorio, y sube a GitHub los de
+  nombre fijo (auto-update intacto). Nueva carpeta `Install Steps/` con guías
+  numeradas + scripts; se borró la vieja `instalador/` (tenía copias stale de
+  los .md canónicos).
+- *Expectativa:* cada `build-release.ps1` deja la versión nueva en
+  `Releases\vX.Y.Z\` con el número en el nombre, sin pisar las anteriores.
 
 ### 2026-06-02 (noche) — Backlog del audit liquidado + tests de `pagos_repo`
 
