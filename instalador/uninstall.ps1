@@ -11,6 +11,12 @@
 #>
 $ErrorActionPreference = "Stop"
 
+# Cerrar la app si está corriendo: sino sus archivos (sesión + SQLite local)
+# quedan LOCKEADOS y el borrado de la cache falla -> la sesión "sobrevive" al
+# uninstall+reinstall. Esta era la causa de "reinstale y seguía logueado".
+Get-Process -Name isp_billing -ErrorAction SilentlyContinue | Stop-Process -Force
+Start-Sleep -Milliseconds 800
+
 $pkgs = @(Get-AppxPackage | Where-Object { $_.Name -like "*sitecsa*" })
 if ($pkgs.Count -eq 0) {
   Write-Host "SITECSA CRM no esta instalada (nada que desinstalar)." -ForegroundColor Yellow
@@ -24,12 +30,19 @@ foreach ($p in $pkgs) {
 
 # Limpiar AppData sobrante del paquete (sesion + SQLite local de PowerSync), por si
 # Windows lo retuvo tras el Remove-AppxPackage (pasa con updates in-place).
+$quedoAlgo = $false
 Get-ChildItem "$env:LOCALAPPDATA\Packages" -Directory -Filter "*sitecsa*" -ErrorAction SilentlyContinue | ForEach-Object {
   Write-Host "Limpiando cache local: $($_.Name) ..." -ForegroundColor Cyan
   Remove-Item $_.FullName -Recurse -Force -ErrorAction SilentlyContinue
+  if (Test-Path $_.FullName) { $quedoAlgo = $true }
 }
 
-Write-Host "`n[OK] SITECSA CRM desinstalada + cache local borrada." -ForegroundColor Green
-Write-Host "     OJO: esto borra solo lo LOCAL. La data (clientes/cuotas/pagos) vive en" -ForegroundColor Yellow
-Write-Host "     Supabase (la nube) y se re-baja al loguearte. Para empezar de 0 de verdad" -ForegroundColor Yellow
-Write-Host "     hay que vaciar el BACKEND (ver el wipe SQL)." -ForegroundColor Yellow
+if ($quedoAlgo) {
+  Write-Host "`n[!] La app se desinstalo, pero NO se pudo borrar del todo la cache local" -ForegroundColor Yellow
+  Write-Host "    (archivos en uso). La SESION podria sobrevivir al reinstalar." -ForegroundColor Yellow
+  Write-Host "    Fix seguro: abri la app y toca 'Cerrar sesion' para el login limpio." -ForegroundColor Yellow
+} else {
+  Write-Host "`n[OK] SITECSA CRM desinstalada + cache local borrada (sesion incluida)." -ForegroundColor Green
+}
+Write-Host "     Nota: la DATA (clientes/cuotas/pagos) vive en Supabase (la nube) y se" -ForegroundColor DarkGray
+Write-Host "     re-baja al loguearte. El 'desde 0' de la DATA es el wipe del BACKEND." -ForegroundColor DarkGray
