@@ -1,0 +1,7 @@
+{
+  "version": "0.4.0",
+  "release_notes": "Facturacion vencida + mes del recibo, impersonacion de tenants (super_admin), change log universal, hardening de seguridad/dinero (audit total), suite de tests del dinero + CI verde, y multiples fixes.",
+  "download_url_windows": "https://github.com/rubenmaltez/Template-TT/releases/latest/download/SITECSA-CRM.msix",
+  "download_url_android": "https://github.com/rubenmaltez/Template-TT/releases/latest/download/SITECSA-CRM.apk",
+  "download_url": "https://github.com/rubenmaltez/Template-TT/releases/latest/download/SITECSA-CRM.msix"
+}
