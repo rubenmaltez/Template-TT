@@ -1,7 +1,7 @@
 name: isp_billing
 description: App de gestión de clientes y cobros para ISP (Nicaragua) — offline-first con PowerSync.
 publish_to: 'none'
-version: 0.4.0+040
+version: 0.5.0+050
 
 environment:
   sdk: '>=3.4.0 <4.0.0'
