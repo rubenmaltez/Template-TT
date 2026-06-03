@@ -709,6 +709,38 @@ por-función.
 
 Estos viven acá hasta que se ataquen explícitamente. NO re-flag en audits.
 
+> **⚠️ RE-VERIFICACIÓN 2026-06-03 (leé esto ANTES de tocar el backlog de abajo).**
+> Se auditó CADA ítem contra el código real (3 agentes). MUCHOS estaban resueltos
+> pero sin tachar — **NO los re-flaggees**. Estado real:
+>
+> **YA RESUELTOS (aunque el bullet de abajo siga sin tachar):**
+> - **Rework super_admin COMPLETO** — impersonación (migr 0039/0078/0082) + "entrar
+>   como tenant" + toggle de módulos + audit start/end + banner "Viendo: X". Ya NO es
+>   "sprint futuro grande". Las acciones de campo se bloquean adrede en impersonación.
+> - **Paginación** de clientes (admin + cobrador). `clientesAsignadosProvider` ya no existe.
+> - **PopScope sidebar** (forms dirty): `closeModalsAndGoGuarded` + `formDirtyProvider`.
+> - **OfflineBanner**: botón Reintentar + fade + indicador de red inestable.
+> - **Error logging**: rate-limit (5s), índice `error_type`, debounce search (400ms),
+>   RPC `purge_error_logs` + **botón "Borrar logs"** en `/super/logs`, user-agent (proxy plataforma).
+> - **main.dart double-connect** (guard por identidad) + **listener de ErrorLogService** (se cancela).
+> - **Edge Functions**: audit row si signOut-fail + ghost-user cleanup + chequeo `SYSTEM_TENANT`.
+> - **R12 `==`/`hashCode`**: Pago/Modulo/Setting/CobradorStats (Contrato no aplica, es `Map`).
+> - **Admin pagos**: badge `grupo_cobro`. **Distribución**: scaffolds Android/Windows + update
+>   service + MSIX ya están (falta SOLO config de producción: applicationId, cert, deep-links).
+>
+> **GENUINAMENTE PENDIENTES (todos LOW):**
+> - `reenviar-invitacion`: lock delete→create (race solo con super_admins concurrentes).
+> - `_humanizarError`: 2 copias en pantallas (gated a un fix del SDK de `FunctionException`).
+> - `FotoComprobanteService`: persistir último resultado (F5 lo pierde; replay en memoria sí).
+> - Error logging: filtro fechas desde/hasta · cron diario de purga >90d · UA real (`package:web`).
+> - Tests: widget + integración + redirects del router (0 hoy) · 4 tests edge_functions skipped (falta mockito).
+> - UX parciales (mitigados): sync-gate stuck (telemetría puesta, falta repro) · flash wizard (flows
+>   secundarios) · race `_rolUsuarioProvider` (enmascarado por sync-gate).
+> - Edge cases bajo valor: `lastSyncedAt` semantics · cross-tab sin sync · race autoDispose entre
+>   tenants · PKCE recovery user-switch · BULK 12 Sprint 5 (polish) · Resend dominio (externo).
+>
+> **PARQUEADOS por decisión de Rubén:** flags `modo_ruta`/`caja_chica` (ocultas) · geo del cobro (no por ahora).
+
 - ~~**`ps.db.watch` inline en `build()` — anti-patrón a barrer del repo**~~.
   RESUELTO (audit total 2026-06-02): el barrido está prácticamente completo.
   El resto de las pantallas ya migró a `late final Stream` en `initState` /

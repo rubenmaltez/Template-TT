@@ -171,9 +171,11 @@ compacto · vista Cobros del admin · **timezone Nicaragua end-to-end** (cliente
 
 ## 7. Próximos pasos sugeridos (orden de ROI)
 
-> El backlog accionable del audit quedó **liquidado** (§3) y los **tests de
-> `pagos_repo` están hechos y pasan** (§5). Lo que queda son FEATURES (no bugs),
-> a decidir como esfuerzo propio:
+> El backlog accionable del audit quedó **liquidado** (§3), los **tests de
+> `pagos_repo` pasan** (§5) y el **backlog persistente se re-verificó contra el
+> código** (2026-06-03 — ver el bloque al tope del backlog en CLAUDE.md: el grueso
+> ya estaba hecho, incluido el rework super_admin completo). Lo que queda son ítems
+> LOW o features, a decidir como esfuerzo propio:
 
 1. ✅ **HECHO** — ~~Tests de `pagos_repo`~~: suite de 14 tests de repo contra una
    PowerSyncDatabase real (no mocks), verde. Era el gap de cobertura más importante.
@@ -185,6 +187,10 @@ compacto · vista Cobros del admin · **timezone Nicaragua end-to-end** (cliente
    `pagos_repo`, vía `libpowersync*.so` del pub cache + `LD_LIBRARY_PATH`) en cada push. Verde en
    `c1da038` (**210 passed, 0 failed**). De paso se arreglaron 5 tests stale de `periodoRecibo`
    que tenían el CI en rojo (asertaban la vieja "regla del 15"; la función ya usa facturación vencida).
+5. ✅ **HECHO** (2026-06-03) — liquidados los pendientes accionables del backlog re-verificado:
+   R12 `==`/`hashCode` (Pago/Modulo/Setting/CobradorStats) · botón "Borrar logs" en `/super/logs` ·
+   chequeo `SYSTEM_TENANT` en `forzar-password` · cancelación del listener de `ErrorLogService`.
+   El resto del backlog persistente es LOW / edge-case (ver el bloque de re-verificación en CLAUDE.md).
 
 ---
 
