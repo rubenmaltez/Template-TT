@@ -15,6 +15,25 @@ class Modulo {
   final bool esBase;
   final int orden;
 
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is Modulo &&
+          other.codigo == codigo &&
+          other.nombre == nombre &&
+          other.descripcion == descripcion &&
+          other.esBase == esBase &&
+          other.orden == orden;
+
+  @override
+  int get hashCode => Object.hash(
+        codigo,
+        nombre,
+        descripcion,
+        esBase,
+        orden,
+      );
+
   factory Modulo.fromMap(Map<String, dynamic> m) => Modulo(
         codigo: m['codigo'] as String,
         nombre: m['nombre'] as String,

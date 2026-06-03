@@ -100,6 +100,61 @@ class Pago {
   /// Lo que el cliente físicamente entregó en mano (aplicado + vuelto).
   double get entregadoCordobas => montoCordobas + vueltoCordobas;
 
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is Pago &&
+          other.id == id &&
+          other.tenantId == tenantId &&
+          other.cuotaId == cuotaId &&
+          other.cobradorId == cobradorId &&
+          other.montoCordobas == montoCordobas &&
+          other.vueltoCordobas == vueltoCordobas &&
+          other.moneda == moneda &&
+          other.montoOriginal == montoOriginal &&
+          other.tasaConversion == tasaConversion &&
+          other.metodo == metodo &&
+          other.referencia == referencia &&
+          other.fotoComprobantePath == fotoComprobantePath &&
+          other.lat == lat &&
+          other.lng == lng &&
+          other.notas == notas &&
+          other.fechaPago == fechaPago &&
+          other.anulado == anulado &&
+          other.anuladoEn == anuladoEn &&
+          other.anuladoPor == anuladoPor &&
+          other.motivoAnulacion == motivoAnulacion &&
+          other.grupoCobro == grupoCobro &&
+          other.clientLocalId == clientLocalId;
+
+  // Object.hash admite hasta 20 args posicionales; Pago tiene 22 campos,
+  // así que usamos Object.hashAll (acepta un Iterable sin tope).
+  @override
+  int get hashCode => Object.hashAll([
+        id,
+        tenantId,
+        cuotaId,
+        cobradorId,
+        montoCordobas,
+        vueltoCordobas,
+        moneda,
+        montoOriginal,
+        tasaConversion,
+        metodo,
+        referencia,
+        fotoComprobantePath,
+        lat,
+        lng,
+        notas,
+        fechaPago,
+        anulado,
+        anuladoEn,
+        anuladoPor,
+        motivoAnulacion,
+        grupoCobro,
+        clientLocalId,
+      ]);
+
   factory Pago.fromRow(Map<String, dynamic> row) => Pago(
         id: row['id'] as String,
         tenantId: row['tenant_id'] as String,

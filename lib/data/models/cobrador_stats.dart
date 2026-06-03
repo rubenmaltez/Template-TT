@@ -15,6 +15,25 @@ class CobradorStats {
   final int pagosMesCount;
   final double pagosMesTotal;
 
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is CobradorStats &&
+          other.id == id &&
+          other.lastSignInAt == lastSignInAt &&
+          other.clientesAsignados == clientesAsignados &&
+          other.pagosMesCount == pagosMesCount &&
+          other.pagosMesTotal == pagosMesTotal;
+
+  @override
+  int get hashCode => Object.hash(
+        id,
+        lastSignInAt,
+        clientesAsignados,
+        pagosMesCount,
+        pagosMesTotal,
+      );
+
   factory CobradorStats.fromMap(Map<String, dynamic> m) => CobradorStats(
         id: m['id'] as String,
         lastSignInAt: m['last_sign_in_at'] != null

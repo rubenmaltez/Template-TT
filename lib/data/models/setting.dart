@@ -29,6 +29,31 @@ class Setting {
   num get asNumber => valor is num ? valor as num : 0;
   String get asString => valor is String ? valor as String : (valor?.toString() ?? '');
 
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is Setting &&
+          other.id == id &&
+          other.tenantId == tenantId &&
+          other.clave == clave &&
+          other.valor == valor &&
+          other.tipo == tipo &&
+          other.categoria == categoria &&
+          other.descripcion == descripcion &&
+          other.editablePor == editablePor;
+
+  @override
+  int get hashCode => Object.hash(
+        id,
+        tenantId,
+        clave,
+        valor,
+        tipo,
+        categoria,
+        descripcion,
+        editablePor,
+      );
+
   factory Setting.fromRow(Map<String, dynamic> row) {
     final raw = row['valor'] as String?;
     dynamic decoded;
