@@ -9,6 +9,7 @@
 //   - Sólo super_admin (rol en cobradores).
 //   - No puede modificarse a sí mismo.
 //   - No puede modificar a otro super_admin.
+//   - No puede modificar a nadie del tenant System (defensa en profundidad).
 //   - Password mínimo 8 caracteres (alineado con default de Supabase).
 //
 // Después de actualizar la password registra en audit_log SIN guardar el
@@ -18,6 +19,10 @@ import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 import { corsHeaders, jsonError } from "../_shared/response.ts";
 import { humanizeAuthError } from "../_shared/auth_errors.ts";
+
+// Tenant fijo "System" (donde vive el super_admin). Nadie de este tenant puede
+// ser target de un force-password, aun si por un bug su rol no fuese super_admin.
+const SYSTEM_TENANT = "00000000-0000-0000-0000-000000000000";
 
 interface ForzarPasswordRequest {
   cobrador_id: string;
@@ -102,6 +107,16 @@ serve(async (req) => {
     if (target.rol === "super_admin") {
       return jsonError(
         "No se puede modificar la contraseña de otro super_admin",
+        400,
+      );
+    }
+    // Defensa en profundidad: nadie del tenant System puede ser target, aunque
+    // su rol no sea super_admin (protege contra un estado inválido futuro de un
+    // usuario en el tenant del sistema). El guard de rol de arriba es la línea
+    // principal; este es el cinturón extra.
+    if (target.tenant_id === SYSTEM_TENANT) {
+      return jsonError(
+        "No se puede modificar la contraseña de un usuario del sistema",
         400,
       );
     }
