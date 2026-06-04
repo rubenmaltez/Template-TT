@@ -158,6 +158,67 @@ consistentes → auditoría.
 
 > Más reciente arriba. Formato por ítem: error → fix → expectativa.
 
+### 2026-06-04 — Sesión v0.6.4 → v0.7.5 (roles + drift DB + impresión)
+
+Branch `claude/stoic-tesla-cGkJ6`. Sesión larga; resumen ejecutivo (detalle en
+`ESTADO-APP.md §10`). Cada batch pasó audits (correctness + offline/QA +
+deployment-safety) con fixes antes de commitear.
+
+**Drift Postgres-vs-repo (crítico)**
+- *Error:* crear contrato fallaba con "Could not find the 'codigo' column of
+  'contratos' in the schema cache" — la migr **0077** (`contratos.codigo`) no
+  estaba aplicada en el Postgres del usuario (DB atrás del repo).
+- *Fix:* aplicar 0077 + `notify pgrst, 'reload schema'` + redeploy sync rules.
+  Query de verificación de drift (information_schema vs `schema.dart`) confirmó
+  que era el único faltante.
+- *Expectativa:* **al abrir sesión, correr la query de drift** — el Postgres
+  puede estar desfasado de las migraciones del repo.
+
+**v0.6.4 — auditoría super-only + quitar onboarding + versión visible + recibo upsert**
+- Auditoría oculta al admin por defecto (toggle super-admin, 0089); wizard de
+  onboarding eliminado (admin configura desde Ajustes); versión en login/sidebar/
+  perfil; toggles del diseñador de recibo persisten (`upsert` + seed 0090).
+
+**v0.7.0 — roles (admin_cobranza) + backlog de testing**
+- *Error/pedido:* admin_cobranza no podía crear contratos / editar clientes /
+  asignar cobrador / cobrar; admin no podía forzar password; faltaba email en
+  Personal; super_admin impersonando no podía invitar; navegación rota en
+  Android 11+; botón WhatsApp de más; prefijo solo para cobrador.
+- *Fix:* `puedeGestionar` (admin ∪ admin_cobranza) en cliente_detail; prefijo
+  para los 3 roles que cobran (+ índice único 0092 + RPC 0093); cobrador en
+  detalle de cliente (inline + form); nav con `<queries>` + `launchUrl` directo;
+  WhatsApp oculto; `forzar-password-cobrador` acepta admin (su tenant, target
+  no-admin) + botón en Personal; email vía RPC `list_cobrador_emails` (0091);
+  invitar manda `tenant_id` en impersonación; super_shell escucha errores de sync.
+- *Expectativa:* admin_cobranza opera como admin MENOS Settings/Personal/Planes/
+  Geo/Audit. Migr 0091/0092/0093 + redeploy de `forzar-password` e `invitar`.
+
+**v0.7.1 → v0.7.5 — IMPRESIÓN del recibo (varias iteraciones)**
+- *Error:* la térmica (PT-210, codepage chino GB18030) imprimía tildes como
+  chino; el codepage es por-modelo (no universal).
+- *Camino:* CP850 (0.7.1, falló) → rasterizar PDF con PDFium (0.7.2, imprimía
+  solo el logo: PDFium no renderiza la fuente embebida) → **enfoque definitivo
+  (0.7.3): un solo widget `ReciboTicket` (Flutter/Skia) para preview Y impresión
+  (captura con `screenshot` → raster ESC/POS)** → fixes de negativo/constraint/
+  preview (0.7.4) → fondo blanco sólido + letras más grandes (0.7.5).
+- *Fix final (v0.7.5):* el recibo se dibuja con Skia (tildes seguras en cualquier
+  impresora, offline; preview = impresión); se captura sobre un **Container
+  blanco que cubre todo el targetSize** (no más negativo); `baseFont =
+  anchoDots/384` (58mm 1.0×, 80mm 1.5×, legible); 58→58mm estándar; CHECK
+  `recibos_ultimo_formato_mm` acepta 58 (migr **0094**+**0095**); sin reimpresión;
+  banner "red inestable" no aparece al arrancar. Matemática del dinero del ticket
+  = copia exacta del PDF (auditada).
+- *Expectativa:* recibo fondo blanco + texto negro legible, tildes/ñ perfectas en
+  CUALQUIER impresora (58/80mm), online y offline; preview = lo que se imprime.
+  **PENDIENTE DE VALIDAR en impresora real** (si sigue oscuro: dump del PNG
+  capturado para inspección).
+
+**Distribución + reset**
+- `Install Steps/` (guías numeradas + scripts) y `Releases\vX.Y.Z\` (instaladores
+  versionados que se apilan; GitHub usa nombre fijo para el auto-update). Reset
+  total de testing (wipe preservando super_admin + System). Ícono Android
+  commiteado (fuente `assets/icon/app_icon.png` + mipmaps).
+
 ### 2026-06-03 — Release v0.6.4: auditoría super-only + quitar onboarding + fix recibos
 
 Branch `claude/stoic-tesla-cGkJ6`. Commits `401ec78` (base v0.6.4), `a393064` +

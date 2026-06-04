@@ -4,15 +4,16 @@
 > JUNTO con `CLAUDE.md` al abrir una sesión nueva de Claude Code, para
 > continuar exactamente desde acá sin re-descubrir el contexto.
 >
-> **Última actualización**: 2026-06-03 (branch `claude/stoic-tesla-cGkJ6`).
-> **Release v0.6.4** — ver §9. Cambios: Auditoría oculta para el admin por
-> defecto (toggle super-admin por tenant, migr **0089**); se quitó el wizard de
-> onboarding (el admin configura empresa/planes desde Ajustes); versión visible
-> en sidebar/login/perfil; **fix de los toggles del diseñador de recibo**
-> (`upsert` + migr **0090**). Reorg de distribución: `Install Steps/` (guías) +
-> `Releases\vX.Y.Z\` (instaladores versionados que se apilan). Schema **v16**
-> (sin cambios). Cada cambio pasó audit (correctness + QA + deployment-safety),
-> 0 findings. Snapshot previo: 2026-06-02, commit `83fec70` (audit total).
+> **Última actualización**: 2026-06-04 (branch `claude/stoic-tesla-cGkJ6`,
+> commit `9bc4dc9`). **Release v0.7.5.** Sesión larga v0.6.4 → v0.7.5 — ver
+> **§10** (resumen completo) y §9 (detalle de v0.6.4). Migraciones hasta
+> **0095**, schema **v16** (sin cambios — todas las migr nuevas son filas/RPC/
+> índice/constraint, no columnas sincronizadas). Distribución: `Install Steps/`
+> (guías) + `Releases\vX.Y.Z\` (instaladores versionados). **Estado de testing
+> en curso**: roles/admin_cobranza y el ciclo cobro→recibo validados; el foco
+> abierto es la **impresión térmica** (ver §10 → "Impresión" y "Pendiente de
+> validar"). Snapshots previos: 2026-06-03 v0.6.4 (§9); 2026-06-02 `83fec70`
+> (audit total).
 
 ---
 
@@ -98,10 +99,12 @@ obligatorio**), `/admin/cobros` (vista de cobros del admin con filtros cobrador/
 (estado + satélite + filtros admin), settings (5 tabs), cobradores, planes, geografía, audit,
 onboarding. (*= visibles solo si el super lo habilita.)
 
-### admin_cobranza — ✅ subconjunto (router `soloAdmin`)
-VE: dashboard, clientes (+detalle), Cobros, contratos, reportes, mapa. Puede registrar
-visitas, anular pagos, cambiar estado de contrato, editar fotos. NO accede: cobradores,
-planes, geografía, audit, settings, pantallas Pagos/Notificaciones gateadas.
+### admin_cobranza — ✅ subconjunto (router `soloAdmin`) — AMPLIADO en v0.7.0
+VE: dashboard, clientes (+detalle), Cobros, contratos, reportes, mapa. Desde
+**v0.7.0** también: **editar clientes, crear/editar contratos, asignar cobrador,
+y cobrar** (con su prefijo de recibo). Puede registrar visitas, anular pagos,
+cambiar estado de contrato, editar fotos. **NO accede** (sigue negado por rol):
+cobradores/Personal, planes, geografía, audit, settings. (Ver §10.1.)
 
 ### cobrador (`/`, móvil-first, bottom-nav) — ✅ completo
 Cobros (tabs Por cliente/Por cobrar + 5 filtros estado + multi-select consecutivo),
@@ -256,3 +259,111 @@ Cada uno pasó audit (correctness + QA + deployment-safety), 0 findings.
 Correr **0089 y 0090** en orden (Dashboard → SQL Editor), después
 `.\build-release.ps1`. Ninguna toca schema/sync rules. Ver
 `Install Steps/1-Publicar-nueva-version.md`.
+
+---
+
+## 10. Sesión v0.6.4 → v0.7.5 (2026-06-04)
+
+Sesión muy larga: features de roles, fix de drift de DB, reorg de distribución,
+y un **rework completo de la impresión del recibo** (varias iteraciones). Todo
+en branch `claude/stoic-tesla-cGkJ6`. Cada batch pasó audits (correctness + QA/
+offline + deployment-safety), con fixes aplicados antes de commitear.
+
+### 10.1 Releases y qué trajo cada uno
+- **v0.6.4** (§9): auditoría super-only (0089), quitar onboarding, versión
+  visible, fix toggles del recibo (`upsert` + 0090).
+- **Fix de drift de DB (crítico)**: el Postgres del usuario estaba desfasado —
+  faltaba **0077** (`contratos.codigo`) → el alta de contrato fallaba con
+  "codigo column not found". Se aplicó 0077 + `notify pgrst` + redeploy de sync
+  rules. Se corrió una **query de verificación de drift** (information_schema vs
+  lo que `schema.dart` espera) → confirmó que era el ÚNICO faltante. **Lección:
+  verificar drift Postgres-vs-repo al abrir sesión** (ver §10.4).
+- **v0.7.0** — **roles + backlog de testing**:
+  - `admin_cobranza` ahora gestiona clientes y contratos: editar cliente, crear/
+    editar contrato, asignar cobrador, y cobrar. Se unificó `esAdmin` →
+    `puedeGestionar` (admin ∪ admin_cobranza) en `cliente_detail_screen`. Sigue
+    NEGADO para admin_cobranza: Settings, Personal, Planes, Geografía, Auditoría.
+  - **Prefijo de recibo** para los 3 roles que cobran (cobrador/admin/
+    admin_cobranza): cliente + invite + RPC `set_cobrador_rol` (**0093**) +
+    índice único de prefijo por tenant (**0092**).
+  - **Cobrador visible y asignable desde el detalle del cliente** (inline + form).
+  - **Navegación Android 11+** arreglada (`<queries>` en manifest + `launchUrl`
+    directo, sin `canLaunchUrl`).
+  - **Botón WhatsApp oculto** en el detalle de cliente.
+  - **Admin puede forzar password** (edge function `forzar-password-cobrador`
+    relajada: acepta admin sobre targets de su tenant no-admin/no-super + botón
+    en Personal). admin_cobranza NO (no tiene Personal).
+  - **Email visible en Personal** (RPC `list_cobrador_emails` **0091**).
+  - **super_admin impersonando puede invitar cobrador** (manda `tenant_id` en el
+    body; `invitar-cobrador` ajustada).
+  - `super_shell` ahora escucha `crudUploadErrorProvider`.
+  - **Migraciones 0091/0092/0093**; edge functions `forzar-password-cobrador` e
+    `invitar-cobrador` redeployadas.
+- **v0.7.1–v0.7.5 — saga de IMPRESIÓN** (ver §10.2).
+
+### 10.2 Impresión del recibo (el tema más iterado)
+Problema raíz: la térmica del usuario (PT-210) viene en codepage chino (GB18030)
+y NO cambia de codepage confiablemente → tildes salían como chino. Se probaron
+enfoques hasta dar con el sólido:
+- **v0.7.1**: codepage CP850 + reset ESC @ + logo raster (cache local offline) +
+  fuente NotoSans embebida en los PDF (arregla ⊠ en reportes). → tildes seguían
+  mal (codepage es por-modelo, no universal).
+- **v0.7.2**: térmica = rasterizar el PDF del recibo (`Printing.raster`/PDFium) +
+  58mm estándar (migr **0094** 57→58) + recibo limpio sin líneas + subset de
+  fuente ampliado. → **PDFium NO renderizó la fuente embebida** → imprimía SOLO
+  el logo (texto invisible).
+- **v0.7.3**: **enfoque definitivo** — un solo widget **`ReciboTicket`**
+  (Flutter/Skia) usado para la **preview Y la impresión** (se captura con
+  `screenshot` → raster ESC/POS). Skia sí renderiza las tildes en cualquier
+  impresora, offline; **preview = lo que se imprime** (WYSIWYG). Se quitó el
+  badge/conteo de reimpresión. Banner "red inestable" ya no aparece en falso al
+  arrancar (no cuenta el parpadeo de la ventana de arranque, ~25s).
+  Matemática del dinero del ticket = **copia exacta del PDF** (auditada campo
+  por campo). El "Descargar PDF" (solo web) sigue usando `recibo_pdf`.
+- **v0.7.4**: la captura traía transparencia → recibo en negativo; se **aplana
+  sobre blanco**. Error de sync al imprimir 58mm: el CHECK `recibos_ultimo_
+  formato_mm_check` (0006) solo aceptaba 57/80 → migr **0095** acepta 57/58/80.
+  Preview chica → `FittedBox.scaleDown` → `contain`.
+- **v0.7.5**: fondo aún oscuro → el `targetSize 384×5000` dejaba área no-blanca;
+  ahora el ticket va en un **Container blanco que cubre todo el targetSize** →
+  captura 100% blanca + recorte → positivo. Letras chicas → `baseFont` pasó de
+  `anchoDots/576` a `anchoDots/384` (58mm 1.0×, 80mm 1.5×).
+
+**Arquitectura de impresión actual (v0.7.5)**:
+`ReciboTicket` (widget, ancho = dots del papel, fondo blanco) → `screenshot`
+captura a PNG (targetSize ancho×5000 sobre Container blanco, pixelRatio 1.0) →
+`ImpresoraService.imprimirImagen(pngBytes)`: decode → aplanar sobre blanco →
+resize a dots → grayscale → recortar blanco → dither Floyd-Steinberg →
+`gen.imageRaster` → BT. 100% offline. **80mm es el estándar de producción**
+(576 dots); 58mm es el de testing de Rubén (384 dots).
+
+### 10.3 Reset total + distribución
+- **Reset de testing**: se wipeó todo (tenants/usuarios/data) preservando SOLO
+  el super_admin + tenant System, vía SQL guardado (sin `session_replication_
+  role` — restringido en Supabase; se borró en orden hijo→padre con guard).
+- **Distribución (orden absoluto)**: `build-release.ps1` archiva instaladores
+  **versionados** en `Releases\vX.Y.Z\` + Escritorio, y sube a GitHub los de
+  nombre **fijo** (auto-update por `latest/download`). Carpeta **`Install Steps/`**
+  con guías numeradas + scripts. Versión visible en login/sidebar/perfil.
+- **Ícono Android**: el fuente vivía en `assets/` untracked y se perdió en un
+  `git restore`; se regeneró con `flutter_launcher_icons` y se **commiteó el
+  fuente** (`assets/icon/app_icon.png`) + mipmaps para que no se pierda.
+
+### 10.4 Pendiente de validar / backlog de la sesión
+- **VALIDAR v0.7.5 en impresora real**: que el recibo salga **fondo blanco +
+  letras grandes** (online y offline, 58 y 80mm). Si AÚN sale oscuro, el plan es
+  guardar el PNG capturado a archivo para inspeccionar qué produce `screenshot`.
+- **Drift Postgres-vs-repo**: correr la query de verificación (information_schema)
+  al abrir cada sesión; el Postgres puede estar atrás de las migraciones del repo.
+- **NITs documentados** (no bloquean): rasterizar/dither corre en el hilo de UI
+  (~1-2s con spinner; mover a isolate si molesta); `_cachearLogoSiHay` corre en
+  cada `status.connected` (dedupe por logoPath pendiente); `recibo.template_57mm`
+  string huérfano oculto; sample row del diseñador sin `contrato_id` (no muestra
+  mora en la preview de settings, by-design).
+- **Pendiente de decisión del dueño**: si admin_cobranza también debería tener
+  Personal/Auditoría (hoy NO, por seguridad — decisión actual confirmada).
+
+### 10.5 Comunicación / proceso (acuerdo de la sesión)
+Rubén pidió: cuando una regla vieja (de CLAUDE.md o de pedidos previos) **entre
+en conflicto** con una decisión nueva, **explicar el conflicto claro (qué es,
+cómo afecta) y preguntar**, en vez de asumir la regla vieja — la app evoluciona.
