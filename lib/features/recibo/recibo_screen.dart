@@ -11,6 +11,7 @@ import '../../data/providers/cobrador_provider.dart';
 import '../../data/providers/impresora_provider.dart';
 import '../../data/providers/logo_empresa_provider.dart';
 import '../../data/repositories/settings_repo.dart';
+import '../../data/services/logo_cache_service.dart';
 import '../../data/utils/formatters.dart';
 import '../../data/utils/monto_a_letras.dart';
 import '../../powersync/db.dart' as ps;
@@ -1095,6 +1096,18 @@ class _AccionesImpresionState extends ConsumerState<_AccionesImpresion> {
               .where((m) => !excluir.contains(m['cuota_id']))
               .toList();
 
+      // Logo para la térmica: se lee del CACHE LOCAL (sin red — la impresión
+      // es 100% offline). Solo si el bloque `logo` está visible en el layout
+      // (paridad con pantalla/PDF). Si nunca se cacheó (offline desde el
+      // arranque, o tenant sin logo) queda null → el recibo imprime sin logo.
+      final logoVisible = widget.settings.reciboLayout
+          .any((b) => b.id == 'logo' && b.visible);
+      final tenantId = ref.read(tenantIdProvider);
+      Uint8List? logoBytes;
+      if (logoVisible && tenantId != null) {
+        logoBytes = await LogoCacheService().leerLogoCacheado(tenantId);
+      }
+
       final ok = await service.imprimir(
         macImpresora: fav.mac,
         recibo: widget.recibo,
@@ -1122,6 +1135,8 @@ class _AccionesImpresionState extends ConsumerState<_AccionesImpresion> {
         // Detalle de mora del contrato para el bloque `mora` (paridad con
         // pantalla/PDF). Ya filtrado arriba; vacío → el bloque no imprime.
         moraRows: moraRows,
+        // Logo cacheado localmente (sin red). Null → recibo sin logo.
+        logoBytes: logoBytes,
       );
 
       if (!mounted) return;

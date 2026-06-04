@@ -1,6 +1,7 @@
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 
+import '../../../shared/pdf/pdf_theme.dart';
 import 'pdf_utils.dart';
 
 /// Genera un PDF de "Reporte de mora" con clientes en estado deudor.
@@ -14,16 +15,18 @@ import 'pdf_utils.dart';
 ///
 /// Las filas vienen pre-ordenadas por dias_mora DESC desde la query.
 /// Retorna el Document PDF listo para imprimir/descargar.
-pw.Document buildReporteMora({
+Future<pw.Document> buildReporteMora({
   required String titulo,
   required String empresaNombre,
   required String periodo,
   required List<Map<String, dynamic>> rows,
-}) {
+}) async {
   final pdf = pw.Document();
+  final theme = await pdfTheme();
 
   pdf.addPage(
     pw.MultiPage(
+      theme: theme,
       pageFormat: PdfPageFormat.letter,
       margin: const pw.EdgeInsets.all(40),
       header: (context) => buildHeaderEstandar(

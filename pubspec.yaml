@@ -1,7 +1,7 @@
 name: isp_billing
 description: App de gestión de clientes y cobros para ISP (Nicaragua) — offline-first con PowerSync.
 publish_to: 'none'
-version: 0.7.0+070
+version: 0.7.1+071
 
 environment:
   sdk: '>=3.4.0 <4.0.0'
@@ -61,6 +61,11 @@ dependencies:
   pdf: ^3.11.1
   printing: ^5.13.3
 
+  # Decodificar/convertir el logo a raster monocromo para la térmica (ESC/POS)
+  # y para procesar imágenes. esc_pos_utils_plus ya la trae transitiva; la
+  # declaramos directa para importarla de forma estable.
+  image: ^4.0.0
+
   # HTTP client para check de updates (version.json en Storage)
   http: ^1.2.0
 
@@ -85,6 +90,13 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+  # Fuente Unicode embebida para los PDF (recibo + reportes). NotoSans estático
+  # subset (Latin + puntuación + símbolos: — – · • € tildes ñ ¿ ¡). Sin esto los
+  # PDF usan la Helvetica interna que no tiene glifos para varios símbolos y
+  # salen como ⊠. Se carga vía rootBundle en el theme de los documentos.
+  assets:
+    - assets/fonts/NotoSans-Regular.ttf
+    - assets/fonts/NotoSans-Bold.ttf
 
 # Configuración MSIX para distribución Windows.
 # Build: flutter build windows --release && dart run msix:create

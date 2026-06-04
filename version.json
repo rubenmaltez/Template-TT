@@ -1,6 +1,6 @@
 {
-  "version": "0.7.0",
-  "release_notes": "admin_cobranza ahora gestiona clientes, contratos y cobra (con su prefijo); prefijo de recibo para los 3 roles que cobran; cobrador visible y asignable desde el detalle del cliente; navegacion arreglada en Android moderno; boton WhatsApp oculto; el admin puede forzar password; email visible en Personal; y fix del codigo de contrato.",
+  "version": "0.7.1",
+  "release_notes": "Impresion termica: tildes y enie correctos (codepage CP850 + reset), y el logo de la empresa ahora se imprime (offline, desde cache local). PDF (recibos y reportes): fuente Unicode embebida (NotoSans) que arregla los simbolos raros. Incluye todo lo de 0.7.0 (roles admin_cobranza, prefijo de recibo, navegacion Android, forzar password, etc.).",
   "download_url_windows": "https://github.com/rubenmaltez/Template-TT/releases/latest/download/SITECSA-CRM.msix",
   "download_url_android": "https://github.com/rubenmaltez/Template-TT/releases/latest/download/SITECSA-CRM.apk",
   "download_url": "https://github.com/rubenmaltez/Template-TT/releases/latest/download/SITECSA-CRM.msix"

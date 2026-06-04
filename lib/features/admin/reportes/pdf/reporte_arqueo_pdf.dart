@@ -1,6 +1,7 @@
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 
+import '../../../shared/pdf/pdf_theme.dart';
 import 'pdf_utils.dart';
 
 /// Reporte de arqueo / cierre por cobrador.
@@ -16,17 +17,19 @@ import 'pdf_utils.dart';
 /// efectivo_nio_qty, efectivo_vuelto, efectivo_ingreso, transferencia,
 /// transferencia_qty, deposito, deposito_qty, tarjeta, tarjeta_qty,
 /// ingreso_total.
-pw.Document buildReporteArqueo({
+Future<pw.Document> buildReporteArqueo({
   required String titulo,
   required String empresaNombre,
   required String periodo,
   required List<Map<String, dynamic>> rows,
   required double tasaActual,
-}) {
+}) async {
   final pdf = pw.Document();
+  final theme = await pdfTheme();
 
   pdf.addPage(
     pw.MultiPage(
+      theme: theme,
       pageFormat: PdfPageFormat.letter,
       margin: const pw.EdgeInsets.all(40),
       header: (context) => buildHeaderEstandar(

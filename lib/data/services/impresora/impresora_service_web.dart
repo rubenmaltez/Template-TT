@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import '../../models/recibo_layout.dart';
 
 /// Stub web: impresión Bluetooth no aplica en navegador.
@@ -36,6 +38,8 @@ class ImpresoraService {
     // firma del service io para que el conditional import compile aunque acá
     // no se use (BT no aplica en web).
     List<Map<String, dynamic>> moraRows = const [],
+    // Logo cacheado (espeja la firma del service io). No aplica en web.
+    Uint8List? logoBytes,
   }) async {
     throw UnsupportedError('Impresión BT no disponible en web');
   }

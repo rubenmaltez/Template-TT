@@ -1,21 +1,24 @@
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 
+import '../../../shared/pdf/pdf_theme.dart';
 import 'pdf_utils.dart';
 
 /// Reporte de cobros filtrado por cobrador.
 /// Columnas: Fecha, Cliente, Monto (C$), Método, Recibo.
-pw.Document buildReportePorCobrador({
+Future<pw.Document> buildReportePorCobrador({
   required String titulo,
   required String empresaNombre,
   required String periodo,
   required String cobradorNombre,
   required List<Map<String, dynamic>> rows,
-}) {
+}) async {
   final pdf = pw.Document();
+  final theme = await pdfTheme();
 
   pdf.addPage(
     pw.MultiPage(
+      theme: theme,
       pageFormat: PdfPageFormat.letter,
       header: (context) => buildHeaderEstandar(
         empresaNombre: empresaNombre,

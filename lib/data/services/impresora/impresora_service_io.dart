@@ -1,5 +1,8 @@
+import 'dart:typed_data';
+
 import 'package:esc_pos_utils_plus/esc_pos_utils_plus.dart';
 import 'package:flutter/foundation.dart';
+import 'package:image/image.dart' as img;
 import 'package:intl/intl.dart';
 import 'package:print_bluetooth_thermal/print_bluetooth_thermal.dart';
 
@@ -17,10 +20,13 @@ class ImpresoraBT {
 /// Servicio para imprimir recibos en impresoras térmicas Bluetooth (ESC/POS).
 /// Mobile only — web tiene un stub paralelo.
 class ImpresoraService {
-  /// Code page Latin-1 — cubre Ñ, acentos, € y caracteres usados en
-  /// nombres en español. Soportado por casi todas las térmicas baratas.
-  /// (CP437 default no tiene Ñ.)
-  static const _codeTable = 'CP1252';
+  /// Code page CP850 (Multilingual Latin-1) — cubre á é í ó ú ñ Ñ ¿ ¡ ü y
+  /// demás caracteres del español. Es un índice ESTÁNDAR (`ESC t 2`) que
+  /// TODAS las térmicas soportan en la misma posición. Las chinas baratas
+  /// (PT-210, default GB18030) ubican CP1252 en un índice no estándar y no
+  /// cambian a él → las tildes salían como caracteres chinos. CP850 evita ese
+  /// problema. (CP437 default no tiene Ñ.)
+  static const _codeTable = 'CP850';
 
   bool get soportado => true;
 
@@ -69,6 +75,10 @@ class ImpresoraService {
     // calcula afuera (`fetchMoraContrato`) y se pasa hecha. Vacío → el bloque
     // `mora` no se imprime.
     List<Map<String, dynamic>> moraRows = const [],
+    // Bytes del logo YA cargados por el call-site (desde el cache local, sin
+    // red — la impresión es 100% offline). Null → el bloque `logo` no imprime
+    // nada (comportamiento previo). El service NO hace IO: solo decodifica.
+    Uint8List? logoBytes,
   }) async {
     // Si el caller no pasó layout (o llegó vacío), caer al default del catálogo.
     final layoutFinal = layout.isEmpty ? ReciboLayout.porDefecto : layout;
@@ -86,6 +96,7 @@ class ImpresoraService {
             mostrarCedula: mostrarCedula,
             layout: layoutFinal,
             moraRows: moraRows,
+            logoBytes: logoBytes,
           )
         : await _generarBytes(
             recibo: recibo,
@@ -99,6 +110,7 @@ class ImpresoraService {
             mostrarCedula: mostrarCedula,
             layout: layoutFinal,
             moraRows: moraRows,
+            logoBytes: logoBytes,
           );
     return _enviarBytes(macImpresora, bytes);
   }
@@ -111,6 +123,9 @@ class ImpresoraService {
     final profile = await CapabilityProfile.load();
     final gen = Generator(_size(anchoMm), profile);
     final bytes = <int>[
+      // Reset/init ANTES del primer texto: saca la térmica del modo chino
+      // (GB18030) y la deja en el codepage que fijamos por estilo (CP850).
+      ..._resetBytes(),
       ...gen.text('--- PRUEBA DE IMPRESIÓN ---',
           styles: const PosStyles(
               align: PosAlign.center, bold: true, codeTable: _codeTable)),
@@ -146,6 +161,16 @@ class ImpresoraService {
 
   PaperSize _size(int mm) => mm >= 80 ? PaperSize.mm80 : PaperSize.mm58;
 
+  /// Bytes de reset/init del printer: ESC @ (`[0x1B, 0x40]`). Limpia el buffer
+  /// y restaura los defaults de fábrica, sacando la térmica del modo chino
+  /// (GB18030) en el que arrancan muchas baratas — sin esto el codepage que
+  /// fijamos por estilo (CP850) no toma y las tildes salen como chino. Se
+  /// emite al INICIO de cada stream, ANTES del primer texto.
+  ///
+  /// Emitimos ESC @ crudo (no `Generator.reset()`) porque es la secuencia
+  /// estándar universal, sin depender de la API de esta versión del paquete.
+  List<int> _resetBytes() => const [0x1B, 0x40];
+
   // ──────────────────────────────────────────────────────────────────
   // Composición del recibo en bytes ESC/POS
   // ──────────────────────────────────────────────────────────────────
@@ -162,10 +187,15 @@ class ImpresoraService {
     String? empresaWhatsapp,
     required List<ReciboBloque> layout,
     List<Map<String, dynamic>> moraRows = const [],
+    Uint8List? logoBytes,
   }) async {
     final profile = await CapabilityProfile.load();
     final gen = Generator(_size(anchoMm), profile);
     final bytes = <int>[];
+
+    // Reset/init ANTES de cualquier byte: saca la térmica del modo chino
+    // (GB18030 por default en las baratas) para que las tildes salgan bien.
+    bytes.addAll(_resetBytes());
 
     // Reimpresión visible al INICIO (donde el cliente la ve primero). NO es un
     // bloque del layout — es metadata de la impresión, va siempre arriba.
@@ -197,6 +227,7 @@ class ImpresoraService {
         mostrarAdeudado: mostrarAdeudado,
         mostrarCedula: mostrarCedula,
         moraRows: moraRows,
+        logoBytes: logoBytes,
       );
       if (contenido.isEmpty) continue;
       final zona = reciboBloqueInfo(b.id)?.zona ?? ReciboZona.body;
@@ -234,12 +265,14 @@ class ImpresoraService {
     bool mostrarAdeudado = true,
     bool mostrarCedula = true,
     List<Map<String, dynamic>> moraRows = const [],
+    Uint8List? logoBytes,
   }) {
     final bytes = <int>[];
     switch (id) {
       case 'logo':
-        // La térmica no imprime el logo (no hay imagen) → bloque vacío.
-        return const [];
+        // Logo raster desde el cache local (sin red). Vacío si no se cacheó
+        // o si el decode falla → el recibo sale sin logo, sin romper nada.
+        return _bloqueLogoBytes(gen, anchoMm, logoBytes);
       case 'empresa':
         final hayEmpresa = (empresa['nombre'] ?? '').isNotEmpty ||
             (empresa['direccion'] ?? '').isNotEmpty ||
@@ -477,10 +510,15 @@ class ImpresoraService {
     bool mostrarCedula = true,
     required List<ReciboBloque> layout,
     List<Map<String, dynamic>> moraRows = const [],
+    Uint8List? logoBytes,
   }) async {
     final profile = await CapabilityProfile.load();
     final gen = Generator(_size(anchoMm), profile);
     final bytes = <int>[];
+
+    // Reset/init ANTES de cualquier byte: saca la térmica del modo chino
+    // (GB18030 por default en las baratas) para que las tildes salgan bien.
+    bytes.addAll(_resetBytes());
 
     // Reimpresión visible al INICIO. NO es un bloque del layout.
     if (esReimpresion) {
@@ -506,6 +544,7 @@ class ImpresoraService {
         empresaWhatsapp: empresaWhatsapp,
         mostrarCedula: mostrarCedula,
         moraRows: moraRows,
+        logoBytes: logoBytes,
       );
       if (contenido.isEmpty) continue;
       final zona = reciboBloqueInfo(b.id)?.zona ?? ReciboZona.body;
@@ -537,12 +576,14 @@ class ImpresoraService {
     String? empresaWhatsapp,
     bool mostrarCedula = true,
     List<Map<String, dynamic>> moraRows = const [],
+    Uint8List? logoBytes,
   }) {
     final bytes = <int>[];
     final first = rows.first;
     switch (id) {
       case 'logo':
-        return const [];
+        // Logo raster desde el cache local (sin red). Igual que el single.
+        return _bloqueLogoBytes(gen, anchoMm, logoBytes);
       case 'empresa':
         final hayEmpresa = (empresa['nombre'] ?? '').isNotEmpty ||
             (empresa['direccion'] ?? '').isNotEmpty ||
@@ -736,6 +777,59 @@ class ImpresoraService {
         return _bloqueMoraBytes(gen, anchoMm, moraRows, size);
       default:
         return const [];
+    }
+  }
+
+  /// Bloque `logo` en bytes ESC/POS (compartido single + multi). Decodifica
+  /// los `logoBytes` (ya cargados del cache local, SIN red), los redimensiona
+  /// al ancho del papel, los pasa a B/N con dithering Floyd-Steinberg y los
+  /// emite como raster centrado.
+  ///
+  /// `logoBytes == null` (no se cacheó) o decode fallido → [] (el recibo sale
+  /// sin logo, comportamiento previo). NUNCA lanza: un logo corrupto no debe
+  /// romper la impresión del recibo.
+  List<int> _bloqueLogoBytes(
+      Generator gen, int anchoMm, Uint8List? logoBytes) {
+    if (logoBytes == null || logoBytes.isEmpty) return const [];
+    try {
+      final decoded = img.decodeImage(logoBytes);
+      if (decoded == null) return const [];
+
+      // Ancho en dots según el papel: 58mm ≈ 384 px, 80mm ≈ 576 px.
+      final anchoDots = anchoMm >= 80 ? 576 : 384;
+
+      // Redimensionar manteniendo aspecto SOLO si el logo es más ancho que el
+      // papel (no agrandar uno chico → pixelado). `copyResize` con ancho fijo
+      // recalcula el alto proporcional.
+      img.Image trabajada =
+          decoded.width > anchoDots ? img.copyResize(decoded, width: anchoDots) : decoded;
+
+      // Aplanar transparencia sobre BLANCO: muchos logos son PNG con fondo
+      // transparente. La térmica ignora el alpha al medir luminancia, así que
+      // sin esto el fondo transparente saldría NEGRO (toda la tira tiznada).
+      // Componer sobre blanco deja el fondo limpio.
+      if (trabajada.hasAlpha) {
+        final fondo = img.Image(
+          width: trabajada.width,
+          height: trabajada.height,
+        );
+        img.fill(fondo, color: img.ColorRgb8(255, 255, 255));
+        img.compositeImage(fondo, trabajada);
+        trabajada = fondo;
+      }
+
+      // Monocromo: grayscale + dithering Floyd-Steinberg. Un logo color/gris
+      // sale limpio en B/N (la térmica solo imprime negro/blanco).
+      trabajada = img.grayscale(trabajada);
+      trabajada = img.ditherImage(
+        trabajada,
+        kernel: img.DitherKernel.floydSteinberg,
+      );
+
+      return gen.imageRaster(trabajada, align: PosAlign.center);
+    } catch (e) {
+      if (kDebugMode) debugPrint('Impresora logo raster: $e');
+      return const [];
     }
   }
 

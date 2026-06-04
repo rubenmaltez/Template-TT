@@ -8,6 +8,7 @@ import '../../data/repositories/settings_repo.dart';
 import '../../data/utils/formatters.dart';
 import '../../data/utils/monto_a_letras.dart';
 import '../../data/models/pago.dart';
+import '../shared/pdf/pdf_theme.dart';
 
 // ---------------------------------------------------------------------------
 // PDF generator del recibo — replica el ticket térmico (80mm o 57mm)
@@ -38,6 +39,7 @@ Future<pw.Document> buildReciboPdf({
   List<Map<String, dynamic>> moraRows = const [],
 }) async {
   final doc = pw.Document();
+  final theme = await pdfTheme();
   final ancho = _anchoPuntos(settings.formatoReciboMm);
 
   // Se ITERA el layout configurable: cada bloque se construye en
@@ -75,6 +77,7 @@ Future<pw.Document> buildReciboPdf({
 
   doc.addPage(
     pw.Page(
+      theme: theme,
       pageFormat: PdfPageFormat(ancho, double.infinity,
           marginLeft: 8, marginRight: 8, marginTop: 12, marginBottom: 12),
       build: (ctx) => pw.Column(
@@ -276,6 +279,7 @@ Future<pw.Document> buildMultiReciboPdf({
   List<Map<String, dynamic>> moraRows = const [],
 }) async {
   final doc = pw.Document();
+  final theme = await pdfTheme();
   final ancho = _anchoPuntos(settings.formatoReciboMm);
 
   // Se ITERA el MISMO layout configurable que el recibo single. Los ids mapean
@@ -302,6 +306,7 @@ Future<pw.Document> buildMultiReciboPdf({
 
   doc.addPage(
     pw.Page(
+      theme: theme,
       pageFormat: PdfPageFormat(ancho, double.infinity,
           marginLeft: 8, marginRight: 8, marginTop: 12, marginBottom: 12),
       build: (ctx) => pw.Column(

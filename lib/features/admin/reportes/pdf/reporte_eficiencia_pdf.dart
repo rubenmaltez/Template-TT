@@ -1,6 +1,7 @@
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 
+import '../../../shared/pdf/pdf_theme.dart';
 import 'pdf_utils.dart';
 
 /// Reporte de eficiencia por cobrador: cobros realizados, clientes
@@ -8,16 +9,18 @@ import 'pdf_utils.dart';
 ///
 /// [rows] viene de la query con keys: cobrador_nombre, total_cobros,
 /// clientes_visitados, monto_total, cuotas_asignadas.
-pw.Document buildReporteEficiencia({
+Future<pw.Document> buildReporteEficiencia({
   required String titulo,
   required String empresaNombre,
   required String periodo,
   required List<Map<String, dynamic>> rows,
-}) {
+}) async {
   final pdf = pw.Document();
+  final theme = await pdfTheme();
 
   pdf.addPage(
     pw.MultiPage(
+      theme: theme,
       pageFormat: PdfPageFormat.letter,
       margin: const pw.EdgeInsets.all(40),
       header: (context) => buildHeaderEstandar(

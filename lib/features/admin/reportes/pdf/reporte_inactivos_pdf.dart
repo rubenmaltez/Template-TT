@@ -1,23 +1,26 @@
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 
+import '../../../shared/pdf/pdf_theme.dart';
 import 'pdf_utils.dart';
 
 /// Reporte de clientes inactivos: clientes sin pagos en los ultimos N meses.
 ///
 /// [rows] viene de la query con keys: nombre, comunidad, telefono,
 /// ultimo_pago, dias_sin_pago.
-pw.Document buildReporteInactivos({
+Future<pw.Document> buildReporteInactivos({
   required String titulo,
   required String empresaNombre,
   required String periodo,
   required List<Map<String, dynamic>> rows,
   required int mesesInactividad,
-}) {
+}) async {
   final pdf = pw.Document();
+  final theme = await pdfTheme();
 
   pdf.addPage(
     pw.MultiPage(
+      theme: theme,
       pageFormat: PdfPageFormat.letter,
       margin: const pw.EdgeInsets.all(40),
       header: (context) => buildHeaderEstandar(

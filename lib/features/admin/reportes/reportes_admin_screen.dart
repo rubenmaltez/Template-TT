@@ -331,7 +331,7 @@ class _ArqueoCajaCard extends ConsumerWidget {
           await ps.db.getAll(_arqueoSql, [rango.desdeSql, rango.hastaSql]);
 
       final now = DateTime.now();
-      final doc = buildReporteArqueo(
+      final doc = await buildReporteArqueo(
         titulo: 'Arqueo / cierre por cobrador',
         empresaNombre: empresaNombre,
         periodo: rango.periodoLabel,
@@ -514,7 +514,7 @@ class _DescargarPdfMenu extends ConsumerWidget {
 
         final now = DateTime.now();
         final periodo = rango.periodoLabel;
-        final doc = buildReporteCobros(
+        final doc = await buildReporteCobros(
           titulo: 'Reporte de cobros',
           empresaNombre: empresaNombre,
           periodo: periodo,
@@ -547,7 +547,7 @@ class _DescargarPdfMenu extends ConsumerWidget {
         final now = DateTime.now();
         final periodoMora = Fmt.mes(now);
 
-        final doc = buildReporteMora(
+        final doc = await buildReporteMora(
           titulo: 'Reporte de mora',
           empresaNombre: empresaNombre,
           periodo: periodoMora,
@@ -592,7 +592,7 @@ class _DescargarPdfMenu extends ConsumerWidget {
         ''', [seleccionado['id'], rango.desdeSql, rango.hastaSql]);
 
         final now = DateTime.now();
-        final doc = buildReportePorCobrador(
+        final doc = await buildReportePorCobrador(
           titulo: 'Reporte por cobrador',
           empresaNombre: empresaNombre,
           periodo: rango.periodoLabel,
@@ -622,7 +622,7 @@ class _DescargarPdfMenu extends ConsumerWidget {
         ''');
 
         final now = DateTime.now();
-        final doc = buildReporteClientes(
+        final doc = await buildReporteClientes(
           titulo: 'Estado de clientes',
           empresaNombre: empresaNombre,
           periodo: Fmt.mes(now),
@@ -673,7 +673,7 @@ class _DescargarPdfMenu extends ConsumerWidget {
     ''', [rango.desdeSql, rango.hastaSql]);
 
     final now = DateTime.now();
-    final doc = buildReporteFiscal(
+    final doc = await buildReporteFiscal(
       titulo: 'Reporte fiscal / contable',
       empresaNombre: empresaNombre,
       periodo: rango.periodoLabel,
@@ -713,7 +713,7 @@ class _DescargarPdfMenu extends ConsumerWidget {
     ''', [rango.desdeSql, rango.hastaSql, rango.desdeSql, rango.hastaSql]);
 
     final now = DateTime.now();
-    final doc = buildReporteEficiencia(
+    final doc = await buildReporteEficiencia(
       titulo: 'Eficiencia por cobrador',
       empresaNombre: empresaNombre,
       periodo: rango.periodoLabel,
@@ -750,7 +750,7 @@ class _DescargarPdfMenu extends ConsumerWidget {
     ''');
 
     final now = DateTime.now();
-    final doc = buildReporteInactivos(
+    final doc = await buildReporteInactivos(
       titulo: 'Clientes inactivos',
       empresaNombre: empresaNombre,
       periodo: Fmt.mes(now),
@@ -787,7 +787,7 @@ class _DescargarPdfMenu extends ConsumerWidget {
     ''', [rango.desdeSql, rango.hastaSql]);
 
     final now = DateTime.now();
-    final doc = buildReporteAnulaciones(
+    final doc = await buildReporteAnulaciones(
       titulo: 'Reporte de anulaciones',
       empresaNombre: empresaNombre,
       periodo: rango.periodoLabel,

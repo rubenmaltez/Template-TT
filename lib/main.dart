@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -13,6 +14,7 @@ import 'data/models/error_log_entry.dart';
 import 'data/providers/auth_identity_provider.dart';
 import 'data/providers/foto_comprobante_provider.dart';
 import 'data/services/error_log_service.dart';
+import 'data/services/logo_cache_service.dart';
 import 'features/auth/auth_flow_provider.dart';
 import 'package:powersync/powersync.dart' show SyncStatus;
 
@@ -255,6 +257,11 @@ Future<void> _bootstrap() async {
       // durante offline (gap del listener de auth, que solo flushea
       // en signedIn).
       unawaited(ErrorLogService.instance.onConnectivityRestored());
+      // Cachear el logo de la empresa para que la impresión térmica pueda
+      // imprimirlo OFFLINE (la térmica nunca toca la red). Esta es la ÚNICA
+      // parte que usa red, y solo cuando hay conexión: baja el logo del
+      // bucket y lo guarda en disco. Al imprimir se lee del cache local.
+      unawaited(_cachearLogoSiHay());
     }
     // Telemetría del sync flow: si PowerSync reporta un error
     // (anyError, downloadError, uploadError), lo capturamos al
@@ -295,6 +302,54 @@ Future<void> _bootstrap() async {
     container: container,
     child: const IspBillingApp(),
   ));
+}
+
+/// Refresca el cache local del logo de la empresa cuando hay conexión, para
+/// que la impresión térmica (offline) pueda imprimirlo. Lee el `tenant_id` y
+/// el `empresa.logo_path` directamente de la DB local de PowerSync.
+///
+/// Best-effort + silencioso: cualquier error (DB vacía, sin sesión, sin red
+/// real) no debe romper el flujo de conectividad. En web el cache no aplica
+/// (no hay térmica ni filesystem persistente) → se skipea para no gastar
+/// banda en una descarga que el storage backend descartaría igual.
+Future<void> _cachearLogoSiHay() async {
+  if (kIsWeb) return;
+  try {
+    // tenant_id del usuario logueado (la fila de `cobradores` replica el uid).
+    final uid = Supabase.instance.client.auth.currentUser?.id;
+    if (uid == null) return;
+    final tenantRows = await ps.db.getAll(
+      'SELECT tenant_id FROM cobradores WHERE id = ? LIMIT 1',
+      [uid],
+    );
+    if (tenantRows.isEmpty) return;
+    final tenantId = tenantRows.first['tenant_id'] as String?;
+    if (tenantId == null || tenantId.isEmpty) return;
+
+    // empresa.logo_path: el valor está JSON-encodeado ("path" o null).
+    final logoRows = await ps.db.getAll(
+      "SELECT valor FROM settings WHERE tenant_id = ? AND clave = 'empresa.logo_path' LIMIT 1",
+      [tenantId],
+    );
+    if (logoRows.isEmpty) return;
+    final raw = logoRows.first['valor'] as String?;
+    String? logoPath;
+    if (raw != null) {
+      try {
+        final decoded = jsonDecode(raw);
+        if (decoded is String && decoded.isNotEmpty) logoPath = decoded;
+      } catch (_) {
+        // Valor no-JSON (defensa): usar el raw si parece un path.
+        if (raw.isNotEmpty && raw != 'null') logoPath = raw;
+      }
+    }
+    if (logoPath == null) return;
+
+    await LogoCacheService()
+        .refrescarLogo(tenantId: tenantId, logoPath: logoPath);
+  } catch (e) {
+    if (kDebugMode) debugPrint('_cachearLogoSiHay: $e');
+  }
 }
 
 /// Lee el código de error de la URL inicial. Supabase manda errores en

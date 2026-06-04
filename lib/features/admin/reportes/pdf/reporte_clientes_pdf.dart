@@ -1,20 +1,23 @@
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 
+import '../../../shared/pdf/pdf_theme.dart';
 import 'pdf_utils.dart';
 
 /// Reporte de clientes con estado de cuenta.
 /// Columnas: Cliente, Comunidad, Cuotas pendientes, Saldo, Último pago.
-pw.Document buildReporteClientes({
+Future<pw.Document> buildReporteClientes({
   required String titulo,
   required String empresaNombre,
   required String periodo,
   required List<Map<String, dynamic>> rows,
-}) {
+}) async {
   final pdf = pw.Document();
+  final theme = await pdfTheme();
 
   pdf.addPage(
     pw.MultiPage(
+      theme: theme,
       pageFormat: PdfPageFormat.letter,
       header: (context) => buildHeaderEstandar(
         empresaNombre: empresaNombre,
