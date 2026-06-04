@@ -4,7 +4,6 @@ import 'package:esc_pos_utils_plus/esc_pos_utils_plus.dart';
 import 'package:flutter/foundation.dart';
 import 'package:image/image.dart' as img;
 import 'package:print_bluetooth_thermal/print_bluetooth_thermal.dart';
-import 'package:printing/printing.dart';
 
 /// Información de una impresora Bluetooth pareada.
 class ImpresoraBT {
@@ -15,10 +14,12 @@ class ImpresoraBT {
 
 /// Servicio para imprimir recibos en impresoras térmicas Bluetooth.
 ///
-/// El recibo se imprime como IMAGEN: se rasteriza el PDF del recibo (que ya
-/// usa la fuente NotoSans embebida) con el motor PDF local (PDFium, sin red)
-/// y se envía como raster ESC/POS. Esto hace que las tildes salgan bien en
-/// CUALQUIER impresora — no depende del codepage del modelo. Es 100% OFFLINE.
+/// El recibo se imprime como IMAGEN: el call-site CAPTURA el widget Flutter
+/// `ReciboTicket` a PNG (con `screenshot`) y nos lo pasa. Lo decodificamos,
+/// lo pasamos a monocromo con dithering y lo enviamos como raster ESC/POS.
+/// Como lo renderiza Skia (el mismo motor que dibuja la pantalla), las tildes
+/// salen perfectas en CUALQUIER impresora — no depende del codepage del modelo
+/// ni de una fuente embebida. Es 100% OFFLINE y la preview = lo que se imprime.
 ///
 /// Mobile only — web tiene un stub paralelo.
 class ImpresoraService {
@@ -41,19 +42,18 @@ class ImpresoraService {
         .toList();
   }
 
-  /// Imprime un recibo rasterizando su PDF a imagen y enviándolo como raster
-  /// ESC/POS. Devuelve true al éxito.
+  /// Imprime una IMAGEN (PNG) ya renderizada por el call-site (captura del
+  /// widget `ReciboTicket` vía `screenshot`). Devuelve true al éxito.
   ///
-  /// [pdfBytes] = el PDF del recibo YA construido por el call-site (mismos
-  /// builders que el "Descargar PDF": NotoSans embebida + logo del cache local).
+  /// [pngBytes] = PNG del recibo. Idealmente ya viene al ancho exacto del papel
+  /// (capturado con `targetSize` = dots), pero igual reescalamos por seguridad.
   /// [anchoMm] = 58 u 80 (ancho del papel).
   ///
-  /// Flujo OFFLINE: `Printing.raster` usa PDFium local (sin red); la fuente
-  /// está bundleada. Si el raster falla, devuelve false (NO cae a texto
-  /// garbleado).
-  Future<bool> imprimirRaster({
+  /// Flujo OFFLINE: decodifica el PNG en memoria (sin red), monocromo +
+  /// dithering, lo emite como raster ESC/POS. Si algo falla, devuelve false.
+  Future<bool> imprimirImagen({
     required String macImpresora,
-    required Uint8List pdfBytes,
+    required Uint8List pngBytes,
     required int anchoMm,
   }) async {
     try {
@@ -61,51 +61,26 @@ class ImpresoraService {
       // (anchos estándar ESC/POS). 80mm es el estándar de producción.
       final anchoDots = anchoMm >= 80 ? 576 : 384;
 
-      // DPI calculado para que el PDF se renderice EXACTAMENTE al ancho de dots
-      // del papel → máxima nitidez sin reescalado (clave para la calidad en
-      // 80mm = 576px). pageWidthPt = anchoMm * 2.8346 (1mm ≈ 2.8346 pt);
-      // dpi = dots * 72 / pageWidthPt. 80mm → ~183 dpi (576px), 58mm → ~168 dpi
-      // (384px). El copyResize de abajo queda solo como red de seguridad por
-      // redondeos.
-      final dpi = anchoDots * 72.0 / (anchoMm * 2.8346);
-
-      // Recolectar TODAS las páginas del raster. Normalmente el recibo es UNA
-      // página (alto `double.infinity`), pero si PDFium parte un recibo muy
-      // alto (multi-cuota + mucha mora) en varias, las apilamos verticalmente
-      // para NO truncar contenido — un recibo de dinero cortado sería un bug.
-      final paginas = <img.Image>[];
-      await for (final page in Printing.raster(pdfBytes, dpi: dpi)) {
-        // `page.pixels` puede ser una vista con offset sobre un buffer mayor.
-        // `Uint8List.fromList` copia SOLO los píxeles de la vista a un buffer
-        // fresco en offset 0 → `.buffer` (ByteBuffer) queda alineado y del
-        // tipo que espera `Image.fromBytes`.
-        paginas.add(img.Image.fromBytes(
-          width: page.width,
-          height: page.height,
-          bytes: Uint8List.fromList(page.pixels).buffer,
-          numChannels: 4,
-          order: img.ChannelOrder.rgba,
-        ));
-      }
-      if (paginas.isEmpty) {
-        if (kDebugMode) debugPrint('Impresora raster: PDF sin páginas');
+      img.Image? imagen = img.decodeImage(pngBytes);
+      if (imagen == null) {
+        if (kDebugMode) debugPrint('Impresora imagen: PNG no decodificable');
         return false;
       }
 
-      // Una sola página (lo normal) → directo. Varias → apilar vertical para
-      // imprimir el recibo completo.
-      img.Image imagen =
-          paginas.length == 1 ? paginas.first : _apilarVertical(paginas);
-
-      // Si el raster quedó más ancho/angosto que el papel, reescalar al ancho
-      // de dots (mantiene aspecto recalculando el alto).
+      // Si la captura quedó más ancha/angosta que el papel, reescalar al ancho
+      // de dots (mantiene aspecto recalculando el alto). Normalmente la captura
+      // ya viene a `anchoDots` (targetSize) y esto es un no-op.
       if (imagen.width != anchoDots) {
         imagen = img.copyResize(imagen, width: anchoDots);
       }
 
-      // Monocromo limpio: grayscale + dithering Floyd-Steinberg → 1-bit. La
-      // térmica solo imprime negro/blanco; el dither evita bloques tiznados.
+      // Monocromo limpio: grayscale + dithering Floyd-Steinberg. La térmica
+      // solo imprime negro/blanco; el dither evita bloques tiznados.
       imagen = img.grayscale(imagen);
+      // Recortar el margen blanco arriba/abajo (la captura puede venir con alto
+      // holgado/centrado por el targetSize) → no se imprime tira en blanco y se
+      // aprovecha el papel.
+      imagen = _recortarBlancoVertical(imagen);
       imagen = img.ditherImage(
         imagen,
         kernel: img.DitherKernel.floydSteinberg,
@@ -122,25 +97,39 @@ class ImpresoraService {
       ];
       return _enviarBytes(macImpresora, bytes);
     } catch (e) {
-      if (kDebugMode) debugPrint('Impresora raster: $e');
+      if (kDebugMode) debugPrint('Impresora imagen: $e');
       return false;
     }
   }
 
-  /// Apila varias imágenes verticalmente (sobre fondo blanco) en una sola.
-  /// Se usa cuando PDFium parte un recibo muy alto en varias páginas: las
-  /// unimos para imprimir el recibo COMPLETO sin truncar.
-  static img.Image _apilarVertical(List<img.Image> imgs) {
-    final ancho = imgs.map((i) => i.width).reduce((a, b) => a > b ? a : b);
-    final alto = imgs.fold<int>(0, (s, i) => s + i.height);
-    final canvas = img.Image(width: ancho, height: alto, numChannels: 4);
-    img.fill(canvas, color: img.ColorRgba8(255, 255, 255, 255));
-    var y = 0;
-    for (final im in imgs) {
-      img.compositeImage(canvas, im, dstY: y);
-      y += im.height;
+  /// Recorta el margen BLANCO de arriba y abajo de una imagen en grises, para
+  /// que la térmica no imprima tira en blanco (la captura puede venir con alto
+  /// holgado por el `targetSize`). Deja un pequeño padding. Si la imagen es
+  /// toda blanca, la devuelve sin tocar.
+  static img.Image _recortarBlancoVertical(img.Image im) {
+    bool filaConContenido(int y) {
+      for (var x = 0; x < im.width; x++) {
+        // luminanceNormalized: 0 (negro) … 1 (blanco). < 0.95 = hay tinta.
+        if (im.getPixel(x, y).luminanceNormalized < 0.95) return true;
+      }
+      return false;
     }
-    return canvas;
+
+    var top = 0;
+    var bottom = im.height - 1;
+    while (top < im.height && !filaConContenido(top)) {
+      top++;
+    }
+    while (bottom > top && !filaConContenido(bottom)) {
+      bottom--;
+    }
+    if (top >= bottom) return im; // todo blanco → no recortar
+
+    const pad = 8;
+    final y0 = (top - pad) < 0 ? 0 : (top - pad);
+    var alto = (bottom - top + 1) + pad * 2;
+    if (y0 + alto > im.height) alto = im.height - y0;
+    return img.copyCrop(im, x: 0, y: y0, width: im.width, height: alto);
   }
 
   /// Imprime un recibo de prueba para validar conexión + papel.

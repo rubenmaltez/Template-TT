@@ -19,9 +19,9 @@ class ImpresoraService {
 
   /// Espeja la firma del service io para que el conditional import compile.
   /// BT no aplica en web (se usa el PDF descargable), así que tira siempre.
-  Future<bool> imprimirRaster({
+  Future<bool> imprimirImagen({
     required String macImpresora,
-    required Uint8List pdfBytes,
+    required Uint8List pngBytes,
     required int anchoMm,
   }) async {
     throw UnsupportedError('Impresión BT no disponible en web');

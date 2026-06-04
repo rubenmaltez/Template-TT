@@ -1,6 +1,6 @@
 {
-  "version": "0.7.2",
-  "release_notes": "Recibo termico ahora se imprime como imagen (rasterizando el PDF con la fuente NotoSans): tildes y enie perfectos en CUALQUIER impresora, online y offline. Recibo limpio sin lineas, ancho estandar 58mm, logo integrado. PDF de reportes sin simbolos raros (fuente ampliada). Incluye todo lo de 0.7.0/0.7.1.",
+  "version": "0.7.3",
+  "release_notes": "Recibo unificado: un mismo diseno para la preview Y la impresion (se captura con el motor de Flutter), asi la preview es exactamente lo que se imprime, las tildes salen perfectas en cualquier impresora y offline, y se arregla el texto que se salia. Layout limpio y mas compacto, sin numero de reimpresion. Banner de 'red inestable' ya no aparece en falso al arrancar. Incluye todo lo de 0.7.x.",
   "download_url_windows": "https://github.com/rubenmaltez/Template-TT/releases/latest/download/SITECSA-CRM.msix",
   "download_url_android": "https://github.com/rubenmaltez/Template-TT/releases/latest/download/SITECSA-CRM.apk",
   "download_url": "https://github.com/rubenmaltez/Template-TT/releases/latest/download/SITECSA-CRM.msix"

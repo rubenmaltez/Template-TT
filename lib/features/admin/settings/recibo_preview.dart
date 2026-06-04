@@ -3,7 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../data/providers/logo_empresa_provider.dart';
 import '../../../data/repositories/settings_repo.dart';
-import '../../recibo/recibo_screen.dart' show ReciboTicket;
+import '../../recibo/recibo_ticket.dart';
 
 /// Vista previa EN VIVO del recibo en la tab Recibos de settings (#8a).
 ///
@@ -56,8 +56,8 @@ class ReciboPreview extends ConsumerWidget {
     // el real; si no, null (igual que en el recibo real).
     final logoVisible =
         settings.reciboLayout.any((b) => b.id == 'logo' && b.visible);
-    final logoUrl =
-        logoVisible ? ref.watch(logoEmpresaUrlProvider).valueOrNull : null;
+    final logoBytes =
+        logoVisible ? ref.watch(logoEmpresaBytesProvider).valueOrNull : null;
     final scheme = Theme.of(context).colorScheme;
 
     return Card(
@@ -97,10 +97,17 @@ class ReciboPreview extends ConsumerWidget {
                 constraints: BoxConstraints(
                   maxWidth: _previewWidthPx(settings.formatoReciboMm),
                 ),
-                child: ReciboTicket(
-                  row: _sampleRow(),
-                  settings: settings,
-                  logoUrl: logoUrl,
+                // `ReciboTicket` se construye al ancho real del papel (dots);
+                // se escala con FittedBox para entrar en la tira de preview.
+                // Es el MISMO widget que ve el cobrador y que se imprime.
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  alignment: Alignment.topCenter,
+                  child: ReciboTicket(
+                    row: _sampleRow(),
+                    settings: settings,
+                    logoBytes: logoBytes,
+                  ),
                 ),
               ),
             ),

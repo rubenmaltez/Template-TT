@@ -59,9 +59,16 @@ class _OfflineBannerState extends ConsumerState<OfflineBanner> {
   Timer? _unstableResetTimer;
   bool _lastWasConnected = true;
 
+  // Ventana de arranque: durante los primeros segundos PowerSync parpadea
+  // (connecting/reconnecting) mientras establece el sync — NO es red inestable
+  // real. No contamos esos flickers para no disparar el indicador en falso.
+  late final DateTime _montadoEn;
+  static const _arranqueGracia = Duration(seconds: 25);
+
   @override
   void initState() {
     super.initState();
+    _montadoEn = DateTime.now();
     // Estado inicial: si la app arranca ya con PowerSync desconectado,
     // schedule el handler. `ref.read` no se puede llamar dentro de
     // initState directo — lo hacemos post-frame.
@@ -101,7 +108,10 @@ class _OfflineBannerState extends ConsumerState<OfflineBanner> {
       _flickerCount = 0;
     }
     if (offline && _lastWasConnected) {
-      _flickerCount++;
+      // No contamos las desconexiones de la ventana de arranque (parpadeo
+      // normal del handshake de PowerSync, no red inestable real).
+      final enArranque = now.difference(_montadoEn) < _arranqueGracia;
+      if (!enArranque) _flickerCount++;
     }
     _lastWasConnected = !offline;
     if (_flickerCount >= _flickerThreshold && !_showUnstableIndicator) {

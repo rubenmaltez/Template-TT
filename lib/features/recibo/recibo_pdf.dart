@@ -70,15 +70,6 @@ Future<pw.Document> buildReciboPdf({
     zonaPrev = zona == ReciboZona.header ? 'header' : 'otro';
   }
 
-  // Badge de reimpresión: NO es un bloque del layout, va SIEMPRE al final.
-  if (row['impreso_en'] != null) {
-    children.add(pw.SizedBox(height: 6));
-    children.add(pw.Text(
-      'Reimpresión #${(row['reimpresiones'] as int? ?? 0) + 1}',
-      style: const pw.TextStyle(fontSize: 7, color: PdfColors.grey600),
-    ));
-  }
-
   doc.addPage(
     pw.Page(
       theme: theme,

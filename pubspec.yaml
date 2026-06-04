@@ -1,7 +1,7 @@
 name: isp_billing
 description: App de gestión de clientes y cobros para ISP (Nicaragua) — offline-first con PowerSync.
 publish_to: 'none'
-version: 0.7.2+072
+version: 0.7.3+073
 
 environment:
   sdk: '>=3.4.0 <4.0.0'
@@ -65,6 +65,12 @@ dependencies:
   # y para procesar imágenes. esc_pos_utils_plus ya la trae transitiva; la
   # declaramos directa para importarla de forma estable.
   image: ^4.0.0
+
+  # Captura un widget Flutter a imagen FUERA de pantalla (al ancho exacto del
+  # papel). Se usa para imprimir el recibo: el MISMO widget que se ve en la
+  # preview se rasteriza con el motor de Flutter (Skia) → el texto (tildes)
+  # sale seguro en cualquier impresora, sin depender de codepages ni PDFium.
+  screenshot: ^3.0.0
 
   # HTTP client para check de updates (version.json en Storage)
   http: ^1.2.0
