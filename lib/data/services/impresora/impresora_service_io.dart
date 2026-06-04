@@ -57,18 +57,24 @@ class ImpresoraService {
     required int anchoMm,
   }) async {
     try {
-      // Ancho útil en dots según el papel: 58mm ≈ 384 px, 80mm = 576 px.
+      // Ancho útil en dots según el papel: 58mm ≈ 384 px, 80mm = 576 px
+      // (anchos estándar ESC/POS). 80mm es el estándar de producción.
       final anchoDots = anchoMm >= 80 ? 576 : 384;
 
-      // Rasterizar el PDF a 203 dpi (resolución nativa de las térmicas). El
-      // recibo es UNA sola página de alto "infinito", así que tomamos la
-      // primera y cortamos el stream.
+      // DPI calculado para que el PDF se renderice EXACTAMENTE al ancho de dots
+      // del papel → máxima nitidez sin reescalado (clave para la calidad en
+      // 80mm = 576px). pageWidthPt = anchoMm * 2.8346 (1mm ≈ 2.8346 pt);
+      // dpi = dots * 72 / pageWidthPt. 80mm → ~183 dpi (576px), 58mm → ~168 dpi
+      // (384px). El copyResize de abajo queda solo como red de seguridad por
+      // redondeos.
+      final dpi = anchoDots * 72.0 / (anchoMm * 2.8346);
+
       // Recolectar TODAS las páginas del raster. Normalmente el recibo es UNA
       // página (alto `double.infinity`), pero si PDFium parte un recibo muy
       // alto (multi-cuota + mucha mora) en varias, las apilamos verticalmente
       // para NO truncar contenido — un recibo de dinero cortado sería un bug.
       final paginas = <img.Image>[];
-      await for (final page in Printing.raster(pdfBytes, dpi: 203)) {
+      await for (final page in Printing.raster(pdfBytes, dpi: dpi)) {
         // `page.pixels` puede ser una vista con offset sobre un buffer mayor.
         // `Uint8List.fromList` copia SOLO los píxeles de la vista a un buffer
         // fresco en offset 0 → `.buffer` (ByteBuffer) queda alineado y del
