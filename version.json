@@ -1,6 +1,6 @@
 {
-  "version": "0.7.4",
-  "release_notes": "Fix de impresion: el recibo ya no sale en negativo (se aplana sobre blanco) ni recortado, y la preview se ve a tamano real. Arreglado el error de sync de recibos al imprimir en 58mm. Recibo unificado (preview = impresion, tildes en cualquier impresora, offline). Incluye todo lo de 0.7.x.",
+  "version": "0.7.5",
+  "release_notes": "Recibo: fondo blanco solido (no mas impresion en negativo/oscuro) y letras mas grandes y legibles (58 y 80mm). Preview a tamano real. Recibo unificado preview = impresion, tildes en cualquier impresora, offline. Incluye todo lo de 0.7.x.",
   "download_url_windows": "https://github.com/rubenmaltez/Template-TT/releases/latest/download/SITECSA-CRM.msix",
   "download_url_android": "https://github.com/rubenmaltez/Template-TT/releases/latest/download/SITECSA-CRM.apk",
   "download_url": "https://github.com/rubenmaltez/Template-TT/releases/latest/download/SITECSA-CRM.msix"

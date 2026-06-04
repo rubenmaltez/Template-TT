@@ -69,11 +69,11 @@ class ReciboTicket extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final anchoDots = reciboAnchoDots(settings.formatoReciboMm);
-    // Escala base de la tipografía según el ancho del papel: 80mm (576) es la
-    // referencia; 58mm (384) reduce proporcional para no desbordar el papel
-    // angosto. Las fuentes de cada bloque se multiplican por esto + el `k` del
-    // tamaño configurable.
-    final baseFont = anchoDots / 576.0;
+    // Escala base de la tipografía. Referencia 384 (no 576): el ancho angosto
+    // (58mm = 384) queda en 1.0× (letra a tamaño nominal, legible) y el ancho
+    // de producción (80mm = 576) en 1.5× (letra más grande, aprovecha el papel
+    // ancho). Antes la referencia 576 dejaba el 58mm en 0.667× → diminuto.
+    final baseFont = anchoDots / 384.0;
 
     final children = <Widget>[];
     String? zonaPrev;

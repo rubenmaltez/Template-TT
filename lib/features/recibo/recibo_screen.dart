@@ -427,9 +427,16 @@ class _AccionesImpresionState extends ConsumerState<_AccionesImpresion> {
       );
       final ticketCapturable = Directionality(
         textDirection: TextDirection.ltr,
-        child: Material(
+        // Container BLANCO que cubre TODO el targetSize (anchoDots × 5000): así
+        // NO queda ninguna zona no-blanca en la captura (el fondo por defecto
+        // de screenshot puede ser oscuro/transparente → recibo en negativo).
+        // El ticket va arriba; el blanco sobrante lo recorta imprimirImagen.
+        child: Container(
+          width: anchoDots.toDouble(),
+          height: 5000,
           color: Colors.white,
-          child: ticket,
+          alignment: Alignment.topCenter,
+          child: Material(type: MaterialType.transparency, child: ticket),
         ),
       );
 
