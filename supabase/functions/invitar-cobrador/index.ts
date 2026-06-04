@@ -232,9 +232,13 @@ serve(async (req) => {
       rol: body.rol,
       nombre: nombre,
       telefono: telefono === "" ? null : telefono,
-      prefijo_recibo: body.rol === "cobrador"
-        ? (body.prefijo_recibo ?? null)
-        : null,
+      // Prefijo de recibo: aplica a los 3 roles que cobran (cobrador,
+      // admin, admin_cobranza). Sólo super_admin no lo lleva, pero ese rol
+      // ni siquiera es un target válido acá (validado arriba).
+      prefijo_recibo:
+        ["cobrador", "admin", "admin_cobranza"].includes(body.rol)
+          ? (body.prefijo_recibo ?? null)
+          : null,
     };
 
     let nuevoUserId: string | null = null;

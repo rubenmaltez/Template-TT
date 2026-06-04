@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import 'package:package_info_plus/package_info_plus.dart';
 
+import '../../data/providers/crud_error_provider.dart';
 import '../shared/utils/shell_nav.dart';
 import '../shared/utils/sign_out_helper.dart';
 import '../shared/widgets/update_banner.dart';
@@ -11,14 +13,32 @@ import '../shared/widgets/update_banner.dart';
 /// Visualmente separado del AdminShell para dejar claro que estás "afuera"
 /// del tenant — con un AppBar que indica "Super Admin" y un botón para
 /// volver al panel admin del tenant System.
-class SuperShell extends StatelessWidget {
+class SuperShell extends ConsumerWidget {
   const SuperShell({super.key, required this.child, required this.titulo});
 
   final Widget child;
   final String titulo;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    // Escuchar errores de CRUD upload para mostrar SnackBar cuando un write
+    // local es rechazado por Postgres (trigger, constraint, RLS). Mismo patrón
+    // que AdminShell — el super_admin también opera contra la DB (impersonación,
+    // toggles de módulos) y necesita feedback si un sync falla.
+    ref.listen(crudUploadErrorProvider, (_, next) {
+      final error = next.valueOrNull;
+      if (error != null && context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content:
+                Text('Error al sincronizar ${error.table}: ${error.message}'),
+            backgroundColor: Theme.of(context).colorScheme.error,
+            duration: const Duration(seconds: 6),
+          ),
+        );
+      }
+    });
+
     final scheme = Theme.of(context).colorScheme;
     final loc = GoRouterState.of(context).matchedLocation;
     final enLogs = loc == '/super/logs';

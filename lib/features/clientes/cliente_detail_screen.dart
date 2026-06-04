@@ -67,6 +67,13 @@ class _ClienteDetailScreenState extends ConsumerState<ClienteDetailScreen> {
     final cobrador = ref.watch(cobradorActualProvider).valueOrNull;
     final impersonando = ref.watch(estaImpersonandoProvider);
     final esAdmin = cobrador?.tieneAccesoAdmin ?? false;
+    // admin_cobranza también gestiona clientes/contratos (editar cliente,
+    // crear/editar contratos, asignar cobrador) — IGUAL que admin. Lo único
+    // que NO puede es Settings/Personal/Planes/Geografía/Auditoría (eso lo
+    // niega el router). Por eso para los controles de gestión de esta pantalla
+    // usamos `puedeGestionar` (admin ∪ admin_cobranza), no `esAdmin`.
+    final puedeGestionar = (cobrador?.tieneAccesoAdmin ?? false) ||
+        (cobrador?.esAdminCobranza ?? false);
     // El change-log / auditoría se oculta al cobrador puro (least-privilege:
     // si el rol aún no cargó → null → oculto). admin/admin_cobranza/super sí.
     final verHistorial = cobrador != null && !cobrador.esCobrador;
@@ -82,7 +89,7 @@ class _ClienteDetailScreenState extends ConsumerState<ClienteDetailScreen> {
           error: (_, __) => const Text('Cliente'),
         ),
         actions: [
-          if (esAdmin)
+          if (puedeGestionar)
             IconButton(
               icon: const Icon(Icons.edit),
               tooltip: 'Editar cliente',
@@ -136,12 +143,15 @@ class _ClienteDetailScreenState extends ConsumerState<ClienteDetailScreen> {
                     latitud: cliente.latitud,
                     longitud: cliente.longitud,
                   ),
-                  _ClienteInfo(cliente: cliente),
+                  _ClienteInfo(
+                    cliente: cliente,
+                    puedeGestionar: puedeGestionar,
+                  ),
                   const SizedBox(height: 8),
                   _ContratosSection(
                     clienteId: widget.clienteId,
                     clienteCobradorId: cliente.cobradorId,
-                    esAdmin: esAdmin,
+                    esAdmin: puedeGestionar,
                     enAdminShell: enAdminShell,
                   ),
                   const SizedBox(height: 8),
@@ -150,7 +160,7 @@ class _ClienteDetailScreenState extends ConsumerState<ClienteDetailScreen> {
                     child: FotoGalleryWidget(
                       clienteId: widget.clienteId,
                       tenantId: cliente.tenantId,
-                      canEdit: esAdmin || (cobrador?.esAdminCobranza ?? false),
+                      canEdit: puedeGestionar,
                     ),
                   ),
                   const SizedBox(height: 8),
@@ -232,18 +242,12 @@ class _ClienteHeader extends StatelessWidget {
             spacing: 8,
             runSpacing: 8,
             children: [
-              if (telefono != null && telefono!.isNotEmpty) ...[
+              if (telefono != null && telefono!.isNotEmpty)
                 _IconButton(
                   icon: Icons.phone,
                   label: 'Llamar',
                   onTap: () => ExternalActions.llamar(context, telefono!),
                 ),
-                _IconButton(
-                  icon: Icons.chat,
-                  label: 'WhatsApp',
-                  onTap: () => ExternalActions.whatsapp(context, telefono!),
-                ),
-              ],
               if (tieneUbicacion)
                 _IconButton(
                   icon: Icons.directions,
@@ -277,12 +281,16 @@ class _IconButton extends StatelessWidget {
   }
 }
 
-class _ClienteInfo extends StatelessWidget {
-  const _ClienteInfo({required this.cliente});
+class _ClienteInfo extends ConsumerWidget {
+  const _ClienteInfo({required this.cliente, required this.puedeGestionar});
   final dynamic cliente;
+  // admin/admin_cobranza: pueden reasignar el cobrador inline desde el detalle.
+  final bool puedeGestionar;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final cobradorNombre =
+        ref.watch(clienteCobradorNombreProvider(cliente.id as String)).valueOrNull;
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
       child: Card(
@@ -299,6 +307,12 @@ class _ClienteInfo extends StatelessWidget {
               if (cliente.tieneUbicacion)
                 _row(context, Icons.gps_fixed, 'GPS',
                     '${cliente.latitud!.toStringAsFixed(5)}, ${cliente.longitud!.toStringAsFixed(5)}'),
+              _cobradorRow(
+                context,
+                ref,
+                nombre: cobradorNombre,
+                cobradorIdActual: cliente.cobradorId as String?,
+              ),
             ],
           ),
         ),
@@ -319,6 +333,187 @@ class _ClienteInfo extends StatelessWidget {
           SizedBox(width: 90, child: Text(label, style: TextStyle(color: scheme.outline))),
           Expanded(child: Text(value)),
         ],
+      ),
+    );
+  }
+
+  /// Fila "Cobrador: [nombre o 'Sin asignar']". Siempre visible (a diferencia
+  /// de `_row`, que se oculta si el valor es vacío). Si `puedeGestionar`, suma
+  /// un ícono de editar que abre el selector de cobradores del tenant.
+  Widget _cobradorRow(
+    BuildContext context,
+    WidgetRef ref, {
+    required String? nombre,
+    required String? cobradorIdActual,
+  }) {
+    final scheme = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          Icon(Icons.person_pin_circle, size: 18, color: scheme.outline),
+          const SizedBox(width: 12),
+          SizedBox(
+              width: 90,
+              child: Text('Cobrador', style: TextStyle(color: scheme.outline))),
+          Expanded(
+            child: Text(
+              (nombre != null && nombre.isNotEmpty) ? nombre : 'Sin asignar',
+              style: (nombre != null && nombre.isNotEmpty)
+                  ? null
+                  : TextStyle(
+                      color: scheme.outline, fontStyle: FontStyle.italic),
+            ),
+          ),
+          if (puedeGestionar)
+            IconButton(
+              icon: const Icon(Icons.edit, size: 18),
+              tooltip: 'Cambiar cobrador',
+              visualDensity: VisualDensity.compact,
+              onPressed: () => _editarCobrador(
+                context,
+                ref,
+                cobradorIdActual: cobradorIdActual,
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _editarCobrador(
+    BuildContext context,
+    WidgetRef ref, {
+    required String? cobradorIdActual,
+  }) async {
+    // El sentinel ('' = "sin cambio") distingue "cancelar" de "elegí — Sin
+    // asignar —" (null). Solo persistimos si el valor cambió de verdad.
+    final resultado = await showModalBottomSheet<({String? cobradorId})>(
+      context: context,
+      showDragHandle: true,
+      builder: (_) =>
+          _SelectorCobradorSheet(cobradorIdActual: cobradorIdActual),
+    );
+    if (resultado == null || !context.mounted) return;
+    if (resultado.cobradorId == cobradorIdActual) return; // sin cambios
+
+    try {
+      // Hora REAL del dispositivo (UTC) para el change log — offline-first.
+      // Mismo patrón que el INSERT/UPDATE de cliente_form_screen: write local
+      // + ocurrido_en; el trigger server-side propaga al audit_log al sync.
+      final ahora = DateTime.now().toIso8601String();
+      final ocurridoEn = DateTime.now().toUtc().toIso8601String();
+      await ps.db.execute(
+        'UPDATE clientes SET cobrador_id = ?, updated_at = ?, ocurrido_en = ? '
+        'WHERE id = ?',
+        [resultado.cobradorId, ahora, ocurridoEn, cliente.id],
+      );
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(resultado.cobradorId == null
+                ? 'Cobrador desasignado'
+                : 'Cobrador asignado'),
+          ),
+        );
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error al asignar cobrador: $e')),
+        );
+      }
+    }
+  }
+}
+
+/// Bottom sheet que lista los cobradores `rol='cobrador'` activos del tenant
+/// para reasignar el cliente. Devuelve `(cobradorId: <id|null>)` al elegir, o
+/// null si se cierra sin elegir. Reutiliza la misma query del `_SelectorCobrador`
+/// del form de cliente.
+class _SelectorCobradorSheet extends StatefulWidget {
+  const _SelectorCobradorSheet({required this.cobradorIdActual});
+  final String? cobradorIdActual;
+
+  @override
+  State<_SelectorCobradorSheet> createState() => _SelectorCobradorSheetState();
+}
+
+class _SelectorCobradorSheetState extends State<_SelectorCobradorSheet> {
+  late final Stream<List<Map<String, dynamic>>> _cobradoresStream;
+
+  @override
+  void initState() {
+    super.initState();
+    _cobradoresStream = ps.db.watch(
+      '''
+      SELECT id, nombre, prefijo_recibo FROM cobradores
+       WHERE activo = 1 AND rol = 'cobrador'
+       ORDER BY nombre
+      ''',
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return SafeArea(
+      child: StreamBuilder<List<Map<String, dynamic>>>(
+        stream: _cobradoresStream,
+        initialData: const [],
+        builder: (context, snap) {
+          if (snap.hasError) {
+            return Padding(
+              padding: const EdgeInsets.all(24),
+              child: Text('Error: ${snap.error}'),
+            );
+          }
+          final rows = snap.data!;
+          return Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                child: Text('Asignar cobrador',
+                    style: Theme.of(context).textTheme.titleMedium),
+              ),
+              Flexible(
+                child: ListView(
+                  shrinkWrap: true,
+                  children: [
+                    // Opción "Sin asignar".
+                    ListTile(
+                      leading: const Icon(Icons.person_off),
+                      title: const Text('— Sin asignar —'),
+                      selected: widget.cobradorIdActual == null,
+                      selectedTileColor: scheme.primaryContainer,
+                      onTap: () =>
+                          Navigator.pop(context, (cobradorId: null)),
+                    ),
+                    ...rows.map((r) {
+                      final id = r['id'] as String;
+                      final nombre = r['nombre'] as String;
+                      final prefijo = r['prefijo_recibo'] as String?;
+                      return ListTile(
+                        leading: const Icon(Icons.person),
+                        title: Text(prefijo != null
+                            ? '$nombre ($prefijo)'
+                            : nombre),
+                        selected: widget.cobradorIdActual == id,
+                        selectedTileColor: scheme.primaryContainer,
+                        onTap: () =>
+                            Navigator.pop(context, (cobradorId: id)),
+                      );
+                    }),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 8),
+            ],
+          );
+        },
       ),
     );
   }

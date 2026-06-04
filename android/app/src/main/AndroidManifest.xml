@@ -41,5 +41,29 @@
             <action android:name="android.intent.action.PROCESS_TEXT"/>
             <data android:mimeType="text/plain"/>
         </intent>
+        <!-- Package visibility (Android 11+): sin estos intents canLaunchUrl
+             retorna false aunque haya una app que resuelva el esquema. Los
+             declaramos para que ExternalActions (llamar/navegar) y futuros
+             usos de canLaunchUrl vean las apps de mapas/dialer/email/browser. -->
+        <!-- Mapas / navegación: geo: -->
+        <intent>
+            <action android:name="android.intent.action.VIEW"/>
+            <data android:scheme="geo"/>
+        </intent>
+        <!-- Marcador telefónico: tel: -->
+        <intent>
+            <action android:name="android.intent.action.DIAL"/>
+            <data android:scheme="tel"/>
+        </intent>
+        <!-- Email: mailto: -->
+        <intent>
+            <action android:name="android.intent.action.SENDTO"/>
+            <data android:scheme="mailto"/>
+        </intent>
+        <!-- Browser: https: -->
+        <intent>
+            <action android:name="android.intent.action.VIEW"/>
+            <data android:scheme="https"/>
+        </intent>
     </queries>
 </manifest>

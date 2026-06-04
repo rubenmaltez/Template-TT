@@ -26,3 +26,23 @@ final clienteByIdProvider =
     StreamProvider.autoDispose.family<Cliente?, String>((ref, id) {
   return ref.watch(clientesRepoProvider).watchById(id);
 });
+
+/// Nombre del cobrador asignado al cliente (LEFT JOIN a `cobradores`).
+/// Provider auxiliar para no inflar el modelo `Cliente` con un campo derivado
+/// de otra tabla — se observa aparte en la pantalla de detalle del cliente.
+/// Emite null cuando el cliente no tiene cobrador asignado (o no existe).
+final clienteCobradorNombreProvider =
+    StreamProvider.autoDispose.family<String?, String>((ref, clienteId) {
+  return ps.db
+      .watch(
+        '''
+        SELECT co.nombre AS cobrador_nombre
+          FROM clientes c
+     LEFT JOIN cobradores co ON co.id = c.cobrador_id
+         WHERE c.id = ?
+        ''',
+        parameters: [clienteId],
+      )
+      .map((rows) =>
+          rows.isEmpty ? null : rows.first['cobrador_nombre'] as String?);
+});

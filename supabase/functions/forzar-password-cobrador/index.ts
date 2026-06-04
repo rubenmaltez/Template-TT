@@ -1,14 +1,21 @@
 // Edge Function: forzar-password-cobrador
 //
-// Permite al super_admin asignar directamente una contraseña a otro usuario,
-// sin pasar por el flujo de email (útil cuando el cliente no tiene acceso al
-// email o cuando hay rate limits). El super_admin comunica la contraseña
-// por canal seguro (Whatsapp, en persona).
+// Permite asignar directamente una contraseña a otro usuario, sin pasar por
+// el flujo de email (útil cuando el cliente no tiene acceso al email o cuando
+// hay rate limits). Quien fuerza comunica la contraseña por canal seguro
+// (Whatsapp, en persona).
+//
+// Callers permitidos:
+//   - super_admin: puede forzar a cualquier usuario (sujeto a los guards).
+//   - admin: puede forzar SOLO a usuarios de SU MISMO tenant que NO sean
+//     admin ni super_admin (un admin no resetea a otro admin ni al super).
 //
 // Guards:
-//   - Sólo super_admin (rol en cobradores).
+//   - Caller debe ser super_admin o admin (rol en cobradores).
 //   - No puede modificarse a sí mismo.
 //   - No puede modificar a otro super_admin.
+//   - admin: el target debe ser de su mismo tenant y de rol cobrador o
+//     admin_cobranza (NO admin, NO super_admin).
 //   - No puede modificar a nadie del tenant System (defensa en profundidad).
 //   - Password mínimo 8 caracteres (alineado con default de Supabase).
 //
@@ -52,17 +59,23 @@ serve(async (req) => {
     const { data: { user } } = await callerClient.auth.getUser();
     if (!user) return jsonError("Sesión inválida", 401);
 
-    // Verificar que el caller es super_admin.
+    // Verificar el rol y el tenant del caller. Necesitamos el tenant_id
+    // para validar el scope cuando el caller es admin (sólo su tenant).
     const { data: yo, error: yoErr } = await callerClient
       .from("cobradores")
-      .select("rol")
+      .select("rol, tenant_id")
       .eq("id", user.id)
       .single();
     if (yoErr || !yo) {
       return jsonError("No estás en la tabla cobradores", 403);
     }
-    if (yo.rol !== "super_admin") {
-      return jsonError("Sólo super_admin puede forzar contraseñas", 403);
+    const callerEsSuperAdmin = yo.rol === "super_admin";
+    const callerEsAdmin = yo.rol === "admin";
+    if (!callerEsSuperAdmin && !callerEsAdmin) {
+      return jsonError(
+        "Sólo admin o super_admin puede forzar contraseñas",
+        403,
+      );
     }
 
     // Validar body.
@@ -87,6 +100,10 @@ serve(async (req) => {
       );
     }
 
+    // Rol real del caller para los rows de audit_log (antes hardcodeado a
+    // "super_admin"; ahora un admin también puede forzar password).
+    const callerRol = yo.rol;
+
     // Cliente con service_role para validar target + auth.admin.update.
     const admin = createClient(supabaseUrl, serviceKey, {
       auth: { autoRefreshToken: false, persistSession: false },
@@ -109,6 +126,24 @@ serve(async (req) => {
         "No se puede modificar la contraseña de otro super_admin",
         400,
       );
+    }
+    // Scope del admin: sólo puede forzar a usuarios de SU MISMO tenant y que
+    // sean cobrador o admin_cobranza. NO puede resetear a otro admin (par) ni
+    // al super_admin (ya bloqueado arriba). El super_admin no tiene estas
+    // restricciones (gestión cross-tenant legítima).
+    if (callerEsAdmin) {
+      if (target.tenant_id !== yo.tenant_id) {
+        return jsonError(
+          "No podés forzar la contraseña de un usuario de otro tenant",
+          403,
+        );
+      }
+      if (target.rol === "admin") {
+        return jsonError(
+          "Un admin no puede forzar la contraseña de otro admin",
+          403,
+        );
+      }
     }
     // Defensa en profundidad: nadie del tenant System puede ser target, aunque
     // su rol no sea super_admin (protege contra un estado inválido futuro de un
@@ -143,7 +178,7 @@ serve(async (req) => {
       valor_anterior: null,
       valor_nuevo: { action: "force_password_reset_intent" },
       user_id: user.id,
-      user_rol: "super_admin",
+      user_rol: callerRol,
     });
     if (intentErr) {
       console.error("forzar-password: intent audit insert falló", intentErr);
@@ -180,7 +215,7 @@ serve(async (req) => {
       valor_anterior: null,
       valor_nuevo: { action: "force_password_reset_success" },
       user_id: user.id,
-      user_rol: "super_admin",
+      user_rol: callerRol,
     });
     if (successErr) {
       // Cambio aplicado pero success audit perdido. Log loud — el
@@ -219,7 +254,7 @@ serve(async (req) => {
           error: signOutErr.message,
         },
         user_id: user.id,
-        user_rol: "super_admin",
+        user_rol: callerRol,
       });
     }
 

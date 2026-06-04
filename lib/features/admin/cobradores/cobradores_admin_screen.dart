@@ -5,14 +5,41 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../data/providers/cobrador_provider.dart';
+import '../../../data/providers/impersonation_provider.dart';
 import '../../../data/repositories/super_admin_repo.dart';
 import '../../../data/utils/edge_functions.dart';
 import '../../../data/utils/formatters.dart';
 import '../../../data/utils/validators.dart';
 import '../../../powersync/db.dart' as ps;
+import '../../super_admin/tenant_dialogs_miembro.dart' show ForzarPasswordDialog;
 import '../../shared/widgets/credenciales_dialog.dart';
 import '../../shared/widgets/empty_state.dart';
 import '../../shared/widgets/phone_text_field.dart';
+
+/// Los 3 roles que cobran en campo y por lo tanto necesitan prefijo de
+/// recibo (correlativo propio). El super_admin NO cobra → no lleva prefijo.
+const _kRolesQueCobran = {'cobrador', 'admin', 'admin_cobranza'};
+
+/// Map cobrador_id → email para los miembros del tenant del caller. El email
+/// vive en `auth.users` (no en `cobradores`), así que se trae por RPC
+/// SECURITY DEFINER `list_cobrador_emails` (migración 0091) con guard de rol.
+///
+/// Es online-only (toca auth.users vía RPC): si no hay conexión el provider
+/// queda en error/loading y la UI degrada elegante (no muestra email, no
+/// rompe la lista). autoDispose para no retener el map al salir de la pantalla.
+final _cobradorEmailsProvider =
+    FutureProvider.autoDispose<Map<String, String>>((ref) async {
+  final res = await Supabase.instance.client.rpc('list_cobrador_emails')
+      as List<dynamic>;
+  final map = <String, String>{};
+  for (final e in res) {
+    final row = Map<String, dynamic>.from(e as Map);
+    final id = row['cobrador_id'] as String?;
+    final email = row['email'] as String?;
+    if (id != null && email != null) map[id] = email;
+  }
+  return map;
+});
 
 /// Gestión de cobradores: ver lista, asignar prefijo de recibo, cambiar
 /// rol, activar/desactivar.
@@ -107,13 +134,13 @@ class _CobradoresAdminScreenState
   }
 }
 
-class _InvitarDialog extends StatefulWidget {
+class _InvitarDialog extends ConsumerStatefulWidget {
   const _InvitarDialog();
   @override
-  State<_InvitarDialog> createState() => _InvitarDialogState();
+  ConsumerState<_InvitarDialog> createState() => _InvitarDialogState();
 }
 
-class _InvitarDialogState extends State<_InvitarDialog> {
+class _InvitarDialogState extends ConsumerState<_InvitarDialog> {
   final _email = TextEditingController();
   final _nombre = TextEditingController();
   final _telefono = TextEditingController();
@@ -149,16 +176,19 @@ class _InvitarDialogState extends State<_InvitarDialog> {
       return;
     }
     final prefijo = _prefijo.text.trim().toUpperCase();
-    if (_rol == 'cobrador' && prefijo.isNotEmpty && !RegExp(r'^[A-Z0-9-]{2,16}$').hasMatch(prefijo)) {
+    // El prefijo aplica a los 3 roles que cobran (cobrador/admin/admin_cobranza).
+    final rolCobra = _kRolesQueCobran.contains(_rol);
+    if (rolCobra && prefijo.isNotEmpty && !RegExp(r'^[A-Z0-9-]{2,16}$').hasMatch(prefijo)) {
       setState(() => _error = 'Prefijo: [A-Z0-9-]{2,16}');
       return;
     }
     // Auto-generar prefijo si el admin lo dejó vacío: primeras 2 letras
-    // del nombre en mayúscula. Evita el caso donde el cobrador no puede
-    // cobrar porque no tiene prefijo asignado (E2E bug).
+    // del nombre en mayúscula. Evita el caso donde el usuario no puede
+    // cobrar porque no tiene prefijo asignado (E2E bug). Aplica a los 3
+    // roles que cobran, no sólo a cobrador.
     final prefijoFinal = prefijo.isNotEmpty
         ? prefijo
-        : _rol == 'cobrador' && nombre.length >= 2
+        : rolCobra && nombre.length >= 2
             ? nombre.substring(0, 2).toUpperCase()
             : '';
 
@@ -169,6 +199,14 @@ class _InvitarDialogState extends State<_InvitarDialog> {
     final navigator = Navigator.of(context);
     final messenger = ScaffoldMessenger.of(context);
     final rootContext = Navigator.of(context, rootNavigator: true).context;
+
+    // Si el super_admin está impersonando un tenant, la Edge Function
+    // `invitar-cobrador` exige el `tenant_id` en el body (el caller
+    // super_admin no tiene tenant operativo propio). Lo leemos del
+    // provider de impersonación; para un admin normal es null y no se
+    // manda (el server lo infiere del JWT del caller).
+    final tenantImpersonado =
+        ref.read(impersonatedTenantIdProvider).valueOrNull;
 
     setState(() {
       _enviando = true;
@@ -183,10 +221,10 @@ class _InvitarDialogState extends State<_InvitarDialog> {
           'email': email,
           'nombre': nombre,
           'rol': _rol,
+          if (tenantImpersonado != null) 'tenant_id': tenantImpersonado,
           if (PhoneTextField.sanitized(_telefono) != null)
             'telefono': PhoneTextField.sanitized(_telefono),
-          if (_rol == 'cobrador' && prefijoFinal.isNotEmpty)
-            'prefijo_recibo': prefijoFinal,
+          if (prefijoFinal.isNotEmpty) 'prefijo_recibo': prefijoFinal,
           // Explícito para que el server no asuma default si en el
           // futuro cambia (mismo patrón que crear-tenant).
           'enviar_email': _enviarEmail,
@@ -334,7 +372,9 @@ class _InvitarDialogState extends State<_InvitarDialog> {
                   ? null
                   : (v) => setState(() => _rol = v ?? _rol),
             ),
-            if (_rol == 'cobrador') ...[
+            // Los 3 roles que cobran llevan prefijo de recibo (correlativo
+            // propio). Sólo super_admin no lo necesita (no cobra en campo).
+            if (_kRolesQueCobran.contains(_rol)) ...[
               const SizedBox(height: 12),
               TextField(
                 controller: _prefijo,
@@ -397,6 +437,11 @@ class _CobradorCard extends ConsumerWidget {
     final prefijo = row['prefijo_recibo'] as String?;
     final clientes = row['clientes_asignados'] as int? ?? 0;
     final cobradoMes = (row['cobrado_mes'] as num? ?? 0).toDouble();
+    // Email del miembro (de auth.users vía RPC). Degrada a null si la RPC
+    // no respondió (offline / loading / error) — sin romper la fila.
+    final email = ref
+        .watch(_cobradorEmailsProvider)
+        .valueOrNull?[row['id'] as String];
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
@@ -440,7 +485,29 @@ class _CobradorCard extends ConsumerWidget {
                         child: Text(row['telefono'] as String,
                             style: TextStyle(color: scheme.outline, fontSize: 12)),
                       ),
-                    if (rol == 'cobrador') ...[
+                    if (email != null)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 4),
+                        child: Row(
+                          children: [
+                            Icon(Icons.mail_outline,
+                                size: 12, color: scheme.outline),
+                            const SizedBox(width: 4),
+                            Flexible(
+                              child: Text(
+                                email,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                    color: scheme.outline, fontSize: 12),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    // Stats (prefijo / clientes / cobrado) para los 3 roles
+                    // que cobran — todos llevan prefijo y pueden tener
+                    // clientes asignados y cobros del mes.
+                    if (_kRolesQueCobran.contains(rol)) ...[
                       const SizedBox(height: 8),
                       Wrap(
                         spacing: 16,
@@ -559,6 +626,73 @@ class _EditarCobradorDialogState extends ConsumerState<_EditarCobradorDialog> {
   bool get _puedeCambiarRol =>
       ref.watch(cobradorActualProvider).valueOrNull?.esSuperAdmin ?? false;
 
+  // Forzar contraseña: sólo admin o super_admin (NO admin_cobranza), y nunca
+  // sobre el propio usuario. El backend (Edge Function) replica estos guards
+  // y además limita al admin a su tenant + roles no-admin; acá filtramos la
+  // UI para no ofrecer el botón cuando seguro va a fallar.
+  bool get _puedeForzarPassword {
+    final yo = ref.watch(cobradorActualProvider).valueOrNull;
+    if (yo == null) return false;
+    if (!(yo.esAdmin || yo.esSuperAdmin)) return false;
+    // No sobre uno mismo.
+    if (widget.row['id'] == yo.id) return false;
+    return true;
+  }
+
+  Future<void> _forzarPassword() async {
+    final nombre = widget.row['nombre'] as String;
+    // Reusa el dialog del panel super_admin: pide / genera la password y la
+    // devuelve por pop. null/"" = cancelado.
+    final nuevaPassword = await showDialog<String>(
+      context: context,
+      builder: (_) => ForzarPasswordDialog(nombre: nombre),
+    );
+    if (nuevaPassword == null || nuevaPassword.isEmpty) return;
+    if (!mounted) return;
+
+    final messenger = ScaffoldMessenger.of(context);
+    final rootContext = Navigator.of(context, rootNavigator: true).context;
+    // Email del target para mostrarlo junto a la password (de la RPC de
+    // emails); si no está, mostramos un placeholder no-bloqueante.
+    final email = ref
+            .read(_cobradorEmailsProvider)
+            .valueOrNull?[widget.row['id'] as String] ??
+        '(email no disponible)';
+
+    setState(() {
+      _guardando = true;
+      _error = null;
+    });
+    try {
+      await ref.read(superAdminRepoProvider).forzarPasswordCobrador(
+            cobradorId: widget.row['id'] as String,
+            nuevaPassword: nuevaPassword,
+          );
+      if (!mounted) return;
+      // CredencialesDialog SÓLO muestra — la generación/invoke ya ocurrió.
+      await showDialog<bool>(
+        context: rootContext,
+        barrierDismissible: false,
+        builder: (_) => CredencialesDialog(
+          title: 'Contraseña de $nombre',
+          email: email,
+          password: nuevaPassword,
+          intro:
+              'Contraseña forzada. Pasale email + contraseña por canal seguro '
+              '— el usuario quedó deslogueado y debe entrar con esta nueva.',
+        ),
+      );
+    } catch (e) {
+      if (mounted) {
+        messenger.showSnackBar(
+          SnackBar(content: Text('No se pudo forzar la contraseña: $e')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _guardando = false);
+    }
+  }
+
   @override
   void initState() {
     super.initState();
@@ -625,10 +759,13 @@ class _EditarCobradorDialogState extends ConsumerState<_EditarCobradorDialog> {
       _error = null;
     });
     try {
-      // prefijo_recibo no aplica a roles no-cobrador (espeja lo que hace la
-      // RPC set_cobrador_rol, para que no diverjan).
+      // prefijo_recibo aplica a los 3 roles que cobran (cobrador/admin/
+      // admin_cobranza); sólo super_admin no lo lleva. Espeja lo que hace
+      // la RPC set_cobrador_rol, para que no diverjan.
       final prefijoFinal =
-          (_rol == 'cobrador' && prefijo.isNotEmpty) ? prefijo : null;
+          (_kRolesQueCobran.contains(_rol) && prefijo.isNotEmpty)
+              ? prefijo
+              : null;
       // nombre/teléfono/prefijo/activo: UPDATE local directo. NO incluye `rol`:
       // el trigger cobradores_freeze_rol (0066) rechaza el write directo de rol
       // (la UI mostraría éxito falso y el sync se rechazaría). El rol va por RPC.
@@ -706,7 +843,8 @@ class _EditarCobradorDialogState extends ConsumerState<_EditarCobradorDialog> {
                 decoration: const InputDecoration(
                   labelText: 'Prefijo de recibo',
                   hintText: 'COB-01, PEDRO, ...',
-                  helperText: 'Solo para rol "cobrador". Único por empresa.',
+                  helperText:
+                      'Para roles que cobran (cobrador / admin / cobranza). Único por empresa.',
                 ),
                 inputFormatters: [
                   FilteringTextInputFormatter.allow(RegExp(r'[A-Za-z0-9-]')),
@@ -731,6 +869,12 @@ class _EditarCobradorDialogState extends ConsumerState<_EditarCobradorDialog> {
         ),
       ),
       actions: [
+        if (_puedeForzarPassword)
+          TextButton.icon(
+            icon: const Icon(Icons.lock_reset, size: 18),
+            label: const Text('Forzar contraseña'),
+            onPressed: _guardando ? null : _forzarPassword,
+          ),
         TextButton(
           onPressed: _guardando ? null : () => Navigator.pop(context),
           child: const Text('Cancelar'),

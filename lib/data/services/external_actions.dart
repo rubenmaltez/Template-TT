@@ -22,12 +22,17 @@ class ExternalActions {
       return;
     }
     final uri = Uri.parse('tel:$normalizado');
-    if (await canLaunchUrl(uri)) {
-      await launchUrl(uri);
-    } else if (context.mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('No se pudo abrir el marcador')),
-      );
+    // NO usar canLaunchUrl — en Android 11+ retorna false sin <queries> en el
+    // AndroidManifest aunque haya un dialer (package visibility). launchUrl
+    // directo + try/catch es el patrón correcto (ver update_banner.dart).
+    try {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    } catch (_) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('No se pudo abrir el marcador')),
+        );
+      }
     }
   }
 
@@ -53,12 +58,17 @@ class ExternalActions {
         ? Uri.parse(
             'https://www.google.com/maps/dir/?api=1&destination=$lat,$lng')
         : Uri.parse('geo:$lat,$lng?q=$lat,$lng${label != null ? "(${Uri.encodeComponent(label)})" : ""}');
-    if (await canLaunchUrl(uri)) {
+    // NO usar canLaunchUrl — en Android 11+ retorna false sin <queries> en el
+    // AndroidManifest aunque haya app de mapas (package visibility). launchUrl
+    // directo + try/catch es el patrón correcto (ver update_banner.dart).
+    try {
       await launchUrl(uri, mode: LaunchMode.externalApplication);
-    } else if (context.mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('No hay app de mapas instalada')),
-      );
+    } catch (_) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('No hay app de mapas instalada')),
+        );
+      }
     }
   }
 }
