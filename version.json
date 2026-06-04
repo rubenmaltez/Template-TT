@@ -1,6 +1,6 @@
 {
-  "version": "0.7.3",
-  "release_notes": "Recibo unificado: un mismo diseno para la preview Y la impresion (se captura con el motor de Flutter), asi la preview es exactamente lo que se imprime, las tildes salen perfectas en cualquier impresora y offline, y se arregla el texto que se salia. Layout limpio y mas compacto, sin numero de reimpresion. Banner de 'red inestable' ya no aparece en falso al arrancar. Incluye todo lo de 0.7.x.",
+  "version": "0.7.4",
+  "release_notes": "Fix de impresion: el recibo ya no sale en negativo (se aplana sobre blanco) ni recortado, y la preview se ve a tamano real. Arreglado el error de sync de recibos al imprimir en 58mm. Recibo unificado (preview = impresion, tildes en cualquier impresora, offline). Incluye todo lo de 0.7.x.",
   "download_url_windows": "https://github.com/rubenmaltez/Template-TT/releases/latest/download/SITECSA-CRM.msix",
   "download_url_android": "https://github.com/rubenmaltez/Template-TT/releases/latest/download/SITECSA-CRM.apk",
   "download_url": "https://github.com/rubenmaltez/Template-TT/releases/latest/download/SITECSA-CRM.msix"

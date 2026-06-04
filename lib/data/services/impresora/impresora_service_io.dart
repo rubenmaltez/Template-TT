@@ -67,6 +67,18 @@ class ImpresoraService {
         return false;
       }
 
+      // Aplanar sobre fondo BLANCO opaco. La captura del widget (`screenshot`)
+      // viene con transparencia (zonas no pintadas / fondo del targetSize); sin
+      // esto, al pasar a grises esas zonas quedan NEGRAS y la térmica las quema
+      // → recibo en NEGATIVO (fondo negro). Aplanar = transparente se vuelve
+      // blanco, así el recorte funciona y el recibo sale en positivo.
+      if (imagen.hasAlpha) {
+        final fondo = img.Image(width: imagen.width, height: imagen.height);
+        img.fill(fondo, color: img.ColorRgb8(255, 255, 255));
+        img.compositeImage(fondo, imagen);
+        imagen = fondo;
+      }
+
       // Si la captura quedó más ancha/angosta que el papel, reescalar al ancho
       // de dots (mantiene aspecto recalculando el alto). Normalmente la captura
       // ya viene a `anchoDots` (targetSize) y esto es un no-op.

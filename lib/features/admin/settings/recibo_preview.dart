@@ -101,7 +101,9 @@ class ReciboPreview extends ConsumerWidget {
                 // se escala con FittedBox para entrar en la tira de preview.
                 // Es el MISMO widget que ve el cobrador y que se imprime.
                 child: FittedBox(
-                  fit: BoxFit.scaleDown,
+                  // contain: escala para LLENAR el ancho de la preview (no solo
+                  // achicar), sino se ve diminuto en pantalla ancha.
+                  fit: BoxFit.contain,
                   alignment: Alignment.topCenter,
                   child: ReciboTicket(
                     row: _sampleRow(),

@@ -180,7 +180,10 @@ class _ReciboScreenState extends ConsumerState<ReciboScreen> {
                   // lo que sale por la térmica.
                   Center(
                     child: FittedBox(
-                      fit: BoxFit.scaleDown,
+                      // contain (no scaleDown): escala para LLENAR el ancho de
+                      // la preview (arriba o abajo), no solo achicar — sino en
+                      // pantalla ancha el ticket se ve diminuto.
+                      fit: BoxFit.contain,
                       alignment: Alignment.topCenter,
                       child: ReciboTicket(
                         row: esMulti ? null : r,
