@@ -3,12 +3,8 @@ import 'dart:typed_data';
 import 'package:esc_pos_utils_plus/esc_pos_utils_plus.dart';
 import 'package:flutter/foundation.dart';
 import 'package:image/image.dart' as img;
-import 'package:intl/intl.dart';
 import 'package:print_bluetooth_thermal/print_bluetooth_thermal.dart';
-
-import '../../models/recibo_layout.dart';
-import '../../utils/formatters.dart';
-import '../../utils/monto_a_letras.dart';
+import 'package:printing/printing.dart';
 
 /// Información de una impresora Bluetooth pareada.
 class ImpresoraBT {
@@ -17,17 +13,15 @@ class ImpresoraBT {
   final String mac;
 }
 
-/// Servicio para imprimir recibos en impresoras térmicas Bluetooth (ESC/POS).
+/// Servicio para imprimir recibos en impresoras térmicas Bluetooth.
+///
+/// El recibo se imprime como IMAGEN: se rasteriza el PDF del recibo (que ya
+/// usa la fuente NotoSans embebida) con el motor PDF local (PDFium, sin red)
+/// y se envía como raster ESC/POS. Esto hace que las tildes salgan bien en
+/// CUALQUIER impresora — no depende del codepage del modelo. Es 100% OFFLINE.
+///
 /// Mobile only — web tiene un stub paralelo.
 class ImpresoraService {
-  /// Code page CP850 (Multilingual Latin-1) — cubre á é í ó ú ñ Ñ ¿ ¡ ü y
-  /// demás caracteres del español. Es un índice ESTÁNDAR (`ESC t 2`) que
-  /// TODAS las térmicas soportan en la misma posición. Las chinas baratas
-  /// (PT-210, default GB18030) ubican CP1252 en un índice no estándar y no
-  /// cambian a él → las tildes salían como caracteres chinos. CP850 evita ese
-  /// problema. (CP437 default no tiene Ñ.)
-  static const _codeTable = 'CP850';
-
   bool get soportado => true;
 
   Future<bool> isBluetoothEnabled() async {
@@ -47,75 +41,107 @@ class ImpresoraService {
         .toList();
   }
 
-  /// Imprime el recibo. Devuelve true al éxito.
+  /// Imprime un recibo rasterizando su PDF a imagen y enviándolo como raster
+  /// ESC/POS. Devuelve true al éxito.
   ///
-  /// El recibo se compone iterando el LAYOUT configurable (`layout`): una lista
-  /// ORDENADA de bloques (id + visible + tamaño). Los 3 renderers (pantalla /
-  /// PDF / esta térmica) iteran la MISMA lista para salir consistentes.
-  Future<bool> imprimir({
+  /// [pdfBytes] = el PDF del recibo YA construido por el call-site (mismos
+  /// builders que el "Descargar PDF": NotoSans embebida + logo del cache local).
+  /// [anchoMm] = 58 u 80 (ancho del papel).
+  ///
+  /// Flujo OFFLINE: `Printing.raster` usa PDFium local (sin red); la fuente
+  /// está bundleada. Si el raster falla, devuelve false (NO cae a texto
+  /// garbleado).
+  Future<bool> imprimirRaster({
     required String macImpresora,
-    required Map<String, dynamic> recibo,
-    required Map<String, String> empresa,
+    required Uint8List pdfBytes,
     required int anchoMm,
-    String? pieRecibo,
-    bool esReimpresion = false,
-    String? reciboTitulo,
-    bool mostrarAdeudado = true,
-    String? empresaWhatsapp,
-    // Sub-toggle que SE MANTIENE: la cédula es opcional dentro del bloque
-    // `cliente` (la visibilidad/orden del bloque la da el layout).
-    bool mostrarCedula = true,
-    // Layout configurable del recibo (orden + visibilidad + tamaño por bloque).
-    // Supersede a mostrarEmpresa/ordenPie (que la daban antes).
-    List<ReciboBloque> layout = const [],
-    List<Map<String, dynamic>>? multiRecibos,
-    // Detalle de mora del contrato YA filtrado por el call-site (excluida la
-    // cuota cobrada en single; excluidas TODAS las del grupo en multi). Igual
-    // que en el PDF: el service no tiene `ref` ni hace IO, así que la mora se
-    // calcula afuera (`fetchMoraContrato`) y se pasa hecha. Vacío → el bloque
-    // `mora` no se imprime.
-    List<Map<String, dynamic>> moraRows = const [],
-    // Bytes del logo YA cargados por el call-site (desde el cache local, sin
-    // red — la impresión es 100% offline). Null → el bloque `logo` no imprime
-    // nada (comportamiento previo). El service NO hace IO: solo decodifica.
-    Uint8List? logoBytes,
   }) async {
-    // Si el caller no pasó layout (o llegó vacío), caer al default del catálogo.
-    final layoutFinal = layout.isEmpty ? ReciboLayout.porDefecto : layout;
-    // Cobro múltiple: imprimir las N cuotas del grupo (#6a). Si viene una sola
-    // fila (o ninguna), cae al recibo single de siempre.
-    final bytes = (multiRecibos != null && multiRecibos.length > 1)
-        ? await _generarBytesMulti(
-            rows: multiRecibos,
-            empresa: empresa,
-            anchoMm: anchoMm,
-            pieRecibo: pieRecibo,
-            esReimpresion: esReimpresion,
-            reciboTitulo: reciboTitulo,
-            empresaWhatsapp: empresaWhatsapp,
-            mostrarCedula: mostrarCedula,
-            layout: layoutFinal,
-            moraRows: moraRows,
-            logoBytes: logoBytes,
-          )
-        : await _generarBytes(
-            recibo: recibo,
-            empresa: empresa,
-            anchoMm: anchoMm,
-            pieRecibo: pieRecibo,
-            esReimpresion: esReimpresion,
-            reciboTitulo: reciboTitulo,
-            mostrarAdeudado: mostrarAdeudado,
-            empresaWhatsapp: empresaWhatsapp,
-            mostrarCedula: mostrarCedula,
-            layout: layoutFinal,
-            moraRows: moraRows,
-            logoBytes: logoBytes,
-          );
-    return _enviarBytes(macImpresora, bytes);
+    try {
+      // Ancho útil en dots según el papel: 58mm ≈ 384 px, 80mm = 576 px.
+      final anchoDots = anchoMm >= 80 ? 576 : 384;
+
+      // Rasterizar el PDF a 203 dpi (resolución nativa de las térmicas). El
+      // recibo es UNA sola página de alto "infinito", así que tomamos la
+      // primera y cortamos el stream.
+      // Recolectar TODAS las páginas del raster. Normalmente el recibo es UNA
+      // página (alto `double.infinity`), pero si PDFium parte un recibo muy
+      // alto (multi-cuota + mucha mora) en varias, las apilamos verticalmente
+      // para NO truncar contenido — un recibo de dinero cortado sería un bug.
+      final paginas = <img.Image>[];
+      await for (final page in Printing.raster(pdfBytes, dpi: 203)) {
+        // `page.pixels` puede ser una vista con offset sobre un buffer mayor.
+        // `Uint8List.fromList` copia SOLO los píxeles de la vista a un buffer
+        // fresco en offset 0 → `.buffer` (ByteBuffer) queda alineado y del
+        // tipo que espera `Image.fromBytes`.
+        paginas.add(img.Image.fromBytes(
+          width: page.width,
+          height: page.height,
+          bytes: Uint8List.fromList(page.pixels).buffer,
+          numChannels: 4,
+          order: img.ChannelOrder.rgba,
+        ));
+      }
+      if (paginas.isEmpty) {
+        if (kDebugMode) debugPrint('Impresora raster: PDF sin páginas');
+        return false;
+      }
+
+      // Una sola página (lo normal) → directo. Varias → apilar vertical para
+      // imprimir el recibo completo.
+      img.Image imagen =
+          paginas.length == 1 ? paginas.first : _apilarVertical(paginas);
+
+      // Si el raster quedó más ancho/angosto que el papel, reescalar al ancho
+      // de dots (mantiene aspecto recalculando el alto).
+      if (imagen.width != anchoDots) {
+        imagen = img.copyResize(imagen, width: anchoDots);
+      }
+
+      // Monocromo limpio: grayscale + dithering Floyd-Steinberg → 1-bit. La
+      // térmica solo imprime negro/blanco; el dither evita bloques tiznados.
+      imagen = img.grayscale(imagen);
+      imagen = img.ditherImage(
+        imagen,
+        kernel: img.DitherKernel.floydSteinberg,
+      );
+
+      final gen = Generator(_size(anchoMm), await CapabilityProfile.load());
+      final bytes = <int>[
+        // Reset/init (ESC @) ANTES del raster: limpia el buffer y deja la
+        // térmica en estado conocido.
+        0x1B, 0x40,
+        ...gen.imageRaster(imagen, align: PosAlign.center),
+        ...gen.feed(2),
+        ...gen.cut(),
+      ];
+      return _enviarBytes(macImpresora, bytes);
+    } catch (e) {
+      if (kDebugMode) debugPrint('Impresora raster: $e');
+      return false;
+    }
+  }
+
+  /// Apila varias imágenes verticalmente (sobre fondo blanco) en una sola.
+  /// Se usa cuando PDFium parte un recibo muy alto en varias páginas: las
+  /// unimos para imprimir el recibo COMPLETO sin truncar.
+  static img.Image _apilarVertical(List<img.Image> imgs) {
+    final ancho = imgs.map((i) => i.width).reduce((a, b) => a > b ? a : b);
+    final alto = imgs.fold<int>(0, (s, i) => s + i.height);
+    final canvas = img.Image(width: ancho, height: alto, numChannels: 4);
+    img.fill(canvas, color: img.ColorRgba8(255, 255, 255, 255));
+    var y = 0;
+    for (final im in imgs) {
+      img.compositeImage(canvas, im, dstY: y);
+      y += im.height;
+    }
+    return canvas;
   }
 
   /// Imprime un recibo de prueba para validar conexión + papel.
+  ///
+  /// ASCII-only (sin tildes) a propósito: es solo un test de conexión, no debe
+  /// depender del codepage del modelo. El reset ESC @ saca la térmica de
+  /// cualquier modo raro antes del texto.
   Future<bool> imprimirPrueba({
     required String macImpresora,
     required int anchoMm,
@@ -123,19 +149,13 @@ class ImpresoraService {
     final profile = await CapabilityProfile.load();
     final gen = Generator(_size(anchoMm), profile);
     final bytes = <int>[
-      // Reset/init ANTES del primer texto: saca la térmica del modo chino
-      // (GB18030) y la deja en el codepage que fijamos por estilo (CP850).
-      ..._resetBytes(),
-      ...gen.text('--- PRUEBA DE IMPRESIÓN ---',
-          styles: const PosStyles(
-              align: PosAlign.center, bold: true, codeTable: _codeTable)),
-      ...gen.text(DateFormat('dd/MM/yyyy HH:mm:ss').format(DateTime.now()),
-          styles: const PosStyles(
-              align: PosAlign.center, codeTable: _codeTable)),
+      // Reset/init ANTES del primer texto.
+      0x1B, 0x40,
+      ...gen.text('PRUEBA DE IMPRESION',
+          styles: const PosStyles(align: PosAlign.center, bold: true)),
       ...gen.feed(1),
-      ...gen.text('Si lees esto, la impresora está OK.',
-          styles: const PosStyles(
-              align: PosAlign.center, codeTable: _codeTable)),
+      ...gen.text('Si lees esto la impresora esta OK',
+          styles: const PosStyles(align: PosAlign.center)),
       ...gen.feed(3),
       ...gen.cut(),
     ];
@@ -160,779 +180,4 @@ class ImpresoraService {
   }
 
   PaperSize _size(int mm) => mm >= 80 ? PaperSize.mm80 : PaperSize.mm58;
-
-  /// Bytes de reset/init del printer: ESC @ (`[0x1B, 0x40]`). Limpia el buffer
-  /// y restaura los defaults de fábrica, sacando la térmica del modo chino
-  /// (GB18030) en el que arrancan muchas baratas — sin esto el codepage que
-  /// fijamos por estilo (CP850) no toma y las tildes salen como chino. Se
-  /// emite al INICIO de cada stream, ANTES del primer texto.
-  ///
-  /// Emitimos ESC @ crudo (no `Generator.reset()`) porque es la secuencia
-  /// estándar universal, sin depender de la API de esta versión del paquete.
-  List<int> _resetBytes() => const [0x1B, 0x40];
-
-  // ──────────────────────────────────────────────────────────────────
-  // Composición del recibo en bytes ESC/POS
-  // ──────────────────────────────────────────────────────────────────
-
-  Future<List<int>> _generarBytes({
-    required Map<String, dynamic> recibo,
-    required Map<String, String> empresa,
-    required int anchoMm,
-    String? pieRecibo,
-    bool esReimpresion = false,
-    String? reciboTitulo,
-    bool mostrarAdeudado = true,
-    bool mostrarCedula = true,
-    String? empresaWhatsapp,
-    required List<ReciboBloque> layout,
-    List<Map<String, dynamic>> moraRows = const [],
-    Uint8List? logoBytes,
-  }) async {
-    final profile = await CapabilityProfile.load();
-    final gen = Generator(_size(anchoMm), profile);
-    final bytes = <int>[];
-
-    // Reset/init ANTES de cualquier byte: saca la térmica del modo chino
-    // (GB18030 por default en las baratas) para que las tildes salgan bien.
-    bytes.addAll(_resetBytes());
-
-    // Reimpresión visible al INICIO (donde el cliente la ve primero). NO es un
-    // bloque del layout — es metadata de la impresión, va siempre arriba.
-    if (esReimpresion) {
-      bytes.addAll(gen.text('*** REIMPRESIÓN ***',
-          styles: const PosStyles(
-              align: PosAlign.center, bold: true, codeTable: _codeTable)));
-      bytes.addAll(gen.feed(1));
-    }
-
-    // Se ITERA el layout configurable: cada bloque produce sus bytes en
-    // `_bloqueSingle` (vacío si no hay nada que mostrar). Entre dos bloques de
-    // header NO se emite hr() (se apilan, como empresa+título antes); en el
-    // resto sí. El bloque `totales` (dinero) conserva su contenido/matemática.
-    String? zonaPrev;
-    for (final b in layout) {
-      if (!b.visible) continue;
-      final size = _posSize(b.size);
-      final contenido = _bloqueSingle(
-        gen,
-        anchoMm,
-        b.id,
-        size,
-        recibo: recibo,
-        empresa: empresa,
-        reciboTitulo: reciboTitulo,
-        pieRecibo: pieRecibo,
-        empresaWhatsapp: empresaWhatsapp,
-        mostrarAdeudado: mostrarAdeudado,
-        mostrarCedula: mostrarCedula,
-        moraRows: moraRows,
-        logoBytes: logoBytes,
-      );
-      if (contenido.isEmpty) continue;
-      final zona = reciboBloqueInfo(b.id)?.zona ?? ReciboZona.body;
-      // Separador SOLO entre dos bloques REALES ya emitidos (zonaPrev != null),
-      // y nunca entre dos de header (se apilan, como empresa+título antes). El
-      // header de reimpresión no cuenta como bloque (no setea zonaPrev), así
-      // que el primer bloque visible no lleva hr arriba.
-      if (zonaPrev != null &&
-          !(zonaPrev == 'header' && zona == ReciboZona.header)) {
-        bytes.addAll(gen.hr());
-      }
-      bytes.addAll(contenido);
-      zonaPrev = zona == ReciboZona.header ? 'header' : 'otro';
-    }
-
-    bytes.addAll(gen.feed(2));
-    bytes.addAll(gen.cut());
-    return bytes;
-  }
-
-  /// Construye los bytes ESC/POS de UN bloque del recibo single. Devuelve []
-  /// (vacío) si el bloque no tiene nada que mostrar. El tamaño `size` viene del
-  /// layout (chico/normal→size1, grande→size2); los TOTALES mantienen su size2
-  /// propio (COBRADO destacado) sin importar el size del bloque.
-  List<int> _bloqueSingle(
-    Generator gen,
-    int anchoMm,
-    String id,
-    PosTextSize size, {
-    required Map<String, dynamic> recibo,
-    required Map<String, String> empresa,
-    String? reciboTitulo,
-    String? pieRecibo,
-    String? empresaWhatsapp,
-    bool mostrarAdeudado = true,
-    bool mostrarCedula = true,
-    List<Map<String, dynamic>> moraRows = const [],
-    Uint8List? logoBytes,
-  }) {
-    final bytes = <int>[];
-    switch (id) {
-      case 'logo':
-        // Logo raster desde el cache local (sin red). Vacío si no se cacheó
-        // o si el decode falla → el recibo sale sin logo, sin romper nada.
-        return _bloqueLogoBytes(gen, anchoMm, logoBytes);
-      case 'empresa':
-        final hayEmpresa = (empresa['nombre'] ?? '').isNotEmpty ||
-            (empresa['direccion'] ?? '').isNotEmpty ||
-            (empresa['telefono'] ?? '').isNotEmpty ||
-            (empresa['ruc'] ?? '').isNotEmpty;
-        if (!hayEmpresa) return const [];
-        // El nombre va destacado en size2 (como siempre), salvo que el bloque
-        // pida grande igual (entonces ya es size2). El resto sigue `size`.
-        if ((empresa['nombre'] ?? '').isNotEmpty) {
-          bytes.addAll(gen.text(
-            empresa['nombre']!.toUpperCase(),
-            styles: const PosStyles(
-                align: PosAlign.center,
-                bold: true,
-                height: PosTextSize.size2,
-                codeTable: _codeTable),
-          ));
-        }
-        if ((empresa['direccion'] ?? '').isNotEmpty) {
-          bytes.addAll(gen.text(empresa['direccion']!,
-              styles: PosStyles(
-                  align: PosAlign.center,
-                  height: size,
-                  codeTable: _codeTable)));
-        }
-        if ((empresa['telefono'] ?? '').isNotEmpty) {
-          bytes.addAll(gen.text('Tel: ${empresa['telefono']}',
-              styles: PosStyles(
-                  align: PosAlign.center,
-                  height: size,
-                  codeTable: _codeTable)));
-        }
-        if ((empresa['ruc'] ?? '').isNotEmpty) {
-          bytes.addAll(gen.text('RUC: ${empresa['ruc']}',
-              styles: PosStyles(
-                  align: PosAlign.center,
-                  height: size,
-                  codeTable: _codeTable)));
-        }
-        return bytes;
-      case 'titulo':
-        if (reciboTitulo == null || reciboTitulo.isEmpty) return const [];
-        bytes.addAll(gen.text(reciboTitulo.toUpperCase(),
-            styles: PosStyles(
-                align: PosAlign.center,
-                bold: true,
-                height: size,
-                codeTable: _codeTable)));
-        return bytes;
-      case 'meta':
-        final emision = DateTime.parse(recibo['fecha_pago'] as String);
-        bytes.addAll(_doblColumna(gen, anchoMm, 'Recibo Nº',
-            recibo['numero_completo'] as String, size));
-        bytes.addAll(_doblColumna(gen, anchoMm, 'Fecha',
-            DateFormat('dd/MM/yyyy').format(emision), size));
-        bytes.addAll(_doblColumna(gen, anchoMm, 'Hora',
-            DateFormat('HH:mm').format(emision), size));
-        if (recibo['cobrador_nombre'] != null) {
-          bytes.addAll(_doblColumna(gen, anchoMm, 'Cobrador',
-              recibo['cobrador_nombre'] as String, size));
-        }
-        return bytes;
-      case 'cliente':
-        bytes.addAll(_doblColumna(gen, anchoMm, 'Cliente',
-            recibo['cliente_nombre'] as String, size));
-        // Cédula: solo si el sub-toggle está activo y existe el dato.
-        if (mostrarCedula && recibo['cliente_cedula'] != null) {
-          bytes.addAll(_doblColumna(gen, anchoMm, 'Cédula',
-              recibo['cliente_cedula'] as String, size));
-        }
-        return bytes;
-      case 'servicio':
-        final planNombre = recibo['plan_nombre'] as String?;
-        final cuotaDesc = recibo['cuota_descripcion'] as String?;
-        bytes.addAll(_doblColumna(gen, anchoMm, 'Servicio',
-            planNombre ?? cuotaDesc ?? 'Cuota manual', size));
-        final periodoCuota = DateTime.parse(recibo['periodo'] as String);
-        final diaPago = (recibo['dia_pago'] as num?)?.toInt();
-        final periodoLabel = diaPago != null
-            ? Fmt.periodoRecibo(diaPago, periodoCuota)
-            : Fmt.mes(periodoCuota);
-        bytes.addAll(_doblColumna(gen, anchoMm, 'Período',
-            periodoLabel[0].toUpperCase() + periodoLabel.substring(1), size));
-        return bytes;
-      case 'cuota':
-        final cuotaMonto = (recibo['cuota_monto'] as num).toDouble();
-        bytes.addAll(_doblColumna(
-            gen, anchoMm, 'Cuota base', Fmt.cordobas(cuotaMonto), size));
-        // Saldo restante (sub-toggle `mostrar_adeudado`): así el cliente no
-        // cree que la cuota quedó al día si fue parcial.
-        final cargosNeto = (recibo['cargos_neto'] as num? ?? 0).toDouble();
-        final totalReal = (cuotaMonto + cargosNeto).clamp(0.0, double.infinity);
-        final cobrado = (recibo['monto_cordobas'] as num).toDouble();
-        final montoPagadoAcum =
-            (recibo['monto_pagado_cuota'] as num? ?? cobrado).toDouble();
-        final saldo = totalReal - montoPagadoAcum;
-        if (mostrarAdeudado && saldo > 0.01) {
-          bytes.addAll(_doblColumna(
-              gen, anchoMm, 'Saldo cuota', Fmt.cordobas(saldo), size));
-        }
-        return bytes;
-      case 'metodo':
-        bytes.addAll(_doblColumna(gen, anchoMm, 'Método',
-            (recibo['metodo'] as String).toUpperCase(), size));
-        if (recibo['referencia'] != null) {
-          bytes.addAll(_doblColumna(
-              gen, anchoMm, 'Ref.', recibo['referencia'] as String, size));
-        }
-        // Si pagó en USD: cuánto entregó en USD + tasa. Espeja el "Recibido"
-        // de pantalla/PDF (antes esto vivía suelto después del PAGADO).
-        if ((recibo['moneda'] as String) == 'USD') {
-          final original = (recibo['monto_original'] as num).toStringAsFixed(2);
-          final tasa = (recibo['tasa_conversion'] as num).toStringAsFixed(2);
-          bytes.addAll(_doblColumna(
-              gen, anchoMm, 'Recibido', 'US\$$original (tasa $tasa)', size));
-        }
-        return bytes;
-      case 'letras':
-        // La térmica no imprimía letras antes; el layout puede activarlo.
-        // Texto centrado con el monto COBRADO en letras.
-        bytes.addAll(gen.text(
-          montoALetras(
-            (recibo['monto_cordobas'] as num).toDouble(),
-            moneda: (recibo['moneda'] as String?) ?? 'NIO',
-          ),
-          styles: PosStyles(
-              align: PosAlign.center,
-              bold: true,
-              height: size,
-              codeTable: _codeTable),
-        ));
-        return bytes;
-      case 'totales':
-        // EL BLOQUE DE DINERO. Contenido y matemática IDÉNTICOS al original:
-        // COBRADO destacado (size2 fijo) + VUELTO/PAGADO si hubo vuelto, con
-        // manejo USD. NO depende del size del bloque (es el dato crítico).
-        final cobrado = (recibo['monto_cordobas'] as num).toDouble();
-        final vuelto = (recibo['vuelto_cordobas'] as num? ?? 0).toDouble();
-        final entregado = cobrado + vuelto;
-        bytes.addAll(gen.feed(1));
-        bytes.addAll(gen.row([
-          PosColumn(
-            text: 'COBRADO',
-            width: 6,
-            styles: const PosStyles(
-                bold: true, height: PosTextSize.size2, codeTable: _codeTable),
-          ),
-          PosColumn(
-            text: Fmt.cordobas(cobrado),
-            width: 6,
-            styles: const PosStyles(
-                bold: true,
-                align: PosAlign.right,
-                height: PosTextSize.size2,
-                codeTable: _codeTable),
-          ),
-        ]));
-        // VUELTO + PAGADO si hubo vuelto. El vuelto SIEMPRE en córdobas (aun si
-        // pagó USD) — el label lo aclara.
-        if (vuelto > 0.01) {
-          final esUsd = (recibo['moneda'] as String) == 'USD';
-          bytes.addAll(gen.row([
-            PosColumn(
-              text: esUsd ? 'VUELTO (C\$)' : 'VUELTO',
-              width: 6,
-              styles: const PosStyles(bold: true, codeTable: _codeTable),
-            ),
-            PosColumn(
-              text: Fmt.cordobas(vuelto),
-              width: 6,
-              styles: const PosStyles(
-                  bold: true, align: PosAlign.right, codeTable: _codeTable),
-            ),
-          ]));
-          final pagadoText = esUsd
-              ? 'US\$${(recibo['monto_original'] as num).toStringAsFixed(2)}=${Fmt.cordobas(entregado)}'
-              : Fmt.cordobas(entregado);
-          bytes.addAll(gen.row([
-            PosColumn(
-              text: 'PAGADO',
-              width: 6,
-              styles: const PosStyles(bold: true, codeTable: _codeTable),
-            ),
-            PosColumn(
-              text: pagadoText,
-              width: 6,
-              styles: const PosStyles(
-                  bold: true, align: PosAlign.right, codeTable: _codeTable),
-            ),
-          ]));
-        }
-        return bytes;
-      case 'pie':
-        if (pieRecibo == null || pieRecibo.isEmpty) return const [];
-        bytes.addAll(gen.text(pieRecibo,
-            styles: PosStyles(
-                align: PosAlign.center,
-                height: size,
-                codeTable: _codeTable)));
-        return bytes;
-      case 'whatsapp':
-        if (empresaWhatsapp == null || empresaWhatsapp.isEmpty) {
-          return const [];
-        }
-        bytes.addAll(gen.text('WhatsApp: $empresaWhatsapp',
-            styles: PosStyles(
-                align: PosAlign.center,
-                height: size,
-                codeTable: _codeTable)));
-        return bytes;
-      case 'mora':
-        // Detalle de mora del contrato (ya filtrado por el call-site, excluida
-        // la cuota cobrada). Resumen informativo de lo que el cliente aún debe
-        // — NO toca la matemática del dinero (`cuota`/`totales`). Vacío (cuota
-        // manual sin contrato, o sin meses en mora) → bloque vacío.
-        return _bloqueMoraBytes(gen, anchoMm, moraRows, size);
-      default:
-        return const [];
-    }
-  }
-
-  /// Genera el recibo de un cobro MÚLTIPLE (grupo de cuotas) — espeja el
-  /// ticket en pantalla/PDF (#6a). Itera el MISMO layout configurable que el
-  /// single; los ids mapean a su contenido MULTI (lista de N cuotas, totales
-  /// sumados del grupo con manejo de USD). El bloque `totales` (dinero)
-  /// conserva su contenido/matemática.
-  Future<List<int>> _generarBytesMulti({
-    required List<Map<String, dynamic>> rows,
-    required Map<String, String> empresa,
-    required int anchoMm,
-    String? pieRecibo,
-    bool esReimpresion = false,
-    String? reciboTitulo,
-    String? empresaWhatsapp,
-    bool mostrarCedula = true,
-    required List<ReciboBloque> layout,
-    List<Map<String, dynamic>> moraRows = const [],
-    Uint8List? logoBytes,
-  }) async {
-    final profile = await CapabilityProfile.load();
-    final gen = Generator(_size(anchoMm), profile);
-    final bytes = <int>[];
-
-    // Reset/init ANTES de cualquier byte: saca la térmica del modo chino
-    // (GB18030 por default en las baratas) para que las tildes salgan bien.
-    bytes.addAll(_resetBytes());
-
-    // Reimpresión visible al INICIO. NO es un bloque del layout.
-    if (esReimpresion) {
-      bytes.addAll(gen.text('*** REIMPRESIÓN ***',
-          styles: const PosStyles(
-              align: PosAlign.center, bold: true, codeTable: _codeTable)));
-      bytes.addAll(gen.feed(1));
-    }
-
-    String? zonaPrev;
-    for (final b in layout) {
-      if (!b.visible) continue;
-      final size = _posSize(b.size);
-      final contenido = _bloqueMulti(
-        gen,
-        anchoMm,
-        b.id,
-        size,
-        rows: rows,
-        empresa: empresa,
-        reciboTitulo: reciboTitulo,
-        pieRecibo: pieRecibo,
-        empresaWhatsapp: empresaWhatsapp,
-        mostrarCedula: mostrarCedula,
-        moraRows: moraRows,
-        logoBytes: logoBytes,
-      );
-      if (contenido.isEmpty) continue;
-      final zona = reciboBloqueInfo(b.id)?.zona ?? ReciboZona.body;
-      if (zonaPrev != null &&
-          !(zonaPrev == 'header' && zona == ReciboZona.header)) {
-        bytes.addAll(gen.hr());
-      }
-      bytes.addAll(contenido);
-      zonaPrev = zona == ReciboZona.header ? 'header' : 'otro';
-    }
-
-    bytes.addAll(gen.feed(2));
-    bytes.addAll(gen.cut());
-    return bytes;
-  }
-
-  /// Construye los bytes ESC/POS de UN bloque del recibo MULTI. Devuelve []
-  /// (vacío) si el bloque no aplica. El bloque `servicio` va vacío en multi
-  /// (la lista de cuotas del bloque `cuota` ya lo cubre).
-  List<int> _bloqueMulti(
-    Generator gen,
-    int anchoMm,
-    String id,
-    PosTextSize size, {
-    required List<Map<String, dynamic>> rows,
-    required Map<String, String> empresa,
-    String? reciboTitulo,
-    String? pieRecibo,
-    String? empresaWhatsapp,
-    bool mostrarCedula = true,
-    List<Map<String, dynamic>> moraRows = const [],
-    Uint8List? logoBytes,
-  }) {
-    final bytes = <int>[];
-    final first = rows.first;
-    switch (id) {
-      case 'logo':
-        // Logo raster desde el cache local (sin red). Igual que el single.
-        return _bloqueLogoBytes(gen, anchoMm, logoBytes);
-      case 'empresa':
-        final hayEmpresa = (empresa['nombre'] ?? '').isNotEmpty ||
-            (empresa['direccion'] ?? '').isNotEmpty ||
-            (empresa['telefono'] ?? '').isNotEmpty ||
-            (empresa['ruc'] ?? '').isNotEmpty;
-        if (!hayEmpresa) return const [];
-        if ((empresa['nombre'] ?? '').isNotEmpty) {
-          bytes.addAll(gen.text(empresa['nombre']!.toUpperCase(),
-              styles: const PosStyles(
-                  align: PosAlign.center,
-                  bold: true,
-                  height: PosTextSize.size2,
-                  codeTable: _codeTable)));
-        }
-        if ((empresa['direccion'] ?? '').isNotEmpty) {
-          bytes.addAll(gen.text(empresa['direccion']!,
-              styles: PosStyles(
-                  align: PosAlign.center,
-                  height: size,
-                  codeTable: _codeTable)));
-        }
-        if ((empresa['telefono'] ?? '').isNotEmpty) {
-          bytes.addAll(gen.text('Tel: ${empresa['telefono']}',
-              styles: PosStyles(
-                  align: PosAlign.center,
-                  height: size,
-                  codeTable: _codeTable)));
-        }
-        if ((empresa['ruc'] ?? '').isNotEmpty) {
-          bytes.addAll(gen.text('RUC: ${empresa['ruc']}',
-              styles: PosStyles(
-                  align: PosAlign.center,
-                  height: size,
-                  codeTable: _codeTable)));
-        }
-        return bytes;
-      case 'titulo':
-        if (reciboTitulo == null || reciboTitulo.isEmpty) return const [];
-        bytes.addAll(gen.text(reciboTitulo.toUpperCase(),
-            styles: PosStyles(
-                align: PosAlign.center,
-                bold: true,
-                height: size,
-                codeTable: _codeTable)));
-        return bytes;
-      case 'meta':
-        final emision = DateTime.parse(first['fecha_pago'] as String);
-        bytes.addAll(gen.text('COBRO MÚLTIPLE (${rows.length} cuotas)',
-            styles: const PosStyles(
-                align: PosAlign.center, bold: true, codeTable: _codeTable)));
-        bytes.addAll(gen.feed(1));
-        bytes.addAll(_doblColumna(gen, anchoMm, 'Recibos',
-            '${first['numero_completo']} - ${rows.last['numero_completo']}',
-            size));
-        bytes.addAll(_doblColumna(
-            gen, anchoMm, 'Fecha', DateFormat('dd/MM/yyyy').format(emision), size));
-        bytes.addAll(_doblColumna(
-            gen, anchoMm, 'Hora', DateFormat('HH:mm').format(emision), size));
-        if (first['cobrador_nombre'] != null) {
-          bytes.addAll(_doblColumna(
-              gen, anchoMm, 'Cobrador', first['cobrador_nombre'] as String, size));
-        }
-        return bytes;
-      case 'cliente':
-        bytes.addAll(_doblColumna(
-            gen, anchoMm, 'Cliente', first['cliente_nombre'] as String, size));
-        if (mostrarCedula && first['cliente_cedula'] != null) {
-          bytes.addAll(_doblColumna(
-              gen, anchoMm, 'Cédula', first['cliente_cedula'] as String, size));
-        }
-        return bytes;
-      case 'servicio':
-        // En multi la lista de cuotas (bloque `cuota`) ya cubre el servicio.
-        return const [];
-      case 'cuota':
-        // La LISTA de N cuotas: período → monto aplicado de cada una.
-        for (final r in rows) {
-          final periodo = DateTime.parse(r['periodo'] as String);
-          final label = Fmt.mesServicioLabel(
-            periodo,
-            r['plan_nombre'] == null ? null : (r['dia_pago'] as num?)?.toInt(),
-          );
-          bytes.addAll(_doblColumna(gen, anchoMm, label,
-              Fmt.cordobas((r['monto_cordobas'] as num).toDouble()), size));
-        }
-        return bytes;
-      case 'metodo':
-        bytes.addAll(_doblColumna(
-            gen, anchoMm, 'Método', (first['metodo'] as String).toUpperCase(),
-            size));
-        if (first['referencia'] != null) {
-          bytes.addAll(_doblColumna(
-              gen, anchoMm, 'Ref.', first['referencia'] as String, size));
-        }
-        // Si pagó en USD: Σ entregado en USD + tasa (espeja "Recibido" de
-        // pantalla/PDF; antes esto iba suelto después del PAGADO).
-        final esUsd = (first['moneda'] as String?) == 'USD';
-        if (esUsd) {
-          final tasa = (first['tasa_conversion'] as num).toStringAsFixed(2);
-          bytes.addAll(_doblColumna(gen, anchoMm, 'Recibido',
-              'US\$${_multiTotalOriginal(rows).toStringAsFixed(2)} (tasa $tasa)',
-              size));
-        }
-        return bytes;
-      case 'letras':
-        // La térmica no imprimía letras antes; el layout puede activarlo.
-        bytes.addAll(gen.text(
-          montoALetras(_multiTotalCobrado(rows),
-              moneda: (first['moneda'] as String?) ?? 'NIO'),
-          styles: PosStyles(
-              align: PosAlign.center,
-              bold: true,
-              height: size,
-              codeTable: _codeTable),
-        ));
-        return bytes;
-      case 'totales':
-        // EL BLOQUE DE DINERO (multi). Contenido y matemática IDÉNTICOS al
-        // original: TOTAL COBRADO (size2 fijo) + VUELTO/PAGADO sumados, con USD.
-        final totalCobrado = _multiTotalCobrado(rows);
-        final totalVuelto = _multiTotalVuelto(rows);
-        final totalOriginal = _multiTotalOriginal(rows);
-        final totalEntregado = totalCobrado + totalVuelto;
-        final esUsd = (first['moneda'] as String?) == 'USD';
-        bytes.addAll(gen.feed(1));
-        bytes.addAll(gen.row([
-          PosColumn(
-              text: 'TOTAL COBRADO',
-              width: 6,
-              styles: const PosStyles(
-                  bold: true, height: PosTextSize.size2, codeTable: _codeTable)),
-          PosColumn(
-              text: Fmt.cordobas(totalCobrado),
-              width: 6,
-              styles: const PosStyles(
-                  bold: true,
-                  align: PosAlign.right,
-                  height: PosTextSize.size2,
-                  codeTable: _codeTable)),
-        ]));
-        if (totalVuelto > 0.01) {
-          bytes.addAll(gen.row([
-            PosColumn(
-                text: esUsd ? 'VUELTO (C\$)' : 'VUELTO',
-                width: 6,
-                styles: const PosStyles(bold: true, codeTable: _codeTable)),
-            PosColumn(
-                text: Fmt.cordobas(totalVuelto),
-                width: 6,
-                styles: const PosStyles(
-                    bold: true, align: PosAlign.right, codeTable: _codeTable)),
-          ]));
-          final pagadoText = esUsd
-              ? 'US\$${totalOriginal.toStringAsFixed(2)}=${Fmt.cordobas(totalEntregado)}'
-              : Fmt.cordobas(totalEntregado);
-          bytes.addAll(gen.row([
-            PosColumn(
-                text: 'PAGADO',
-                width: 6,
-                styles: const PosStyles(bold: true, codeTable: _codeTable)),
-            PosColumn(
-                text: pagadoText,
-                width: 6,
-                styles: const PosStyles(
-                    bold: true, align: PosAlign.right, codeTable: _codeTable)),
-          ]));
-        }
-        return bytes;
-      case 'pie':
-        if (pieRecibo == null || pieRecibo.isEmpty) return const [];
-        bytes.addAll(gen.text(pieRecibo,
-            styles: PosStyles(
-                align: PosAlign.center,
-                height: size,
-                codeTable: _codeTable)));
-        return bytes;
-      case 'whatsapp':
-        if (empresaWhatsapp == null || empresaWhatsapp.isEmpty) {
-          return const [];
-        }
-        bytes.addAll(gen.text('WhatsApp: $empresaWhatsapp',
-            styles: PosStyles(
-                align: PosAlign.center,
-                height: size,
-                codeTable: _codeTable)));
-        return bytes;
-      case 'mora':
-        // Detalle de mora del contrato (ya filtrado por el call-site, excluidas
-        // TODAS las cuotas del grupo). Mismo resumen informativo que el single
-        // — NO toca la matemática del dinero. Vacío → bloque vacío.
-        return _bloqueMoraBytes(gen, anchoMm, moraRows, size);
-      default:
-        return const [];
-    }
-  }
-
-  /// Bloque `logo` en bytes ESC/POS (compartido single + multi). Decodifica
-  /// los `logoBytes` (ya cargados del cache local, SIN red), los redimensiona
-  /// al ancho del papel, los pasa a B/N con dithering Floyd-Steinberg y los
-  /// emite como raster centrado.
-  ///
-  /// `logoBytes == null` (no se cacheó) o decode fallido → [] (el recibo sale
-  /// sin logo, comportamiento previo). NUNCA lanza: un logo corrupto no debe
-  /// romper la impresión del recibo.
-  List<int> _bloqueLogoBytes(
-      Generator gen, int anchoMm, Uint8List? logoBytes) {
-    if (logoBytes == null || logoBytes.isEmpty) return const [];
-    try {
-      final decoded = img.decodeImage(logoBytes);
-      if (decoded == null) return const [];
-
-      // Ancho en dots según el papel: 58mm ≈ 384 px, 80mm ≈ 576 px.
-      final anchoDots = anchoMm >= 80 ? 576 : 384;
-
-      // Redimensionar manteniendo aspecto SOLO si el logo es más ancho que el
-      // papel (no agrandar uno chico → pixelado). `copyResize` con ancho fijo
-      // recalcula el alto proporcional.
-      img.Image trabajada =
-          decoded.width > anchoDots ? img.copyResize(decoded, width: anchoDots) : decoded;
-
-      // Aplanar transparencia sobre BLANCO: muchos logos son PNG con fondo
-      // transparente. La térmica ignora el alpha al medir luminancia, así que
-      // sin esto el fondo transparente saldría NEGRO (toda la tira tiznada).
-      // Componer sobre blanco deja el fondo limpio.
-      if (trabajada.hasAlpha) {
-        final fondo = img.Image(
-          width: trabajada.width,
-          height: trabajada.height,
-        );
-        img.fill(fondo, color: img.ColorRgb8(255, 255, 255));
-        img.compositeImage(fondo, trabajada);
-        trabajada = fondo;
-      }
-
-      // Monocromo: grayscale + dithering Floyd-Steinberg. Un logo color/gris
-      // sale limpio en B/N (la térmica solo imprime negro/blanco).
-      trabajada = img.grayscale(trabajada);
-      trabajada = img.ditherImage(
-        trabajada,
-        kernel: img.DitherKernel.floydSteinberg,
-      );
-
-      return gen.imageRaster(trabajada, align: PosAlign.center);
-    } catch (e) {
-      if (kDebugMode) debugPrint('Impresora logo raster: $e');
-      return const [];
-    }
-  }
-
-  /// Bloque `mora` en bytes ESC/POS (compartido single + multi): título "EN
-  /// MORA" centrado, una línea por mes (`Fmt.mes` ↔ `Fmt.cordobas(saldo)` en
-  /// dos columnas), y "TOTAL MORA" con la suma. `moraRows` ya viene filtrado
-  /// por el call-site; vacío → []. Mismos labels/orden que pantalla y PDF.
-  List<int> _bloqueMoraBytes(Generator gen, int anchoMm,
-      List<Map<String, dynamic>> moraRows, PosTextSize size) {
-    if (moraRows.isEmpty) return const [];
-    final bytes = <int>[];
-    final totalMora = moraRows.fold<double>(
-        0, (s, m) => s + (m['saldo'] as num).toDouble());
-    bytes.addAll(gen.text('EN MORA',
-        styles: PosStyles(
-            align: PosAlign.center,
-            bold: true,
-            height: size,
-            codeTable: _codeTable)));
-    for (final m in moraRows) {
-      bytes.addAll(_doblColumna(
-        gen,
-        anchoMm,
-        Fmt.mes(DateTime.parse(m['periodo'] as String)),
-        Fmt.cordobas(m['saldo'] as num),
-        size,
-      ));
-    }
-    bytes.addAll(gen.row([
-      PosColumn(
-        text: 'TOTAL MORA',
-        width: 6,
-        styles: const PosStyles(bold: true, codeTable: _codeTable),
-      ),
-      PosColumn(
-        text: Fmt.cordobas(totalMora),
-        width: 6,
-        styles: const PosStyles(
-            bold: true, align: PosAlign.right, codeTable: _codeTable),
-      ),
-    ]));
-    return bytes;
-  }
-
-  // Totales del grupo (multi). Mismas sumas que antes (sin cambios de matemática).
-  double _multiTotalCobrado(List<Map<String, dynamic>> rows) {
-    var t = 0.0;
-    for (final r in rows) {
-      t += (r['monto_cordobas'] as num).toDouble();
-    }
-    return t;
-  }
-
-  double _multiTotalVuelto(List<Map<String, dynamic>> rows) {
-    var t = 0.0;
-    for (final r in rows) {
-      t += (r['vuelto_cordobas'] as num? ?? 0).toDouble();
-    }
-    return t;
-  }
-
-  // Σ monto_original = lo entregado en moneda original.
-  double _multiTotalOriginal(List<Map<String, dynamic>> rows) {
-    var t = 0.0;
-    for (final r in rows) {
-      t += (r['monto_original'] as num? ?? 0).toDouble();
-    }
-    return t;
-  }
-
-  /// Mapea el tamaño del bloque (chico/normal/grande) al de la térmica ESC/POS.
-  /// La térmica solo tiene tamaños discretos: chico/normal → size1 (normal);
-  /// grande → size2 (doble alto). Solo escalamos el ALTO (no el ancho) para no
-  /// desbordar las columnas de ancho fijo. Los totales fijan su size2 aparte.
-  PosTextSize _posSize(ReciboTextoSize s) =>
-      s == ReciboTextoSize.grande ? PosTextSize.size2 : PosTextSize.size1;
-
-  /// Renglón de dos columnas con proporción adaptada al ancho:
-  ///   - 80mm (48 chars): 4/8 (label corto, valor largo a la derecha).
-  ///   - 57mm (32 chars): 5/7 (más espacio al valor que suele ser nombre).
-  ///
-  /// `size` escala el ALTO del texto (del tamaño del bloque). Default size1 =
-  /// normal → idéntico al render previo (back-compat).
-  List<int> _doblColumna(Generator gen, int anchoMm, String label, String valor,
-      [PosTextSize size = PosTextSize.size1]) {
-    final proporcion = anchoMm >= 80 ? (4, 8) : (5, 7);
-    return gen.row([
-      PosColumn(
-        text: label,
-        width: proporcion.$1,
-        styles: PosStyles(
-            align: PosAlign.left,
-            height: size,
-            codeTable: _codeTable),
-      ),
-      PosColumn(
-        text: valor,
-        width: proporcion.$2,
-        styles: PosStyles(
-            align: PosAlign.right,
-            height: size,
-            codeTable: _codeTable),
-      ),
-    ]);
-  }
 }

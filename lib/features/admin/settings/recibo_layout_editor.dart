@@ -192,7 +192,7 @@ class _AjustesGeneralesState extends ConsumerState<_AjustesGenerales> {
                 const SizedBox(width: 90, child: Text('Ancho de papel')),
                 const SizedBox(width: 8),
                 DropdownButton<int>(
-                  value: ancho == 57 ? 57 : 80,
+                  value: ancho == 80 ? 80 : 58,
                   onChanged: (v) {
                     if (v != null) {
                       _save('recibo.formato_default_mm', v, tipo: 'number');
@@ -200,7 +200,7 @@ class _AjustesGeneralesState extends ConsumerState<_AjustesGenerales> {
                   },
                   items: const [
                     DropdownMenuItem(value: 80, child: Text('80 mm (estándar)')),
-                    DropdownMenuItem(value: 57, child: Text('57 mm')),
+                    DropdownMenuItem(value: 58, child: Text('58 mm')),
                   ],
                 ),
               ],

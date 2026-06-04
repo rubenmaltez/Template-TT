@@ -832,10 +832,10 @@ class _SettingTileState extends State<_SettingTile> {
     if (s.clave == 'recibo.formato_default_mm') {
       final current = (s.valor as num?)?.toInt() ?? 80;
       return DropdownButtonFormField<int>(
-        value: current == 57 ? 57 : 80,
+        value: current == 80 ? 80 : 58,
         decoration: const InputDecoration(isDense: true),
         items: const [
-          DropdownMenuItem(value: 57, child: Text('57 mm (angosto)')),
+          DropdownMenuItem(value: 58, child: Text('58 mm (angosto)')),
           DropdownMenuItem(value: 80, child: Text('80 mm (estándar)')),
         ],
         onChanged: enabled ? (v) { if (v != null) widget.onSave(v); } : null,

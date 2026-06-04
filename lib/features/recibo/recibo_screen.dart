@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:http/http.dart' as http;
+import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 
 import '../../data/models/pago.dart';
@@ -38,14 +39,15 @@ class _ReciboScreenState extends ConsumerState<ReciboScreen> {
   // Vista preview: si está activa, el body del recibo se constraine al
   // ancho visual de la tira térmica (según `cobranza.formato_recibo_mm`).
   // El recibo se muestra SIEMPRE simulando el ancho real del papel
-  // térmico (80mm/57mm). Sin toggle: la vista preview es permanente.
+  // térmico (80mm/58mm). Sin toggle: la vista preview es permanente.
 
   bool get _esMultiCuota => widget.grupoCobro != null;
 
   /// Ancho en píxeles para simular la tira térmica.
-  /// 80mm ≈ 300px, 57mm ≈ 215px.
+  /// 80mm ≈ 300px, 58mm ≈ 215px. Cualquier ancho que no sea 80 (incl. el
+  /// legacy 57) se trata como angosto.
   double _previewWidthPx(int formatoMm) {
-    if (formatoMm == 57) return 215;
+    if (formatoMm != 80) return 215;
     return 300;
   }
 
@@ -1017,17 +1019,8 @@ class _AccionesImpresionState extends ConsumerState<_AccionesImpresion> {
               .where((m) => !excluir.contains(m['cuota_id']))
               .toList();
 
-      final doc = multiRows != null
-          ? await buildMultiReciboPdf(
-              rows: multiRows,
-              settings: widget.settings,
-              logoBytes: logoBytes,
-              moraRows: moraRows)
-          : await buildReciboPdf(
-              row: widget.recibo,
-              settings: widget.settings,
-              logoBytes: logoBytes,
-              moraRows: moraRows);
+      final doc = await _construirReciboDoc(
+          logoBytes: logoBytes, moraRows: moraRows);
       final bytes = await doc.save();
       final numero = (widget.recibo['numero_completo'] as String?) ?? widget.reciboId;
       final filename =
@@ -1047,6 +1040,29 @@ class _AccionesImpresionState extends ConsumerState<_AccionesImpresion> {
     } finally {
       if (mounted) setState(() => _descargandoPdf = false);
     }
+  }
+
+  /// Construye el `Document` PDF del recibo (single o multi según
+  /// `widget.multiRows`). Lo COMPARTEN el path de "Descargar PDF" (logo de red)
+  /// y el de impresión térmica (logo del cache local), para no duplicar la
+  /// construcción. El call-site provee `logoBytes` (de su fuente) y `moraRows`
+  /// (ya filtrado).
+  Future<pw.Document> _construirReciboDoc({
+    required Uint8List? logoBytes,
+    required List<Map<String, dynamic>> moraRows,
+  }) {
+    final multiRows = widget.multiRows;
+    return multiRows != null
+        ? buildMultiReciboPdf(
+            rows: multiRows,
+            settings: widget.settings,
+            logoBytes: logoBytes,
+            moraRows: moraRows)
+        : buildReciboPdf(
+            row: widget.recibo,
+            settings: widget.settings,
+            logoBytes: logoBytes,
+            moraRows: moraRows);
   }
 
   Future<void> _imprimir() async {
@@ -1108,35 +1124,17 @@ class _AccionesImpresionState extends ConsumerState<_AccionesImpresion> {
         logoBytes = await LogoCacheService().leerLogoCacheado(tenantId);
       }
 
-      final ok = await service.imprimir(
+      // Se construye el MISMO PDF que el "Descargar PDF" (NotoSans embebida +
+      // logo del cache local) y se rasteriza en la térmica. Así las tildes y
+      // el logo salen perfectos en CUALQUIER impresora, 100% OFFLINE (PDFium
+      // local, sin red). El layout/orden/mora/multi ya viven en el PDF.
+      final doc = await _construirReciboDoc(
+          logoBytes: logoBytes, moraRows: moraRows);
+      final pdfBytes = await doc.save();
+      final ok = await service.imprimirRaster(
         macImpresora: fav.mac,
-        recibo: widget.recibo,
-        empresa: {
-          'nombre': widget.settings.empresaNombre,
-          'direccion': widget.settings.empresaDireccion,
-          'telefono': widget.settings.empresaTelefono,
-          'ruc': widget.settings.empresaRuc,
-        },
+        pdfBytes: pdfBytes,
         anchoMm: widget.settings.formatoReciboMm,
-        pieRecibo: widget.settings.pieRecibo,
-        esReimpresion: esReimpresion,
-        reciboTitulo: widget.settings.reciboTitulo,
-        mostrarAdeudado: widget.settings.reciboMostrarAdeudado,
-        empresaWhatsapp: widget.settings.empresaWhatsapp,
-        // Sub-toggle que SE MANTIENE: cédula dentro del bloque `cliente`.
-        mostrarCedula: widget.settings.reciboMostrarCedula,
-        // Layout configurable: orden + visibilidad + tamaño por bloque. La
-        // térmica itera la misma lista que pantalla/PDF (supersede
-        // mostrarEmpresa/ordenPie).
-        layout: widget.settings.reciboLayout,
-        // #6a: si es cobro múltiple, imprimir las N cuotas del grupo (no solo
-        // la 1ª). El service cae al recibo single si multiRows es null/1.
-        multiRecibos: widget.multiRows,
-        // Detalle de mora del contrato para el bloque `mora` (paridad con
-        // pantalla/PDF). Ya filtrado arriba; vacío → el bloque no imprime.
-        moraRows: moraRows,
-        // Logo cacheado localmente (sin red). Null → recibo sin logo.
-        logoBytes: logoBytes,
       );
 
       if (!mounted) return;

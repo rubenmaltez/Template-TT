@@ -1,6 +1,6 @@
 {
-  "version": "0.7.1",
-  "release_notes": "Impresion termica: tildes y enie correctos (codepage CP850 + reset), y el logo de la empresa ahora se imprime (offline, desde cache local). PDF (recibos y reportes): fuente Unicode embebida (NotoSans) que arregla los simbolos raros. Incluye todo lo de 0.7.0 (roles admin_cobranza, prefijo de recibo, navegacion Android, forzar password, etc.).",
+  "version": "0.7.2",
+  "release_notes": "Recibo termico ahora se imprime como imagen (rasterizando el PDF con la fuente NotoSans): tildes y enie perfectos en CUALQUIER impresora, online y offline. Recibo limpio sin lineas, ancho estandar 58mm, logo integrado. PDF de reportes sin simbolos raros (fuente ampliada). Incluye todo lo de 0.7.0/0.7.1.",
   "download_url_windows": "https://github.com/rubenmaltez/Template-TT/releases/latest/download/SITECSA-CRM.msix",
   "download_url_android": "https://github.com/rubenmaltez/Template-TT/releases/latest/download/SITECSA-CRM.apk",
   "download_url": "https://github.com/rubenmaltez/Template-TT/releases/latest/download/SITECSA-CRM.msix"

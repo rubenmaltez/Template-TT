@@ -11,14 +11,17 @@ import '../../data/models/pago.dart';
 import '../shared/pdf/pdf_theme.dart';
 
 // ---------------------------------------------------------------------------
-// PDF generator del recibo — replica el ticket térmico (80mm o 57mm)
-// en formato PDF descargable para web (admin). Coincide visualmente con
+// PDF generator del recibo — replica el ticket térmico (80mm o 58mm)
+// en formato PDF descargable para web (admin) Y como fuente del raster que
+// imprime la térmica (rasterizando este PDF). Coincide visualmente con
 // el layout de `_ReciboTicket` y `_MultiReciboTicket`.
 // ---------------------------------------------------------------------------
 
 /// Ancho en puntos PDF según mm. 1 mm ≈ 2.8346 pt.
 double _anchoPuntos(int mm) {
-  if (mm == 57) return 161.57;
+  // Cualquier ancho que NO sea 80mm se trata como 58mm (≈ 164.4 pt). El único
+  // formato chico soportado es 58mm; valores legacy (57) caen acá igual.
+  if (mm != 80) return 164.4;
   // Default 80mm.
   return 226.77;
 }
@@ -44,9 +47,10 @@ Future<pw.Document> buildReciboPdf({
 
   // Se ITERA el layout configurable: cada bloque se construye en
   // `_pdfBloqueSingle` (devuelve [] si no hay nada que mostrar) y entre bloques
-  // se emite un separador (gap chico entre dos bloques de header, divider en el
-  // resto). El contenido/orden lo manda `settings.reciboLayout`; el bloque
-  // `totales` (dinero) sigue intacto, solo cambia su posición.
+  // se emite SOLO espaciado (sin líneas de separación) — estilo limpio: las
+  // secciones se distinguen por aire + negritas. Gap chico entre dos bloques
+  // de header (van más juntos), gap mayor en el resto. El contenido/orden lo
+  // manda `settings.reciboLayout`; el bloque `totales` (dinero) sigue intacto.
   final children = <pw.Widget>[];
   String? zonaPrev;
   for (final b in settings.reciboLayout) {
@@ -59,7 +63,7 @@ Future<pw.Document> buildReciboPdf({
       if (zonaPrev == 'header' && zona == ReciboZona.header) {
         children.add(pw.SizedBox(height: 2));
       } else {
-        children.add(_pdfDivider());
+        children.add(pw.SizedBox(height: 6));
       }
     }
     children.addAll(contenido);
@@ -283,8 +287,9 @@ Future<pw.Document> buildMultiReciboPdf({
   final ancho = _anchoPuntos(settings.formatoReciboMm);
 
   // Se ITERA el MISMO layout configurable que el recibo single. Los ids mapean
-  // a su contenido MULTI (lista de N cuotas, totales sumados). El bloque
-  // `totales` (dinero) mantiene su matemática IDÉNTICA; solo cambia su posición.
+  // a su contenido MULTI (lista de N cuotas, totales sumados). Entre bloques
+  // SOLO espaciado (sin líneas) — estilo limpio. El bloque `totales` (dinero)
+  // mantiene su matemática IDÉNTICA; solo cambia su posición.
   final children = <pw.Widget>[];
   String? zonaPrev;
   for (final b in settings.reciboLayout) {
@@ -297,7 +302,7 @@ Future<pw.Document> buildMultiReciboPdf({
       if (zonaPrev == 'header' && zona == ReciboZona.header) {
         children.add(pw.SizedBox(height: 2));
       } else {
-        children.add(_pdfDivider());
+        children.add(pw.SizedBox(height: 6));
       }
     }
     children.addAll(contenido);
@@ -613,12 +618,6 @@ pw.Widget _pdfRow(String label, String value, [double k = 1]) {
     ),
   );
 }
-
-pw.Widget _pdfDivider() => pw.Padding(
-      padding: const pw.EdgeInsets.symmetric(vertical: 4),
-      child: pw.Container(
-          height: 0.5, width: double.infinity, color: PdfColors.grey700),
-    );
 
 List<pw.Widget> _vueltoIfNeeded(Map<String, dynamic> row, [double k = 1]) {
   // Lee el vuelto del pago directamente (columna vuelto_cordobas).

@@ -14,8 +14,9 @@ import '../../recibo/recibo_screen.dart' show ReciboTicket;
 class ReciboPreview extends ConsumerWidget {
   const ReciboPreview({super.key});
 
-  /// Ancho en píxeles para simular la tira térmica (80mm≈300, 57mm≈215).
-  static double _previewWidthPx(int formatoMm) => formatoMm == 57 ? 215 : 300;
+  /// Ancho en píxeles para simular la tira térmica (80mm≈300, 58mm≈215).
+  /// Cualquier ancho que no sea 80 (incl. el legacy 57) se trata como angosto.
+  static double _previewWidthPx(int formatoMm) => formatoMm != 80 ? 215 : 300;
 
   /// Fila de ejemplo con TODOS los campos que lee `ReciboTicket`. Cobro en
   /// efectivo de una cuota mensual, sin vuelto. Datos ficticios.

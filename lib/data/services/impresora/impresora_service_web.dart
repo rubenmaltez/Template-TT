@@ -1,7 +1,5 @@
 import 'dart:typed_data';
 
-import '../../models/recibo_layout.dart';
-
 /// Stub web: impresión Bluetooth no aplica en navegador.
 class ImpresoraBT {
   /// Nombre de la impresora pareada (vacío en web).
@@ -19,27 +17,12 @@ class ImpresoraService {
 
   Future<List<ImpresoraBT>> listarPareadas() async => const [];
 
-  Future<bool> imprimir({
+  /// Espeja la firma del service io para que el conditional import compile.
+  /// BT no aplica en web (se usa el PDF descargable), así que tira siempre.
+  Future<bool> imprimirRaster({
     required String macImpresora,
-    required Map<String, dynamic> recibo,
-    required Map<String, String> empresa,
+    required Uint8List pdfBytes,
     required int anchoMm,
-    String? pieRecibo,
-    bool esReimpresion = false,
-    String? reciboTitulo,
-    bool mostrarAdeudado = true,
-    String? empresaWhatsapp,
-    // Sub-toggle que SE MANTIENE (cédula dentro del bloque `cliente`).
-    bool mostrarCedula = true,
-    // Layout configurable del recibo (supersede mostrarEmpresa/ordenPie).
-    List<ReciboBloque> layout = const [],
-    List<Map<String, dynamic>>? multiRecibos,
-    // Detalle de mora del contrato (ya filtrado por el call-site). Espeja la
-    // firma del service io para que el conditional import compile aunque acá
-    // no se use (BT no aplica en web).
-    List<Map<String, dynamic>> moraRows = const [],
-    // Logo cacheado (espeja la firma del service io). No aplica en web.
-    Uint8List? logoBytes,
   }) async {
     throw UnsupportedError('Impresión BT no disponible en web');
   }
