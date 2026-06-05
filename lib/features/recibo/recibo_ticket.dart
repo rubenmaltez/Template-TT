@@ -480,7 +480,11 @@ class ReciboTicket extends StatelessWidget {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Flexible(child: Text(label, style: style)),
+        // flex: 0 → la etiqueta toma su ancho natural y el valor (Expanded) se
+        // queda con TODO el resto del ancho, alineándose contra el margen
+        // derecho del papel (mismo "justificado" que las filas normales). Sin
+        // esto la etiqueta tomaba flex 1 y el valor quedaba a media página.
+        Flexible(flex: 0, child: Text(label, style: style)),
         const SizedBox(width: 6),
         Expanded(
           child: Text(value,

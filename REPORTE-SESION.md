@@ -158,6 +158,74 @@ consistentes → auditoría.
 
 > Más reciente arriba. Formato por ítem: error → fix → expectativa.
 
+### 2026-06-05 — Impresión térmica RESUELTA + recibo afinado (v0.7.6 → v0.8.0)
+
+Branch `claude/stoic-tesla-cGkJ6`. Cierre de la saga de impresión: tras dos
+fixes fallidos (v0.7.4/v0.7.5), se dejó de adivinar y se **diagnosticó con la
+imagen real**. Detalle completo en `ESTADO-APP.md §10.6`.
+
+**Impresión salía negativa / angosta / chica (v0.7.6 diagnóstico)**
+- *Error:* el recibo imprimía con fondo oscuro, angosto y letra chica; dos fixes
+  previos sobre la IMAGEN no lo resolvieron.
+- *Diagnóstico:* se agregó un botón que muestra el PNG crudo de la captura + el
+  bitmap final que va a la térmica + métricas. **Reveló que el bitmap era
+  correcto** (positivo, ancho completo) → el bug no era la imagen.
+- *Expectativa:* poder VER qué se manda a la impresora antes de tocar código.
+
+**Codificación ESC/POS rota (v0.7.7 — fix real)**
+- *Error:* `gen.imageRaster` (esc_pos_utils_plus) codificaba mal el bitmap para
+  la PT-210 (polaridad/ancho) → negativo + angosto, aunque el bitmap estaba bien.
+- *Fix:* `_rasterGsv0` armado a mano — GS v 0 con polaridad explícita (1=negro),
+  ancho en bytes correcto y partición en bandas de 255 filas. Diagnóstico con
+  A/B de 3 métodos (gsv0 / gsv0 invertido / ESC * columnas). **Confirmado:
+  Método A (GS v 0 normal) imprime perfecto en la PT-210.** Letra más grande
+  (`baseFont` 58mm 1.5×, 80mm 1.9×, desacoplado del ancho).
+- *Expectativa:* el recibo imprime positivo, ancho completo y legible en
+  cualquier impresora, online y offline, con tildes (lo renderiza Skia).
+
+**Recibo no aprovechaba el papel (v0.7.8)**
+- *Error:* márgenes izq/der grandes, mucho aire vertical, valores que saltaban
+  de línea.
+- *Fix:* padding h. 24→6px, interlineado 1.3→1.12, gaps a la mitad, padding
+  vertical 16→4, avance ESC d 3→2, recorte blanco pad 8→4.
+- *Expectativa:* el texto cubre el ancho útil del papel (≈48mm en 58mm; el ~5mm
+  por lado restante es zona física no imprimible) y nada salta de línea.
+
+**Totales y mora no se justificaban (v0.8.0)**
+- *Error:* COBRADO/VUELTO/PAGADO/TOTAL MORA mostraban el valor a media página,
+  rompiendo la armonía del recibo (el resto sí pega el valor al margen derecho).
+- *Causa:* en `_totalLine` la etiqueta usaba `Flexible` con flex 1 (default),
+  encajonando el valor en ~50% del ancho. Las filas normales usan `flex: 0`.
+- *Fix:* `Flexible(flex: 0)` en la etiqueta de `_totalLine` → el valor (Expanded)
+  se queda con todo el resto y se justifica al margen derecho.
+- *Expectativa:* todas las líneas etiqueta→valor del recibo se justifican igual.
+
+**"Recibo emitido" como entrada separada en el historial (v0.8.0)**
+- *Error:* en el historial de la cuota, el recibo emitido aparecía como tarjeta
+  aparte de "Pago registrado" (redundante: el recibo se emite en el mismo cobro).
+- *Conflicto:* chocaba con CLAUDE.md #5 (recibo en el timeline de la cuota). Se
+  consultó a Rubén → fundir la EMISIÓN en el pago, mantener la ANULACIÓN aparte.
+- *Fix:* `_construirEventos` (HistorialCuotaWidget) absorbe el `recibos/create`
+  cuyo `pago_id` = `registro_id` del pago y muestra el número en el subtítulo del
+  card "Pago registrado". La anulación de recibo NO se absorbe (acción posterior,
+  rastro de dinero #5). Se agregó `a.registro_id` al SELECT de la query.
+- *Expectativa:* un cobro = un card "Pago registrado · Recibo CT-XXXXX"; anular
+  un recibo sí genera su propia entrada.
+
+**Notas del cobrador truncadas (v0.8.0)**
+- *Error:* las notas del cobro se mostraban cortadas ("...con 1000, vuel…") en el
+  change log.
+- *Causa:* `_fmt` en `audit_changelog.dart` cortaba todo valor >30 chars con "…".
+- *Fix:* tope subido a 500 (el tile del historial ya hace wrap del texto).
+- *Expectativa:* las notas se ven completas en el historial.
+
+*Archivos:* `recibo_ticket.dart`, `impresora_service_io.dart`,
+`impresora_service_web.dart`, `impresora_diagnostico.dart` (nuevo),
+`recibo_screen.dart`, `historial_cambios_widget.dart`, `audit_changelog.dart`,
+`pubspec.yaml`, `version.json`. Sin migraciones (schema v16 intacto).
+*Pendiente menor:* quitar el botón de diagnóstico + métodos B/C una vez que
+Rubén confirme el espaciado/justificado de v0.8.0.
+
 ### 2026-06-04 — Sesión v0.6.4 → v0.7.5 (roles + drift DB + impresión)
 
 Branch `claude/stoic-tesla-cGkJ6`. Sesión larga; resumen ejecutivo (detalle en

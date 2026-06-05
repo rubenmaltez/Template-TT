@@ -350,7 +350,7 @@ class _HistorialCuotaWidgetState extends ConsumerState<HistorialCuotaWidget> {
     // desordenan y no se agrupan.
     return ps.db.watch(
       '''
-      SELECT a.id, a.tabla, a.accion, a.campo,
+      SELECT a.id, a.tabla, a.accion, a.campo, a.registro_id,
              a.valor_anterior, a.valor_nuevo,
              a.user_id, a.user_rol, a.created_at, a.ocurrido_en,
              c.nombre AS user_nombre
@@ -482,6 +482,31 @@ class _HistorialCuotaWidgetState extends ConsumerState<HistorialCuotaWidget> {
       }
     }
 
+    // Recibo EMITIDO (recibos/create) → se funde en el card del pago que lo
+    // generó (match por pago_id del snapshot del recibo = registro_id del pago).
+    // El número de recibo se muestra en el subtítulo del pago. La ANULACIÓN de
+    // un recibo NO se absorbe: es una acción posterior y parte del rastro de
+    // dinero (#5) → queda como su propia entrada en el timeline.
+    final reciboNumPorPago = <int, String>{}; // índice pago/create → Nº recibo
+    for (var i = 0; i < parsed.length; i++) {
+      final row = parsed[i].row;
+      if (row['tabla'] != 'pagos') continue;
+      if (auditDetectarAccion(row) != 'create') continue;
+      final pagoId = row['registro_id'] as String?;
+      if (pagoId == null) continue;
+      for (var k = 0; k < parsed.length; k++) {
+        if (absorbidos.contains(k)) continue;
+        final rr = parsed[k].row;
+        if (rr['tabla'] != 'recibos') continue;
+        if (auditDetectarAccion(rr) != 'create') continue;
+        if (auditSnapshotField(rr, 'pago_id') != pagoId) continue;
+        absorbidos.add(k);
+        reciboNumPorPago[i] =
+            auditSnapshotField(rr, 'numero_completo') ?? '';
+        break; // un pago → un recibo (1:1)
+      }
+    }
+
     final eventos = <_EventoVisual>[];
 
     for (var i = 0; i < parsed.length; i++) {
@@ -515,11 +540,17 @@ class _HistorialCuotaWidgetState extends ConsumerState<HistorialCuotaWidget> {
         }
       }
 
-      // Para un recibo anulado, el número no cambia (no aparece en el diff)
-      // pero es clave para el rastro de dinero → lo mostramos en el subtítulo.
-      final refNumero = (tabla == 'recibos' && accion == 'anulacion')
-          ? auditSnapshotField(row, 'numero_completo')
-          : null;
+      // Subtítulo con número de recibo:
+      //  - Pago/create que fundió su recibo emitido → "· Recibo CT-00001".
+      //  - Recibo anulado → su número (no cambia, no aparece en el diff) para
+      //    el rastro de dinero.
+      String? refNumero;
+      if (tabla == 'pagos' && accion == 'create' &&
+          (reciboNumPorPago[i]?.isNotEmpty ?? false)) {
+        refNumero = reciboNumPorPago[i];
+      } else if (tabla == 'recibos' && accion == 'anulacion') {
+        refNumero = auditSnapshotField(row, 'numero_completo');
+      }
 
       eventos.add(_EventoVisual(
         row: row,

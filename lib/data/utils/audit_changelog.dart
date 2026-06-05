@@ -495,7 +495,11 @@ String _fmt(dynamic v) {
     final dt = DateTime.tryParse(s);
     if (dt != null) return Fmt.fechaCorta(dt);
   }
-  if (s.length > 30) return '${s.substring(0, 27)}…';
+  // Tope GENEROSO solo como guarda contra blobs absurdos: el tile del historial
+  // ya hace wrap del texto, así que valores normales (ej. las NOTAS que deja el
+  // cobrador al cobrar) se muestran COMPLETOS. Antes el tope de 30 chars cortaba
+  // las notas con "…".
+  if (s.length > 500) return '${s.substring(0, 497)}…';
   return s;
 }
 

@@ -4,16 +4,20 @@
 > JUNTO con `CLAUDE.md` al abrir una sesión nueva de Claude Code, para
 > continuar exactamente desde acá sin re-descubrir el contexto.
 >
-> **Última actualización**: 2026-06-04 (branch `claude/stoic-tesla-cGkJ6`,
-> commit `9bc4dc9`). **Release v0.7.5.** Sesión larga v0.6.4 → v0.7.5 — ver
-> **§10** (resumen completo) y §9 (detalle de v0.6.4). Migraciones hasta
-> **0095**, schema **v16** (sin cambios — todas las migr nuevas son filas/RPC/
-> índice/constraint, no columnas sincronizadas). Distribución: `Install Steps/`
-> (guías) + `Releases\vX.Y.Z\` (instaladores versionados). **Estado de testing
-> en curso**: roles/admin_cobranza y el ciclo cobro→recibo validados; el foco
-> abierto es la **impresión térmica** (ver §10 → "Impresión" y "Pendiente de
-> validar"). Snapshots previos: 2026-06-03 v0.6.4 (§9); 2026-06-02 `83fec70`
-> (audit total).
+> **Última actualización**: 2026-06-05 (branch `claude/stoic-tesla-cGkJ6`).
+> **Release v0.8.0 — checkpoint con impresión térmica RESUELTA.** Sesión larga
+> v0.6.4 → v0.8.0 — ver **§10** (resumen completo) y §9 (detalle de v0.6.4).
+> Migraciones hasta **0095**, schema **v16** (sin cambios — todas las migr
+> nuevas son filas/RPC/índice/constraint, no columnas sincronizadas).
+> Distribución: `Install Steps/` (guías) + `Releases\vX.Y.Z\` (instaladores
+> versionados). **Impresión térmica resuelta** (v0.7.6→v0.8.0): el bug era la
+> CODIFICACIÓN ESC/POS (no la imagen) — se reemplazó `gen.imageRaster` por
+> **GS v 0 armado a mano** (polaridad/ancho explícitos), confirmado en la
+> GOOJPRT PT-210 vía un diagnóstico A/B (3 métodos). Layout del recibo afinado
+> (márgenes mínimos, interlineado 1.12, totales/mora justificados, letra
+> grande). Historial de cuota: recibo emitido fundido en "Pago registrado";
+> notas del cobrador completas. Snapshots previos: 2026-06-04 v0.7.5; 2026-06-03
+> v0.6.4 (§9); 2026-06-02 `83fec70` (audit total).
 
 ---
 
@@ -367,3 +371,47 @@ resize a dots → grayscale → recortar blanco → dither Floyd-Steinberg →
 Rubén pidió: cuando una regla vieja (de CLAUDE.md o de pedidos previos) **entre
 en conflicto** con una decisión nueva, **explicar el conflicto claro (qué es,
 cómo afecta) y preguntar**, en vez de asumir la regla vieja — la app evoluciona.
+
+### 10.6 Impresión RESUELTA + recibo afinado (v0.7.6 → v0.8.0, 2026-06-05)
+Tras dos fixes fallidos (v0.7.4/v0.7.5 seguían imprimiendo negativo/angosto/
+chico), se cambió de estrategia: **dejar de adivinar y DIAGNOSTICAR**.
+- **v0.7.6 — diagnóstico**: botón "Diagnóstico: ver imagen a imprimir" que
+  muestra el **PNG crudo de la captura** + el **bitmap final que va a la
+  térmica** (sobre fondo magenta para ver transparencia) + métricas (dims,
+  alpha, luminancia). Resultado clave: **el bitmap salía CORRECTO** (positivo,
+  ancho completo, legible). → El bug NO era la imagen.
+- **v0.7.7 — fix real**: si el bitmap está bien pero imprime mal, el problema
+  está en la CODIFICACIÓN ESC/POS. Se reemplazó `gen.imageRaster` (de
+  esc_pos_utils_plus) por **`_rasterGsv0` armado a mano**: GS v 0 con polaridad
+  (1=negro), ancho en bytes y partición en bandas de 255 filas, todo explícito.
+  El diagnóstico quedó con **3 botones A/B/C** (gsv0 / gsv0 invertido / ESC *
+  columnas) para A/B-testear el método sin round-trips. Letra más grande
+  (`baseFont` desacoplado del ancho: 58mm 1.5×, 80mm 1.9×).
+  **Confirmado por Rubén en la PT-210: Método A (GS v 0 normal) = correcto.**
+  B salía negativo (su impresora no necesita invertir); C en blanco (la PT-210
+  no soporta ESC * columnas).
+- **v0.7.8 — aprovechar el papel**: márgenes h. 24→6px, interlineado 1.3→1.12,
+  gaps entre bloques a la mitad, padding vertical 16→4, avance ESC d 3→2,
+  recorte blanco pad 8→4. Los valores dejaron de saltar de línea.
+- **v0.8.0 — checkpoint**: (1) **totales/mora justificados**: `_totalLine` tenía
+  la etiqueta en `Flexible` flex 1 → el valor quedaba a media página; con
+  `flex: 0` el valor se pega al margen derecho igual que el resto. (2) **Recibo
+  emitido fundido en "Pago registrado"** en el historial de la cuota (su número
+  va al subtítulo); la **anulación** de recibo sigue como entrada propia
+  (decisión confirmada con Rubén — mantiene la regla #5 para lo importante).
+  (3) **Notas del cobrador completas**: el formateador del change log cortaba
+  todo valor >30 chars con "…"; subido a 500 (el tile ya hace wrap).
+
+**Arquitectura de impresión actual (v0.8.0)**:
+`ReciboTicket` (widget, ancho = dots del papel, fondo blanco, márgenes mínimos)
+→ `screenshot` captura a PNG (targetSize ancho×5000 sobre Container blanco,
+pixelRatio 1.0) → `ImpresoraService.imprimirImagen` → `imprimirImagenMetodo`
+(default `MetodoRaster.gsv0`): decode → aplanar sobre blanco → resize a dots →
+grayscale → recortar blanco → dither Floyd-Steinberg → **`_rasterGsv0`** (GS v 0
+manual, 1=negro, bandas de 255) → BT. 100% offline. 80mm producción (576 dots),
+58mm testing PT-210 (384 dots).
+
+**Pendiente menor (no bloquea)**: una vez que Rubén confirme que el espaciado +
+justificado de v0.8.0 queda como lo quiere, **quitar el botón de diagnóstico y
+los métodos B/C** (ya cumplieron su función). El método A queda como default
+permanente igual.

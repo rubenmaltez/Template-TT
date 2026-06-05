@@ -1,6 +1,6 @@
 {
-  "version": "0.7.8",
-  "release_notes": "Recibo termico (GS v 0, metodo confirmado): se aprovecha al maximo el papel. Margenes izq/der reducidos a ~0.75mm, interlineado mas compacto (1.3->1.12), menos espacio entre bloques, y avance/recorte arriba-abajo minimos. Los valores ya no saltan de linea. Letra grande/legible. Incluye todo lo de 0.7.x.",
+  "version": "0.8.0",
+  "release_notes": "Checkpoint de impresion termica resuelta (GS v 0 confirmado en PT-210). Recibo: totales (COBRADO/VUELTO/PAGADO) y mora ahora se justifican igual que el resto (valor pegado al margen derecho). Historial de la cuota: el recibo emitido se muestra dentro de 'Pago registrado' (su numero en el subtitulo); la anulacion de recibo sigue como entrada propia. Notas del cobrador se muestran completas (antes se cortaban a 30 caracteres). Incluye todo lo de 0.7.x.",
   "download_url_windows": "https://github.com/rubenmaltez/Template-TT/releases/latest/download/SITECSA-CRM.msix",
   "download_url_android": "https://github.com/rubenmaltez/Template-TT/releases/latest/download/SITECSA-CRM.apk",
   "download_url": "https://github.com/rubenmaltez/Template-TT/releases/latest/download/SITECSA-CRM.msix"
