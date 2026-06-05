@@ -43,4 +43,13 @@ class ImpresoraService {
   }) async {
     throw UnsupportedError('Diagnóstico de impresión no disponible en web');
   }
+
+  Future<bool> imprimirImagenMetodo({
+    required String macImpresora,
+    required Uint8List pngBytes,
+    required int anchoMm,
+    required MetodoRaster metodo,
+  }) async {
+    throw UnsupportedError('Impresión BT no disponible en web');
+  }
 }

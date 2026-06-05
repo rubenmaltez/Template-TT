@@ -57,6 +57,28 @@ class ImpresoraService {
     required String macImpresora,
     required Uint8List pngBytes,
     required int anchoMm,
+  }) {
+    // Método por DEFECTO: GS v 0 armado a mano (raster estándar, polaridad
+    // explícita 1=negro). El diagnóstico mostró que el BITMAP sale correcto;
+    // el problema estaba en cómo `gen.imageRaster` lo codificaba para la
+    // térmica. Esta versión controla bit-order, ancho y polaridad a mano.
+    return imprimirImagenMetodo(
+      macImpresora: macImpresora,
+      pngBytes: pngBytes,
+      anchoMm: anchoMm,
+      metodo: MetodoRaster.gsv0,
+    );
+  }
+
+  /// Imprime el bitmap con el [metodo] de codificación indicado. Permite
+  /// A/B-testear qué comando entiende cada impresora (algunas salen en negativo
+  /// con el raster estándar, otras no soportan GS v 0). Todos comparten el mismo
+  /// pipeline de imagen (`_procesarParaTermica`).
+  Future<bool> imprimirImagenMetodo({
+    required String macImpresora,
+    required Uint8List pngBytes,
+    required int anchoMm,
+    required MetodoRaster metodo,
   }) async {
     try {
       final imagen = _procesarParaTermica(pngBytes, anchoMm);
@@ -65,20 +87,67 @@ class ImpresoraService {
         return false;
       }
 
-      final gen = Generator(_size(anchoMm), await CapabilityProfile.load());
       final bytes = <int>[
-        // Reset/init (ESC @) ANTES del raster: limpia el buffer y deja la
-        // térmica en estado conocido.
+        // Reset/init (ESC @): limpia el buffer y deja la térmica en estado
+        // conocido (saca cualquier modo raro previo).
         0x1B, 0x40,
-        ...gen.imageRaster(imagen, align: PosAlign.center),
-        ...gen.feed(2),
-        ...gen.cut(),
       ];
+
+      switch (metodo) {
+        case MetodoRaster.gsv0:
+          bytes.addAll(_rasterGsv0(imagen, invertir: false));
+        case MetodoRaster.gsv0Invertido:
+          bytes.addAll(_rasterGsv0(imagen, invertir: true));
+        case MetodoRaster.escPosColumnas:
+          final gen = Generator(_size(anchoMm), await CapabilityProfile.load());
+          bytes.addAll(gen.image(imagen, align: PosAlign.center));
+      }
+
+      // Avance de papel + corte. ESC d n = avanza n líneas; GS V 0 = corte
+      // total (inofensivo si la impresora no tiene cutter, lo ignora).
+      bytes.addAll(<int>[0x1B, 0x64, 0x03, 0x1D, 0x56, 0x00]);
+
       return _enviarBytes(macImpresora, bytes);
     } catch (e) {
-      if (kDebugMode) debugPrint('Impresora imagen: $e');
+      if (kDebugMode) debugPrint('Impresora imagen ($metodo): $e');
       return false;
     }
+  }
+
+  /// Arma el comando GS v 0 (raster bit image) A MANO desde una imagen en
+  /// grises/dither. Control TOTAL de:
+  ///   - polaridad: 1 = punto negro (quema). Con [invertir] se da vuelta.
+  ///   - ancho en bytes: (w+7)>>3, header xL/xH correcto.
+  ///   - se parte en BANDAS (≤255 filas) para no exceder el buffer de la
+  ///     térmica (algunas truncan rasters muy altos).
+  /// Umbral 0.5 sobre luminancia: la imagen ya viene dithered (casi B/N).
+  static List<int> _rasterGsv0(img.Image im, {required bool invertir}) {
+    final w = im.width;
+    final h = im.height;
+    final widthBytes = (w + 7) >> 3;
+    final out = <int>[];
+    const banda = 255; // filas por comando GS v 0
+    for (var y0 = 0; y0 < h; y0 += banda) {
+      final filas = (y0 + banda <= h) ? banda : (h - y0);
+      final raster = Uint8List(widthBytes * filas);
+      for (var y = 0; y < filas; y++) {
+        for (var x = 0; x < w; x++) {
+          final oscuro = im.getPixel(x, y0 + y).luminanceNormalized < 0.5;
+          final quema = invertir ? !oscuro : oscuro;
+          if (quema) {
+            raster[y * widthBytes + (x >> 3)] |= (0x80 >> (x & 7));
+          }
+        }
+      }
+      // GS v 0  m=0  xL xH  yL yH  [data]
+      out.addAll(<int>[
+        0x1D, 0x76, 0x30, 0x00,
+        widthBytes & 0xff, (widthBytes >> 8) & 0xff,
+        filas & 0xff, (filas >> 8) & 0xff,
+      ]);
+      out.addAll(raster);
+    }
+    return out;
   }
 
   /// Pipeline COMPARTIDO captura→bitmap-térmico. Lo usan `imprimirImagen` (lo

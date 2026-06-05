@@ -1,6 +1,6 @@
 {
-  "version": "0.7.6",
-  "release_notes": "Diagnostico de impresion: en la pantalla del recibo hay un boton 'Diagnostico: ver imagen a imprimir' que muestra el bitmap EXACTO que se manda a la termica (crudo + procesado) sobre fondo rosado, para ver por que sale oscuro/angosto/chico sin adivinar. No imprime, no requiere impresora. Incluye todo lo de 0.7.x.",
+  "version": "0.7.7",
+  "release_notes": "Recibo termico: el diagnostico mostro que el BITMAP sale correcto; el problema estaba en como se codificaba para la termica. Nueva codificacion GS v 0 armada a mano (polaridad y ancho explicitos, 1=negro) como metodo por defecto + letras mas grandes (58mm de ~1.6mm a ~2.4mm). El boton de diagnostico ahora permite imprimir la misma imagen con 3 metodos (A: GS v 0, B: invertido, C: ESC * columnas) para elegir el que cada impresora entiende. Incluye todo lo de 0.7.x.",
   "download_url_windows": "https://github.com/rubenmaltez/Template-TT/releases/latest/download/SITECSA-CRM.msix",
   "download_url_android": "https://github.com/rubenmaltez/Template-TT/releases/latest/download/SITECSA-CRM.apk",
   "download_url": "https://github.com/rubenmaltez/Template-TT/releases/latest/download/SITECSA-CRM.msix"

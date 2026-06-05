@@ -442,9 +442,23 @@ class _AccionesImpresionState extends ConsumerState<_AccionesImpresion> {
         anchoMm: widget.settings.formatoReciboMm,
       );
       if (!mounted) return;
+      final fav = ref.read(impresoraFavoritaProvider).valueOrNull;
       await showDialog<void>(
         context: context,
-        builder: (_) => _DiagnosticoDialog(diag: diag),
+        builder: (_) => _DiagnosticoDialog(
+          diag: diag,
+          tieneImpresora: fav != null,
+          // Imprime la MISMA imagen con el método elegido (A/B test). Si no hay
+          // impresora configurada, los botones quedan deshabilitados.
+          onImprimir: fav == null
+              ? null
+              : (metodo) => service.imprimirImagenMetodo(
+                    macImpresora: fav.mac,
+                    pngBytes: pngBytes,
+                    anchoMm: widget.settings.formatoReciboMm,
+                    metodo: metodo,
+                  ),
+        ),
       );
     } catch (e) {
       if (mounted) {
@@ -604,9 +618,61 @@ class _AccionesImpresionState extends ConsumerState<_AccionesImpresion> {
 /// Dialog del diagnóstico: muestra el PNG crudo de la captura y el bitmap
 /// FINAL que va a la térmica, ambos sobre fondo MAGENTA (así la transparencia
 /// se ve obvia) + las métricas. Permite zoom (InteractiveViewer) para inspección.
-class _DiagnosticoDialog extends StatelessWidget {
-  const _DiagnosticoDialog({required this.diag});
+class _DiagnosticoDialog extends StatefulWidget {
+  const _DiagnosticoDialog({
+    required this.diag,
+    required this.tieneImpresora,
+    required this.onImprimir,
+  });
   final DiagnosticoImpresion diag;
+  final bool tieneImpresora;
+
+  /// Imprime la imagen con el método dado. Null si no hay impresora.
+  final Future<bool> Function(MetodoRaster metodo)? onImprimir;
+
+  @override
+  State<_DiagnosticoDialog> createState() => _DiagnosticoDialogState();
+}
+
+class _DiagnosticoDialogState extends State<_DiagnosticoDialog> {
+  MetodoRaster? _imprimiendo;
+
+  DiagnosticoImpresion get diag => widget.diag;
+
+  Future<void> _probar(MetodoRaster metodo) async {
+    final fn = widget.onImprimir;
+    if (fn == null || _imprimiendo != null) return;
+    setState(() => _imprimiendo = metodo);
+    try {
+      final ok = await fn(metodo);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(ok
+              ? 'Enviado a la impresora — mirá cómo salió'
+              : 'No se pudo conectar a la impresora'),
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _imprimiendo = null);
+    }
+  }
+
+  Widget _botonMetodo(String label, MetodoRaster metodo) {
+    final cargando = _imprimiendo == metodo;
+    return OutlinedButton.icon(
+      icon: cargando
+          ? const SizedBox(
+              width: 16,
+              height: 16,
+              child: CircularProgressIndicator(strokeWidth: 2))
+          : const Icon(Icons.print_outlined, size: 18),
+      label: Text(label),
+      onPressed: widget.onImprimir == null || _imprimiendo != null
+          ? null
+          : () => _probar(metodo),
+    );
+  }
 
   Widget _imagenSobreMagenta(String titulo, Uint8List png) {
     return Column(
@@ -655,6 +721,34 @@ class _DiagnosticoDialog extends StatelessWidget {
               const Text(
                 'El fondo rosado se ve donde la imagen es transparente. '
                 'Tocá y arrastrá para hacer zoom.',
+                style: TextStyle(fontSize: 11, color: Colors.black54),
+              ),
+              const Divider(height: 24),
+              const Text(
+                'Probar impresión (misma imagen, distinto método):',
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
+              if (!widget.tieneImpresora)
+                const Padding(
+                  padding: EdgeInsets.only(top: 8),
+                  child: Text(
+                    'Configurá una impresora para poder probar.',
+                    style: TextStyle(fontSize: 12, color: Colors.redAccent),
+                  ),
+                ),
+              const SizedBox(height: 8),
+              _botonMetodo('A) GS v 0 (negro quema) — recomendado',
+                  MetodoRaster.gsv0),
+              const SizedBox(height: 6),
+              _botonMetodo(
+                  'B) GS v 0 invertido (blanco quema)', MetodoRaster.gsv0Invertido),
+              const SizedBox(height: 6),
+              _botonMetodo(
+                  'C) ESC * por columnas', MetodoRaster.escPosColumnas),
+              const SizedBox(height: 8),
+              const Text(
+                'Imprimí los 3 y decime cuál sale bien (positivo, ancho '
+                'completo, legible). Ese queda como el definitivo.',
                 style: TextStyle(fontSize: 11, color: Colors.black54),
               ),
             ],
