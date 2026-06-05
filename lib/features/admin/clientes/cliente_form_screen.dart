@@ -10,6 +10,7 @@ import 'package:uuid/uuid.dart';
 
 import '../../../data/providers/cobrador_provider.dart';
 import '../../../data/providers/form_dirty_provider.dart';
+import '../../../data/services/map_tile_cache.dart';
 import '../../../data/utils/validators.dart';
 import '../../../powersync/db.dart' as ps;
 import '../../shared/widgets/confirm_discard_dialog.dart';
@@ -728,6 +729,9 @@ class _MapaPickerScreenState extends State<_MapaPickerScreen> {
                 TileLayer(
                   urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
                   userAgentPackageName: 'com.ispbilling.app',
+                  // Mismo store compartido que el mapa principal: los tiles
+                  // del selector de ubicación también quedan cacheados offline.
+                  tileProvider: MapTileCache.instance.tileProvider(),
                 ),
                 MarkerLayer(
                   markers: [

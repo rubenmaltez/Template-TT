@@ -15,6 +15,7 @@ import 'data/providers/auth_identity_provider.dart';
 import 'data/providers/foto_comprobante_provider.dart';
 import 'data/services/error_log_service.dart';
 import 'data/services/logo_cache_service.dart';
+import 'data/services/map_tile_cache.dart';
 import 'features/auth/auth_flow_provider.dart';
 import 'package:powersync/powersync.dart' show SyncStatus;
 
@@ -86,6 +87,11 @@ Future<void> _bootstrap() async {
   await ErrorLogService.instance.init();
 
   await ps.openDatabase();
+
+  // Inicializa la caché en disco de los tiles del mapa (Android/Windows).
+  // Best-effort y no-bloqueante en la práctica: si falla, el mapa cae al
+  // NetworkTileProvider. En web es un no-op (no hay filesystem persistente).
+  await MapTileCache.instance.init();
 
   // Pre-cargar el last_known_user_id de SharedPreferences. El
   // authIdentityProvider lo necesita como estado inicial para detectar

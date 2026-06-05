@@ -6,6 +6,7 @@ import 'package:latlong2/latlong.dart';
 
 import '../../data/providers/cobrador_provider.dart';
 import '../../data/repositories/settings_repo.dart';
+import '../../data/services/map_tile_cache.dart';
 import '../../powersync/db.dart' as ps;
 import '../shared/widgets/dropdown_filtro.dart';
 import '../shared/widgets/empty_state.dart';
@@ -196,6 +197,10 @@ class _MapaScreenState extends ConsumerState<MapaScreen> {
                       ? 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'
                       : 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
                   userAgentPackageName: 'com.ispbilling.app',
+                  // Caché en disco (Android/Windows): los tiles que el usuario
+                  // navega CON señal quedan offline. Ambas capas comparten el
+                  // store (las URLs distintas no se pisan). En web cae a red.
+                  tileProvider: MapTileCache.instance.tileProvider(),
                 ),
                 MarkerLayer(
                   markers:

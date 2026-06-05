@@ -41,6 +41,14 @@ dependencies:
   flutter_map: ^7.0.2
   latlong2: ^0.9.1
 
+  # Caché en disco de los tiles del mapa (offline mientras navegás) en
+  # Android + Windows. flutter_map_cache envuelve el tileProvider; el store
+  # de archivos persiste cada tile bajado. Versión pineada a la línea
+  # compatible con flutter_map 7 (la 10.x de FMTC exigiría flutter_map 8).
+  # Ver lib/data/services/map_tile_cache.dart.
+  flutter_map_cache: ^2.1.0
+  http_cache_file_store: ^2.0.1
+
   # Captura de fotos (cliente, comprobante)
   image_picker: ^1.1.2
   permission_handler: ^11.3.1

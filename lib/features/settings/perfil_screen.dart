@@ -9,6 +9,7 @@ import '../shared/utils/sign_out_helper.dart';
 import '../../data/providers/foto_comprobante_provider.dart';
 import '../../data/providers/impresora_provider.dart';
 import '../../data/providers/sync_status_provider.dart';
+import '../../data/services/map_tile_cache.dart';
 import '../../data/utils/formatters.dart';
 import '../../powersync/db.dart' as ps;
 import '../auth/cambiar_password_dialog.dart';
@@ -82,6 +83,10 @@ class PerfilScreen extends ConsumerWidget {
         ],
         const SizedBox(height: 12),
         const _FotosPendientesCard(),
+        if (!kIsWeb) ...[
+          const SizedBox(height: 12),
+          const _MapaCacheCard(),
+        ],
         const SizedBox(height: 24),
         OutlinedButton.icon(
           icon: const Icon(Icons.lock_outline),
@@ -273,6 +278,108 @@ class _FotosPendientesCardState extends ConsumerState<_FotosPendientesCard> {
     } finally {
       if (mounted) setState(() => _ejecutando = false);
     }
+  }
+}
+
+/// Tarjeta del mapa offline: muestra cuánto ocupa la caché de tiles en disco
+/// y permite borrarla. Es la "válvula de seguridad" del modo sin-tope: el
+/// disco crece sin techo mientras el cobrador navega, y desde acá puede ver
+/// el peso y liberarlo manualmente. Solo se monta en nativo (gate kIsWeb en
+/// el padre) porque en web la caché de disco no aplica.
+class _MapaCacheCard extends StatefulWidget {
+  const _MapaCacheCard();
+
+  @override
+  State<_MapaCacheCard> createState() => _MapaCacheCardState();
+}
+
+class _MapaCacheCardState extends State<_MapaCacheCard> {
+  int? _bytes; // null = midiendo
+  bool _borrando = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _medir();
+  }
+
+  Future<void> _medir() async {
+    final b = await MapTileCache.instance.cacheSizeBytes();
+    if (mounted) setState(() => _bytes = b);
+  }
+
+  Future<void> _borrar() async {
+    setState(() => _borrando = true);
+    try {
+      await MapTileCache.instance.clear();
+      await _medir();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Caché del mapa borrada')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _borrando = false);
+    }
+  }
+
+  String _formatBytes(int bytes) {
+    if (bytes < 1024) return '$bytes B';
+    if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(0)} KB';
+    if (bytes < 1024 * 1024 * 1024) {
+      return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
+    }
+    return '${(bytes / (1024 * 1024 * 1024)).toStringAsFixed(2)} GB';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final vacio = (_bytes ?? 0) == 0;
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.map_outlined, color: scheme.primary),
+                const SizedBox(width: 8),
+                Text('Mapa offline',
+                    style: Theme.of(context).textTheme.titleMedium),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Text(
+              _bytes == null
+                  ? 'Calculando tamaño…'
+                  : vacio
+                      ? 'Sin tiles guardados todavía. El mapa se va guardando '
+                          'en este dispositivo a medida que lo navegás con señal.'
+                      : 'Ocupa ${_formatBytes(_bytes!)} en este dispositivo. '
+                          'Son los tiles del mapa que navegaste, guardados para '
+                          'verlos sin conexión.',
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+            const SizedBox(height: 12),
+            Align(
+              alignment: Alignment.centerRight,
+              child: OutlinedButton.icon(
+                icon: _borrando
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2))
+                    : const Icon(Icons.delete_outline),
+                label: Text(_borrando ? 'Borrando…' : 'Borrar caché del mapa'),
+                onPressed: (_borrando || vacio) ? null : _borrar,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }
 
