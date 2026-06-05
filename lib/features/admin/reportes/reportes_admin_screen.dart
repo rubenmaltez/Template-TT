@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart' show Clipboard, ClipboardData;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:printing/printing.dart';
 
@@ -9,6 +8,7 @@ import '../../../data/repositories/settings_repo.dart';
 import '../../../data/utils/formatters.dart';
 import '../../../features/shared/widgets/rango_fechas_dialog.dart';
 import '../../../powersync/db.dart' as ps;
+import 'excel/reporte_excel.dart';
 import 'pdf/reporte_anulaciones_pdf.dart';
 import 'pdf/reporte_arqueo_pdf.dart';
 import 'pdf/reporte_clientes_pdf.dart';
@@ -356,7 +356,7 @@ class _ArqueoCajaCard extends ConsumerWidget {
 /// efectivos separados por moneda (US$/C$, montos en `monto_original`), el
 /// vuelto total, los electrónicos por método, y el recaudado contable
 /// (`monto_cordobas`). Params: [desde, hasta] (date-only, inclusive).
-/// SQLite-válida: usa SUM(CASE WHEN…), NO FILTER. Compartida por PDF y CSV.
+/// SQLite-válida: usa SUM(CASE WHEN…), NO FILTER. Compartida por PDF y Excel.
 const String _arqueoSql = '''
   SELECT cb.nombre AS cobrador_nombre,
          COUNT(p.id) AS total_cobros,
@@ -464,11 +464,11 @@ class _DescargarPdfMenu extends ConsumerWidget {
         ),
         PopupMenuDivider(),
         PopupMenuItem(
-          value: 'csv',
+          value: 'excel',
           child: ListTile(
-            leading: Icon(Icons.table_chart),
-            title: Text('Exportar CSV'),
-            subtitle: Text('Copiar al portapapeles'),
+            leading: Icon(Icons.table_view),
+            title: Text('Exportar a Excel'),
+            subtitle: Text('Descargar .xlsx'),
             dense: true,
           ),
         ),
@@ -487,10 +487,10 @@ class _DescargarPdfMenu extends ConsumerWidget {
         ref.read(empresaNombreProvider).valueOrNull ?? 'ISP';
     final rango = ref.read(reporteRangoProvider);
 
-    // CSV export abre un sub-menú para elegir qué reporte exportar.
-    if (tipo == 'csv') {
+    // Excel export abre un sub-menú para elegir qué reporte exportar.
+    if (tipo == 'excel') {
       if (!context.mounted) return;
-      await _mostrarMenuCsv(context, ref);
+      await _mostrarMenuExcel(context, ref);
       return;
     }
 
@@ -800,23 +800,23 @@ class _DescargarPdfMenu extends ConsumerWidget {
   }
 
   // ---------------------------------------------------------------------------
-  // E5: Exportar CSV — sub-menú de selección de reporte
+  // E5: Exportar a Excel — sub-menú de selección de reporte
   // ---------------------------------------------------------------------------
 
-  Future<void> _mostrarMenuCsv(BuildContext context, WidgetRef ref) async {
+  Future<void> _mostrarMenuExcel(BuildContext context, WidgetRef ref) async {
     final tipo = await showDialog<String>(
       context: context,
       builder: (ctx) => SimpleDialog(
-        title: const Text('Exportar CSV'),
+        title: const Text('Exportar a Excel'),
         children: [
-          _csvOpcion(ctx, 'cobros', Icons.receipt_long, 'Cobros del mes'),
-          _csvOpcion(ctx, 'mora', Icons.warning_amber, 'Mora'),
-          _csvOpcion(ctx, 'clientes', Icons.people, 'Estado de clientes'),
-          _csvOpcion(ctx, 'fiscal', Icons.account_balance, 'Fiscal'),
-          _csvOpcion(ctx, 'eficiencia', Icons.speed, 'Eficiencia cobradores'),
-          _csvOpcion(ctx, 'inactivos', Icons.person_off, 'Clientes inactivos'),
-          _csvOpcion(ctx, 'anulaciones', Icons.cancel_outlined, 'Anulaciones'),
-          _csvOpcion(ctx, 'arqueo', Icons.point_of_sale, 'Arqueo / cierre'),
+          _excelOpcion(ctx, 'cobros', Icons.receipt_long, 'Cobros del mes'),
+          _excelOpcion(ctx, 'mora', Icons.warning_amber, 'Mora'),
+          _excelOpcion(ctx, 'clientes', Icons.people, 'Estado de clientes'),
+          _excelOpcion(ctx, 'fiscal', Icons.account_balance, 'Fiscal'),
+          _excelOpcion(ctx, 'eficiencia', Icons.speed, 'Eficiencia cobradores'),
+          _excelOpcion(ctx, 'inactivos', Icons.person_off, 'Clientes inactivos'),
+          _excelOpcion(ctx, 'anulaciones', Icons.cancel_outlined, 'Anulaciones'),
+          _excelOpcion(ctx, 'arqueo', Icons.point_of_sale, 'Arqueo / cierre'),
         ],
       ),
     );
@@ -828,25 +828,33 @@ class _DescargarPdfMenu extends ConsumerWidget {
           ? ref.read(reporteArqueoRangoProvider)
           : ref.read(reporteRangoProvider);
       final tasaUsd = ref.read(appSettingsProvider).tasaUsd;
-      final csv = await _generarCsv(tipo, rango, tasaUsd);
-      await Clipboard.setData(ClipboardData(text: csv));
-      if (context.mounted) {
+      final datos = await _extraerDatos(tipo, rango, tasaUsd);
+
+      final now = DateTime.now();
+      final mm = now.month.toString().padLeft(2, '0');
+      final dd = now.day.toString().padLeft(2, '0');
+      final ruta = await descargarExcel(
+        fileName: '${tipo}_${now.year}_${mm}_$dd.xlsx',
+        hojaNombre: _hojaNombre(tipo),
+        headers: datos.headers,
+        filas: datos.filas,
+      );
+      // ruta == null cuando el usuario cancela el diálogo de guardado.
+      if (context.mounted && ruta != null) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('CSV copiado al portapapeles — pegalo en Excel'),
-          ),
+          const SnackBar(content: Text('Reporte Excel guardado')),
         );
       }
     } catch (e) {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error generando CSV: $e')),
+          SnackBar(content: Text('Error generando Excel: $e')),
         );
       }
     }
   }
 
-  SimpleDialogOption _csvOpcion(
+  SimpleDialogOption _excelOpcion(
       BuildContext ctx, String value, IconData icon, String label) {
     return SimpleDialogOption(
       onPressed: () => Navigator.pop(ctx, value),
@@ -860,7 +868,25 @@ class _DescargarPdfMenu extends ConsumerWidget {
     );
   }
 
-  Future<String> _generarCsv(
+  /// Nombre legible de la hoja del .xlsx según el tipo de reporte.
+  String _hojaNombre(String tipo) => switch (tipo) {
+        'cobros' => 'Cobros',
+        'mora' => 'Mora',
+        'clientes' => 'Clientes',
+        'fiscal' => 'Fiscal',
+        'eficiencia' => 'Eficiencia',
+        'inactivos' => 'Inactivos',
+        'anulaciones' => 'Anulaciones',
+        'arqueo' => 'Arqueo',
+        _ => 'Reporte',
+      };
+
+  /// Extrae los datos de un reporte como headers + filas tipadas. Los montos y
+  /// cantidades se devuelven como `num` (para que en Excel sean números
+  /// sumables); el texto como `String`. MISMA fuente de queries que el CSV
+  /// anterior y los PDF — solo cambia el formato de salida. Params [rango] y
+  /// [tasaUsd] idénticos al resto de los reportes.
+  Future<({List<String> headers, List<List<Object?>> filas})> _extraerDatos(
       String tipo, RangoReporte rango, double tasaUsd) async {
     switch (tipo) {
       case 'cobros':
@@ -879,12 +905,13 @@ class _DescargarPdfMenu extends ConsumerWidget {
              AND date(p.fecha_pago) BETWEEN ? AND ?
            ORDER BY p.fecha_pago DESC
         ''', [rango.desdeSql, rango.hastaSql]);
-        return _toCsv(
-          ['Fecha', 'Cliente', 'Monto', 'Método', 'Cobrador', 'Recibo', 'Grupo'],
-          rows.map((r) => [
+        return (
+          headers: ['Fecha', 'Cliente', 'Monto', 'Método', 'Cobrador',
+                    'Recibo', 'Grupo'],
+          filas: rows.map((r) => <Object?>[
             r['fecha_pago']?.toString() ?? '',
             r['cliente_nombre']?.toString() ?? '',
-            r['monto']?.toString() ?? '0',
+            (r['monto'] as num?) ?? 0,
             MetodoPago.fromString(r['metodo']?.toString() ?? '').label,
             r['cobrador_nombre']?.toString() ?? '',
             r['numero_recibo']?.toString() ?? '',
@@ -910,15 +937,15 @@ class _DescargarPdfMenu extends ConsumerWidget {
            GROUP BY c.id, c.nombre, co.nombre
            ORDER BY dias_mora DESC
         ''', [diasGracia]);
-        return _toCsv(
-          ['Cliente', 'Comunidad', 'Cuotas vencidas', 'Monto adeudado',
-           'Días mora'],
-          rows.map((r) => [
+        return (
+          headers: ['Cliente', 'Comunidad', 'Cuotas vencidas', 'Monto adeudado',
+                    'Días mora'],
+          filas: rows.map((r) => <Object?>[
             r['cliente_nombre']?.toString() ?? '',
             r['comunidad']?.toString() ?? '',
-            r['cuotas_vencidas']?.toString() ?? '0',
-            r['monto_adeudado']?.toString() ?? '0',
-            r['dias_mora']?.toString() ?? '0',
+            (r['cuotas_vencidas'] as num?) ?? 0,
+            (r['monto_adeudado'] as num?) ?? 0,
+            (r['dias_mora'] as num?) ?? 0,
           ]).toList(),
         );
 
@@ -939,13 +966,14 @@ class _DescargarPdfMenu extends ConsumerWidget {
            GROUP BY c.id, c.nombre, co.nombre
            ORDER BY saldo DESC
         ''');
-        return _toCsv(
-          ['Cliente', 'Comunidad', 'Pendientes', 'Saldo', 'Último pago'],
-          rows.map((r) => [
+        return (
+          headers: ['Cliente', 'Comunidad', 'Pendientes', 'Saldo',
+                    'Último pago'],
+          filas: rows.map((r) => <Object?>[
             r['nombre']?.toString() ?? '',
             r['comunidad']?.toString() ?? '',
-            r['pendientes']?.toString() ?? '0',
-            r['saldo']?.toString() ?? '0',
+            (r['pendientes'] as num?) ?? 0,
+            (r['saldo'] as num?) ?? 0,
             r['ultimo_pago']?.toString() ?? 'Sin pagos',
           ]).toList(),
         );
@@ -966,14 +994,14 @@ class _DescargarPdfMenu extends ConsumerWidget {
            GROUP BY mes, plan_nombre, p.metodo
            ORDER BY mes DESC, plan_nombre, p.metodo
         ''', [rango.desdeSql, rango.hastaSql]);
-        return _toCsv(
-          ['Mes', 'Plan', 'Método', 'Monto total', 'Cantidad cobros'],
-          rows.map((r) => [
+        return (
+          headers: ['Mes', 'Plan', 'Método', 'Monto total', 'Cantidad cobros'],
+          filas: rows.map((r) => <Object?>[
             r['mes']?.toString() ?? '',
             r['plan_nombre']?.toString() ?? '',
             MetodoPago.fromString(r['metodo']?.toString() ?? '').label,
-            r['total_monto']?.toString() ?? '0',
-            r['cantidad']?.toString() ?? '0',
+            (r['total_monto'] as num?) ?? 0,
+            (r['cantidad'] as num?) ?? 0,
           ]).toList(),
         );
 
@@ -998,22 +1026,21 @@ class _DescargarPdfMenu extends ConsumerWidget {
            GROUP BY cb.id, cb.nombre
            ORDER BY monto_total DESC
         ''', [rango.desdeSql, rango.hastaSql, rango.desdeSql, rango.hastaSql]);
-        return _toCsv(
-          ['Cobrador', 'Cobros', 'Clientes visitados', 'Monto total',
-           'Cuotas asignadas', '% Éxito'],
-          rows.map((r) {
+        return (
+          headers: ['Cobrador', 'Cobros', 'Clientes visitados', 'Monto total',
+                    'Cuotas asignadas', '% Éxito'],
+          filas: rows.map((r) {
             final cobros = ((r['total_cobros'] as num?) ?? 0).toInt();
-            final asignadas =
-                ((r['cuotas_asignadas'] as num?) ?? 0).toInt();
+            final asignadas = ((r['cuotas_asignadas'] as num?) ?? 0).toInt();
             final tasa = asignadas > 0
                 ? ((cobros / asignadas) * 100).toStringAsFixed(1)
                 : '0';
-            return [
+            return <Object?>[
               r['cobrador_nombre']?.toString() ?? '',
-              '$cobros',
-              r['clientes_visitados']?.toString() ?? '0',
-              r['monto_total']?.toString() ?? '0',
-              '$asignadas',
+              cobros,
+              (r['clientes_visitados'] as num?) ?? 0,
+              (r['monto_total'] as num?) ?? 0,
+              asignadas,
               '$tasa%',
             ];
           }).toList(),
@@ -1037,15 +1064,15 @@ class _DescargarPdfMenu extends ConsumerWidget {
               OR MAX(p.fecha_pago) < date('now', '-6 hours', '-$mesesInactividad months')
            ORDER BY ultimo_pago ASC
         ''');
-        return _toCsv(
-          ['Cliente', 'Comunidad', 'Teléfono', 'Último pago',
-           'Días sin pago'],
-          rows.map((r) => [
+        return (
+          headers: ['Cliente', 'Comunidad', 'Teléfono', 'Último pago',
+                    'Días sin pago'],
+          filas: rows.map((r) => <Object?>[
             r['nombre']?.toString() ?? '',
             r['comunidad']?.toString() ?? '',
             r['telefono']?.toString() ?? '',
             r['ultimo_pago']?.toString() ?? 'Sin pagos',
-            r['dias_sin_pago']?.toString() ?? '',
+            r['dias_sin_pago'] as num?,
           ]).toList(),
         );
 
@@ -1066,12 +1093,13 @@ class _DescargarPdfMenu extends ConsumerWidget {
              AND date(p.fecha_pago) BETWEEN ? AND ?
            ORDER BY p.anulado_en DESC, p.fecha_pago DESC
         ''', [rango.desdeSql, rango.hastaSql]);
-        return _toCsv(
-          ['Fecha', 'Cliente', 'Monto', 'Motivo', 'Anulado por', 'Recibo'],
-          rows.map((r) => [
+        return (
+          headers: ['Fecha', 'Cliente', 'Monto', 'Motivo', 'Anulado por',
+                    'Recibo'],
+          filas: rows.map((r) => <Object?>[
             r['fecha_pago']?.toString() ?? '',
             r['cliente_nombre']?.toString() ?? '',
-            r['monto']?.toString() ?? '0',
+            (r['monto'] as num?) ?? 0,
             r['motivo_anulacion']?.toString() ?? 'Sin motivo',
             r['anulado_por_nombre']?.toString() ?? '',
             r['numero_recibo']?.toString() ?? '',
@@ -1083,13 +1111,13 @@ class _DescargarPdfMenu extends ConsumerWidget {
           rango.desdeSql,
           rango.hastaSql,
         ]);
-        return _toCsv(
-          [
+        return (
+          headers: [
             'Cobrador', 'Total cobros', 'Efectivo USD', 'Efectivo C\$',
             'Vuelto C\$', 'Efectivo neto C\$', 'Transferencia', 'Depósito',
             'Tarjeta', 'Equivalente total C\$', 'Ingreso total',
           ],
-          rows.map((r) {
+          filas: rows.map((r) {
             double d(String k) => ((r[k] as num?) ?? 0).toDouble();
             final efectivoNetoC = d('efectivo_nio') - d('efectivo_vuelto');
             final equivalenteTotalC = efectivoNetoC +
@@ -1097,36 +1125,25 @@ class _DescargarPdfMenu extends ConsumerWidget {
                 d('transferencia') +
                 d('deposito') +
                 d('tarjeta');
-            return [
+            return <Object?>[
               r['cobrador_nombre']?.toString() ?? '',
-              r['total_cobros']?.toString() ?? '0',
-              d('efectivo_usd').toString(),
-              d('efectivo_nio').toString(),
-              d('efectivo_vuelto').toString(),
-              efectivoNetoC.toString(),
-              d('transferencia').toString(),
-              d('deposito').toString(),
-              d('tarjeta').toString(),
-              equivalenteTotalC.toString(),
-              d('ingreso_total').toString(),
+              (r['total_cobros'] as num?) ?? 0,
+              d('efectivo_usd'),
+              d('efectivo_nio'),
+              d('efectivo_vuelto'),
+              efectivoNetoC,
+              d('transferencia'),
+              d('deposito'),
+              d('tarjeta'),
+              equivalenteTotalC,
+              d('ingreso_total'),
             ];
           }).toList(),
         );
 
       default:
-        return '';
+        throw ArgumentError('Tipo de reporte desconocido: $tipo');
     }
-  }
-
-  /// Convierte headers + filas a CSV con escape correcto de comillas.
-  String _toCsv(List<String> headers, List<List<String>> rows) {
-    String escapar(String celda) =>
-        '"${celda.replaceAll('"', '""')}"';
-    final lineas = <String>[
-      headers.map(escapar).join(','),
-      ...rows.map((r) => r.map(escapar).join(',')),
-    ];
-    return lineas.join('\n');
   }
 }
 

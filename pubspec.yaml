@@ -69,6 +69,11 @@ dependencies:
   pdf: ^3.11.1
   printing: ^5.13.3
 
+  # Generación de reportes en Excel (.xlsx). Dart puro, sin código nativo —
+  # anda en Android/Windows/web. La descarga del archivo usa file_picker
+  # (ya declarado arriba). Ver lib/features/admin/reportes/excel/reporte_excel.dart.
+  excel: ^4.0.6
+
   # Decodificar/convertir el logo a raster monocromo para la térmica (ESC/POS)
   # y para procesar imágenes. esc_pos_utils_plus ya la trae transitiva; la
   # declaramos directa para importarla de forma estable.
