@@ -5,8 +5,6 @@ import 'package:flutter/foundation.dart';
 import 'package:image/image.dart' as img;
 import 'package:print_bluetooth_thermal/print_bluetooth_thermal.dart';
 
-import 'impresora_diagnostico.dart';
-
 /// Información de una impresora Bluetooth pareada.
 class ImpresoraBT {
   const ImpresoraBT({required this.nombre, required this.mac});
@@ -52,33 +50,14 @@ class ImpresoraService {
   /// [anchoMm] = 58 u 80 (ancho del papel).
   ///
   /// Flujo OFFLINE: decodifica el PNG en memoria (sin red), monocromo +
-  /// dithering, lo emite como raster ESC/POS. Si algo falla, devuelve false.
+  /// dithering, y lo emite como raster **GS v 0 armado a mano** (polaridad
+  /// 1=negro y ancho explícitos). Se eligió GS v 0 manual sobre `gen.imageRaster`
+  /// porque este último codificaba mal en algunas térmicas (salía negativo/
+  /// angosto) — confirmado en campo (GOOJPRT PT-210). Si algo falla, false.
   Future<bool> imprimirImagen({
     required String macImpresora,
     required Uint8List pngBytes,
     required int anchoMm,
-  }) {
-    // Método por DEFECTO: GS v 0 armado a mano (raster estándar, polaridad
-    // explícita 1=negro). El diagnóstico mostró que el BITMAP sale correcto;
-    // el problema estaba en cómo `gen.imageRaster` lo codificaba para la
-    // térmica. Esta versión controla bit-order, ancho y polaridad a mano.
-    return imprimirImagenMetodo(
-      macImpresora: macImpresora,
-      pngBytes: pngBytes,
-      anchoMm: anchoMm,
-      metodo: MetodoRaster.gsv0,
-    );
-  }
-
-  /// Imprime el bitmap con el [metodo] de codificación indicado. Permite
-  /// A/B-testear qué comando entiende cada impresora (algunas salen en negativo
-  /// con el raster estándar, otras no soportan GS v 0). Todos comparten el mismo
-  /// pipeline de imagen (`_procesarParaTermica`).
-  Future<bool> imprimirImagenMetodo({
-    required String macImpresora,
-    required Uint8List pngBytes,
-    required int anchoMm,
-    required MetodoRaster metodo,
   }) async {
     try {
       final imagen = _procesarParaTermica(pngBytes, anchoMm);
@@ -91,38 +70,28 @@ class ImpresoraService {
         // Reset/init (ESC @): limpia el buffer y deja la térmica en estado
         // conocido (saca cualquier modo raro previo).
         0x1B, 0x40,
+        ..._rasterGsv0(imagen),
+        // Avance de papel mínimo para cortar/arrancar sin perder la última
+        // línea + corte. ESC d 2 = avanza 2 líneas; GS V 0 = corte total
+        // (inofensivo si la impresora no tiene cutter, lo ignora).
+        0x1B, 0x64, 0x02, 0x1D, 0x56, 0x00,
       ];
-
-      switch (metodo) {
-        case MetodoRaster.gsv0:
-          bytes.addAll(_rasterGsv0(imagen, invertir: false));
-        case MetodoRaster.gsv0Invertido:
-          bytes.addAll(_rasterGsv0(imagen, invertir: true));
-        case MetodoRaster.escPosColumnas:
-          final gen = Generator(_size(anchoMm), await CapabilityProfile.load());
-          bytes.addAll(gen.image(imagen, align: PosAlign.center));
-      }
-
-      // Avance de papel mínimo para poder cortar/arrancar sin perder la última
-      // línea + corte. ESC d 2 = avanza 2 líneas; GS V 0 = corte total
-      // (inofensivo si la impresora no tiene cutter, lo ignora).
-      bytes.addAll(<int>[0x1B, 0x64, 0x02, 0x1D, 0x56, 0x00]);
 
       return _enviarBytes(macImpresora, bytes);
     } catch (e) {
-      if (kDebugMode) debugPrint('Impresora imagen ($metodo): $e');
+      if (kDebugMode) debugPrint('Impresora imagen: $e');
       return false;
     }
   }
 
   /// Arma el comando GS v 0 (raster bit image) A MANO desde una imagen en
   /// grises/dither. Control TOTAL de:
-  ///   - polaridad: 1 = punto negro (quema). Con [invertir] se da vuelta.
+  ///   - polaridad: 1 = punto negro (quema).
   ///   - ancho en bytes: (w+7)>>3, header xL/xH correcto.
   ///   - se parte en BANDAS (≤255 filas) para no exceder el buffer de la
   ///     térmica (algunas truncan rasters muy altos).
   /// Umbral 0.5 sobre luminancia: la imagen ya viene dithered (casi B/N).
-  static List<int> _rasterGsv0(img.Image im, {required bool invertir}) {
+  static List<int> _rasterGsv0(img.Image im) {
     final w = im.width;
     final h = im.height;
     final widthBytes = (w + 7) >> 3;
@@ -133,9 +102,7 @@ class ImpresoraService {
       final raster = Uint8List(widthBytes * filas);
       for (var y = 0; y < filas; y++) {
         for (var x = 0; x < w; x++) {
-          final oscuro = im.getPixel(x, y0 + y).luminanceNormalized < 0.5;
-          final quema = invertir ? !oscuro : oscuro;
-          if (quema) {
+          if (im.getPixel(x, y0 + y).luminanceNormalized < 0.5) {
             raster[y * widthBytes + (x >> 3)] |= (0x80 >> (x & 7));
           }
         }
@@ -151,10 +118,9 @@ class ImpresoraService {
     return out;
   }
 
-  /// Pipeline COMPARTIDO captura→bitmap-térmico. Lo usan `imprimirImagen` (lo
-  /// manda a la impresora) y `diagnosticar` (lo re-encodea a PNG para mirarlo),
-  /// para que NO haya drift entre lo que se diagnostica y lo que se imprime.
-  /// Devuelve null si el PNG no decodifica.
+  /// Pipeline captura→bitmap-térmico (decode → aplanar sobre blanco → resize a
+  /// dots → grayscale → recortar blanco → dither Floyd-Steinberg). Devuelve null
+  /// si el PNG no decodifica.
   img.Image? _procesarParaTermica(Uint8List pngBytes, int anchoMm) {
     // Ancho útil en dots según el papel: 58mm ≈ 384 px, 80mm = 576 px
     // (anchos estándar ESC/POS). 80mm es el estándar de producción.
@@ -194,58 +160,6 @@ class ImpresoraService {
       kernel: img.DitherKernel.floydSteinberg,
     );
     return imagen;
-  }
-
-  /// DIAGNÓSTICO (no imprime): devuelve el PNG crudo de la captura + el bitmap
-  /// FINAL que iría a la térmica (re-encodeado a PNG) + métricas, para poder
-  /// VER dónde se daña la imagen sin adivinar. No toca la impresora.
-  Future<DiagnosticoImpresion> diagnosticar({
-    required Uint8List pngBytes,
-    required int anchoMm,
-  }) async {
-    final sb = StringBuffer();
-    final cruda = img.decodeImage(pngBytes);
-    if (cruda == null) {
-      return DiagnosticoImpresion(
-        rawPng: pngBytes,
-        procesadaPng: pngBytes,
-        info: 'PNG crudo NO decodificable (${pngBytes.length} bytes).',
-      );
-    }
-
-    double lum(int x, int y) {
-      final px = x.clamp(0, cruda.width - 1);
-      final py = y.clamp(0, cruda.height - 1);
-      return cruda.getPixel(px, py).luminanceNormalized.toDouble();
-    }
-
-    sb.writeln('Papel: ${anchoMm}mm (objetivo '
-        '${anchoMm >= 80 ? 576 : 384} dots de ancho)');
-    sb.writeln('CAPTURA cruda: ${cruda.width} x ${cruda.height} px');
-    sb.writeln('  alpha: ${cruda.hasAlpha} · canales: ${cruda.numChannels}');
-    sb.writeln('  luminancia (0=negro,1=blanco):');
-    sb.writeln('    esquina sup-izq: ${lum(2, 2).toStringAsFixed(2)}');
-    sb.writeln('    centro: '
-        '${lum(cruda.width ~/ 2, cruda.height ~/ 2).toStringAsFixed(2)}');
-    sb.writeln('    sup-centro: '
-        '${lum(cruda.width ~/ 2, 30).toStringAsFixed(2)}');
-
-    final procesada = _procesarParaTermica(pngBytes, anchoMm);
-    Uint8List procPng;
-    if (procesada == null) {
-      procPng = pngBytes;
-      sb.writeln('PROCESADA: (no se pudo procesar)');
-    } else {
-      procPng = Uint8List.fromList(img.encodePng(procesada));
-      sb.writeln('PROCESADA (lo que va a la térmica): '
-          '${procesada.width} x ${procesada.height} px');
-    }
-
-    return DiagnosticoImpresion(
-      rawPng: pngBytes,
-      procesadaPng: procPng,
-      info: sb.toString(),
-    );
   }
 
   /// Recorta el margen BLANCO de arriba y abajo de una imagen en grises, para

@@ -10,7 +10,6 @@ import '../../data/providers/cobrador_provider.dart';
 import '../../data/providers/impresora_provider.dart';
 import '../../data/providers/logo_empresa_provider.dart';
 import '../../data/repositories/settings_repo.dart';
-import '../../data/services/impresora/impresora_diagnostico.dart';
 import '../../data/services/logo_cache_service.dart';
 import '../../powersync/db.dart' as ps;
 import '../shared/widgets/empty_state.dart';
@@ -427,50 +426,6 @@ class _AccionesImpresionState extends ConsumerState<_AccionesImpresion> {
     }
   }
 
-  /// DIAGNÓSTICO: captura el PNG del recibo (igual que el path de impresión),
-  /// lo pasa por el pipeline de la térmica SIN imprimir, y muestra el bitmap
-  /// crudo + el procesado + métricas. Sirve para VER qué se manda realmente a
-  /// la impresora (¿oscuro? ¿angosto? ¿chico?) en vez de adivinar.
-  Future<void> _diagnosticar() async {
-    setState(() => _imprimiendo = true);
-    try {
-      final pngBytes = await _capturarReciboPng();
-      if (pngBytes == null || !mounted) return;
-      final service = ref.read(impresoraServiceProvider);
-      final diag = await service.diagnosticar(
-        pngBytes: pngBytes,
-        anchoMm: widget.settings.formatoReciboMm,
-      );
-      if (!mounted) return;
-      final fav = ref.read(impresoraFavoritaProvider).valueOrNull;
-      await showDialog<void>(
-        context: context,
-        builder: (_) => _DiagnosticoDialog(
-          diag: diag,
-          tieneImpresora: fav != null,
-          // Imprime la MISMA imagen con el método elegido (A/B test). Si no hay
-          // impresora configurada, los botones quedan deshabilitados.
-          onImprimir: fav == null
-              ? null
-              : (metodo) => service.imprimirImagenMetodo(
-                    macImpresora: fav.mac,
-                    pngBytes: pngBytes,
-                    anchoMm: widget.settings.formatoReciboMm,
-                    metodo: metodo,
-                  ),
-        ),
-      );
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error en diagnóstico: $e')),
-        );
-      }
-    } finally {
-      if (mounted) setState(() => _imprimiendo = false);
-    }
-  }
-
   Future<void> _imprimir() async {
     final favState = ref.read(impresoraFavoritaProvider);
     // Si todavía no se leyó SharedPreferences, esperar y reintentar.
@@ -566,17 +521,6 @@ class _AccionesImpresionState extends ConsumerState<_AccionesImpresion> {
                 : 'Imprimir ${widget.settings.formatoReciboMm}mm'),
             onPressed: _imprimiendo || !puedeImprimir ? null : _imprimir,
           ),
-        // DIAGNÓSTICO (temporal): muestra el bitmap EXACTO que se manda a la
-        // térmica, sin imprimir. Sirve para ver por qué sale oscuro/angosto/
-        // chico y arreglar la causa real. No requiere impresora conectada.
-        if (!kIsWeb) ...[
-          const SizedBox(height: 8),
-          TextButton.icon(
-            icon: const Icon(Icons.bug_report_outlined, size: 18),
-            label: const Text('Diagnóstico: ver imagen a imprimir'),
-            onPressed: _imprimiendo ? null : _diagnosticar,
-          ),
-        ],
         // PDF download — solo visible en web. En mobile usan la impresora
         // Bluetooth térmica, así que el PDF no aporta nada.
         if (kIsWeb) ...[
@@ -609,156 +553,6 @@ class _AccionesImpresionState extends ConsumerState<_AccionesImpresion> {
           'falle. Podés reintentar imprimir cuando quieras.',
           textAlign: TextAlign.center,
           style: Theme.of(context).textTheme.bodySmall,
-        ),
-      ],
-    );
-  }
-}
-
-/// Dialog del diagnóstico: muestra el PNG crudo de la captura y el bitmap
-/// FINAL que va a la térmica, ambos sobre fondo MAGENTA (así la transparencia
-/// se ve obvia) + las métricas. Permite zoom (InteractiveViewer) para inspección.
-class _DiagnosticoDialog extends StatefulWidget {
-  const _DiagnosticoDialog({
-    required this.diag,
-    required this.tieneImpresora,
-    required this.onImprimir,
-  });
-  final DiagnosticoImpresion diag;
-  final bool tieneImpresora;
-
-  /// Imprime la imagen con el método dado. Null si no hay impresora.
-  final Future<bool> Function(MetodoRaster metodo)? onImprimir;
-
-  @override
-  State<_DiagnosticoDialog> createState() => _DiagnosticoDialogState();
-}
-
-class _DiagnosticoDialogState extends State<_DiagnosticoDialog> {
-  MetodoRaster? _imprimiendo;
-
-  DiagnosticoImpresion get diag => widget.diag;
-
-  Future<void> _probar(MetodoRaster metodo) async {
-    final fn = widget.onImprimir;
-    if (fn == null || _imprimiendo != null) return;
-    setState(() => _imprimiendo = metodo);
-    try {
-      final ok = await fn(metodo);
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(ok
-              ? 'Enviado a la impresora — mirá cómo salió'
-              : 'No se pudo conectar a la impresora'),
-        ),
-      );
-    } finally {
-      if (mounted) setState(() => _imprimiendo = null);
-    }
-  }
-
-  Widget _botonMetodo(String label, MetodoRaster metodo) {
-    final cargando = _imprimiendo == metodo;
-    return OutlinedButton.icon(
-      icon: cargando
-          ? const SizedBox(
-              width: 16,
-              height: 16,
-              child: CircularProgressIndicator(strokeWidth: 2))
-          : const Icon(Icons.print_outlined, size: 18),
-      label: Text(label),
-      onPressed: widget.onImprimir == null || _imprimiendo != null
-          ? null
-          : () => _probar(metodo),
-    );
-  }
-
-  Widget _imagenSobreMagenta(String titulo, Uint8List png) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(titulo, style: const TextStyle(fontWeight: FontWeight.bold)),
-        const SizedBox(height: 4),
-        // Fondo magenta: si la imagen tiene transparencia, se ve el magenta a
-        // través; si es blanca opaca, tapa el magenta. Borde para ver el límite.
-        Container(
-          decoration: BoxDecoration(
-            color: const Color(0xFFFF00FF),
-            border: Border.all(color: Colors.black26),
-          ),
-          constraints: const BoxConstraints(maxHeight: 320),
-          child: InteractiveViewer(
-            maxScale: 6,
-            child: Image.memory(png, fit: BoxFit.contain, filterQuality: FilterQuality.none),
-          ),
-        ),
-      ],
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return AlertDialog(
-      title: const Text('Diagnóstico de impresión'),
-      content: SizedBox(
-        width: double.maxFinite,
-        child: SingleChildScrollView(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              SelectableText(
-                diag.info,
-                style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
-              ),
-              const SizedBox(height: 12),
-              _imagenSobreMagenta('1) Captura cruda (PNG)', diag.rawPng),
-              const SizedBox(height: 16),
-              _imagenSobreMagenta(
-                  '2) Bitmap final → térmica', diag.procesadaPng),
-              const SizedBox(height: 8),
-              const Text(
-                'El fondo rosado se ve donde la imagen es transparente. '
-                'Tocá y arrastrá para hacer zoom.',
-                style: TextStyle(fontSize: 11, color: Colors.black54),
-              ),
-              const Divider(height: 24),
-              const Text(
-                'Probar impresión (misma imagen, distinto método):',
-                style: TextStyle(fontWeight: FontWeight.bold),
-              ),
-              if (!widget.tieneImpresora)
-                const Padding(
-                  padding: EdgeInsets.only(top: 8),
-                  child: Text(
-                    'Configurá una impresora para poder probar.',
-                    style: TextStyle(fontSize: 12, color: Colors.redAccent),
-                  ),
-                ),
-              const SizedBox(height: 8),
-              _botonMetodo('A) GS v 0 (negro quema) — recomendado',
-                  MetodoRaster.gsv0),
-              const SizedBox(height: 6),
-              _botonMetodo(
-                  'B) GS v 0 invertido (blanco quema)', MetodoRaster.gsv0Invertido),
-              const SizedBox(height: 6),
-              _botonMetodo(
-                  'C) ESC * por columnas', MetodoRaster.escPosColumnas),
-              const SizedBox(height: 8),
-              const Text(
-                'Imprimí los 3 y decime cuál sale bien (positivo, ancho '
-                'completo, legible). Ese queda como el definitivo.',
-                style: TextStyle(fontSize: 11, color: Colors.black54),
-              ),
-            ],
-          ),
-        ),
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.of(context).pop(),
-          child: const Text('Cerrar'),
         ),
       ],
     );

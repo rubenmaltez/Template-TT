@@ -220,11 +220,19 @@ imagen real**. Detalle completo en `ESTADO-APP.md §10.6`.
 - *Expectativa:* las notas se ven completas en el historial.
 
 *Archivos:* `recibo_ticket.dart`, `impresora_service_io.dart`,
-`impresora_service_web.dart`, `impresora_diagnostico.dart` (nuevo),
-`recibo_screen.dart`, `historial_cambios_widget.dart`, `audit_changelog.dart`,
-`pubspec.yaml`, `version.json`. Sin migraciones (schema v16 intacto).
-*Pendiente menor:* quitar el botón de diagnóstico + métodos B/C una vez que
-Rubén confirme el espaciado/justificado de v0.8.0.
+`impresora_service_web.dart`, `impresora_diagnostico.dart` (nuevo en v0.7.6,
+eliminado en v0.8.1), `recibo_screen.dart`, `historial_cambios_widget.dart`,
+`audit_changelog.dart`, `pubspec.yaml`, `version.json`. Sin migraciones (schema
+v16 intacto).
+
+**Limpieza post-confirmación (v0.8.1)**
+- *Contexto:* Rubén confirmó el recibo impreso en la PT-210 (justificado, ancho
+  completo, limpio). El diagnóstico A/B ya cumplió su función.
+- *Fix:* se eliminó el botón "Diagnóstico", el `_DiagnosticoDialog`, los métodos
+  `imprimirImagenMetodo` (B/C) y `diagnosticar`, `DiagnosticoImpresion` y el
+  archivo `impresora_diagnostico.dart`. `imprimirImagen` hace GS v 0 directo
+  (`_rasterGsv0` sin el flag `invertir`). 0 referencias colgando.
+- *Expectativa:* misma impresión que v0.8.0, sin el botón de diagnóstico.
 
 ### 2026-06-04 — Sesión v0.6.4 → v0.7.5 (roles + drift DB + impresión)
 

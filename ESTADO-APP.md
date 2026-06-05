@@ -5,7 +5,9 @@
 > continuar exactamente desde acá sin re-descubrir el contexto.
 >
 > **Última actualización**: 2026-06-05 (branch `claude/stoic-tesla-cGkJ6`).
-> **Release v0.8.0 — checkpoint con impresión térmica RESUELTA.** Sesión larga
+> **Release v0.8.1 — checkpoint con impresión térmica RESUELTA + limpieza.**
+> v0.8.1 quitó el botón de diagnóstico y los métodos B/C de prueba (GS v 0 quedó
+> como único método). Sesión larga
 > v0.6.4 → v0.8.0 — ver **§10** (resumen completo) y §9 (detalle de v0.6.4).
 > Migraciones hasta **0095**, schema **v16** (sin cambios — todas las migr
 > nuevas son filas/RPC/índice/constraint, no columnas sincronizadas).
@@ -402,16 +404,15 @@ chico), se cambió de estrategia: **dejar de adivinar y DIAGNOSTICAR**.
   (3) **Notas del cobrador completas**: el formateador del change log cortaba
   todo valor >30 chars con "…"; subido a 500 (el tile ya hace wrap).
 
-**Arquitectura de impresión actual (v0.8.0)**:
+**Arquitectura de impresión actual (v0.8.1)**:
 `ReciboTicket` (widget, ancho = dots del papel, fondo blanco, márgenes mínimos)
 → `screenshot` captura a PNG (targetSize ancho×5000 sobre Container blanco,
-pixelRatio 1.0) → `ImpresoraService.imprimirImagen` → `imprimirImagenMetodo`
-(default `MetodoRaster.gsv0`): decode → aplanar sobre blanco → resize a dots →
-grayscale → recortar blanco → dither Floyd-Steinberg → **`_rasterGsv0`** (GS v 0
-manual, 1=negro, bandas de 255) → BT. 100% offline. 80mm producción (576 dots),
-58mm testing PT-210 (384 dots).
+pixelRatio 1.0) → `ImpresoraService.imprimirImagen`: decode → aplanar sobre
+blanco → resize a dots → grayscale → recortar blanco → dither Floyd-Steinberg →
+**`_rasterGsv0`** (GS v 0 manual, 1=negro, bandas de 255) → BT. 100% offline.
+80mm producción (576 dots), 58mm testing PT-210 (384 dots).
 
-**Pendiente menor (no bloquea)**: una vez que Rubén confirme que el espaciado +
-justificado de v0.8.0 queda como lo quiere, **quitar el botón de diagnóstico y
-los métodos B/C** (ya cumplieron su función). El método A queda como default
-permanente igual.
+**v0.8.1 — limpieza (hecho)**: Rubén confirmó el recibo en la PT-210; se
+**quitó el botón de diagnóstico, los métodos B/C, `imprimirImagenMetodo`,
+`diagnosticar`, `DiagnosticoImpresion` y el archivo `impresora_diagnostico.dart`**.
+`imprimirImagen` ahora hace GS v 0 directo. Sin cambios en cómo imprime.

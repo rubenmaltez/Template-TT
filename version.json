@@ -1,6 +1,6 @@
 {
-  "version": "0.8.0",
-  "release_notes": "Checkpoint de impresion termica resuelta (GS v 0 confirmado en PT-210). Recibo: totales (COBRADO/VUELTO/PAGADO) y mora ahora se justifican igual que el resto (valor pegado al margen derecho). Historial de la cuota: el recibo emitido se muestra dentro de 'Pago registrado' (su numero en el subtitulo); la anulacion de recibo sigue como entrada propia. Notas del cobrador se muestran completas (antes se cortaban a 30 caracteres). Incluye todo lo de 0.7.x.",
+  "version": "0.8.1",
+  "release_notes": "Limpieza: se quito el boton de diagnostico de impresion y los metodos B/C de prueba (ya cumplieron su funcion). El metodo GS v 0 (confirmado en la PT-210) queda como el unico/definitivo. Sin cambios en como imprime. Incluye todo lo de 0.8.0 (recibo justificado, recibo emitido dentro de 'Pago registrado', notas completas).",
   "download_url_windows": "https://github.com/rubenmaltez/Template-TT/releases/latest/download/SITECSA-CRM.msix",
   "download_url_android": "https://github.com/rubenmaltez/Template-TT/releases/latest/download/SITECSA-CRM.apk",
   "download_url": "https://github.com/rubenmaltez/Template-TT/releases/latest/download/SITECSA-CRM.msix"
