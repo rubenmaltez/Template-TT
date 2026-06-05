@@ -103,9 +103,10 @@ class ImpresoraService {
           bytes.addAll(gen.image(imagen, align: PosAlign.center));
       }
 
-      // Avance de papel + corte. ESC d n = avanza n líneas; GS V 0 = corte
-      // total (inofensivo si la impresora no tiene cutter, lo ignora).
-      bytes.addAll(<int>[0x1B, 0x64, 0x03, 0x1D, 0x56, 0x00]);
+      // Avance de papel mínimo para poder cortar/arrancar sin perder la última
+      // línea + corte. ESC d 2 = avanza 2 líneas; GS V 0 = corte total
+      // (inofensivo si la impresora no tiene cutter, lo ignora).
+      bytes.addAll(<int>[0x1B, 0x64, 0x02, 0x1D, 0x56, 0x00]);
 
       return _enviarBytes(macImpresora, bytes);
     } catch (e) {
@@ -270,7 +271,9 @@ class ImpresoraService {
     }
     if (top >= bottom) return im; // todo blanco → no recortar
 
-    const pad = 8;
+    // Padding mínimo arriba/abajo (≈0.5mm) para aprovechar el papel sin que
+    // las ascendentes/descendentes queden al ras del borde.
+    const pad = 4;
     final y0 = (top - pad) < 0 ? 0 : (top - pad);
     var alto = (bottom - top + 1) + pad * 2;
     if (y0 + alto > im.height) alto = im.height - y0;

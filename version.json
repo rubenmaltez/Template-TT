@@ -1,6 +1,6 @@
 {
-  "version": "0.7.7",
-  "release_notes": "Recibo termico: el diagnostico mostro que el BITMAP sale correcto; el problema estaba en como se codificaba para la termica. Nueva codificacion GS v 0 armada a mano (polaridad y ancho explicitos, 1=negro) como metodo por defecto + letras mas grandes (58mm de ~1.6mm a ~2.4mm). El boton de diagnostico ahora permite imprimir la misma imagen con 3 metodos (A: GS v 0, B: invertido, C: ESC * columnas) para elegir el que cada impresora entiende. Incluye todo lo de 0.7.x.",
+  "version": "0.7.8",
+  "release_notes": "Recibo termico (GS v 0, metodo confirmado): se aprovecha al maximo el papel. Margenes izq/der reducidos a ~0.75mm, interlineado mas compacto (1.3->1.12), menos espacio entre bloques, y avance/recorte arriba-abajo minimos. Los valores ya no saltan de linea. Letra grande/legible. Incluye todo lo de 0.7.x.",
   "download_url_windows": "https://github.com/rubenmaltez/Template-TT/releases/latest/download/SITECSA-CRM.msix",
   "download_url_android": "https://github.com/rubenmaltez/Template-TT/releases/latest/download/SITECSA-CRM.apk",
   "download_url": "https://github.com/rubenmaltez/Template-TT/releases/latest/download/SITECSA-CRM.msix"

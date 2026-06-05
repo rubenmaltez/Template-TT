@@ -84,13 +84,13 @@ class ReciboTicket extends StatelessWidget {
       if (contenido.isEmpty) continue;
       final zona = reciboBloqueInfo(b.id)?.zona ?? ReciboZona.body;
       if (children.isNotEmpty) {
-        // Espaciado MODERADO: gap chico entre dos bloques de header (van más
-        // juntos), gap mayor en el resto. Sin líneas divisorias (estilo limpio,
-        // las secciones se distinguen por aire + negritas).
+        // Espaciado COMPACTO para aprovechar el papel: gap mínimo entre dos
+        // bloques de header (van casi pegados), gap moderado en el resto. Sin
+        // líneas divisorias (las secciones se distinguen por aire + negritas).
         if (zonaPrev == 'header' && zona == ReciboZona.header) {
-          children.add(SizedBox(height: 4 * baseFont));
+          children.add(SizedBox(height: 2 * baseFont));
         } else {
-          children.add(SizedBox(height: 10 * baseFont));
+          children.add(SizedBox(height: 5 * baseFont));
         }
       }
       children.addAll(contenido);
@@ -101,13 +101,18 @@ class ReciboTicket extends StatelessWidget {
     return Container(
       width: anchoDots.toDouble(),
       color: Colors.white,
-      padding: EdgeInsets.symmetric(
-          horizontal: 16 * baseFont, vertical: 16 * baseFont),
+      // Márgenes MÍNIMOS: aprovechar al máximo el ancho del papel (6px ≈
+      // 0.75mm por lado; el resto del margen que se ve es zona NO imprimible
+      // física del papel). El recorte vertical de imprimirImagen saca el
+      // blanco sobrante de arriba/abajo, así que el padding vertical es chico.
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
       child: DefaultTextStyle(
         style: TextStyle(
           fontFamily: 'monospace',
           fontSize: 13 * baseFont,
-          height: 1.3,
+          // Interlineado compacto: densar las líneas sin que se toquen. Antes
+          // 1.3 dejaba demasiado aire vertical.
+          height: 1.12,
           color: Colors.black,
         ),
         child: Column(
@@ -438,7 +443,7 @@ class ReciboTicket extends StatelessWidget {
   /// entre etiqueta y valor evita que se peguen.
   Widget _ticketRow(String label, String value, [double k = 1]) {
     return Padding(
-      padding: EdgeInsets.symmetric(vertical: 1 * k),
+      padding: EdgeInsets.symmetric(vertical: 0.5 * k),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -449,7 +454,7 @@ class ReciboTicket extends StatelessWidget {
               child: Text('$label:', style: TextStyle(fontSize: 13 * k)),
             ),
           ),
-          SizedBox(width: 8 * k),
+          SizedBox(width: 6 * k),
           Expanded(
             child: Text(
               value,
@@ -476,7 +481,7 @@ class ReciboTicket extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Flexible(child: Text(label, style: style)),
-        const SizedBox(width: 12),
+        const SizedBox(width: 6),
         Expanded(
           child: Text(value,
               textAlign: TextAlign.end, softWrap: true, style: style),
