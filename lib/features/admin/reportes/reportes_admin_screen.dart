@@ -847,8 +847,13 @@ class _DescargarPdfMenu extends ConsumerWidget {
       }
     } catch (e) {
       if (context.mounted) {
+        // UnsupportedError (ej. web) ya trae un mensaje claro para el usuario;
+        // el resto lo prefijamos como error de generación.
+        final msg = e is UnsupportedError
+            ? (e.message?.toString() ?? 'Exportación no soportada')
+            : 'Error generando Excel: $e';
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error generando Excel: $e')),
+          SnackBar(content: Text(msg)),
         );
       }
     }
