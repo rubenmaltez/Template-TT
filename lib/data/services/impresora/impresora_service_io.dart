@@ -146,7 +146,7 @@ class ImpresoraService {
     double lum(int x, int y) {
       final px = x.clamp(0, cruda.width - 1);
       final py = y.clamp(0, cruda.height - 1);
-      return cruda.getPixel(px, py).luminanceNormalized;
+      return cruda.getPixel(px, py).luminanceNormalized.toDouble();
     }
 
     sb.writeln('Papel: ${anchoMm}mm (objetivo '
