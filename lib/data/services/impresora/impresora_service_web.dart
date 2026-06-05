@@ -1,5 +1,7 @@
 import 'dart:typed_data';
 
+import 'impresora_diagnostico.dart';
+
 /// Stub web: impresión Bluetooth no aplica en navegador.
 class ImpresoraBT {
   /// Nombre de la impresora pareada (vacío en web).
@@ -32,5 +34,13 @@ class ImpresoraService {
     required int anchoMm,
   }) async {
     throw UnsupportedError('Impresión BT no disponible en web');
+  }
+
+  /// Espeja la firma del service io. Diagnóstico solo aplica en mobile.
+  Future<DiagnosticoImpresion> diagnosticar({
+    required Uint8List pngBytes,
+    required int anchoMm,
+  }) async {
+    throw UnsupportedError('Diagnóstico de impresión no disponible en web');
   }
 }

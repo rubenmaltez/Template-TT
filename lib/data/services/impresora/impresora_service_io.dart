@@ -5,6 +5,8 @@ import 'package:flutter/foundation.dart';
 import 'package:image/image.dart' as img;
 import 'package:print_bluetooth_thermal/print_bluetooth_thermal.dart';
 
+import 'impresora_diagnostico.dart';
+
 /// Información de una impresora Bluetooth pareada.
 class ImpresoraBT {
   const ImpresoraBT({required this.nombre, required this.mac});
@@ -57,46 +59,11 @@ class ImpresoraService {
     required int anchoMm,
   }) async {
     try {
-      // Ancho útil en dots según el papel: 58mm ≈ 384 px, 80mm = 576 px
-      // (anchos estándar ESC/POS). 80mm es el estándar de producción.
-      final anchoDots = anchoMm >= 80 ? 576 : 384;
-
-      img.Image? imagen = img.decodeImage(pngBytes);
+      final imagen = _procesarParaTermica(pngBytes, anchoMm);
       if (imagen == null) {
         if (kDebugMode) debugPrint('Impresora imagen: PNG no decodificable');
         return false;
       }
-
-      // Aplanar sobre fondo BLANCO opaco. La captura del widget (`screenshot`)
-      // viene con transparencia (zonas no pintadas / fondo del targetSize); sin
-      // esto, al pasar a grises esas zonas quedan NEGRAS y la térmica las quema
-      // → recibo en NEGATIVO (fondo negro). Aplanar = transparente se vuelve
-      // blanco, así el recorte funciona y el recibo sale en positivo.
-      if (imagen.hasAlpha) {
-        final fondo = img.Image(width: imagen.width, height: imagen.height);
-        img.fill(fondo, color: img.ColorRgb8(255, 255, 255));
-        img.compositeImage(fondo, imagen);
-        imagen = fondo;
-      }
-
-      // Si la captura quedó más ancha/angosta que el papel, reescalar al ancho
-      // de dots (mantiene aspecto recalculando el alto). Normalmente la captura
-      // ya viene a `anchoDots` (targetSize) y esto es un no-op.
-      if (imagen.width != anchoDots) {
-        imagen = img.copyResize(imagen, width: anchoDots);
-      }
-
-      // Monocromo limpio: grayscale + dithering Floyd-Steinberg. La térmica
-      // solo imprime negro/blanco; el dither evita bloques tiznados.
-      imagen = img.grayscale(imagen);
-      // Recortar el margen blanco arriba/abajo (la captura puede venir con alto
-      // holgado/centrado por el targetSize) → no se imprime tira en blanco y se
-      // aprovecha el papel.
-      imagen = _recortarBlancoVertical(imagen);
-      imagen = img.ditherImage(
-        imagen,
-        kernel: img.DitherKernel.floydSteinberg,
-      );
 
       final gen = Generator(_size(anchoMm), await CapabilityProfile.load());
       final bytes = <int>[
@@ -112,6 +79,103 @@ class ImpresoraService {
       if (kDebugMode) debugPrint('Impresora imagen: $e');
       return false;
     }
+  }
+
+  /// Pipeline COMPARTIDO captura→bitmap-térmico. Lo usan `imprimirImagen` (lo
+  /// manda a la impresora) y `diagnosticar` (lo re-encodea a PNG para mirarlo),
+  /// para que NO haya drift entre lo que se diagnostica y lo que se imprime.
+  /// Devuelve null si el PNG no decodifica.
+  img.Image? _procesarParaTermica(Uint8List pngBytes, int anchoMm) {
+    // Ancho útil en dots según el papel: 58mm ≈ 384 px, 80mm = 576 px
+    // (anchos estándar ESC/POS). 80mm es el estándar de producción.
+    final anchoDots = anchoMm >= 80 ? 576 : 384;
+
+    img.Image? imagen = img.decodeImage(pngBytes);
+    if (imagen == null) return null;
+
+    // Aplanar sobre fondo BLANCO opaco. La captura del widget (`screenshot`)
+    // viene con canal alpha (toImage produce RGBA); sin esto, al pasar a grises
+    // las zonas transparentes quedan NEGRAS y la térmica las quema → recibo en
+    // NEGATIVO (fondo negro). Aplanar = transparente se vuelve blanco, así el
+    // recorte funciona y el recibo sale en positivo.
+    if (imagen.hasAlpha) {
+      final fondo = img.Image(width: imagen.width, height: imagen.height);
+      img.fill(fondo, color: img.ColorRgb8(255, 255, 255));
+      img.compositeImage(fondo, imagen);
+      imagen = fondo;
+    }
+
+    // Si la captura quedó más ancha/angosta que el papel, reescalar al ancho
+    // de dots (mantiene aspecto recalculando el alto). Normalmente la captura
+    // ya viene a `anchoDots` (targetSize) y esto es un no-op.
+    if (imagen.width != anchoDots) {
+      imagen = img.copyResize(imagen, width: anchoDots);
+    }
+
+    // Monocromo limpio: grayscale + dithering Floyd-Steinberg. La térmica
+    // solo imprime negro/blanco; el dither evita bloques tiznados.
+    imagen = img.grayscale(imagen);
+    // Recortar el margen blanco arriba/abajo (la captura puede venir con alto
+    // holgado/centrado por el targetSize) → no se imprime tira en blanco y se
+    // aprovecha el papel.
+    imagen = _recortarBlancoVertical(imagen);
+    imagen = img.ditherImage(
+      imagen,
+      kernel: img.DitherKernel.floydSteinberg,
+    );
+    return imagen;
+  }
+
+  /// DIAGNÓSTICO (no imprime): devuelve el PNG crudo de la captura + el bitmap
+  /// FINAL que iría a la térmica (re-encodeado a PNG) + métricas, para poder
+  /// VER dónde se daña la imagen sin adivinar. No toca la impresora.
+  Future<DiagnosticoImpresion> diagnosticar({
+    required Uint8List pngBytes,
+    required int anchoMm,
+  }) async {
+    final sb = StringBuffer();
+    final cruda = img.decodeImage(pngBytes);
+    if (cruda == null) {
+      return DiagnosticoImpresion(
+        rawPng: pngBytes,
+        procesadaPng: pngBytes,
+        info: 'PNG crudo NO decodificable (${pngBytes.length} bytes).',
+      );
+    }
+
+    double lum(int x, int y) {
+      final px = x.clamp(0, cruda.width - 1);
+      final py = y.clamp(0, cruda.height - 1);
+      return cruda.getPixel(px, py).luminanceNormalized;
+    }
+
+    sb.writeln('Papel: ${anchoMm}mm (objetivo '
+        '${anchoMm >= 80 ? 576 : 384} dots de ancho)');
+    sb.writeln('CAPTURA cruda: ${cruda.width} x ${cruda.height} px');
+    sb.writeln('  alpha: ${cruda.hasAlpha} · canales: ${cruda.numChannels}');
+    sb.writeln('  luminancia (0=negro,1=blanco):');
+    sb.writeln('    esquina sup-izq: ${lum(2, 2).toStringAsFixed(2)}');
+    sb.writeln('    centro: '
+        '${lum(cruda.width ~/ 2, cruda.height ~/ 2).toStringAsFixed(2)}');
+    sb.writeln('    sup-centro: '
+        '${lum(cruda.width ~/ 2, 30).toStringAsFixed(2)}');
+
+    final procesada = _procesarParaTermica(pngBytes, anchoMm);
+    Uint8List procPng;
+    if (procesada == null) {
+      procPng = pngBytes;
+      sb.writeln('PROCESADA: (no se pudo procesar)');
+    } else {
+      procPng = Uint8List.fromList(img.encodePng(procesada));
+      sb.writeln('PROCESADA (lo que va a la térmica): '
+          '${procesada.width} x ${procesada.height} px');
+    }
+
+    return DiagnosticoImpresion(
+      rawPng: pngBytes,
+      procesadaPng: procPng,
+      info: sb.toString(),
+    );
   }
 
   /// Recorta el margen BLANCO de arriba y abajo de una imagen en grises, para

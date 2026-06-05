@@ -10,6 +10,7 @@ import '../../data/providers/cobrador_provider.dart';
 import '../../data/providers/impresora_provider.dart';
 import '../../data/providers/logo_empresa_provider.dart';
 import '../../data/repositories/settings_repo.dart';
+import '../../data/services/impresora/impresora_diagnostico.dart';
 import '../../data/services/logo_cache_service.dart';
 import '../../powersync/db.dart' as ps;
 import '../shared/widgets/empty_state.dart';
@@ -343,6 +344,119 @@ class _AccionesImpresionState extends ConsumerState<_AccionesImpresion> {
             moraRows: moraRows);
   }
 
+  /// Calcula la mora del contrato para el bloque `mora` (mismo cálculo que
+  /// pantalla/PDF). Single: excluir la cuota cobrada. Multi: excluir TODAS las
+  /// del grupo. Cuota manual (contrato_id null) → mora vacía.
+  Future<List<Map<String, dynamic>>> _moraParaImpresion() async {
+    final multiRows = widget.multiRows;
+    final contratoId = (multiRows != null ? multiRows.first : widget.recibo)[
+        'contrato_id'] as String?;
+    final excluir = (multiRows != null
+            ? multiRows.map((r) => r['cuota_id'])
+            : [widget.recibo['cuota_id']])
+        .whereType<Object>()
+        .toSet();
+    return contratoId == null
+        ? const <Map<String, dynamic>>[]
+        : (await fetchMoraContrato(contratoId, widget.settings.diasGracia))
+            .where((m) => !excluir.contains(m['cuota_id']))
+            .toList();
+  }
+
+  /// CAPTURA el widget `ReciboTicket` a PNG (al ancho exacto del papel en
+  /// dots). Lo COMPARTEN el path de impresión real y el de diagnóstico, así lo
+  /// que se diagnostica es BYTE-POR-BYTE lo que se imprime. Devuelve null y
+  /// muestra un snackbar si la captura falla.
+  Future<Uint8List?> _capturarReciboPng() async {
+    final moraRows = await _moraParaImpresion();
+
+    // Logo para la térmica: se lee del CACHE LOCAL (sin red — la impresión es
+    // 100% offline). Solo si el bloque `logo` está visible en el layout
+    // (paridad con pantalla/PDF). Si nunca se cacheó queda null.
+    final logoVisible =
+        widget.settings.reciboLayout.any((b) => b.id == 'logo' && b.visible);
+    final tenantId = ref.read(tenantIdProvider);
+    Uint8List? logoBytes;
+    if (logoVisible && tenantId != null) {
+      logoBytes = await LogoCacheService().leerLogoCacheado(tenantId);
+    }
+
+    // WYSIWYG: se CAPTURA a imagen el MISMO widget `ReciboTicket` que muestra
+    // la preview (lo renderiza Skia), y se manda como raster ESC/POS. Así las
+    // tildes salen perfectas en CUALQUIER impresora, 100% OFFLINE (sin PDFium
+    // ni fuentes embebidas). El layout/orden/mora/multi ya viven en el widget.
+    final anchoDots = reciboAnchoDots(widget.settings.formatoReciboMm);
+    final multiCuota = widget.multiRows != null;
+    final ticket = ReciboTicket(
+      row: multiCuota ? null : widget.recibo,
+      rows: multiCuota ? widget.multiRows : null,
+      settings: widget.settings,
+      logoBytes: logoBytes,
+      moraRows: moraRows,
+    );
+    final ticketCapturable = Directionality(
+      textDirection: TextDirection.ltr,
+      // Container BLANCO que cubre TODO el targetSize (anchoDots × 5000): así
+      // NO queda ninguna zona no-blanca en la captura. El ticket va arriba; el
+      // blanco sobrante lo recorta imprimirImagen.
+      child: Container(
+        width: anchoDots.toDouble(),
+        height: 5000,
+        color: Colors.white,
+        alignment: Alignment.topCenter,
+        child: Material(type: MaterialType.transparency, child: ticket),
+      ),
+    );
+
+    try {
+      return await ScreenshotController().captureFromWidget(
+        ticketCapturable,
+        pixelRatio: 1.0,
+        targetSize: Size(anchoDots.toDouble(), 5000),
+        // delay para que las imágenes (logo) terminen de pintar antes del
+        // snapshot — si no, el logo puede salir en blanco.
+        delay: const Duration(milliseconds: 80),
+      );
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('No se pudo generar el recibo: $e')),
+        );
+      }
+      return null;
+    }
+  }
+
+  /// DIAGNÓSTICO: captura el PNG del recibo (igual que el path de impresión),
+  /// lo pasa por el pipeline de la térmica SIN imprimir, y muestra el bitmap
+  /// crudo + el procesado + métricas. Sirve para VER qué se manda realmente a
+  /// la impresora (¿oscuro? ¿angosto? ¿chico?) en vez de adivinar.
+  Future<void> _diagnosticar() async {
+    setState(() => _imprimiendo = true);
+    try {
+      final pngBytes = await _capturarReciboPng();
+      if (pngBytes == null || !mounted) return;
+      final service = ref.read(impresoraServiceProvider);
+      final diag = await service.diagnosticar(
+        pngBytes: pngBytes,
+        anchoMm: widget.settings.formatoReciboMm,
+      );
+      if (!mounted) return;
+      await showDialog<void>(
+        context: context,
+        builder: (_) => _DiagnosticoDialog(diag: diag),
+      );
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error en diagnóstico: $e')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _imprimiendo = false);
+    }
+  }
+
   Future<void> _imprimir() async {
     final favState = ref.read(impresoraFavoritaProvider);
     // Si todavía no se leyó SharedPreferences, esperar y reintentar.
@@ -370,96 +484,8 @@ class _AccionesImpresionState extends ConsumerState<_AccionesImpresion> {
     try {
       final service = ref.read(impresoraServiceProvider);
 
-      // Detalle de mora del contrato para el bloque `mora` de la térmica. El
-      // service no tiene `ref` ni hace IO, así que la mora se calcula acá
-      // (mismo `fetchMoraContrato` que pantalla/PDF) y se pasa hecha. Single:
-      // excluir la cuota cobrada. Multi: excluir TODAS las del grupo. Cuota
-      // manual (contrato_id null) → mora vacía → el bloque no imprime nada.
-      final multiRows = widget.multiRows;
-      final contratoId = (multiRows != null ? multiRows.first : widget.recibo)[
-          'contrato_id'] as String?;
-      final excluir = (multiRows != null
-              ? multiRows.map((r) => r['cuota_id'])
-              : [widget.recibo['cuota_id']])
-          .whereType<Object>()
-          .toSet();
-      final moraRows = contratoId == null
-          ? const <Map<String, dynamic>>[]
-          : (await fetchMoraContrato(contratoId, widget.settings.diasGracia))
-              .where((m) => !excluir.contains(m['cuota_id']))
-              .toList();
-
-      // Logo para la térmica: se lee del CACHE LOCAL (sin red — la impresión
-      // es 100% offline). Solo si el bloque `logo` está visible en el layout
-      // (paridad con pantalla/PDF). Si nunca se cacheó (offline desde el
-      // arranque, o tenant sin logo) queda null → el recibo imprime sin logo.
-      final logoVisible = widget.settings.reciboLayout
-          .any((b) => b.id == 'logo' && b.visible);
-      final tenantId = ref.read(tenantIdProvider);
-      Uint8List? logoBytes;
-      if (logoVisible && tenantId != null) {
-        logoBytes = await LogoCacheService().leerLogoCacheado(tenantId);
-      }
-
-      // WYSIWYG: se CAPTURA a imagen el MISMO widget `ReciboTicket` que muestra
-      // la preview (lo renderiza Skia), y se manda como raster ESC/POS. Así las
-      // tildes salen perfectas en CUALQUIER impresora, 100% OFFLINE (sin PDFium
-      // ni fuentes embebidas). El layout/orden/mora/multi ya viven en el widget.
-      //
-      // El widget se construye al ancho EXACTO del papel en dots (58→384,
-      // 80→576: `Container(width: anchoDots)` dentro de `ReciboTicket`).
-      // PASAMOS `targetSize` con ese ancho + un alto holgado (5000): así la
-      // captura NO depende del tamaño de la pantalla — en un teléfono angosto
-      // (~400px lógicos) sin targetSize el Container se clampearía a ~400 y
-      // saldría borroso al reescalar a 576; y un recibo más alto que la
-      // pantalla se cortaría. Con targetSize el ancho queda fijo en dots y el
-      // alto holgado evita el recorte. El margen blanco sobrante lo recorta
-      // `imprimirImagen`. `pixelRatio: 1.0` → 1 px lógico = 1 dot (máxima
-      // nitidez). Envuelto en Material + Directionality + fondo blanco.
-      final anchoDots = reciboAnchoDots(widget.settings.formatoReciboMm);
-      final multiCuota = widget.multiRows != null;
-      final ticket = ReciboTicket(
-        row: multiCuota ? null : widget.recibo,
-        rows: multiCuota ? widget.multiRows : null,
-        settings: widget.settings,
-        logoBytes: logoBytes,
-        moraRows: moraRows,
-      );
-      final ticketCapturable = Directionality(
-        textDirection: TextDirection.ltr,
-        // Container BLANCO que cubre TODO el targetSize (anchoDots × 5000): así
-        // NO queda ninguna zona no-blanca en la captura (el fondo por defecto
-        // de screenshot puede ser oscuro/transparente → recibo en negativo).
-        // El ticket va arriba; el blanco sobrante lo recorta imprimirImagen.
-        child: Container(
-          width: anchoDots.toDouble(),
-          height: 5000,
-          color: Colors.white,
-          alignment: Alignment.topCenter,
-          child: Material(type: MaterialType.transparency, child: ticket),
-        ),
-      );
-
-      Uint8List pngBytes;
-      try {
-        pngBytes = await ScreenshotController().captureFromWidget(
-          ticketCapturable,
-          pixelRatio: 1.0,
-          // Ancho fijo en dots (independiente de la pantalla) + alto holgado
-          // para no recortar recibos largos. El blanco sobrante se recorta en
-          // imprimirImagen.
-          targetSize: Size(anchoDots.toDouble(), 5000),
-          // delay para que las imágenes (logo) terminen de pintar antes del
-          // snapshot — si no, el logo puede salir en blanco.
-          delay: const Duration(milliseconds: 80),
-        );
-      } catch (e) {
-        if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('No se pudo generar el recibo: $e')),
-        );
-        return;
-      }
+      final pngBytes = await _capturarReciboPng();
+      if (pngBytes == null) return;
 
       final ok = await service.imprimirImagen(
         macImpresora: fav.mac,
@@ -526,6 +552,17 @@ class _AccionesImpresionState extends ConsumerState<_AccionesImpresion> {
                 : 'Imprimir ${widget.settings.formatoReciboMm}mm'),
             onPressed: _imprimiendo || !puedeImprimir ? null : _imprimir,
           ),
+        // DIAGNÓSTICO (temporal): muestra el bitmap EXACTO que se manda a la
+        // térmica, sin imprimir. Sirve para ver por qué sale oscuro/angosto/
+        // chico y arreglar la causa real. No requiere impresora conectada.
+        if (!kIsWeb) ...[
+          const SizedBox(height: 8),
+          TextButton.icon(
+            icon: const Icon(Icons.bug_report_outlined, size: 18),
+            label: const Text('Diagnóstico: ver imagen a imprimir'),
+            onPressed: _imprimiendo ? null : _diagnosticar,
+          ),
+        ],
         // PDF download — solo visible en web. En mobile usan la impresora
         // Bluetooth térmica, así que el PDF no aporta nada.
         if (kIsWeb) ...[
@@ -558,6 +595,76 @@ class _AccionesImpresionState extends ConsumerState<_AccionesImpresion> {
           'falle. Podés reintentar imprimir cuando quieras.',
           textAlign: TextAlign.center,
           style: Theme.of(context).textTheme.bodySmall,
+        ),
+      ],
+    );
+  }
+}
+
+/// Dialog del diagnóstico: muestra el PNG crudo de la captura y el bitmap
+/// FINAL que va a la térmica, ambos sobre fondo MAGENTA (así la transparencia
+/// se ve obvia) + las métricas. Permite zoom (InteractiveViewer) para inspección.
+class _DiagnosticoDialog extends StatelessWidget {
+  const _DiagnosticoDialog({required this.diag});
+  final DiagnosticoImpresion diag;
+
+  Widget _imagenSobreMagenta(String titulo, Uint8List png) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(titulo, style: const TextStyle(fontWeight: FontWeight.bold)),
+        const SizedBox(height: 4),
+        // Fondo magenta: si la imagen tiene transparencia, se ve el magenta a
+        // través; si es blanca opaca, tapa el magenta. Borde para ver el límite.
+        Container(
+          decoration: BoxDecoration(
+            color: const Color(0xFFFF00FF),
+            border: Border.all(color: Colors.black26),
+          ),
+          constraints: const BoxConstraints(maxHeight: 320),
+          child: InteractiveViewer(
+            maxScale: 6,
+            child: Image.memory(png, fit: BoxFit.contain, filterQuality: FilterQuality.none),
+          ),
+        ),
+      ],
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Diagnóstico de impresión'),
+      content: SizedBox(
+        width: double.maxFinite,
+        child: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              SelectableText(
+                diag.info,
+                style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
+              ),
+              const SizedBox(height: 12),
+              _imagenSobreMagenta('1) Captura cruda (PNG)', diag.rawPng),
+              const SizedBox(height: 16),
+              _imagenSobreMagenta(
+                  '2) Bitmap final → térmica', diag.procesadaPng),
+              const SizedBox(height: 8),
+              const Text(
+                'El fondo rosado se ve donde la imagen es transparente. '
+                'Tocá y arrastrá para hacer zoom.',
+                style: TextStyle(fontSize: 11, color: Colors.black54),
+              ),
+            ],
+          ),
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cerrar'),
         ),
       ],
     );

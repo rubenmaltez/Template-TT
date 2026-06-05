@@ -1,6 +1,6 @@
 {
-  "version": "0.7.5",
-  "release_notes": "Recibo: fondo blanco solido (no mas impresion en negativo/oscuro) y letras mas grandes y legibles (58 y 80mm). Preview a tamano real. Recibo unificado preview = impresion, tildes en cualquier impresora, offline. Incluye todo lo de 0.7.x.",
+  "version": "0.7.6",
+  "release_notes": "Diagnostico de impresion: en la pantalla del recibo hay un boton 'Diagnostico: ver imagen a imprimir' que muestra el bitmap EXACTO que se manda a la termica (crudo + procesado) sobre fondo rosado, para ver por que sale oscuro/angosto/chico sin adivinar. No imprime, no requiere impresora. Incluye todo lo de 0.7.x.",
   "download_url_windows": "https://github.com/rubenmaltez/Template-TT/releases/latest/download/SITECSA-CRM.msix",
   "download_url_android": "https://github.com/rubenmaltez/Template-TT/releases/latest/download/SITECSA-CRM.apk",
   "download_url": "https://github.com/rubenmaltez/Template-TT/releases/latest/download/SITECSA-CRM.msix"
