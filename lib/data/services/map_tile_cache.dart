@@ -8,11 +8,14 @@ import 'package:path_provider/path_provider.dart';
 
 /// Caché en disco de los tiles del mapa (offline-first "mientras navegás").
 ///
-/// Estrategia: `cacheFirst` — cada tile que el usuario abre CON conexión
-/// queda guardado en disco; la próxima vez (aunque esté SIN señal) se sirve
-/// del disco sin tocar la red. NO pre-descarga zonas: lo que el cobrador
-/// nunca abrió online no está disponible offline (decisión de scope; la
-/// pre-descarga de áreas queda para un sprint futuro).
+/// Estrategia: cache-first vía el default `CachePolicy.forceCache` de
+/// flutter_map_cache — si el tile ya está en disco y no expiró (ver
+/// [_maxStale]), se sirve del disco SIN tocar la red (ahorra datos del
+/// cobrador); si no está, se baja y se guarda. Estando SIN señal, los tiles
+/// ya guardados se siguen sirviendo (fallback a caché ante error de red). NO
+/// pre-descarga zonas: lo que el cobrador nunca abrió online no está
+/// disponible offline (decisión de scope; la pre-descarga de áreas queda
+/// para un sprint futuro).
 ///
 /// **Plataformas:** Android + Windows (filesystem nativo). En **web** el
 /// `FileCacheStore` no aplica (no hay filesystem persistente), así que
