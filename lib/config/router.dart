@@ -448,58 +448,54 @@ final routerProvider = Provider<GoRouter>((ref) {
 Widget _titled(String titulo, Widget child) =>
     ShellTitleScope(titulo: titulo, child: child);
 
-/// Página con transición estilo **FadeThrough** (Material motion) para las
+/// Página con transición de **deslizamiento con cobertura opaca** para las
 /// sub-rutas de un shell. Se define a NIVEL DE PÁGINA (no envolviendo el body)
 /// para que el Navigator interno del ShellRoute use ESTA y no la suya.
 ///
-/// La saliente se desvanece con un leve **zoom-out** en el 1er tramo; la entrante
-/// aparece con un leve **zoom-in** en el 2º. El zoom da continuidad de MOVIMIENTO
-/// (no es un fade plano que parpadea) y los tramos de opacidad NO se solapan
-/// (la saliente termina ~35% antes de que la entrante empiece). Duración 400ms.
+/// Por qué deslizamiento y no fade: un fade (cross-fade, FadeThrough, etc.) es
+/// por definición un cruce de OPACIDADES → siempre hay un instante con las dos
+/// pantallas semitransparentes encimadas. Para que NO se vean encimadas, la
+/// entrante tiene **fondo opaco** y se desliza TAPANDO a la saliente: en ningún
+/// píxel se ven las dos a la vez. La saliente queda detrás con un leve parallax.
 CustomTransitionPage<void> _fadePage(GoRouterState state, Widget child) =>
     CustomTransitionPage<void>(
       key: state.pageKey,
-      transitionDuration: const Duration(milliseconds: 400),
-      reverseTransitionDuration: const Duration(milliseconds: 400),
+      transitionDuration: const Duration(milliseconds: 320),
+      reverseTransitionDuration: const Duration(milliseconds: 320),
       child: child,
       transitionsBuilder: (context, animation, secondaryAnimation, child) =>
-          _FadeThrough(animation: animation, child: child),
+          _CoverSlide(animation: animation, child: child),
     );
 
-/// Implementa el FadeThrough manual (sin paquete). Distingue si la página está
-/// ENTRANDO o SALIENDO por `animation.status` y aplica la curva/zoom acorde, así
-/// los fades no se cruzan en opacidad (lo que se veía "encimado") y el zoom suave
-/// hace de puente entre una y otra.
-class _FadeThrough extends StatelessWidget {
-  const _FadeThrough({required this.animation, required this.child});
+/// Deslizamiento con cobertura opaca. La página ENTRANTE entra desde la derecha
+/// (fondo opaco) y tapa a la de atrás; la SALIENTE queda quieta con un leve
+/// parallax a la izquierda. Se distingue por `animation.status`, pero aunque
+/// fallara, la entrante va arriba en el z-order y es opaca → nunca hay
+/// superposición visible (no se ven las dos pantallas a la vez).
+class _CoverSlide extends StatelessWidget {
+  const _CoverSlide({required this.animation, required this.child});
   final Animation<double> animation;
   final Widget child;
 
   @override
   Widget build(BuildContext context) {
-    return AnimatedBuilder(
-      animation: animation,
-      child: child,
-      builder: (context, child) {
-        final saliente = animation.status == AnimationStatus.reverse ||
-            animation.status == AnimationStatus.dismissed;
-        final t = animation.value;
-        final double opacity;
-        final double scale;
-        if (saliente) {
-          // Saliente: se va en el 1er 35% del tiempo (anim 1.0→0.65) + zoom-out.
-          opacity = ((t - 0.65) / 0.35).clamp(0.0, 1.0);
-          scale = 0.94 + 0.06 * t; // t: 1→0  ⇒  scale 1.0→0.94
-        } else {
-          // Entrante: aparece en el último 65% (anim 0.35→1.0) + zoom-in.
-          opacity = ((t - 0.35) / 0.65).clamp(0.0, 1.0);
-          scale = 0.94 + 0.06 * Curves.easeOut.transform(t); // 0.94→1.0
-        }
-        return Opacity(
-          opacity: opacity,
-          child: Transform.scale(scale: scale, child: child),
-        );
-      },
+    final entrante = animation.status == AnimationStatus.forward ||
+        animation.status == AnimationStatus.completed;
+    final Animation<Offset> pos = entrante
+        // Entra desde la derecha → centro.
+        ? Tween<Offset>(begin: const Offset(1, 0), end: Offset.zero).animate(
+            CurvedAnimation(parent: animation, curve: Curves.easeOutCubic))
+        // Saliente (animation va 1→0): de centro → leve parallax a la izquierda.
+        : Tween<Offset>(begin: const Offset(-0.18, 0), end: Offset.zero)
+            .animate(CurvedAnimation(parent: animation, curve: Curves.easeOut));
+    return SlideTransition(
+      position: pos,
+      // Fondo opaco: garantiza que la entrante TAPE a la saliente (sin ver a
+      // través), así nunca se ven las dos pantallas encimadas.
+      child: ColoredBox(
+        color: Theme.of(context).scaffoldBackgroundColor,
+        child: child,
+      ),
     );
   }
 }
