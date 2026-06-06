@@ -8,21 +8,22 @@ import 'pdf_utils.dart';
 ///
 /// READ-ONLY: a partir de los pagos del rango, arma por cada cobrador un
 /// bloque con el efectivo físico (separado por moneda US$/C$), el vuelto que
-/// entregó, el electrónico (transferencia/depósito/tarjeta), y dos totales:
-///   - Equivalente total en C$ valuando los dólares a la TASA ACTUAL.
-///   - Ingreso registrado (recaudado contable, a la tasa de cada cobro).
+/// entregó, el electrónico (transferencia/depósito/tarjeta), y dos totales que
+/// DEBEN cuadrar entre sí:
+///   - Equivalente total en C$, valuando los dólares a la tasa de CADA cobro.
+///   - Ingreso registrado (recaudado contable, misma tasa de cada cobro).
+/// Si difieren, hay data de pago corrupta (violación del invariante #3).
 ///
 /// [rows] viene de la query del screen con keys: cobrador_nombre,
-/// total_cobros, efectivo_usd, efectivo_usd_qty, efectivo_nio,
-/// efectivo_nio_qty, efectivo_vuelto, efectivo_ingreso, transferencia,
-/// transferencia_qty, deposito, deposito_qty, tarjeta, tarjeta_qty,
-/// ingreso_total.
+/// total_cobros, efectivo_usd, efectivo_usd_qty, efectivo_usd_equiv,
+/// efectivo_nio, efectivo_nio_qty, efectivo_vuelto, efectivo_ingreso,
+/// transferencia, transferencia_qty, deposito, deposito_qty, tarjeta,
+/// tarjeta_qty, ingreso_total.
 Future<pw.Document> buildReporteArqueo({
   required String titulo,
   required String empresaNombre,
   required String periodo,
   required List<Map<String, dynamic>> rows,
-  required double tasaActual,
 }) async {
   final pdf = pw.Document();
   final theme = await pdfTheme();
@@ -35,7 +36,7 @@ Future<pw.Document> buildReporteArqueo({
       header: (context) => buildHeaderEstandar(
         empresaNombre: empresaNombre,
         titulo: titulo,
-        periodo: '$periodo  ·  Tasa actual: ${fmtCordobas(tasaActual)}',
+        periodo: periodo,
       ),
       footer: (context) => buildFooterEstandar(context),
       build: (context) {
@@ -47,11 +48,11 @@ Future<pw.Document> buildReporteArqueo({
         }
         return [
           for (final r in rows) ...[
-            _bloqueCobrador(_Arqueo.fromRow(r, tasaActual)),
+            _bloqueCobrador(_Arqueo.fromRow(r)),
             pw.SizedBox(height: 14),
           ],
           pw.SizedBox(height: 6),
-          _bloqueTotalGeneral(_Arqueo.total(rows, tasaActual)),
+          _bloqueTotalGeneral(_Arqueo.total(rows)),
         ];
       },
     ),
@@ -80,7 +81,7 @@ class _Arqueo {
     required this.tarjeta,
     required this.tarjetaQty,
     required this.ingresoTotal,
-    required this.tasaActual,
+    required this.efectivoUsdEquiv,
   });
 
   final String nombre;
@@ -97,14 +98,16 @@ class _Arqueo {
   final double tarjeta;
   final int tarjetaQty;
   final double ingresoTotal; // recaudado contable (monto_cordobas)
-  final double tasaActual;
+  // Equivalente en C$ del efectivo USD, a la tasa de cada cobro
+  // (monto_cordobas + vuelto_cordobas). Tasa histórica, no la de hoy.
+  final double efectivoUsdEquiv;
 
   static double _d(Map<String, dynamic> r, String k) =>
       ((r[k] as num?) ?? 0).toDouble();
   static int _i(Map<String, dynamic> r, String k) =>
       ((r[k] as num?) ?? 0).toInt();
 
-  factory _Arqueo.fromRow(Map<String, dynamic> r, double tasaActual) {
+  factory _Arqueo.fromRow(Map<String, dynamic> r) {
     return _Arqueo(
       nombre: (r['cobrador_nombre'] as String?) ?? '—',
       totalCobros: _i(r, 'total_cobros'),
@@ -120,12 +123,12 @@ class _Arqueo {
       tarjeta: _d(r, 'tarjeta'),
       tarjetaQty: _i(r, 'tarjeta_qty'),
       ingresoTotal: _d(r, 'ingreso_total'),
-      tasaActual: tasaActual,
+      efectivoUsdEquiv: _d(r, 'efectivo_usd_equiv'),
     );
   }
 
   /// Suma todas las filas en un solo arqueo "TOTAL GENERAL".
-  factory _Arqueo.total(List<Map<String, dynamic>> rows, double tasaActual) {
+  factory _Arqueo.total(List<Map<String, dynamic>> rows) {
     double sumD(String k) =>
         rows.fold<double>(0, (s, r) => s + _d(r, k));
     int sumI(String k) => rows.fold<int>(0, (s, r) => s + _i(r, k));
@@ -144,7 +147,7 @@ class _Arqueo {
       tarjeta: sumD('tarjeta'),
       tarjetaQty: sumI('tarjeta_qty'),
       ingresoTotal: sumD('ingreso_total'),
-      tasaActual: tasaActual,
+      efectivoUsdEquiv: sumD('efectivo_usd_equiv'),
     );
   }
 
@@ -152,12 +155,11 @@ class _Arqueo {
   /// (el vuelto de pagos USD también sale de la caja en córdobas).
   double get efectivoNetoC => efectivoNio - efectivoVuelto;
 
-  /// Dólares físicos valuados a la tasa de HOY.
-  double get usdEnCordobasActual => efectivoUsd * tasaActual;
-
-  /// Gran total en córdobas a tasa actual.
+  /// Gran total en córdobas, valuando el USD a la tasa de cada cobro. Cuadra
+  /// con `ingresoTotal` salvo data corrupta (el −vuelto del neto se compensa
+  /// con el +vuelto incluido en efectivoUsdEquiv).
   double get equivalenteTotalC =>
-      efectivoNetoC + usdEnCordobasActual + transferencia + deposito + tarjeta;
+      efectivoNetoC + efectivoUsdEquiv + transferencia + deposito + tarjeta;
 
   bool get tieneUsd => efectivoUsd != 0;
 }
@@ -228,7 +230,8 @@ pw.Widget _bloque(_Arqueo a, {required bool destacado}) {
           bold: true,
         ),
         if (a.tieneUsd)
-          _renglon('US\$ a tasa actual', fmtCordobas(a.usdEnCordobasActual)),
+          _renglon('US\$ en córdobas (tasa del cobro)',
+              fmtCordobas(a.efectivoUsdEquiv)),
 
         // ELECTRÓNICO (al banco) — solo si hay algún método con movimiento.
         if (electronico.isNotEmpty) ...[
@@ -239,7 +242,7 @@ pw.Widget _bloque(_Arqueo a, {required bool destacado}) {
 
         pw.SizedBox(height: 8),
         pw.Divider(thickness: 0.5, color: PdfColors.grey400),
-        _renglon('Equivalente total (C\$, tasa actual)',
+        _renglon('Equivalente total (C\$)',
             fmtCordobas(a.equivalenteTotalC),
             bold: true),
         _renglon('Ingreso registrado (recaudado)',

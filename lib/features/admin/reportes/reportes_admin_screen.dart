@@ -331,7 +331,6 @@ class _ArqueoCajaCard extends ConsumerWidget {
     try {
       final empresaNombre =
           ref.read(empresaNombreProvider).valueOrNull ?? 'ISP';
-      final tasaActual = ref.read(appSettingsProvider).tasaUsd;
       final rows =
           await ps.db.getAll(_arqueoSql, [rango.desdeSql, rango.hastaSql]);
 
@@ -341,7 +340,6 @@ class _ArqueoCajaCard extends ConsumerWidget {
         empresaNombre: empresaNombre,
         periodo: rango.periodoLabel,
         rows: rows,
-        tasaActual: tasaActual,
       );
       await guardarArchivo(
         fileName: 'arqueo_${now.year}_${now.month}_${now.day}.pdf',
@@ -371,6 +369,10 @@ const String _arqueoSql = '''
          COUNT(p.id) AS total_cobros,
          COALESCE(SUM(CASE WHEN p.metodo='efectivo' AND p.moneda='USD' THEN p.monto_original ELSE 0 END),0) AS efectivo_usd,
          SUM(CASE WHEN p.metodo='efectivo' AND p.moneda='USD' THEN 1 ELSE 0 END) AS efectivo_usd_qty,
+         -- Equivalente en córdobas del efectivo USD, a la tasa de CADA cobro
+         -- (monto_cordobas + vuelto_cordobas = monto_original × tasa_conversion,
+         -- invariante #3). NO usar la tasa de hoy: rompería la reconciliación.
+         COALESCE(SUM(CASE WHEN p.metodo='efectivo' AND p.moneda='USD' THEN COALESCE(p.monto_cordobas,0) + COALESCE(p.vuelto_cordobas,0) ELSE 0 END),0) AS efectivo_usd_equiv,
          COALESCE(SUM(CASE WHEN p.metodo='efectivo' AND p.moneda='NIO' THEN p.monto_original ELSE 0 END),0) AS efectivo_nio,
          SUM(CASE WHEN p.metodo='efectivo' AND p.moneda='NIO' THEN 1 ELSE 0 END) AS efectivo_nio_qty,
          COALESCE(SUM(CASE WHEN p.metodo='efectivo' THEN p.vuelto_cordobas ELSE 0 END),0) AS efectivo_vuelto,
@@ -847,8 +849,7 @@ class _DescargarPdfMenu extends ConsumerWidget {
       final rango = tipo == 'arqueo'
           ? ref.read(reporteArqueoRangoProvider)
           : ref.read(reporteRangoProvider);
-      final tasaUsd = ref.read(appSettingsProvider).tasaUsd;
-      final datos = await _extraerDatos(tipo, rango, tasaUsd);
+      final datos = await _extraerDatos(tipo, rango);
 
       final now = DateTime.now();
       final mm = now.month.toString().padLeft(2, '0');
@@ -909,10 +910,11 @@ class _DescargarPdfMenu extends ConsumerWidget {
   /// Extrae los datos de un reporte como headers + filas tipadas. Los montos y
   /// cantidades se devuelven como `num` (para que en Excel sean números
   /// sumables); el texto como `String`. MISMA fuente de queries que el CSV
-  /// anterior y los PDF — solo cambia el formato de salida. Params [rango] y
-  /// [tasaUsd] idénticos al resto de los reportes.
+  /// anterior y los PDF — solo cambia el formato de salida. El arqueo valua el
+  /// USD a la tasa histórica de cada cobro (`efectivo_usd_equiv`), no necesita
+  /// la tasa actual.
   Future<({List<String> headers, List<List<Object?>> filas})> _extraerDatos(
-      String tipo, RangoReporte rango, double tasaUsd) async {
+      String tipo, RangoReporte rango) async {
     switch (tipo) {
       case 'cobros':
         final rows = await ps.db.getAll('''
@@ -1154,8 +1156,10 @@ class _DescargarPdfMenu extends ConsumerWidget {
           filas: rows.map((r) {
             double d(String k) => ((r[k] as num?) ?? 0).toDouble();
             final efectivoNetoC = d('efectivo_nio') - d('efectivo_vuelto');
+            // USD valuado a la tasa histórica de cada cobro (efectivo_usd_equiv),
+            // para que "Equivalente total" cuadre con "Ingreso total" siempre.
             final equivalenteTotalC = efectivoNetoC +
-                d('efectivo_usd') * tasaUsd +
+                d('efectivo_usd_equiv') +
                 d('transferencia') +
                 d('deposito') +
                 d('tarjeta');
