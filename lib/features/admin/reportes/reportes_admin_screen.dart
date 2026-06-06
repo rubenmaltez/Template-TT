@@ -345,8 +345,11 @@ class _ArqueoCajaCard extends ConsumerWidget {
       );
     } catch (e) {
       if (context.mounted) {
+        final msg = e is UnsupportedError
+            ? (e.message?.toString() ?? 'Exportación no soportada')
+            : 'Error generando arqueo: $e';
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error generando arqueo: $e')),
+          SnackBar(content: Text(msg)),
         );
       }
     }
@@ -648,8 +651,11 @@ class _DescargarPdfMenu extends ConsumerWidget {
       }
     } catch (e) {
       if (context.mounted) {
+        final msg = e is UnsupportedError
+            ? (e.message?.toString() ?? 'Exportación no soportada')
+            : 'Error generando reporte: $e';
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error generando reporte: $e')),
+          SnackBar(content: Text(msg)),
         );
       }
     }
