@@ -241,6 +241,22 @@ pw.Widget _bloque(_Arqueo a, {required bool destacado}) {
               : fmtCordobas(a.efectivoNetoC),
           bold: true,
         ),
+        // El neto en córdobas da negativo cuando el cobrador tomó pagos en
+        // dólares y devolvió el vuelto en córdobas de su caja: adelantó ese
+        // cambio, así que la oficina se lo reembolsa (no es un faltante).
+        if (a.efectivoNetoC < 0)
+          pw.Padding(
+            padding: const pw.EdgeInsets.only(left: 12, top: 1, bottom: 1),
+            child: pw.Text(
+              'Neto en córdobas negativo: el cobrador adelantó el vuelto de '
+              'pagos en dólares. La oficina le reembolsa esa diferencia.',
+              style: pw.TextStyle(
+                fontSize: 8,
+                fontStyle: pw.FontStyle.italic,
+                color: PdfColors.grey600,
+              ),
+            ),
+          ),
         if (a.tieneUsd)
           _renglon('US\$ en córdobas (tasa del cobro)',
               fmtCordobas(a.efectivoUsdEquiv)),
