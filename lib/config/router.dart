@@ -295,71 +295,69 @@ final routerProvider = Provider<GoRouter>((ref) {
       //    Perfil). '/' es la landing = pantalla de Cobros (cuotas por
       //    cliente + franja de KPIs). Historial se accede desde Perfil. ─────
       ShellRoute(
-        builder: (_, state, child) =>
-            AppShell(child: _transicionShell(state, child)),
+        builder: (_, __, child) => AppShell(child: child),
         routes: [
-          GoRoute(path: '/',          builder: (_, s) => _titled('Cobros', const CuotasListScreen())),
-          GoRoute(path: '/clientes',  builder: (_, s) => _titled('Clientes', const ClientesListScreen())),
-          GoRoute(path: '/mapa',      builder: (_, s) => _titled('Mapa', const MapaScreen())),
-          GoRoute(path: '/perfil',    builder: (_, s) => _titled('Mi perfil', const PerfilScreen())),
+          GoRoute(path: '/',          pageBuilder: (_, s) => _fadePage(s, _titled('Cobros', const CuotasListScreen()))),
+          GoRoute(path: '/clientes',  pageBuilder: (_, s) => _fadePage(s, _titled('Clientes', const ClientesListScreen()))),
+          GoRoute(path: '/mapa',      pageBuilder: (_, s) => _fadePage(s, _titled('Mapa', const MapaScreen()))),
+          GoRoute(path: '/perfil',    pageBuilder: (_, s) => _fadePage(s, _titled('Mi perfil', const PerfilScreen()))),
         ],
       ),
 
       // ── Admin: ShellRoute con sidebar responsive ───────────────────────
       ShellRoute(
-        builder: (_, state, child) =>
-            AdminShell(child: _transicionShell(state, child)),
+        builder: (_, __, child) => AdminShell(child: child),
         routes: [
           GoRoute(path: '/admin',
-              builder: (_, s) => _titled('Resumen', const DashboardAdminScreen())),
+              pageBuilder: (_, s) => _fadePage(s, _titled('Resumen', const DashboardAdminScreen()))),
           GoRoute(path: '/admin/cobros',
-              builder: (_, s) =>
-                  _titled('Cobros', const CuotasListScreen(adminMode: true))),
+              pageBuilder: (_, s) => _fadePage(s,
+                  _titled('Cobros', const CuotasListScreen(adminMode: true)))),
           GoRoute(path: '/admin/clientes',
-              builder: (_, s) => _titled('Clientes', const ClientesAdminScreen())),
+              pageBuilder: (_, s) => _fadePage(s, _titled('Clientes', const ClientesAdminScreen()))),
           GoRoute(path: '/admin/clientes/nuevo',
-              builder: (_, s) => _titled('Nuevo cliente', const ClienteFormScreen())),
+              pageBuilder: (_, s) => _fadePage(s, _titled('Nuevo cliente', const ClienteFormScreen()))),
           GoRoute(path: '/admin/clientes/:id/editar',
-              builder: (_, s) => _titled('Editar cliente',
-                  ClienteFormScreen(clienteId: s.pathParameters['id']))),
+              pageBuilder: (_, s) => _fadePage(s, _titled('Editar cliente',
+                  ClienteFormScreen(clienteId: s.pathParameters['id'])))),
           GoRoute(path: '/admin/clientes/:id',
-              builder: (_, s) => ClienteDetailScreen(
-                  clienteId: s.pathParameters['id']!)),
+              pageBuilder: (_, s) => _fadePage(s, ClienteDetailScreen(
+                  clienteId: s.pathParameters['id']!))),
           GoRoute(path: '/admin/contratos',
-              builder: (_, s) => _titled('Contratos', const ContratosAdminScreen())),
+              pageBuilder: (_, s) => _fadePage(s, _titled('Contratos', const ContratosAdminScreen()))),
           GoRoute(path: '/admin/contratos/nuevo',
-              builder: (_, s) => _titled('Nuevo contrato',
-                  ContratoFormScreen(clienteId: s.uri.queryParameters['cliente_id']))),
+              pageBuilder: (_, s) => _fadePage(s, _titled('Nuevo contrato',
+                  ContratoFormScreen(clienteId: s.uri.queryParameters['cliente_id'])))),
           GoRoute(path: '/admin/contratos/:id',
-              builder: (_, s) => ContratoDetailScreen(
-                  contratoId: s.pathParameters['id']!)),
+              pageBuilder: (_, s) => _fadePage(s, ContratoDetailScreen(
+                  contratoId: s.pathParameters['id']!))),
           GoRoute(path: '/admin/contratos/:id/editar',
-              builder: (_, s) => _titled('Editar contrato',
-                  ContratoFormScreen(contratoId: s.pathParameters['id']))),
+              pageBuilder: (_, s) => _fadePage(s, _titled('Editar contrato',
+                  ContratoFormScreen(contratoId: s.pathParameters['id'])))),
           GoRoute(path: '/admin/planes',
-              builder: (_, s) => _titled('Planes', const PlanesAdminScreen())),
+              pageBuilder: (_, s) => _fadePage(s, _titled('Planes', const PlanesAdminScreen()))),
           GoRoute(path: '/admin/notificaciones',
-              builder: (_, s) => _titled('Notificaciones de mora',
-                  const NotificacionesMoraScreen())),
+              pageBuilder: (_, s) => _fadePage(s, _titled('Notificaciones de mora',
+                  const NotificacionesMoraScreen()))),
           GoRoute(path: '/admin/cobradores',
-              builder: (_, s) => _titled('Cobradores', const CobradoresAdminScreen())),
+              pageBuilder: (_, s) => _fadePage(s, _titled('Cobradores', const CobradoresAdminScreen()))),
           GoRoute(path: '/admin/cuotas',
-              builder: (_, s) => _titled('Cuotas', const CuotasAdminScreen())),
+              pageBuilder: (_, s) => _fadePage(s, _titled('Cuotas', const CuotasAdminScreen()))),
           GoRoute(path: '/admin/pagos',
-              builder: (_, s) => _titled('Pagos', const PagosAdminScreen())),
+              pageBuilder: (_, s) => _fadePage(s, _titled('Pagos', const PagosAdminScreen()))),
           GoRoute(path: '/admin/mapa',
-              builder: (_, s) => _titled('Mapa', const MapaScreen())),
+              pageBuilder: (_, s) => _fadePage(s, _titled('Mapa', const MapaScreen()))),
           GoRoute(path: '/admin/reportes',
-              builder: (_, s) => _titled('Reportes', const ReportesAdminScreen())),
+              pageBuilder: (_, s) => _fadePage(s, _titled('Reportes', const ReportesAdminScreen()))),
           GoRoute(path: '/admin/audit',
-              builder: (_, s) => _titled('Auditoría', const AuditAdminScreen())),
+              pageBuilder: (_, s) => _fadePage(s, _titled('Auditoría', const AuditAdminScreen()))),
           GoRoute(path: '/admin/geografia',
-              builder: (_, s) => _titled('Geografía', const GeografiaAdminScreen())),
+              pageBuilder: (_, s) => _fadePage(s, _titled('Geografía', const GeografiaAdminScreen()))),
           GoRoute(path: '/admin/settings',
-              builder: (_, s) => _titled('Configuración', const SettingsAdminScreen())),
+              pageBuilder: (_, s) => _fadePage(s, _titled('Configuración', const SettingsAdminScreen()))),
           GoRoute(path: '/admin/settings/historial-campos',
-              builder: (_, s) => _titled(
-                  'Campos del historial', const AuditCamposScreen())),
+              pageBuilder: (_, s) => _fadePage(s, _titled(
+                  'Campos del historial', const AuditCamposScreen()))),
         ],
       ),
 
@@ -375,29 +373,28 @@ final routerProvider = Provider<GoRouter>((ref) {
                           loc.length > '/super/tenants/'.length
                       ? 'Configurar tenant'
                       : 'Tenants');
-          return SuperShell(
-              titulo: titulo, child: _transicionShell(state, child));
+          return SuperShell(titulo: titulo, child: child);
         },
         routes: [
           GoRoute(
             path: '/super/tenants',
-            builder: (_, s) => const TenantsListScreen(),
+            pageBuilder: (_, s) => _fadePage(s, const TenantsListScreen()),
           ),
           GoRoute(
             path: '/super/tenants/:id',
-            builder: (_, s) =>
-                TenantModulosScreen(tenantId: s.pathParameters['id']!),
+            pageBuilder: (_, s) => _fadePage(s,
+                TenantModulosScreen(tenantId: s.pathParameters['id']!)),
           ),
           GoRoute(
             path: '/super/tenants/:tid/miembros/:cid',
-            builder: (_, s) => MiembroDetalleScreen(
+            pageBuilder: (_, s) => _fadePage(s, MiembroDetalleScreen(
               tenantId: s.pathParameters['tid']!,
               cobradorId: s.pathParameters['cid']!,
-            ),
+            )),
           ),
           GoRoute(
             path: '/super/logs',
-            builder: (_, s) => const ErrorLogsScreen(),
+            pageBuilder: (_, s) => _fadePage(s, const ErrorLogsScreen()),
           ),
         ],
       ),
@@ -451,83 +448,31 @@ final routerProvider = Provider<GoRouter>((ref) {
 Widget _titled(String titulo, Widget child) =>
     ShellTitleScope(titulo: titulo, child: child);
 
-/// Transición suave entre vistas del mismo shell. Envuelve el `child` del
-/// ShellRoute en `_ShellFade`, keyed por ruta (`state.pageKey` es único por
-/// ruta). Hace fade-OUT de la pantalla actual y, recién cuando terminó, fade-IN
-/// de la nueva (secuencial, no cross-fade), en lugar del salto brusco.
-Widget _transicionShell(GoRouterState state, Widget child) =>
-    _ShellFade(routeKey: state.pageKey, child: child);
-
-/// Fade secuencial entre vistas de un shell: al cambiar de ruta, atenúa la
-/// pantalla visible a 0, recién ahí monta la nueva y la atenúa de 0 a 1. Así
-/// nunca conviven dos pantallas montadas (evita doble FlutterMap / doble
-/// stream) y el cambio se siente como "se va una, entra la otra".
-class _ShellFade extends StatefulWidget {
-  const _ShellFade({required this.routeKey, required this.child});
-  final Key routeKey;
-  final Widget child;
-
-  @override
-  State<_ShellFade> createState() => _ShellFadeState();
-}
-
-class _ShellFadeState extends State<_ShellFade>
-    with SingleTickerProviderStateMixin {
-  static const _dur = Duration(milliseconds: 140);
-  late final AnimationController _ctrl;
-  late Widget _shown; // contenido actualmente en pantalla
-  late Key _shownKey;
-  bool _transicionando = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _ctrl = AnimationController(vsync: this, duration: _dur, value: 1);
-    _shown = widget.child;
-    _shownKey = widget.routeKey;
-  }
-
-  @override
-  void didUpdateWidget(covariant _ShellFade old) {
-    super.didUpdateWidget(old);
-    if (widget.routeKey != _shownKey) {
-      _arrancarTransicion();
-    } else {
-      // Misma ruta (rebuild del shell / stream interno): refrescar el contenido
-      // sin animar.
-      _shown = widget.child;
-    }
-  }
-
-  void _arrancarTransicion() {
-    if (_transicionando) return; // ya hay un fade en curso; tomará el último child al hacer swap
-    _transicionando = true;
-    _ctrl.reverse().then((_) {
-      if (!mounted) return;
-      // Swap al child MÁS reciente (por si hubo más navegaciones durante el fade-out).
-      setState(() {
-        _shown = widget.child;
-        _shownKey = widget.routeKey;
-      });
-      _ctrl.forward().whenComplete(() {
-        if (!mounted) return;
-        _transicionando = false;
-        // Si la ruta volvió a cambiar durante el fade-in, encadenar otra vuelta.
-        if (widget.routeKey != _shownKey) _arrancarTransicion();
-      });
-    });
-  }
-
-  @override
-  void dispose() {
-    _ctrl.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) =>
-      FadeTransition(opacity: _ctrl, child: _shown);
-}
+/// Página con transición fade SECUENCIAL para las sub-rutas de un shell. La
+/// transición se define a NIVEL DE PÁGINA (no envolviendo el body) para que el
+/// Navigator interno del ShellRoute use ESTA y no la suya — si no, se ven las
+/// dos pantallas cruzándose (el bug del cross-fade).
+///
+/// Truco: cada página se anima con su PROPIA `animation` (la entrante 0→1, la
+/// saliente 1→0) y la curva `Interval(0.5, 1.0)` recién la pinta en la 2ª mitad
+/// de su animación. Resultado: la saliente se desvanece en la 1ª mitad, hay un
+/// instante en blanco, y la entrante aparece en la 2ª mitad. Nunca se ven las
+/// dos a la vez (no es cross-fade). Duración total 360ms (~180ms por fase).
+CustomTransitionPage<void> _fadePage(GoRouterState state, Widget child) =>
+    CustomTransitionPage<void>(
+      key: state.pageKey,
+      transitionDuration: const Duration(milliseconds: 360),
+      reverseTransitionDuration: const Duration(milliseconds: 360),
+      child: child,
+      transitionsBuilder: (context, animation, secondaryAnimation, child) =>
+          FadeTransition(
+        opacity: CurvedAnimation(
+          parent: animation,
+          curve: const Interval(0.5, 1.0, curve: Curves.easeIn),
+        ),
+        child: child,
+      ),
+    );
 
 class ShellTitleScope extends InheritedWidget {
   const ShellTitleScope({super.key, required this.titulo, required super.child});
