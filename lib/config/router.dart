@@ -452,15 +452,82 @@ Widget _titled(String titulo, Widget child) =>
     ShellTitleScope(titulo: titulo, child: child);
 
 /// Transición suave entre vistas del mismo shell. Envuelve el `child` del
-/// ShellRoute en un AnimatedSwitcher keyed por ruta (`state.pageKey` es único
-/// por ruta), así cambiar de pantalla del sidebar/nav hace un cross-fade rápido
-/// (~180ms) en lugar del salto brusco. AnimatedSwitcher usa fade por defecto.
-Widget _transicionShell(GoRouterState state, Widget child) => AnimatedSwitcher(
-      duration: const Duration(milliseconds: 180),
-      switchInCurve: Curves.easeOut,
-      switchOutCurve: Curves.easeIn,
-      child: KeyedSubtree(key: state.pageKey, child: child),
-    );
+/// ShellRoute en `_ShellFade`, keyed por ruta (`state.pageKey` es único por
+/// ruta). Hace fade-OUT de la pantalla actual y, recién cuando terminó, fade-IN
+/// de la nueva (secuencial, no cross-fade), en lugar del salto brusco.
+Widget _transicionShell(GoRouterState state, Widget child) =>
+    _ShellFade(routeKey: state.pageKey, child: child);
+
+/// Fade secuencial entre vistas de un shell: al cambiar de ruta, atenúa la
+/// pantalla visible a 0, recién ahí monta la nueva y la atenúa de 0 a 1. Así
+/// nunca conviven dos pantallas montadas (evita doble FlutterMap / doble
+/// stream) y el cambio se siente como "se va una, entra la otra".
+class _ShellFade extends StatefulWidget {
+  const _ShellFade({required this.routeKey, required this.child});
+  final Key routeKey;
+  final Widget child;
+
+  @override
+  State<_ShellFade> createState() => _ShellFadeState();
+}
+
+class _ShellFadeState extends State<_ShellFade>
+    with SingleTickerProviderStateMixin {
+  static const _dur = Duration(milliseconds: 140);
+  late final AnimationController _ctrl;
+  late Widget _shown; // contenido actualmente en pantalla
+  late Key _shownKey;
+  bool _transicionando = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _ctrl = AnimationController(vsync: this, duration: _dur, value: 1);
+    _shown = widget.child;
+    _shownKey = widget.routeKey;
+  }
+
+  @override
+  void didUpdateWidget(covariant _ShellFade old) {
+    super.didUpdateWidget(old);
+    if (widget.routeKey != _shownKey) {
+      _arrancarTransicion();
+    } else {
+      // Misma ruta (rebuild del shell / stream interno): refrescar el contenido
+      // sin animar.
+      _shown = widget.child;
+    }
+  }
+
+  void _arrancarTransicion() {
+    if (_transicionando) return; // ya hay un fade en curso; tomará el último child al hacer swap
+    _transicionando = true;
+    _ctrl.reverse().then((_) {
+      if (!mounted) return;
+      // Swap al child MÁS reciente (por si hubo más navegaciones durante el fade-out).
+      setState(() {
+        _shown = widget.child;
+        _shownKey = widget.routeKey;
+      });
+      _ctrl.forward().whenComplete(() {
+        if (!mounted) return;
+        _transicionando = false;
+        // Si la ruta volvió a cambiar durante el fade-in, encadenar otra vuelta.
+        if (widget.routeKey != _shownKey) _arrancarTransicion();
+      });
+    });
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) =>
+      FadeTransition(opacity: _ctrl, child: _shown);
+}
 
 class ShellTitleScope extends InheritedWidget {
   const ShellTitleScope({super.key, required this.titulo, required super.child});

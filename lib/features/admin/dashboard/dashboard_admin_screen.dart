@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
 
 import '../../../data/providers/dashboard_providers.dart';
 import '../../../data/utils/formatters.dart';
@@ -57,8 +56,6 @@ class DashboardAdminScreen extends StatelessWidget {
             );
           },
         ),
-        const SizedBox(height: 24),
-        const _AccesosRapidos(),
       ],
     );
   }
@@ -458,49 +455,3 @@ class _DistribucionCuotasCard extends ConsumerWidget {
   }
 }
 
-class _AccesosRapidos extends StatelessWidget {
-  const _AccesosRapidos();
-
-  @override
-  Widget build(BuildContext context) {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('Acciones rápidas',
-                style: Theme.of(context).textTheme.titleMedium),
-            const SizedBox(height: 12),
-            Wrap(
-              spacing: 12,
-              runSpacing: 12,
-              children: [
-                // Forms CRUD: push para que back vuelva al dashboard
-                // (consistente con R9 en clientes/contratos admin).
-                _accion(context, Icons.person_add, 'Nuevo cliente',
-                    '/admin/clientes/nuevo', push: true),
-                _accion(context, Icons.assignment_add, 'Nuevo contrato',
-                    '/admin/contratos/nuevo', push: true),
-                // Tabs del shell: go reemplaza la stack (navegación lateral).
-                _accion(context, Icons.warning, 'Ver mora', '/admin/cuotas'),
-                _accion(context, Icons.settings, 'Configuración',
-                    '/admin/settings'),
-              ],
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _accion(BuildContext context, IconData icon, String label,
-      String path,
-      {bool push = false}) {
-    return OutlinedButton.icon(
-      icon: Icon(icon),
-      label: Text(label),
-      onPressed: () => push ? context.push(path) : context.go(path),
-    );
-  }
-}
