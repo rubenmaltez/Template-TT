@@ -5,6 +5,10 @@
 > continuar exactamente desde acá sin re-descubrir el contexto.
 >
 > **Última actualización**: 2026-06-06 (branch `claude/stoic-tesla-cGkJ6`).
+> **El estado vivo "dónde quedamos" ahora vive en `HANDOFF.md`** (leer primero).
+> Sesión posterior (2026-06-06 cont.): reportes con detalle USD + impresora del
+> sistema en PC + búsqueda multi-campo del mapa + transición fade secuencial +
+> dashboard sin acciones rápidas. Detalle en `REPORTE-SESION.md`.
 > **Sesión 2026-06-06 — mapa 100% offline (caché de tiles) + descarga de reportes
 > en Excel/PDF + AUDIT EXHAUSTIVO de toda la app (4 agentes → app SÓLIDA, 4 fixes
 > de consistencia Excel↔PDF). Sin migraciones (schema v16 intacto); +3 deps

@@ -158,6 +158,67 @@ consistentes → auditoría.
 
 > Más reciente arriba. Formato por ítem: error → fix → expectativa.
 
+### 2026-06-06 (cont.) — Reportes con detalle USD + impresora PC + búsqueda mapa + transición + dashboard
+
+Branch `claude/stoic-tesla-cGkJ6`. Lote de UX/reportes pedido por Rubén, **sin
+migraciones** (schema v16 intacto; ningún cambio de DB/sync). Auditado con 3
+agentes en paralelo (contable + código + QA funcional): 0 bloqueantes, 0
+violaciones de invariantes de dinero. Commits: `f0bab7f`, `1860a38`, `c6a3b8f`,
+`f1e6935`, `4ccf3f7`, `68577f9`.
+
+**Comportamiento esperado — Detalle de moneda/tasa/vuelto en reportes**
+- Reportes **Cobros** y **Por cobrador** (PDF + Excel el de cobros; por_cobrador
+  es PDF-only): además del monto, muestran **Moneda** (US$/C$), **Entregado
+  (orig.)** (lo que entregó el cliente en su moneda), **Tasa** (solo en pagos
+  USD; en C$ va `—`/vacío) y **Vuelto (C$)** (solo si > 0).
+- La columna **"Monto cobrado (C$)" / "Total recaudado (C$)" sigue siendo SOLO
+  `monto_cordobas` aplicado** (invariante #1/#4 intacto). Los totales NO suman
+  entregado ni vuelto.
+- Reporte **Fiscal**: ahora agrupa también por `p.moneda` → filas separadas USD
+  vs C$, con columna Moneda y **"Total entregado (orig.)"**. Esa columna se
+  muestra **solo en filas USD** (dólares físicos que entran); en C$ va `—` para
+  no confundir con recaudado+vuelto.
+- Los 3 PDF afectados pasaron a **landscape** para que entren las columnas.
+- *Por qué:* Rubén necesita ver en los reportes qué se cobró en dólares, a qué
+  tasa, y si hubo vuelto — sin que eso distorsione el recaudado.
+- *Archivos:* `reportes_admin_screen.dart` (queries + Excel), `pdf/pdf_utils.dart`
+  (`monedaSimbolo`/`fmtMontoMoneda`), `pdf/reporte_{cobros,por_cobrador,fiscal}_pdf.dart`.
+
+**Comportamiento esperado — Impresión por impresora del sistema (PC)**
+- En el recibo, **solo en desktop** (Windows/Linux/macOS), aparece el botón
+  "Imprimir en impresora del sistema" → abre el diálogo nativo de Windows
+  (`Printing.layoutPdf`), para imprimir a una impresora **cableada/USB/red**,
+  además de la Bluetooth de campo. Tooltip aclara que usa el ancho de rollo
+  configurado (pensado para térmica USB). En Android no aparece (usa Bluetooth);
+  en web tampoco (usa "Descargar PDF").
+- Refactor: `_generarReciboPdf()` comparte la lógica logo+mora entre
+  "Descargar PDF" e "Imprimir sistema". *Archivo:* `recibo/recibo_screen.dart`.
+
+**Comportamiento esperado — Búsqueda multi-campo en el mapa**
+- El buscador del mapa (lupa) matchea por **nombre, cédula, teléfono (compara
+  solo dígitos), código de cliente y código de contrato** — mismos criterios que
+  la lista de clientes. El resultado muestra "código · comunidad" para
+  desambiguar. *Limitación esperada:* solo busca entre clientes CON lat/lng (es
+  el buscador del mapa). *Archivo:* `mapa/mapa_screen.dart` (query + `_matches`).
+
+**Comportamiento esperado — Transición entre vistas**
+- Error: el cambio de pantalla del sidebar/nav era un salto brusco. Primer
+  intento (`f1e6935`) fue un cross-fade con `AnimatedSwitcher` — Rubén lo vio
+  brusco porque **las dos pantallas se veían encimadas** durante el fade.
+- *Fix final (`68577f9`):* `_ShellFade` en `router.dart` → **fade SECUENCIAL**:
+  la pantalla actual se atenúa a 0, recién ahí se monta la nueva y se atenúa de 0
+  a 1 (140ms por fase). **Nunca conviven dos pantallas montadas** (de paso elimina
+  el doble `FlutterMap`/stream). Aplica a los 3 shells (cobrador/admin/super).
+  *Nota:* cambios en `router.dart` requieren **restart completo**, no hot reload
+  (el `GoRouter` se construye una vez en `routerProvider`).
+
+**Otros**
+- Dashboard admin: se quitó la card **"Acciones rápidas"** (Rubén no la quería
+  ahí). *Archivo:* `dashboard/dashboard_admin_screen.dart` (+ se limpió el import
+  `go_router` que quedó sin uso).
+
+---
+
 ### 2026-06-06 — Mapa offline + descarga de reportes Excel/PDF + audit exhaustivo
 
 Branch `claude/stoic-tesla-cGkJ6`. Dos features nuevas (sin migraciones, schema

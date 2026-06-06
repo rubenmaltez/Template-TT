@@ -1,7 +1,66 @@
 # Guía de testing del sistema
 
-Pasos para validar que el sistema funciona end-to-end. Pensado para correr
-una vez tras desplegar Supabase y antes de empezar a usar la app.
+Pasos para validar que el sistema funciona end-to-end.
+- La **sección 0** es el loop de TODOS los días (lo que hace Rubén para probar un
+  cambio nuevo en Windows). Es lo que más se pierde entre sesiones → mantenerla viva.
+- Las **secciones 1-5** son el setup/smoke completo (correr una vez tras desplegar
+  Supabase o ante un cambio grande).
+
+---
+
+## 0. Loop de testing manual (uso diario en Windows)
+
+> **Claude: cuando entregues un cambio, dale a Rubén los pasos en ESTE formato**
+> (qué hacer → qué debería ver → qué hacer si falla). Si el cambio toca un feature,
+> agregá/actualizá su checklist en §0.3.
+
+### 0.1 Traer el cambio y correr
+
+```powershell
+# 1) Parado en la branch de trabajo (ver HANDOFF.md cuál es)
+git checkout claude/stoic-tesla-cGkJ6
+git pull origin claude/stoic-tesla-cGkJ6
+git log --oneline -1            # confirmar el commit esperado
+
+# 2) Correr en Windows
+flutter run -d windows --dart-define-from-file=.env.json
+```
+
+**Reglas de oro del loop:**
+- **Cambios en `router.dart`, `main.dart`, providers globales o el schema** → NO
+  alcanza hot reload (`r`). Hay que **restart completo**: `q` y volver a `flutter run`
+  (o Shift+R). El `GoRouter` se construye una vez en `routerProvider`.
+- **Cambios de UI normal** (un widget, un texto) → hot reload (`r`) suele alcanzar.
+- **Cambios de columna/tabla/sync** → seguir el checklist de integridad de CLAUDE.md
+  (migración en Supabase + `schema.dart` + bump `_schemaVersion` + redeploy sync rules
+  + restart desde cero). Sin migración nueva ⇒ NO tocar Supabase.
+
+### 0.2 Si hay dinero involucrado (pagos/cuotas/recibos/reportes)
+
+Antes del testing manual, las capas automáticas (ver §4 del modelo de 4 capas en
+CLAUDE.md):
+1. Audit estático (agentes) — ya corre en la sesión.
+2. `supabase/tests/invariantes_dinero.sql` — toda fila debe dar `violaciones = 0`.
+3. `flutter test` (pagos_repo y lógica crítica).
+
+### 0.3 Checklists por feature (manual)
+
+> Plantilla: **qué hacer → qué deberías ver → si falla**. Rubén: corregí/ampliá
+> estos pasos con tu flujo real cuando algo no coincida.
+
+- **Cobro de campo (cobrador):** abrir una cuota pendiente → cargar monto, método,
+  moneda (probar **USD con vuelto** y **C$**), foto → imprimir/guardar recibo.
+  *Ver:* recibo correcto, recaudado = aplicado (no lo entregado), vuelto siempre en C$.
+- **Reportes (`/admin/reportes`):** con un cobro USD y uno C$, generar Cobros, Por
+  cobrador y Fiscal en **PDF y Excel**. *Ver:* "Monto/Total recaudado (C$)" = aplicado;
+  columnas Moneda/Entregado/Tasa/Vuelto correctas; PDFs en landscape; Fiscal partido por moneda.
+- **Recibo / impresión:** Android → botón Bluetooth; Windows → "Imprimir en impresora
+  del sistema" (diálogo nativo) + "Descargar PDF" si aplica.
+- **Mapa:** buscar por nombre, cédula, teléfono (con/sin guiones), código de cliente
+  y de contrato → centra el pin correcto. Probar offline (tiles cacheados).
+- **Transición:** navegar entre items del sidebar/nav → fade secuencial (sale una,
+  entra la otra), nunca las dos encimadas.
+- **⟨agregar acá los features nuevos a medida que se entregan⟩**
 
 ---
 

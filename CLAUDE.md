@@ -3,6 +3,11 @@
 Contexto persistente del proyecto **Cobranza ISP** para sesiones futuras de Claude Code.
 Si estás abriendo este repo por primera vez en esta sesión, leé este archivo primero.
 
+> **⚡ ANTES QUE NADA leé `HANDOFF.md`** — el estado vivo en una pantalla (branch,
+> último commit, qué se hizo, qué falta). Es el "dónde quedamos". Y al CERRAR la
+> sesión, **actualizalo** (Fase 6 del lifecycle). Mapa completo de módulos e
+> interconexiones en `ARQUITECTURA.md`.
+
 > **Leé también `ESTADO-APP.md`** — es el snapshot del estado real de la app
 > (findings abiertos, cobertura de features y tests, próximos pasos). CLAUDE.md
 > tiene las REGLAS y el PROCESO; ESTADO-APP.md tiene el "dónde estamos parados
@@ -497,15 +502,32 @@ no confiar en los logs de sprint.
 17. Si los fixes son significativos, lanzar audit adicional.
 
 **Fase 5 — Testing:**
-18. Dar paso a paso detallado al usuario.
+18. Dar paso a paso detallado al usuario (formato de `TESTING.md` §0: qué hacer
+    → qué debería ver → si falla). Indicar si necesita restart completo vs hot reload.
 19. Cada paso incluye: qué hacer, qué debería ver, qué hacer si falla.
 20. Si hay migraciones, incluir comandos exactos.
 21. Indicar si necesita redeploy de sync rules.
 
-**Documentos a leer en cada sesión:**
-- CLAUDE.md, ROADMAP.md, BULK11-PLAN.md
-- powersync/sync-rules.yaml
-- lib/powersync/schema.dart + db.dart
+**Fase 6 — Cierre de sesión (OBLIGATORIO, no saltear):**
+22. **Actualizar `HANDOFF.md`** — estado actual: branch, último commit, qué se
+    hizo, qué queda pendiente / próximo paso. Es lo PRIMERO que se lee al reabrir;
+    mantenerlo ≤1 pantalla.
+23. **Agregar entrada nueva en `REPORTE-SESION.md`** (más reciente arriba):
+    error → fix → expectativa + commits + archivos, y el comportamiento ESPERADO
+    de cada feature tocado.
+24. **Actualizar `ESTADO-APP.md`** si cambió cobertura/findings/estado real.
+25. Si se agregó/cambió un MÓDULO o una interconexión, actualizar `ARQUITECTURA.md`.
+26. Si el feature introduce un flujo de testing nuevo, agregar su checklist a
+    `TESTING.md` §0.3.
+> Sin este cierre, la próxima sesión arranca a ciegas y Rubén pierde tiempo
+> re-explicando. El costo de documentar el cierre es minutos.
+
+**Documentos a leer al ABRIR cada sesión (en este orden):**
+- **`HANDOFF.md`** (dónde quedamos — SIEMPRE primero)
+- CLAUDE.md (reglas/proceso/invariantes/backlog) + `ARQUITECTURA.md` (módulos e interconexiones)
+- ESTADO-APP.md + REPORTE-SESION.md (estado real + comportamiento esperado del feature a tocar)
+- TESTING.md §0 (loop de testing) · ROADMAP.md
+- powersync/sync-rules.yaml · lib/powersync/schema.dart + db.dart
 - Archivos específicos del feature
 
 **NUNCA saltar fases.** El costo de seguir el proceso es minutos.
