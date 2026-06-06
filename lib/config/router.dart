@@ -448,31 +448,61 @@ final routerProvider = Provider<GoRouter>((ref) {
 Widget _titled(String titulo, Widget child) =>
     ShellTitleScope(titulo: titulo, child: child);
 
-/// Página con transición fade SECUENCIAL para las sub-rutas de un shell. La
-/// transición se define a NIVEL DE PÁGINA (no envolviendo el body) para que el
-/// Navigator interno del ShellRoute use ESTA y no la suya — si no, se ven las
-/// dos pantallas cruzándose (el bug del cross-fade).
+/// Página con transición estilo **FadeThrough** (Material motion) para las
+/// sub-rutas de un shell. Se define a NIVEL DE PÁGINA (no envolviendo el body)
+/// para que el Navigator interno del ShellRoute use ESTA y no la suya.
 ///
-/// Truco: cada página se anima con su PROPIA `animation` (la entrante 0→1, la
-/// saliente 1→0) y la curva `Interval(0.5, 1.0)` recién la pinta en la 2ª mitad
-/// de su animación. Resultado: la saliente se desvanece en la 1ª mitad, hay un
-/// instante en blanco, y la entrante aparece en la 2ª mitad. Nunca se ven las
-/// dos a la vez (no es cross-fade). Duración total 360ms (~180ms por fase).
+/// La saliente se desvanece con un leve **zoom-out** en el 1er tramo; la entrante
+/// aparece con un leve **zoom-in** en el 2º. El zoom da continuidad de MOVIMIENTO
+/// (no es un fade plano que parpadea) y los tramos de opacidad NO se solapan
+/// (la saliente termina ~35% antes de que la entrante empiece). Duración 400ms.
 CustomTransitionPage<void> _fadePage(GoRouterState state, Widget child) =>
     CustomTransitionPage<void>(
       key: state.pageKey,
-      transitionDuration: const Duration(milliseconds: 360),
-      reverseTransitionDuration: const Duration(milliseconds: 360),
+      transitionDuration: const Duration(milliseconds: 400),
+      reverseTransitionDuration: const Duration(milliseconds: 400),
       child: child,
       transitionsBuilder: (context, animation, secondaryAnimation, child) =>
-          FadeTransition(
-        opacity: CurvedAnimation(
-          parent: animation,
-          curve: const Interval(0.5, 1.0, curve: Curves.easeIn),
-        ),
-        child: child,
-      ),
+          _FadeThrough(animation: animation, child: child),
     );
+
+/// Implementa el FadeThrough manual (sin paquete). Distingue si la página está
+/// ENTRANDO o SALIENDO por `animation.status` y aplica la curva/zoom acorde, así
+/// los fades no se cruzan en opacidad (lo que se veía "encimado") y el zoom suave
+/// hace de puente entre una y otra.
+class _FadeThrough extends StatelessWidget {
+  const _FadeThrough({required this.animation, required this.child});
+  final Animation<double> animation;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: animation,
+      child: child,
+      builder: (context, child) {
+        final saliente = animation.status == AnimationStatus.reverse ||
+            animation.status == AnimationStatus.dismissed;
+        final t = animation.value;
+        final double opacity;
+        final double scale;
+        if (saliente) {
+          // Saliente: se va en el 1er 35% del tiempo (anim 1.0→0.65) + zoom-out.
+          opacity = ((t - 0.65) / 0.35).clamp(0.0, 1.0);
+          scale = 0.94 + 0.06 * t; // t: 1→0  ⇒  scale 1.0→0.94
+        } else {
+          // Entrante: aparece en el último 65% (anim 0.35→1.0) + zoom-in.
+          opacity = ((t - 0.35) / 0.65).clamp(0.0, 1.0);
+          scale = 0.94 + 0.06 * Curves.easeOut.transform(t); // 0.94→1.0
+        }
+        return Opacity(
+          opacity: opacity,
+          child: Transform.scale(scale: scale, child: child),
+        );
+      },
+    );
+  }
+}
 
 class ShellTitleScope extends InheritedWidget {
   const ShellTitleScope({super.key, required this.titulo, required super.child});
