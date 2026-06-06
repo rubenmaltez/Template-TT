@@ -158,6 +158,63 @@ consistentes → auditoría.
 
 > Más reciente arriba. Formato por ítem: error → fix → expectativa.
 
+### 2026-06-06 — Mapa offline + descarga de reportes Excel/PDF + audit exhaustivo
+
+Branch `claude/stoic-tesla-cGkJ6`. Dos features nuevas (sin migraciones, schema
+v16 intacto; +3 deps Dart-puras) y un **audit exhaustivo de toda la app** (4
+agentes) con 4 fixes de consistencia. Foco de plataforma confirmado: **Android +
+Windows** (web ya no es el target; el código degrada en web sin romper).
+
+**Comportamiento esperado — Mapa offline (caché de tiles)**
+- El mapa (cobrador + admin + mini-mapa del form de cliente) cachea en disco los
+  tiles que el usuario navega CON señal (`flutter_map_cache` +
+  `http_cache_file_store`, store de archivos en `getApplicationSupportDirectory`).
+  Cache-first (default `forceCache`), expiración 90d, **sin tope de tamaño**
+  (decisión de Rubén). Sin señal, las zonas ya vistas se ven; las nunca visitadas
+  quedan en gris (NO hay pre-descarga de zona — sprint futuro). Cachea calles
+  (OSM) + satélite (ArcGIS) en un store compartido.
+- En `/perfil` (nativo, gate `!kIsWeb`): card "Mapa offline" con tamaño en disco
+  + botón "Borrar caché del mapa".
+- Solo Android/Windows: en web cae a `NetworkTileProvider`; si el init falla,
+  degrada a red sin romper el mapa. `MapTileCache` singleton, init en `main.dart`.
+
+**Comportamiento esperado — Descarga de reportes Excel + PDF**
+- `/admin/reportes` → FAB "Reportes": cada reporte se baja en PDF (ya existía) y
+  en **Excel `.xlsx`** (nuevo, reemplazó el "copiar CSV al portapapeles"). 8
+  reportes Excel (cobros, mora, clientes, fiscal, eficiencia, inactivos,
+  anulaciones, arqueo). El .xlsx tiene encabezado con color, ancho de columna
+  automático y montos como números sumables; fecha en hora Nicaragua.
+- Guardado unificado (`guardarArchivo` con `file_picker.saveFile`): Windows abre
+  "Guardar como"; Android, el selector de ubicación del sistema (sin permisos);
+  web → mensaje claro. Mismo diálogo para Excel y PDF (los 9 PDF migraron de
+  `Printing.sharePdf` a `guardarArchivo`).
+
+**Audit exhaustivo (4 agentes, todo el codebase) — 4 fixes de consistencia**
+El audit dio la app **SÓLIDA**: 0 bugs de SQL/SQLite, 0 contables (10/10
+invariantes), 0 de seguridad/RLS, 0 crashes de stream, rutas OK. Los únicos
+hallazgos fueron 4 inconsistencias de presentación Excel↔PDF, todas corregidas:
+
+- **Fecha del PDF en UTC crudo** — los PDF formateaban `fecha_pago` sin restar 6h
+  (el Excel sí). *Fix:* los 5 `_formatearFecha` (cobros/anulaciones/clientes/
+  inactivos/por_cobrador) aplican `-6h`. *Exp:* el día del PDF coincide con el Excel.
+- **Orden de columnas de mora distinto** — PDF tenía Comunidad última; Excel 2ª.
+  *Fix:* reordenado el PDF de mora (Comunidad 2ª). *Exp:* mismo orden en ambos.
+- **Labels de método en PDF** — daba "Transfer." y "Deposito" sin tilde (faltaba
+  el case `deposito`). *Fix:* los 3 PDF (cobros/fiscal/por_cobrador) usan
+  `MetodoPago.label` como el Excel. *Exp:* "Transferencia"/"Depósito" completos.
+- **Bucketing de reportes sin `-6h`** — `date(fecha_pago) BETWEEN`/`strftime`
+  interpretaban el timestamp como UTC, desfasando un pago de medianoche vs el
+  dashboard. *Fix:* `date(p.fecha_pago, '-6 hours')` en todas las queries de
+  reportes + `RangoReporte` en hora Nicaragua. *Exp:* el corte por día/mes del
+  reporte coincide con el dashboard. No afecta totales.
+
+*Archivos:* `map_tile_cache.dart` (nuevo), `descarga_archivo.dart` (nuevo),
+`excel/reporte_excel.dart` (nuevo), `reportes_admin_screen.dart`, los 8
+`pdf/reporte_*`, `mapa_screen.dart`, `cliente_form_screen.dart`,
+`perfil_screen.dart`, `main.dart`, `formatters.dart` (helpers `fechaHoraNi`/
+`fechaNi`), `pubspec.yaml`. Sin migraciones (schema v16 intacto). *Pendiente:*
+testing en Windows + Android antes del bump de versión.
+
 ### 2026-06-05 — Impresión térmica RESUELTA + recibo afinado (v0.7.6 → v0.8.0)
 
 Branch `claude/stoic-tesla-cGkJ6`. Cierre de la saga de impresión: tras dos

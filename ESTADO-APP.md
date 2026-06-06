@@ -4,7 +4,13 @@
 > JUNTO con `CLAUDE.md` al abrir una sesión nueva de Claude Code, para
 > continuar exactamente desde acá sin re-descubrir el contexto.
 >
-> **Última actualización**: 2026-06-05 (branch `claude/stoic-tesla-cGkJ6`).
+> **Última actualización**: 2026-06-06 (branch `claude/stoic-tesla-cGkJ6`).
+> **Sesión 2026-06-06 — mapa 100% offline (caché de tiles) + descarga de reportes
+> en Excel/PDF + AUDIT EXHAUSTIVO de toda la app (4 agentes → app SÓLIDA, 4 fixes
+> de consistencia Excel↔PDF). Sin migraciones (schema v16 intacto); +3 deps
+> Dart-puras (flutter_map_cache, http_cache_file_store, excel). Foco de plataforma:
+> Android + Windows (web degrada sin romper). Ver §11. Pendiente: testing en
+> Windows/Android antes del bump de versión.**
 > **Release v0.8.1 — checkpoint con impresión térmica RESUELTA + limpieza.**
 > v0.8.1 quitó el botón de diagnóstico y los métodos B/C de prueba (GS v 0 quedó
 > como único método). Sesión larga
@@ -124,9 +130,15 @@ correctos + correlativo server-MAX + denormalización en INSERT.
 
 ### Reportes (`/admin/reportes`) — ✅ completo
 8 PDF (cobros, mora, por cobrador, estado de clientes, fiscal, eficiencia, inactivos,
-anulaciones) + 8 CSV (los mismos + arqueo) + **arqueo/cierre por cobrador** (efectivo por
-moneda US$/C$, vuelto, electrónico, equivalente a tasa). Date picker compacto con presets.
-Matemática verificada: reportes de saldo usan `cargos_neto`; reportes de caja usan `pagos`.
+anulaciones) + **8 Excel `.xlsx` descargables** (los mismos + arqueo; reemplazaron el
+"copiar CSV al portapapeles" — sesión 2026-06-06) + **arqueo/cierre por cobrador**
+(efectivo por moneda US$/C$, vuelto, electrónico, equivalente a tasa). Guardado con
+diálogo nativo ("Guardar como" en Windows, selector de ubicación en Android) vía
+`guardarArchivo` (`file_picker.saveFile`), igual para Excel y PDF. El .xlsx con encabezado
+con color, ancho de columna automático, montos numéricos sumables y fecha en hora
+Nicaragua. Headers de columna alineados Excel↔PDF (audit 2026-06-06). Date picker compacto
+con presets (en hora Nicaragua). Matemática verificada: saldo usa `cargos_neto`; caja usa
+`pagos`.
 
 ### Settings (`/admin/settings`) — ✅ completo
 Tabs **Empresa · Cobranza · Pagos · Recibos** + **Avanzado** (super-only). Recibos = editor
@@ -416,3 +428,65 @@ blanco → resize a dots → grayscale → recortar blanco → dither Floyd-Stei
 **quitó el botón de diagnóstico, los métodos B/C, `imprimirImagenMetodo`,
 `diagnosticar`, `DiagnosticoImpresion` y el archivo `impresora_diagnostico.dart`**.
 `imprimirImagen` ahora hace GS v 0 directo. Sin cambios en cómo imprime.
+
+---
+
+## 11. Sesión 2026-06-06 — Mapa offline + reportes Excel/PDF + audit exhaustivo
+
+Branch `claude/stoic-tesla-cGkJ6`. Dos features nuevas + audit total. **Sin
+migraciones (schema v16 intacto).** +3 deps Dart-puras: `flutter_map_cache ^2.1.0`,
+`http_cache_file_store ^2.0.1`, `excel ^4.0.6`. **Foco de plataforma confirmado:
+Android + Windows** (web dejó de ser el target; el código degrada en web sin romper).
+Detalle del comportamiento esperado en `REPORTE-SESION.md` (entrada 2026-06-06).
+
+### 11.1 Mapa 100% offline (caché de tiles en disco)
+`MapTileCache` (singleton, `lib/data/services/map_tile_cache.dart`): cachea en disco
+los tiles que el usuario navega CON señal, para verlos SIN señal. `flutter_map_cache`
++ `http_cache_file_store` (FileCacheStore en `getApplicationSupportDirectory`).
+Cache-first (default `forceCache`), expiración 90d, **sin tope de tamaño** (decisión
+de Rubén; válvula = botón manual). Cachea calles (OSM) + satélite (ArcGIS) en un store
+compartido.
+- Usado en `mapa_screen.dart` (cobrador + admin) y `cliente_form_screen.dart`
+  (selector de ubicación) vía `MapTileCache.instance.tileProvider()`. Init best-effort
+  en `main.dart`. En web/`kIsWeb` o si el init falla → `NetworkTileProvider` (no rompe).
+- `/perfil` (gate `!kIsWeb`): card "Mapa offline" con tamaño en disco + "Borrar caché".
+- NO hay pre-descarga de zona (lo nunca-navegado-online queda gris offline) — sprint futuro.
+
+### 11.2 Descarga de reportes en Excel + PDF
+- **Excel `.xlsx`** (nuevo): reemplazó el "copiar CSV al portapapeles".
+  `reportes/excel/reporte_excel.dart` construye el workbook con `excel`: encabezado
+  con banda + negrita, ancho de columna automático, montos como números sumables
+  (enteros para conteos). Reusa las mismas queries SQL que el CSV/PDF (8 reportes).
+- **Guardado unificado**: `descarga_archivo.dart::guardarArchivo` (`file_picker.saveFile`).
+  Windows = "Guardar como" (+ `File.writeAsBytes`, porque saveFile en desktop NO escribe
+  los bytes solo); Android = selector de ubicación del sistema (saveFile escribe con
+  `bytes:`); web = `UnsupportedError` con mensaje claro. Los 9 PDF migraron de
+  `Printing.sharePdf` a `guardarArchivo` → mismo diálogo que el Excel.
+- Helpers `Fmt.fechaHoraNi` / `Fmt.fechaNi` (formatters.dart): timestamp UTC → hora
+  Nicaragua (UTC-6) formateado, para reportes.
+
+### 11.3 Audit exhaustivo (4 agentes) — app SÓLIDA
+4 agentes barrieron TODO el codebase (153 Dart, 95 migraciones, 6 edge functions, tests):
+- **SQL/Integridad DB**: 🟢 limpio (0 SQL Postgres-only, `-6h` en todos los `date('now')`,
+  cadena DB↔schema↔sync coherente, `_schemaVersion=16`).
+- **Dinero**: 🟢 sólido (10/10 invariantes en código+SQL+tests, recaudado/saldo idénticos
+  cross-pantalla, `invariantes_dinero.sql` + 9 tests de `pagos_repo`).
+- **Seguridad/Edge/RLS**: 🟢 limpio (escalación de rol bloqueada por trigger, RLS completa,
+  audit en 9 entidades, 0 imports rotos / dead code / providers huérfanos de 57).
+- **Streams/Rutas/Regresión**: 🟢 limpio (0 crashes de stream, ~45 rutas OK, glifos PDF OK).
+
+**4 fixes aplicados** (todos consistencia Excel↔PDF, LOW/MED, nada contable/seguridad/crash):
+1. Fecha PDF en hora Nicaragua (`-6h`) en los 5 `_formatearFecha`.
+2. Orden de columnas de mora PDF = Excel (Comunidad 2ª).
+3. Labels de método en PDF (cobros/fiscal/por_cobrador) usan `MetodoPago.label`
+   ("Transferencia"/"Depósito" completos; faltaba el case `deposito`).
+4. Bucketing `date(p.fecha_pago, '-6 hours')` en reportes + `RangoReporte` en hora
+   Nicaragua → corte por día/mes coincide con el dashboard.
+
+### 11.4 Pendiente
+- **Testing en Windows + Android** de las 2 features (mapa offline, descarga Excel/PDF)
+  + spot-check de PDF/recibos/foto: el `pub get` bajó `archive` 4.0.9→3.6.1 e `image`
+  4.8.0→4.3.0 por constraint de `excel` (compatible por resolución, pero verificar en
+  runtime que PDF/recibo térmico/foto sigan OK).
+- Después del testing: **bump de versión + `build-release.ps1`**, pausar este branch y
+  abrir uno nuevo para las features que Rubén planea.

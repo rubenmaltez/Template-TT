@@ -96,7 +96,11 @@ features experimentales, no abstracciones prematuras.
 - `/admin/notificaciones` — gestión de mora (cron diario genera filas
   en `notificaciones_mora`).
 - `/admin/mapa` — mapa con clientes geolocalizados (flutter_map + OSM).
-- `/admin/reportes` — reportes operativos.
+- `/admin/reportes` — reportes operativos. Cada reporte se descarga en **PDF**
+  y en **Excel `.xlsx`** (8 reportes + arqueo) vía diálogo nativo de guardado
+  (`file_picker.saveFile`: "Guardar como" en Windows, selector en Android). El
+  Excel reemplazó el viejo "copiar CSV al portapapeles". Headers de columna
+  alineados Excel↔PDF; fechas y cortes por día/mes en hora Nicaragua (UTC-6).
 - `/admin/audit` — log de cambios sensibles del tenant (solo admin).
 - `/admin/geografia` — CRUD jerárquico depto → municipio → comunidad
   (solo admin).
@@ -312,7 +316,7 @@ estática, bajo valor de auditoría hoy.
 
 | Capa | Tecnología |
 |---|---|
-| Frontend | Flutter Web (foco actual). Eventualmente Android + Windows installer (R8 distribución). |
+| Frontend | Flutter **Android + Windows** (foco actual, distribución vía APK + MSIX). Web existe pero NO es target: el código degrada con `kIsWeb` sin romper (mapa cae a red, descarga de reportes avisa "solo Windows/Android"). |
 | State | Riverpod (StreamProvider, FutureProvider.family, StateProvider). |
 | Router | go_router con ShellRoute por rol (cobrador / admin / super_admin). |
 | Backend | Supabase (Postgres + Auth + Edge Functions Deno + Storage). |
@@ -325,6 +329,12 @@ estática, bajo valor de auditoría hoy.
 - `flutter_riverpod: 2.x`
 - `go_router: latest`
 - `package_info_plus` para anexar app version a los error logs.
+- `flutter_map: ^7.0.2` + `flutter_map_cache: ^2.1.0` + `http_cache_file_store: ^2.0.1`
+  — caché de tiles del mapa en disco (offline Android/Windows). FMTC se descartó
+  porque su última exige flutter_map 8; flutter_map_cache cubre flutter_map 6-8.
+- `excel: ^4.0.6` — genera los reportes `.xlsx` (Dart puro). `file_picker` (ya
+  existía) hace el guardado/descarga del archivo. OJO: `excel` baja `archive` a
+  3.6.1 e `image` a 4.3.0 por constraint — compatible con `pdf`/`printing`.
 - Edge Functions usan `@supabase/supabase-js@2.45.0` + Deno std 0.224.0.
 
 ### Error logging
