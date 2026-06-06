@@ -10,7 +10,7 @@
 ## Estado actual
 
 - **Branch de trabajo:** `claude/stoic-tesla-cGkJ6`
-- **Último commit:** `90666cf` — Router: transición FadeThrough (zoom + fade) 400ms
+- **Último commit:** `c2a8edf` — Router: transición deslizamiento con cobertura opaca (sin overlap)
 - **Schema PowerSync:** `_schemaVersion = 16` (`lib/powersync/db.dart`). Sin cambios de DB pendientes.
 - **Plataformas target:** Android + Windows (web degrada sin romper, NO es target).
 - **App version:** v0.9.0 (ver `RELEASE.md`).
@@ -26,11 +26,14 @@ Lote UX/reportes, **sin migraciones**, auditado (3 agentes, 0 bloqueantes):
    (a) `AnimatedSwitcher`/`_ShellFade` envolviendo el body → fallaba (el Navigator
    interno del ShellRoute cruzaba 2 pantallas encimadas);
    (b) fade secuencial por ruta con `Interval` → Rubén lo vio brusco/parpadeo;
-   (c) **FINAL (`90666cf`): FadeThrough (zoom + fade) 400ms** por ruta
-   (`pageBuilder` + `CustomTransitionPage` + `_FadeThrough` que distingue
-   entrante/saliente por `animation.status`). Todo en `router.dart`.
-   **Lección:** en `ShellRoute` la transición va a NIVEL DE PÁGINA (pageBuilder),
-   no envolviendo el body; y un fade plano se siente barato → sumar movimiento (zoom).
+   (c) FadeThrough (zoom+fade) → seguía viéndose overlap (un fade ES un cruce de
+   opacidades, siempre muestra las 2 un instante);
+   (d) **FINAL (`c2a8edf`): `_CoverSlide`** — deslizamiento con COBERTURA OPACA
+   (la entrante entra desde la derecha tapando a la saliente; z-order + fondo
+   opaco → nunca se ven las dos). Por ruta en `router.dart`, 320ms.
+   **Lección:** en `ShellRoute` la transición va a NIVEL DE PÁGINA (pageBuilder);
+   y NINGÚN fade cumple "que no se vean encimadas" → para eso hay que tapar (slide opaco).
+   ⏳ Falta OK de Rubén de este modo.
 5. **Dashboard** sin card "Acciones rápidas".
 
 Detalle completo → `REPORTE-SESION.md` (entrada 2026-06-06 cont.).
