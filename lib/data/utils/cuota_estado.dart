@@ -26,6 +26,11 @@ String calcularEstadoCuota({
   final totalReal =
       (montoCuota + deltaCargosExtra).clamp(0.0, double.infinity).toDouble();
   if (pagadoNuevo <= 0) return 'pendiente';
-  if (pagadoNuevo >= totalReal) return 'pagada';
+  // Comparar en centavos enteros. `pagadoNuevo` se suma en Dart (doubles), así
+  // que acumula drift de floating point (ej. 333.33 → 333.3299999); el server
+  // usa numeric(10,2) exacto. Redondear a centavos mantiene cliente y server
+  // alineados (sin flash 'parcial' offline) y, como el dinero es de 2 decimales,
+  // no traga un faltante real de 1 centavo (333.32 de 333.33 sigue 'parcial').
+  if ((pagadoNuevo * 100).round() >= (totalReal * 100).round()) return 'pagada';
   return 'parcial';
 }
