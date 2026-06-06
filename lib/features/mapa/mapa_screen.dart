@@ -95,6 +95,9 @@ class _MapaScreenState extends ConsumerState<MapaScreen> {
         '''
         SELECT c.id, c.nombre, c.latitud, c.longitud,
                c.cobrador_id, c.comunidad_id,
+               c.cedula, c.telefono, c.codigo,
+               (SELECT GROUP_CONCAT(ct.codigo, ' ')
+                  FROM contratos ct WHERE ct.cliente_id = c.id) AS contrato_codigos,
                co.nombre AS comunidad,
                cob.nombre AS cobrador_nombre,
                COALESCE(SUM(CASE WHEN cu.estado IN ('pendiente','parcial') THEN 1 ELSE 0 END), 0) AS pendientes,
@@ -116,7 +119,8 @@ class _MapaScreenState extends ConsumerState<MapaScreen> {
            AND c.latitud IS NOT NULL
            AND c.longitud IS NOT NULL
          GROUP BY c.id, c.nombre, c.latitud, c.longitud,
-                  c.cobrador_id, c.comunidad_id, co.nombre, cob.nombre
+                  c.cobrador_id, c.comunidad_id,
+                  c.cedula, c.telefono, c.codigo, co.nombre, cob.nombre
         ''',
         // diasGracia x2: vencidas + en_gracia, en orden de aparición.
         parameters: [diasGracia, diasGracia],
@@ -650,12 +654,31 @@ class _BuscadorClientes extends StatefulWidget {
 class _BuscadorClientesState extends State<_BuscadorClientes> {
   String _q = '';
 
+  /// Matchea por nombre, cédula, teléfono, código de cliente y código de
+  /// contrato (mismos criterios que la lista de clientes). Para el teléfono
+  /// además compara solo dígitos, así "8888-8888" matchea "88888888".
+  bool _matches(Map<String, dynamic> r, String q) {
+    if (q.isEmpty) return true;
+    final hay = [
+      r['nombre'],
+      r['cedula'],
+      r['telefono'],
+      r['codigo'],
+      r['contrato_codigos'],
+    ].whereType<String>().join(' ').toLowerCase();
+    if (hay.contains(q)) return true;
+    final qDigits = q.replaceAll(RegExp(r'\D'), '');
+    if (qDigits.isNotEmpty) {
+      final telDigits =
+          (r['telefono'] as String?)?.replaceAll(RegExp(r'\D'), '') ?? '';
+      if (telDigits.contains(qDigits)) return true;
+    }
+    return false;
+  }
+
   @override
   Widget build(BuildContext context) {
-    final filtradas = widget.rows.where((r) {
-      if (_q.isEmpty) return true;
-      return (r['nombre'] as String).toLowerCase().contains(_q);
-    }).toList()
+    final filtradas = widget.rows.where((r) => _matches(r, _q)).toList()
       ..sort((a, b) => (a['nombre'] as String)
           .toLowerCase()
           .compareTo((b['nombre'] as String).toLowerCase()));
@@ -674,7 +697,7 @@ class _BuscadorClientesState extends State<_BuscadorClientes> {
             autofocus: true,
             decoration: const InputDecoration(
               prefixIcon: Icon(Icons.search),
-              hintText: 'Buscar cliente por nombre',
+              hintText: 'Nombre, cédula, teléfono o código',
             ),
             onChanged: (v) => setState(() => _q = v.trim().toLowerCase()),
           ),
@@ -694,11 +717,16 @@ class _BuscadorClientesState extends State<_BuscadorClientes> {
                 itemCount: filtradas.length,
                 itemBuilder: (_, i) {
                   final r = filtradas[i];
-                  final comunidad = r['comunidad'] as String?;
+                  // Subtítulo: código de cliente + comunidad, para desambiguar
+                  // homónimos al buscar por nombre.
+                  final sub = [r['codigo'], r['comunidad']]
+                      .whereType<String>()
+                      .where((s) => s.isNotEmpty)
+                      .join(' · ');
                   return ListTile(
                     leading: const Icon(Icons.place_outlined),
                     title: Text(r['nombre'] as String),
-                    subtitle: comunidad != null ? Text(comunidad) : null,
+                    subtitle: sub.isEmpty ? null : Text(sub),
                     onTap: () => Navigator.pop(context, r),
                   );
                 },
