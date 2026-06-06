@@ -295,7 +295,8 @@ final routerProvider = Provider<GoRouter>((ref) {
       //    Perfil). '/' es la landing = pantalla de Cobros (cuotas por
       //    cliente + franja de KPIs). Historial se accede desde Perfil. ─────
       ShellRoute(
-        builder: (_, __, child) => AppShell(child: child),
+        builder: (_, state, child) =>
+            AppShell(child: _transicionShell(state, child)),
         routes: [
           GoRoute(path: '/',          builder: (_, s) => _titled('Cobros', const CuotasListScreen())),
           GoRoute(path: '/clientes',  builder: (_, s) => _titled('Clientes', const ClientesListScreen())),
@@ -306,7 +307,8 @@ final routerProvider = Provider<GoRouter>((ref) {
 
       // ── Admin: ShellRoute con sidebar responsive ───────────────────────
       ShellRoute(
-        builder: (_, __, child) => AdminShell(child: child),
+        builder: (_, state, child) =>
+            AdminShell(child: _transicionShell(state, child)),
         routes: [
           GoRoute(path: '/admin',
               builder: (_, s) => _titled('Resumen', const DashboardAdminScreen())),
@@ -373,7 +375,8 @@ final routerProvider = Provider<GoRouter>((ref) {
                           loc.length > '/super/tenants/'.length
                       ? 'Configurar tenant'
                       : 'Tenants');
-          return SuperShell(titulo: titulo, child: child);
+          return SuperShell(
+              titulo: titulo, child: _transicionShell(state, child));
         },
         routes: [
           GoRoute(
@@ -447,6 +450,17 @@ final routerProvider = Provider<GoRouter>((ref) {
 
 Widget _titled(String titulo, Widget child) =>
     ShellTitleScope(titulo: titulo, child: child);
+
+/// Transición suave entre vistas del mismo shell. Envuelve el `child` del
+/// ShellRoute en un AnimatedSwitcher keyed por ruta (`state.pageKey` es único
+/// por ruta), así cambiar de pantalla del sidebar/nav hace un cross-fade rápido
+/// (~180ms) en lugar del salto brusco. AnimatedSwitcher usa fade por defecto.
+Widget _transicionShell(GoRouterState state, Widget child) => AnimatedSwitcher(
+      duration: const Duration(milliseconds: 180),
+      switchInCurve: Curves.easeOut,
+      switchOutCurve: Curves.easeIn,
+      child: KeyedSubtree(key: state.pageKey, child: child),
+    );
 
 class ShellTitleScope extends InheritedWidget {
   const ShellTitleScope({super.key, required this.titulo, required super.child});
