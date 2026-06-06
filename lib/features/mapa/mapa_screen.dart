@@ -57,6 +57,38 @@ class _MapaScreenState extends ConsumerState<MapaScreen> {
   String? _comunidadId;
   // Toggle de capa: false = calle (OSM), true = satélite (Esri).
   bool _satelite = false;
+  // Cliente enfocado por la búsqueda: cuando != null, el mapa muestra SOLO su
+  // pin (ignora los demás filtros) y centra/zoom en él. La X lo limpia.
+  String? _clienteSeleccionadoId;
+  final _mapController = MapController();
+
+  @override
+  void dispose() {
+    _mapController.dispose();
+    super.dispose();
+  }
+
+  void _seleccionarCliente(Map<String, dynamic> r) {
+    setState(() => _clienteSeleccionadoId = r['id'] as String);
+    final lat = (r['latitud'] as num).toDouble();
+    final lng = (r['longitud'] as num).toDouble();
+    // Mover tras el frame para asegurar que el MapController esté montado.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _mapController.move(LatLng(lat, lng), 16.0);
+    });
+  }
+
+  void _limpiarSeleccion() => setState(() => _clienteSeleccionadoId = null);
+
+  Future<void> _abrirBuscador(List<Map<String, dynamic>> rows) async {
+    final r = await showModalBottomSheet<Map<String, dynamic>>(
+      context: context,
+      showDragHandle: true,
+      isScrollControlled: true,
+      builder: (_) => _BuscadorClientes(rows: rows),
+    );
+    if (r != null) _seleccionarCliente(r);
+  }
 
   Stream<List<Map<String, dynamic>>> _buildStream(int diasGracia) =>
       ps.db.watch(
@@ -161,29 +193,43 @@ class _MapaScreenState extends ConsumerState<MapaScreen> {
         final cobradorId = esAdminView ? _cobradorId : null;
         final comunidadId = esAdminView ? _comunidadId : null;
 
+        // Si hay un cliente buscado, el mapa muestra SOLO su pin (ignora los
+        // chips y dropdowns: el usuario lo eligió explícitamente). Si ese id
+        // ya no está en el set (se filtró/sincronizó fuera), cae a "todos".
+        final seleccionado = _clienteSeleccionadoId == null
+            ? null
+            : rows.cast<Map<String, dynamic>?>().firstWhere(
+                  (r) => r!['id'] == _clienteSeleccionadoId,
+                  orElse: () => null,
+                );
+
         // Filtra qué clientes se muestran combinando las 3 condiciones:
         // estado (chips, _estadoDe) + cobrador + zona (dropdowns admin).
         // _estadoDe se reusa para que filtro y color del marcador no diverjan.
-        final visibles = rows.where((r) {
-          final pasaEstado = _filtro == _FiltroEstado.todos ||
-              switch (_filtro) {
-                _FiltroEstado.todos => true,
-                _FiltroEstado.mora => _estadoDe(r) == _EstadoCliente.mora,
-                _FiltroEstado.gracia => _estadoDe(r) == _EstadoCliente.gracia,
-                _FiltroEstado.pendiente =>
-                  _estadoDe(r) == _EstadoCliente.pendiente,
-                _FiltroEstado.alDia => _estadoDe(r) == _EstadoCliente.alDia,
-              };
-          final pasaCobrador =
-              cobradorId == null || r['cobrador_id'] == cobradorId;
-          final pasaComunidad =
-              comunidadId == null || r['comunidad_id'] == comunidadId;
-          return pasaEstado && pasaCobrador && pasaComunidad;
-        }).toList();
+        final visibles = seleccionado != null
+            ? [seleccionado]
+            : rows.where((r) {
+                final pasaEstado = _filtro == _FiltroEstado.todos ||
+                    switch (_filtro) {
+                      _FiltroEstado.todos => true,
+                      _FiltroEstado.mora => _estadoDe(r) == _EstadoCliente.mora,
+                      _FiltroEstado.gracia =>
+                        _estadoDe(r) == _EstadoCliente.gracia,
+                      _FiltroEstado.pendiente =>
+                        _estadoDe(r) == _EstadoCliente.pendiente,
+                      _FiltroEstado.alDia => _estadoDe(r) == _EstadoCliente.alDia,
+                    };
+                final pasaCobrador =
+                    cobradorId == null || r['cobrador_id'] == cobradorId;
+                final pasaComunidad =
+                    comunidadId == null || r['comunidad_id'] == comunidadId;
+                return pasaEstado && pasaCobrador && pasaComunidad;
+              }).toList();
 
         return Stack(
           children: [
             FlutterMap(
+              mapController: _mapController,
               options: MapOptions(
                 initialCenter: center,
                 initialZoom: 12.0,
@@ -217,30 +263,52 @@ class _MapaScreenState extends ConsumerState<MapaScreen> {
               right: 56, // deja lugar para el botón de capa
               child: SafeArea(
                 bottom: false,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    _FiltroChips(
-                      seleccionado: _filtro,
-                      onChanged: (f) => setState(() => _filtro = f),
-                    ),
-                    if (esAdminView) ...[
-                      const SizedBox(height: 6),
-                      _FiltrosAdmin(
-                        cobradorId: cobradorId,
-                        comunidadId: comunidadId,
-                        cobradorOpciones: cobradorOpciones,
-                        comunidadOpciones: comunidadOpciones,
-                        onCobradorChanged: (v) =>
-                            setState(() => _cobradorId = v),
-                        onComunidadChanged: (v) =>
-                            setState(() => _comunidadId = v),
+                // Cliente buscado → banner con su nombre + X para volver a
+                // todos. Si no, los filtros normales (chips + dropdowns admin).
+                child: seleccionado != null
+                    ? _BannerSeleccion(
+                        nombre: seleccionado['nombre'] as String,
+                        onClear: _limpiarSeleccion,
+                      )
+                    : Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          _FiltroChips(
+                            seleccionado: _filtro,
+                            onChanged: (f) => setState(() => _filtro = f),
+                          ),
+                          if (esAdminView) ...[
+                            const SizedBox(height: 6),
+                            _FiltrosAdmin(
+                              cobradorId: cobradorId,
+                              comunidadId: comunidadId,
+                              cobradorOpciones: cobradorOpciones,
+                              comunidadOpciones: comunidadOpciones,
+                              onCobradorChanged: (v) =>
+                                  setState(() => _cobradorId = v),
+                              onComunidadChanged: (v) =>
+                                  setState(() => _comunidadId = v),
+                            ),
+                          ],
+                        ],
                       ),
-                    ],
-                  ],
-                ),
               ),
             ),
+            // Botón de búsqueda de cliente (centra/zoom en su pin). Oculto
+            // mientras hay uno enfocado — el X del banner vuelve a todos.
+            if (seleccionado == null)
+              Positioned(
+                bottom: 16,
+                right: 16,
+                child: SafeArea(
+                  child: FloatingActionButton(
+                    heroTag: 'mapa_buscar',
+                    tooltip: 'Buscar cliente',
+                    onPressed: () => _abrirBuscador(rows),
+                    child: const Icon(Icons.search),
+                  ),
+                ),
+              ),
             // Botón flotante para alternar calle ↔ satélite.
             Positioned(
               top: 8,
@@ -522,6 +590,122 @@ class _FiltrosAdmin extends StatelessWidget {
           onChanged: onComunidadChanged,
         ),
       ],
+    );
+  }
+}
+
+/// Banner que reemplaza los filtros cuando hay un cliente enfocado por la
+/// búsqueda: muestra su nombre y una X para volver a ver todos los pines.
+class _BannerSeleccion extends StatelessWidget {
+  const _BannerSeleccion({required this.nombre, required this.onClear});
+
+  final String nombre;
+  final VoidCallback onClear;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Material(
+      color: scheme.surface,
+      elevation: 2,
+      borderRadius: BorderRadius.circular(24),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(12, 2, 2, 2),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.place, size: 18, color: scheme.primary),
+            const SizedBox(width: 6),
+            Flexible(
+              child: Text(
+                nombre,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(fontWeight: FontWeight.w600),
+              ),
+            ),
+            IconButton(
+              icon: const Icon(Icons.close),
+              visualDensity: VisualDensity.compact,
+              tooltip: 'Ver todos',
+              onPressed: onClear,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Bottom sheet para buscar un cliente por nombre entre los que tienen
+/// ubicación. Devuelve la fila elegida (o null si se cierra sin elegir).
+class _BuscadorClientes extends StatefulWidget {
+  const _BuscadorClientes({required this.rows});
+
+  final List<Map<String, dynamic>> rows;
+
+  @override
+  State<_BuscadorClientes> createState() => _BuscadorClientesState();
+}
+
+class _BuscadorClientesState extends State<_BuscadorClientes> {
+  String _q = '';
+
+  @override
+  Widget build(BuildContext context) {
+    final filtradas = widget.rows.where((r) {
+      if (_q.isEmpty) return true;
+      return (r['nombre'] as String).toLowerCase().contains(_q);
+    }).toList()
+      ..sort((a, b) => (a['nombre'] as String)
+          .toLowerCase()
+          .compareTo((b['nombre'] as String).toLowerCase()));
+
+    return Padding(
+      padding: EdgeInsets.only(
+        left: 16,
+        right: 16,
+        top: 4,
+        bottom: MediaQuery.of(context).viewInsets.bottom + 16,
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          TextField(
+            autofocus: true,
+            decoration: const InputDecoration(
+              prefixIcon: Icon(Icons.search),
+              hintText: 'Buscar cliente por nombre',
+            ),
+            onChanged: (v) => setState(() => _q = v.trim().toLowerCase()),
+          ),
+          const SizedBox(height: 8),
+          if (filtradas.isEmpty)
+            const Padding(
+              padding: EdgeInsets.all(24),
+              child: Text('Sin clientes con ubicación que coincidan'),
+            )
+          else
+            ConstrainedBox(
+              constraints: BoxConstraints(
+                maxHeight: MediaQuery.of(context).size.height * 0.5,
+              ),
+              child: ListView.builder(
+                shrinkWrap: true,
+                itemCount: filtradas.length,
+                itemBuilder: (_, i) {
+                  final r = filtradas[i];
+                  final comunidad = r['comunidad'] as String?;
+                  return ListTile(
+                    leading: const Icon(Icons.place_outlined),
+                    title: Text(r['nombre'] as String),
+                    subtitle: comunidad != null ? Text(comunidad) : null,
+                    onTap: () => Navigator.pop(context, r),
+                  );
+                },
+              ),
+            ),
+        ],
+      ),
     );
   }
 }
