@@ -7,6 +7,7 @@ import '../../../data/repositories/settings_repo.dart';
 import '../../../data/utils/formatters.dart';
 import '../../../features/shared/widgets/rango_fechas_dialog.dart';
 import '../../../powersync/db.dart' as ps;
+import 'arqueo_calculo.dart';
 import 'descarga_archivo.dart';
 import 'excel/reporte_excel.dart';
 import 'pdf/reporte_anulaciones_pdf.dart';
@@ -1154,27 +1155,22 @@ class _DescargarPdfMenu extends ConsumerWidget {
             'Ingreso total (C\$)',
           ],
           filas: rows.map((r) {
-            double d(String k) => ((r[k] as num?) ?? 0).toDouble();
-            final efectivoNetoC = d('efectivo_nio') - d('efectivo_vuelto');
-            // USD valuado a la tasa histórica de cada cobro (efectivo_usd_equiv),
-            // para que "Equivalente total" cuadre con "Ingreso total" siempre.
-            final equivalenteTotalC = efectivoNetoC +
-                d('efectivo_usd_equiv') +
-                d('transferencia') +
-                d('deposito') +
-                d('tarjeta');
+            // Matemática del arqueo en ArqueoCalculo (compartida con el PDF):
+            // el USD se valúa a la tasa de cada cobro, así Equivalente total
+            // cuadra con Ingreso total sin importar la tasa de hoy.
+            final a = ArqueoCalculo.fromRow(r);
             return <Object?>[
               r['cobrador_nombre']?.toString() ?? '',
               (r['total_cobros'] as num?) ?? 0,
-              d('efectivo_usd'),
-              d('efectivo_nio'),
-              d('efectivo_vuelto'),
-              efectivoNetoC,
-              d('transferencia'),
-              d('deposito'),
-              d('tarjeta'),
-              equivalenteTotalC,
-              d('ingreso_total'),
+              a.efectivoUsd,
+              a.efectivoNio,
+              a.efectivoVuelto,
+              a.efectivoNetoC,
+              a.transferencia,
+              a.deposito,
+              a.tarjeta,
+              a.equivalenteTotalC,
+              a.ingresoTotal,
             ];
           }).toList(),
         );

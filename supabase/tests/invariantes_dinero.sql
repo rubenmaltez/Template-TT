@@ -222,6 +222,33 @@ inv11 AS (
           <> ct.duracion_meses
     LIMIT 10
   ) t
+),
+
+-- INV 12: recaudado por contrato coherente entre las dos formas de calcularlo
+-- (regla #4 a nivel agregado). `SUM(cuotas.monto_pagado)` de un contrato debe
+-- igualar `SUM(pagos.monto_cordobas)` de los pagos NO anulados de esas cuotas.
+-- INV2 lo garantiza por cuota; esto cierra el lazo a nivel contrato y atrapa
+-- denormalizaciones rotas (un pago apuntando a una cuota de otro contrato, o
+-- monto_pagado desincronizado del agregado). Tolerancia 0.01 por redondeo.
+inv12 AS (
+  SELECT 'INV12: recaudado por contrato = SUM(pagos no anulados de sus cuotas) (#4)' AS invariante,
+         COUNT(*) AS violaciones,
+         COALESCE(string_agg(id::text, ', ' ORDER BY id), '') AS ejemplo_ids
+  FROM (
+    SELECT ct.id
+    FROM public.contratos ct
+    WHERE ABS(
+      COALESCE((SELECT SUM(cu.monto_pagado)
+                  FROM public.cuotas cu
+                 WHERE cu.contrato_id = ct.id), 0)
+      - COALESCE((SELECT SUM(pa.monto_cordobas)
+                    FROM public.pagos pa
+                    JOIN public.cuotas cu2 ON cu2.id = pa.cuota_id
+                   WHERE cu2.contrato_id = ct.id
+                     AND pa.anulado = false), 0)
+    ) > 0.01
+    LIMIT 10
+  ) t
 )
 
 SELECT * FROM inv1
@@ -235,4 +262,5 @@ UNION ALL SELECT * FROM inv8
 UNION ALL SELECT * FROM inv9
 UNION ALL SELECT * FROM inv10
 UNION ALL SELECT * FROM inv11
+UNION ALL SELECT * FROM inv12
 ORDER BY invariante;

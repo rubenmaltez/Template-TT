@@ -273,10 +273,12 @@ void main() {
       });
     });
 
-    group('precisión floating point — números no enteros', () {
-      test('0.1 + 0.2 ≈ 0.3 evita falsos parciales', () {
-        // Caso clásico de FP: 0.1 + 0.2 == 0.30000000000000004.
-        // Si pagado=0.3 y total=0.3, la comparación >= debe matchear.
+    group('precisión floating point — comparación en centavos', () {
+      test('drift FP (0.1+0.2 vs 0.3) NO causa falso parcial', () {
+        // Caso clásico de FP: 0.1 + 0.2 == 0.30000000000000004. El total
+        // queda apenas por encima de 0.3 por el drift. El server guarda el
+        // monto en numeric(10,2) (= 0.30 exacto) y daría 'pagada'; el cliente
+        // redondea a centavos para NO divergir y mostrar 'parcial' offline.
         expect(
           calcularEstadoCuota(
             estadoActual: 'pendiente',
@@ -284,10 +286,38 @@ void main() {
             pagadoNuevo: 0.3,
             deltaCargosExtra: 0.0,
           ),
+          'pagada',
+          reason: 'redondeo a centavos absorbe el drift → pagada, igual que '
+              'el server (numeric 10,2)',
+        );
+      });
+
+      test('parciales que acumulan drift al sumarse → pagada', () {
+        // 3 parciales de 111.11 = 333.33000000000004 (drift al sumar en Dart).
+        // Sin redondeo, 333.33000000000004 vs total 333.33 podría flickear.
+        const pagado = 111.11 + 111.11 + 111.11;
+        expect(
+          calcularEstadoCuota(
+            estadoActual: 'parcial',
+            montoCuota: 333.33,
+            pagadoNuevo: pagado,
+            deltaCargosExtra: 0.0,
+          ),
+          'pagada',
+        );
+      });
+
+      test('faltante real de 1 centavo SIGUE siendo parcial', () {
+        // El redondeo a centavos NO debe tragar un faltante genuino: 749.99
+        // de 750.00 está 1 centavo corto → parcial (coincide con el server).
+        expect(
+          calcularEstadoCuota(
+            estadoActual: 'pendiente',
+            montoCuota: 750.0,
+            pagadoNuevo: 749.99,
+            deltaCargosExtra: 0.0,
+          ),
           'parcial',
-          reason: 'Doc del comportamiento actual: 0.3 < 0.30000000000000004 '
-              '→ parcial. Si en el futuro queremos tolerancia epsilon, '
-              'agregar epsilon explícito acá y en la SQL del server.',
         );
       });
     });

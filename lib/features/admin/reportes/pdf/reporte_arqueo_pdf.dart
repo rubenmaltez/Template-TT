@@ -2,6 +2,7 @@ import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 
 import '../../../shared/pdf/pdf_theme.dart';
+import '../arqueo_calculo.dart';
 import 'pdf_utils.dart';
 
 /// Reporte de arqueo / cierre por cobrador.
@@ -151,15 +152,26 @@ class _Arqueo {
     );
   }
 
+  /// Matemática de dinero delegada al helper compartido con el Excel, para
+  /// que el PDF y el Excel no se desincronicen.
+  ArqueoCalculo get _money => ArqueoCalculo(
+        efectivoUsd: efectivoUsd,
+        efectivoUsdEquiv: efectivoUsdEquiv,
+        efectivoNio: efectivoNio,
+        efectivoVuelto: efectivoVuelto,
+        transferencia: transferencia,
+        deposito: deposito,
+        tarjeta: tarjeta,
+        ingresoTotal: ingresoTotal,
+      );
+
   /// Córdobas físicos netos: lo recibido en C$ menos TODO el vuelto entregado
   /// (el vuelto de pagos USD también sale de la caja en córdobas).
-  double get efectivoNetoC => efectivoNio - efectivoVuelto;
+  double get efectivoNetoC => _money.efectivoNetoC;
 
   /// Gran total en córdobas, valuando el USD a la tasa de cada cobro. Cuadra
-  /// con `ingresoTotal` salvo data corrupta (el −vuelto del neto se compensa
-  /// con el +vuelto incluido en efectivoUsdEquiv).
-  double get equivalenteTotalC =>
-      efectivoNetoC + efectivoUsdEquiv + transferencia + deposito + tarjeta;
+  /// con `ingresoTotal` salvo data corrupta.
+  double get equivalenteTotalC => _money.equivalenteTotalC;
 
   bool get tieneUsd => efectivoUsd != 0;
 }
