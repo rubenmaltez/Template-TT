@@ -284,9 +284,12 @@ class _PagoCard extends ConsumerWidget {
                     ].join(' · '),
                     style: TextStyle(color: scheme.outline, fontSize: 12),
                   ),
-                  if ((row['moneda'] as String) == 'USD')
+                  // Monto entregado + moneda: se muestra cuando difiere del
+                  // aplicado — pago en USD (otra moneda) o cuando hubo vuelto.
+                  if ((row['moneda'] as String) == 'USD' ||
+                      ((row['vuelto_cordobas'] as num?) ?? 0) > 0)
                     Text(
-                      'Pagado en USD: ${(row['monto_original'] as num).toStringAsFixed(2)}',
+                      'Entregado: ${Fmt.monto(row['monto_original'] as num, row['moneda'] as String)}',
                       style: TextStyle(color: scheme.outline, fontSize: 12),
                     ),
                   if (row['grupo_cobro'] != null)
@@ -299,7 +302,7 @@ class _PagoCard extends ConsumerWidget {
                           borderRadius: BorderRadius.circular(8),
                         ),
                         child: Text(
-                          'Cobro agrupado',
+                          'Cobro agrupado · Ref ${(row['grupo_cobro'] as String).substring(0, 8)}',
                           style: TextStyle(
                             color: scheme.onPrimaryContainer,
                             fontSize: 11,
