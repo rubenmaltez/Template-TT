@@ -53,20 +53,20 @@ pw.Widget _buildTable(List<Map<String, dynamic>> rows) {
     headerAlignment: pw.Alignment.centerLeft,
     cellAlignment: pw.Alignment.centerLeft,
     columnWidths: {
-      0: const pw.FlexColumnWidth(2.5), // Cobrador
-      1: const pw.FlexColumnWidth(1.2), // Cobros
-      2: const pw.FlexColumnWidth(1.5), // Clientes visitados
-      3: const pw.FlexColumnWidth(1.8), // Monto total
-      4: const pw.FlexColumnWidth(1.5), // Cuotas asignadas
-      5: const pw.FlexColumnWidth(1.2), // Tasa exito
+      0: const pw.FlexColumnWidth(2.2), // Cobrador
+      1: const pw.FlexColumnWidth(1.3), // Cobros realizados
+      2: const pw.FlexColumnWidth(1.4), // Clientes cobrados
+      3: const pw.FlexColumnWidth(1.9), // Total recaudado
+      4: const pw.FlexColumnWidth(1.4), // Cuotas asignadas
+      5: const pw.FlexColumnWidth(1.1), // % de éxito
     },
     headers: [
       'Cobrador',
-      'Cobros',
-      'Clientes',
-      'Monto (C\$)',
-      'Cuotas asig.',
-      '% Exito',
+      'Cobros realizados',
+      'Clientes cobrados',
+      'Total recaudado (C\$)',
+      'Cuotas asignadas',
+      '% de éxito',
     ],
     data: rows.isEmpty
         ? [['Sin datos de cobradores', '', '', '', '', '']]

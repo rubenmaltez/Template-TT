@@ -53,20 +53,20 @@ pw.Widget _buildTable(List<Map<String, dynamic>> rows) {
     headerAlignment: pw.Alignment.centerLeft,
     cellAlignment: pw.Alignment.centerLeft,
     columnWidths: {
-      0: const pw.FlexColumnWidth(1.5), // Fecha
-      1: const pw.FlexColumnWidth(2),   // Cliente
-      2: const pw.FlexColumnWidth(1.3), // Monto
-      3: const pw.FlexColumnWidth(2),   // Motivo
-      4: const pw.FlexColumnWidth(1.8), // Anulado por
-      5: const pw.FlexColumnWidth(1.2), // Recibo
+      0: const pw.FlexColumnWidth(1.5), // Fecha de cobro
+      1: const pw.FlexColumnWidth(1.9), // Cliente
+      2: const pw.FlexColumnWidth(1.4), // Monto anulado
+      3: const pw.FlexColumnWidth(2),   // Motivo de anulación
+      4: const pw.FlexColumnWidth(1.7), // Anulado por
+      5: const pw.FlexColumnWidth(1.2), // N° de recibo
     },
     headers: [
-      'Fecha',
+      'Fecha de cobro',
       'Cliente',
-      'Monto (C\$)',
-      'Motivo',
+      'Monto anulado (C\$)',
+      'Motivo de anulación',
       'Anulado por',
-      'Recibo',
+      'Nro. de recibo',
     ],
     data: rows.isEmpty
         ? [['', '', 'Sin anulaciones', '', '', '']]

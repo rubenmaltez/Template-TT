@@ -927,7 +927,7 @@ class _DescargarPdfMenu extends ConsumerWidget {
         ''', [rango.desdeSql, rango.hastaSql]);
         return (
           headers: ['Fecha de cobro', 'Cliente', 'Monto cobrado (C\$)',
-                    'Método de pago', 'Cobrador', 'N° de recibo',
+                    'Método de pago', 'Cobrador', 'Nro. de recibo',
                     'Ref. cobro múltiple'],
           filas: rows.map((r) => <Object?>[
             Fmt.fechaHoraNi(r['fecha_pago'] as String?),
@@ -1123,7 +1123,7 @@ class _DescargarPdfMenu extends ConsumerWidget {
         ''', [rango.desdeSql, rango.hastaSql]);
         return (
           headers: ['Fecha de cobro', 'Cliente', 'Monto anulado (C\$)',
-                    'Motivo de anulación', 'Anulado por', 'N° de recibo'],
+                    'Motivo de anulación', 'Anulado por', 'Nro. de recibo'],
           filas: rows.map((r) => <Object?>[
             Fmt.fechaHoraNi(r['fecha_pago'] as String?),
             r['cliente_nombre']?.toString() ?? '',

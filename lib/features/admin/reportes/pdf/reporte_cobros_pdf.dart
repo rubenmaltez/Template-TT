@@ -58,15 +58,16 @@ pw.Widget _buildTable(List<Map<String, dynamic>> rows) {
     headerAlignment: pw.Alignment.centerLeft,
     cellAlignment: pw.Alignment.centerLeft,
     columnWidths: {
-      0: const pw.FlexColumnWidth(1.4), // Fecha
-      1: const pw.FlexColumnWidth(2.3), // Cliente
-      2: const pw.FlexColumnWidth(1.3), // Monto
-      3: const pw.FlexColumnWidth(1.1), // Método
-      4: const pw.FlexColumnWidth(1.8), // Cobrador
-      5: const pw.FlexColumnWidth(1.2), // Recibo
-      6: const pw.FlexColumnWidth(0.9), // Grupo
+      0: const pw.FlexColumnWidth(1.4), // Fecha de cobro
+      1: const pw.FlexColumnWidth(2.0), // Cliente
+      2: const pw.FlexColumnWidth(1.5), // Monto cobrado
+      3: const pw.FlexColumnWidth(1.2), // Método de pago
+      4: const pw.FlexColumnWidth(1.6), // Cobrador
+      5: const pw.FlexColumnWidth(1.2), // N° de recibo
+      6: const pw.FlexColumnWidth(1.4), // Ref. cobro múltiple
     },
-    headers: ['Fecha', 'Cliente', 'Monto (C\$)', 'Método', 'Cobrador', 'Recibo', 'Grupo'],
+    headers: ['Fecha de cobro', 'Cliente', 'Monto cobrado (C\$)',
+        'Método de pago', 'Cobrador', 'Nro. de recibo', 'Ref. cobro múltiple'],
     data: rows.isEmpty
         ? [['', '', 'Sin cobros en el período', '', '', '', '']]
         : List.generate(rows.length, (i) {

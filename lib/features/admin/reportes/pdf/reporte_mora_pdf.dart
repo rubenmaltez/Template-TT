@@ -69,7 +69,7 @@ pw.Widget _buildTable(List<Map<String, dynamic>> rows) {
       'Cliente',
       'Cuotas vencidas',
       'Monto adeudado (C\$)',
-      'Días mora',
+      'Días de mora',
       'Comunidad',
     ],
     data: rows.isEmpty

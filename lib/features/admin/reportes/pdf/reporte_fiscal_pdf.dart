@@ -53,13 +53,14 @@ pw.Widget _buildTable(List<Map<String, dynamic>> rows) {
     headerAlignment: pw.Alignment.centerLeft,
     cellAlignment: pw.Alignment.centerLeft,
     columnWidths: {
-      0: const pw.FlexColumnWidth(1.5), // Mes
-      1: const pw.FlexColumnWidth(2.5), // Plan
-      2: const pw.FlexColumnWidth(1.5), // Metodo
-      3: const pw.FlexColumnWidth(1.8), // Monto
-      4: const pw.FlexColumnWidth(1),   // Cantidad
+      0: const pw.FlexColumnWidth(1.2), // Mes
+      1: const pw.FlexColumnWidth(2.2), // Plan
+      2: const pw.FlexColumnWidth(1.5), // Método de pago
+      3: const pw.FlexColumnWidth(2),   // Total recaudado
+      4: const pw.FlexColumnWidth(1.3), // Cantidad de cobros
     },
-    headers: ['Mes', 'Plan', 'Metodo', 'Monto (C\$)', 'Cobros'],
+    headers: ['Mes', 'Plan', 'Método de pago', 'Total recaudado (C\$)',
+        'Cantidad de cobros'],
     data: rows.isEmpty
         ? [['', '', 'Sin ingresos en el periodo', '', '']]
         : List.generate(rows.length, (i) {

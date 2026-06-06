@@ -52,7 +52,8 @@ pw.Widget _buildTable(List<Map<String, dynamic>> rows) {
       3: const pw.FlexColumnWidth(1.2),
       4: const pw.FlexColumnWidth(1.3),
     },
-    headers: ['Fecha', 'Cliente', 'Monto (C\$)', 'Método', 'Recibo'],
+    headers: ['Fecha de cobro', 'Cliente', 'Monto cobrado (C\$)',
+        'Método de pago', 'Nro. de recibo'],
     data: rows.isEmpty
         ? [['', 'Sin cobros en el período', '', '', '']]
         : List.generate(rows.length, (i) {

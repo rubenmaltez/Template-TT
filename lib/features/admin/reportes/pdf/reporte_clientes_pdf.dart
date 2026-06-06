@@ -51,7 +51,8 @@ pw.Widget _buildTable(List<Map<String, dynamic>> rows) {
       3: const pw.FlexColumnWidth(1.5),
       4: const pw.FlexColumnWidth(1.5),
     },
-    headers: ['Cliente', 'Comunidad', 'Pendientes', 'Saldo (C\$)', 'Último pago'],
+    headers: ['Cliente', 'Comunidad', 'Cuotas pendientes',
+        'Saldo pendiente (C\$)', 'Último pago'],
     data: rows.isEmpty
         ? [['Sin clientes', '', '', '', '']]
         : List.generate(rows.length, (i) {
