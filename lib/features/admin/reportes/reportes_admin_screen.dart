@@ -38,7 +38,10 @@ class RangoReporte {
   static String _d(DateTime x) => x.toIso8601String().substring(0, 10);
 
   static RangoReporte mesActual() {
-    final now = DateTime.now();
+    // "now" en hora de Nicaragua (UTC-6) para que el rango por defecto coincida
+    // con el bucketing date(...,'-6 hours') de las queries y con el dashboard,
+    // sin depender de la zona horaria de la máquina.
+    final now = DateTime.now().toUtc().subtract(const Duration(hours: 6));
     return RangoReporte(
       desde: DateTime(now.year, now.month, 1),
       hasta: DateTime(now.year, now.month, now.day),
@@ -47,7 +50,7 @@ class RangoReporte {
   }
 
   static RangoReporte mesPasado() {
-    final now = DateTime.now();
+    final now = DateTime.now().toUtc().subtract(const Duration(hours: 6));
     final finMesPasado = DateTime(now.year, now.month, 1)
         .subtract(const Duration(days: 1));
     return RangoReporte(
@@ -59,14 +62,14 @@ class RangoReporte {
 
   /// Día de hoy (desde = hasta = hoy). Default del arqueo de caja.
   static RangoReporte hoy() {
-    final now = DateTime.now();
+    final now = DateTime.now().toUtc().subtract(const Duration(hours: 6));
     final dia = DateTime(now.year, now.month, now.day);
     return RangoReporte(desde: dia, hasta: dia, label: 'Hoy');
   }
 
   /// Día de ayer (desde = hasta = ayer). Para cerrar la caja del día previo.
   static RangoReporte ayer() {
-    final now = DateTime.now();
+    final now = DateTime.now().toUtc().subtract(const Duration(hours: 6));
     final dia =
         DateTime(now.year, now.month, now.day).subtract(const Duration(days: 1));
     return RangoReporte(desde: dia, hasta: dia, label: 'Ayer');
@@ -379,7 +382,7 @@ const String _arqueoSql = '''
          COALESCE(SUM(p.monto_cordobas),0) AS ingreso_total
     FROM cobradores cb
     JOIN pagos p ON p.cobrador_id = cb.id AND p.anulado = 0
-                AND date(p.fecha_pago) BETWEEN ? AND ?
+                AND date(p.fecha_pago, '-6 hours') BETWEEN ? AND ?
    GROUP BY cb.id, cb.nombre
    ORDER BY ingreso_total DESC
 ''';
@@ -512,7 +515,7 @@ class _DescargarPdfMenu extends ConsumerWidget {
        LEFT JOIN cobradores cb ON cb.id = p.cobrador_id
        LEFT JOIN recibos r ON r.pago_id = p.id
            WHERE p.anulado = 0
-             AND date(p.fecha_pago) BETWEEN ? AND ?
+             AND date(p.fecha_pago, '-6 hours') BETWEEN ? AND ?
            ORDER BY p.fecha_pago DESC
         ''', [rango.desdeSql, rango.hastaSql]);
 
@@ -593,7 +596,7 @@ class _DescargarPdfMenu extends ConsumerWidget {
        LEFT JOIN recibos r ON r.pago_id = p.id
            WHERE p.anulado = 0
              AND p.cobrador_id = ?
-             AND date(p.fecha_pago) BETWEEN ? AND ?
+             AND date(p.fecha_pago, '-6 hours') BETWEEN ? AND ?
            ORDER BY p.fecha_pago DESC
         ''', [seleccionado['id'], rango.desdeSql, rango.hastaSql]);
 
@@ -668,7 +671,7 @@ class _DescargarPdfMenu extends ConsumerWidget {
   Future<void> _generarFiscal(
       BuildContext context, String empresaNombre, RangoReporte rango) async {
     final rows = await ps.db.getAll('''
-      SELECT strftime('%Y-%m', p.fecha_pago) AS mes,
+      SELECT strftime('%Y-%m', p.fecha_pago, '-6 hours') AS mes,
              COALESCE(pl.nombre, 'Sin plan') AS plan_nombre,
              p.metodo,
              COALESCE(SUM(p.monto_cordobas), 0) AS total_monto,
@@ -678,7 +681,7 @@ class _DescargarPdfMenu extends ConsumerWidget {
    LEFT JOIN contratos ct ON ct.id = cu.contrato_id
    LEFT JOIN planes pl ON pl.id = ct.plan_id
        WHERE p.anulado = 0
-         AND date(p.fecha_pago) BETWEEN ? AND ?
+         AND date(p.fecha_pago, '-6 hours') BETWEEN ? AND ?
        GROUP BY mes, plan_nombre, p.metodo
        ORDER BY mes DESC, plan_nombre, p.metodo
     ''', [rango.desdeSql, rango.hastaSql]);
@@ -717,7 +720,7 @@ class _DescargarPdfMenu extends ConsumerWidget {
         FROM cobradores cb
    LEFT JOIN pagos p ON p.cobrador_id = cb.id
                     AND p.anulado = 0
-                    AND date(p.fecha_pago) BETWEEN ? AND ?
+                    AND date(p.fecha_pago, '-6 hours') BETWEEN ? AND ?
    LEFT JOIN cuotas cu ON cu.id = p.cuota_id
        WHERE cb.rol = 'cobrador' AND cb.activo = 1
        GROUP BY cb.id, cb.nombre
@@ -796,7 +799,7 @@ class _DescargarPdfMenu extends ConsumerWidget {
    LEFT JOIN cobradores cb_anulador ON cb_anulador.id = p.anulado_por
    LEFT JOIN recibos r ON r.pago_id = p.id
        WHERE p.anulado = 1
-         AND date(p.fecha_pago) BETWEEN ? AND ?
+         AND date(p.fecha_pago, '-6 hours') BETWEEN ? AND ?
        ORDER BY p.anulado_en DESC, p.fecha_pago DESC
     ''', [rango.desdeSql, rango.hastaSql]);
 
@@ -922,7 +925,7 @@ class _DescargarPdfMenu extends ConsumerWidget {
        LEFT JOIN cobradores cb ON cb.id = p.cobrador_id
        LEFT JOIN recibos r ON r.pago_id = p.id
            WHERE p.anulado = 0
-             AND date(p.fecha_pago) BETWEEN ? AND ?
+             AND date(p.fecha_pago, '-6 hours') BETWEEN ? AND ?
            ORDER BY p.fecha_pago DESC
         ''', [rango.desdeSql, rango.hastaSql]);
         return (
@@ -1004,7 +1007,7 @@ class _DescargarPdfMenu extends ConsumerWidget {
 
       case 'fiscal':
         final rows = await ps.db.getAll('''
-          SELECT strftime('%Y-%m', p.fecha_pago) AS mes,
+          SELECT strftime('%Y-%m', p.fecha_pago, '-6 hours') AS mes,
                  COALESCE(pl.nombre, 'Sin plan') AS plan_nombre,
                  p.metodo,
                  COALESCE(SUM(p.monto_cordobas), 0) AS total_monto,
@@ -1014,7 +1017,7 @@ class _DescargarPdfMenu extends ConsumerWidget {
        LEFT JOIN contratos ct ON ct.id = cu.contrato_id
        LEFT JOIN planes pl ON pl.id = ct.plan_id
            WHERE p.anulado = 0
-             AND date(p.fecha_pago) BETWEEN ? AND ?
+             AND date(p.fecha_pago, '-6 hours') BETWEEN ? AND ?
            GROUP BY mes, plan_nombre, p.metodo
            ORDER BY mes DESC, plan_nombre, p.metodo
         ''', [rango.desdeSql, rango.hastaSql]);
@@ -1045,7 +1048,7 @@ class _DescargarPdfMenu extends ConsumerWidget {
             FROM cobradores cb
        LEFT JOIN pagos p ON p.cobrador_id = cb.id
                         AND p.anulado = 0
-                        AND date(p.fecha_pago) BETWEEN ? AND ?
+                        AND date(p.fecha_pago, '-6 hours') BETWEEN ? AND ?
        LEFT JOIN cuotas cu ON cu.id = p.cuota_id
            WHERE cb.rol = 'cobrador' AND cb.activo = 1
            GROUP BY cb.id, cb.nombre
@@ -1118,7 +1121,7 @@ class _DescargarPdfMenu extends ConsumerWidget {
        LEFT JOIN cobradores cb_anulador ON cb_anulador.id = p.anulado_por
        LEFT JOIN recibos r ON r.pago_id = p.id
            WHERE p.anulado = 1
-             AND date(p.fecha_pago) BETWEEN ? AND ?
+             AND date(p.fecha_pago, '-6 hours') BETWEEN ? AND ?
            ORDER BY p.anulado_en DESC, p.fecha_pago DESC
         ''', [rango.desdeSql, rango.hastaSql]);
         return (
@@ -1197,7 +1200,7 @@ class _RecaudacionMensualCardState extends State<_RecaudacionMensualCard> {
              COUNT(*) AS qty
         FROM pagos
        WHERE anulado = 0
-         AND date(fecha_pago) >= date('now', '-6 hours', '-5 months', 'start of month')
+         AND date(fecha_pago, '-6 hours') >= date('now', '-6 hours', '-5 months', 'start of month')
        GROUP BY mes
        ORDER BY mes
       ''',
@@ -1306,7 +1309,7 @@ class _CobradoresMesCardState extends State<_CobradoresMesCard> {
         FROM cobradores co
    LEFT JOIN pagos p ON p.cobrador_id = co.id
                     AND p.anulado = 0
-                    AND date(p.fecha_pago) >= date('now', '-6 hours', 'start of month')
+                    AND date(p.fecha_pago, '-6 hours') >= date('now', '-6 hours', 'start of month')
        WHERE co.rol = 'cobrador' AND co.activo = 1
        GROUP BY co.id, co.nombre, co.prefijo_recibo
        ORDER BY total DESC

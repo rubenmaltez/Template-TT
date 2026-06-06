@@ -1,6 +1,7 @@
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 
+import '../../../../data/models/pago.dart';
 import '../../../shared/pdf/pdf_theme.dart';
 import 'pdf_utils.dart';
 
@@ -68,7 +69,7 @@ pw.Widget _buildTable(List<Map<String, dynamic>> rows) {
             return [
               _mesLabel(r['mes'] as String? ?? ''),
               (r['plan_nombre'] as String?) ?? 'Sin plan',
-              _metodoLabel((r['metodo'] as String?) ?? ''),
+              MetodoPago.fromString((r['metodo'] as String?) ?? '').label,
               fmtCordobas((r['total_monto'] as num?) ?? 0),
               '${(r['cantidad'] as num?) ?? 0}',
             ];
@@ -136,19 +137,4 @@ String _mesLabel(String yyyyMm) {
     'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic',
   ];
   return '${nombres[mes - 1]} ${parts[0]}';
-}
-
-String _metodoLabel(String metodo) {
-  switch (metodo.toLowerCase()) {
-    case 'efectivo':
-      return 'Efectivo';
-    case 'transferencia':
-      return 'Transfer.';
-    case 'tarjeta':
-      return 'Tarjeta';
-    default:
-      return metodo.isNotEmpty
-          ? metodo[0].toUpperCase() + metodo.substring(1)
-          : '—';
-  }
 }

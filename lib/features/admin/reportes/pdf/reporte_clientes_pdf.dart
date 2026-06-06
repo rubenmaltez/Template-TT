@@ -97,5 +97,6 @@ pw.Widget _buildSummary(List<Map<String, dynamic>> rows) {
 String _formatearFecha(String iso) {
   final d = DateTime.tryParse(iso);
   if (d == null) return iso;
-  return fmtFechaCorta(d);
+  // Hora de Nicaragua (UTC-6) para que el día coincida con el Excel.
+  return fmtFechaCorta(d.toUtc().subtract(const Duration(hours: 6)));
 }

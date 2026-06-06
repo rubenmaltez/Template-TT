@@ -1,6 +1,7 @@
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 
+import '../../../../data/models/pago.dart';
 import '../../../shared/pdf/pdf_theme.dart';
 import 'pdf_utils.dart';
 
@@ -78,7 +79,7 @@ pw.Widget _buildTable(List<Map<String, dynamic>> rows) {
         fechaFmt,
         (r['cliente_nombre'] as String?) ?? '—',
         fmtCordobas((r['monto'] as num?) ?? 0),
-        _metodoLabel((r['metodo'] as String?) ?? ''),
+        MetodoPago.fromString((r['metodo'] as String?) ?? '').label,
         (r['cobrador_nombre'] as String?) ?? '—',
         (r['numero_recibo'] as String?) ?? '—',
         (r['ref_grupo'] as String?) ?? '',
@@ -125,21 +126,6 @@ pw.Widget _buildTotals(List<Map<String, dynamic>> rows) {
 String _formatearFecha(String raw) {
   final dt = DateTime.tryParse(raw);
   if (dt == null) return raw;
-  return fmtFechaCorta(dt);
-}
-
-/// Traduce el código de método de pago a label legible.
-String _metodoLabel(String metodo) {
-  switch (metodo) {
-    case 'efectivo':
-      return 'Efectivo';
-    case 'transferencia':
-      return 'Transfer.';
-    case 'tarjeta':
-      return 'Tarjeta';
-    default:
-      return metodo.isNotEmpty
-          ? metodo[0].toUpperCase() + metodo.substring(1)
-          : '—';
-  }
+  // Hora de Nicaragua (UTC-6) para que el día coincida con el Excel.
+  return fmtFechaCorta(dt.toUtc().subtract(const Duration(hours: 6)));
 }

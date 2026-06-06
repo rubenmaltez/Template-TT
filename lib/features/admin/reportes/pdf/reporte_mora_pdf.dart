@@ -58,19 +58,20 @@ pw.Widget _buildTable(List<Map<String, dynamic>> rows) {
     cellStyle: estiloCelda,
     headerAlignment: pw.Alignment.centerLeft,
     cellAlignment: pw.Alignment.centerLeft,
+    // Orden de columnas alineado con el export Excel: Comunidad como 2ª.
     columnWidths: {
       0: const pw.FlexColumnWidth(2.5), // Cliente
-      1: const pw.FlexColumnWidth(1.5), // Cuotas vencidas
-      2: const pw.FlexColumnWidth(1.8), // Monto adeudado
-      3: const pw.FlexColumnWidth(1.2), // Días mora
-      4: const pw.FlexColumnWidth(2),   // Comunidad
+      1: const pw.FlexColumnWidth(2),   // Comunidad
+      2: const pw.FlexColumnWidth(1.5), // Cuotas vencidas
+      3: const pw.FlexColumnWidth(1.8), // Monto adeudado
+      4: const pw.FlexColumnWidth(1.2), // Días de mora
     },
     headers: [
       'Cliente',
+      'Comunidad',
       'Cuotas vencidas',
       'Monto adeudado (C\$)',
       'Días de mora',
-      'Comunidad',
     ],
     data: rows.isEmpty
         ? [['Sin clientes en mora', '', '', '', '']]
@@ -78,10 +79,10 @@ pw.Widget _buildTable(List<Map<String, dynamic>> rows) {
       final r = rows[i];
       return [
         (r['cliente_nombre'] as String?) ?? '—',
+        (r['comunidad'] as String?) ?? '—',
         '${(r['cuotas_vencidas'] as num?) ?? 0}',
         fmtCordobas((r['monto_adeudado'] as num?) ?? 0),
         '${(r['dias_mora'] as num?) ?? 0}',
-        (r['comunidad'] as String?) ?? '—',
       ];
     }),
     oddRowDecoration: const pw.BoxDecoration(color: colorFilaPar),
