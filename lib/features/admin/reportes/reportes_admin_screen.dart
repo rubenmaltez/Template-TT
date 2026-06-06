@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:printing/printing.dart';
 
 import '../../../config/router.dart';
 import '../../../data/models/pago.dart';
@@ -8,6 +7,7 @@ import '../../../data/repositories/settings_repo.dart';
 import '../../../data/utils/formatters.dart';
 import '../../../features/shared/widgets/rango_fechas_dialog.dart';
 import '../../../powersync/db.dart' as ps;
+import 'descarga_archivo.dart';
 import 'excel/reporte_excel.dart';
 import 'pdf/reporte_anulaciones_pdf.dart';
 import 'pdf/reporte_arqueo_pdf.dart';
@@ -338,9 +338,10 @@ class _ArqueoCajaCard extends ConsumerWidget {
         rows: rows,
         tasaActual: tasaActual,
       );
-      await Printing.sharePdf(
+      await guardarArchivo(
+        fileName: 'arqueo_${now.year}_${now.month}_${now.day}.pdf',
         bytes: await doc.save(),
-        filename: 'arqueo_${now.year}_${now.month}_${now.day}.pdf',
+        extension: 'pdf',
       );
     } catch (e) {
       if (context.mounted) {
@@ -521,9 +522,10 @@ class _DescargarPdfMenu extends ConsumerWidget {
           rows: rows,
         );
 
-        await Printing.sharePdf(
+        await guardarArchivo(
+          fileName: 'cobros_${now.year}_${now.month}.pdf',
           bytes: await doc.save(),
-          filename: 'cobros_${now.year}_${now.month}.pdf',
+          extension: 'pdf',
         );
       } else if (tipo == 'mora') {
         final rows = await ps.db.getAll('''
@@ -553,9 +555,10 @@ class _DescargarPdfMenu extends ConsumerWidget {
           periodo: periodoMora,
           rows: rows,
         );
-        await Printing.sharePdf(
+        await guardarArchivo(
+          fileName: 'mora_${now.year}_${now.month}_${now.day}.pdf',
           bytes: await doc.save(),
-          filename: 'mora_${now.year}_${now.month}_${now.day}.pdf',
+          extension: 'pdf',
         );
       } else if (tipo == 'por_cobrador') {
         // Selector de cobrador antes de generar.
@@ -599,9 +602,10 @@ class _DescargarPdfMenu extends ConsumerWidget {
           cobradorNombre: seleccionado['nombre'] as String,
           rows: rows,
         );
-        await Printing.sharePdf(
+        await guardarArchivo(
+          fileName: 'cobrador_${now.year}_${now.month}.pdf',
           bytes: await doc.save(),
-          filename: 'cobrador_${now.year}_${now.month}.pdf',
+          extension: 'pdf',
         );
       } else if (tipo == 'clientes') {
         final rows = await ps.db.getAll('''
@@ -628,9 +632,10 @@ class _DescargarPdfMenu extends ConsumerWidget {
           periodo: Fmt.mes(now),
           rows: rows,
         );
-        await Printing.sharePdf(
+        await guardarArchivo(
+          fileName: 'clientes_${now.year}_${now.month}.pdf',
           bytes: await doc.save(),
-          filename: 'clientes_${now.year}_${now.month}.pdf',
+          extension: 'pdf',
         );
       } else if (tipo == 'fiscal') {
         await _generarFiscal(context, empresaNombre, rango);
@@ -679,9 +684,10 @@ class _DescargarPdfMenu extends ConsumerWidget {
       periodo: rango.periodoLabel,
       rows: rows,
     );
-    await Printing.sharePdf(
+    await guardarArchivo(
+      fileName: 'fiscal_${now.year}_${now.month}.pdf',
       bytes: await doc.save(),
-      filename: 'fiscal_${now.year}_${now.month}.pdf',
+      extension: 'pdf',
     );
   }
 
@@ -719,9 +725,10 @@ class _DescargarPdfMenu extends ConsumerWidget {
       periodo: rango.periodoLabel,
       rows: rows,
     );
-    await Printing.sharePdf(
+    await guardarArchivo(
+      fileName: 'eficiencia_${now.year}_${now.month}.pdf',
       bytes: await doc.save(),
-      filename: 'eficiencia_${now.year}_${now.month}.pdf',
+      extension: 'pdf',
     );
   }
 
@@ -757,9 +764,10 @@ class _DescargarPdfMenu extends ConsumerWidget {
       rows: rows,
       mesesInactividad: mesesInactividad,
     );
-    await Printing.sharePdf(
+    await guardarArchivo(
+      fileName: 'inactivos_${now.year}_${now.month}.pdf',
       bytes: await doc.save(),
-      filename: 'inactivos_${now.year}_${now.month}.pdf',
+      extension: 'pdf',
     );
   }
 
@@ -793,9 +801,10 @@ class _DescargarPdfMenu extends ConsumerWidget {
       periodo: rango.periodoLabel,
       rows: rows,
     );
-    await Printing.sharePdf(
+    await guardarArchivo(
+      fileName: 'anulaciones_${now.year}_${now.month}.pdf',
       bytes: await doc.save(),
-      filename: 'anulaciones_${now.year}_${now.month}.pdf',
+      extension: 'pdf',
     );
   }
 

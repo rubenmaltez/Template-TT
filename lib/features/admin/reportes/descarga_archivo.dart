@@ -1,0 +1,52 @@
+import 'dart:io' show File, Platform;
+import 'dart:typed_data';
+
+import 'package:file_picker/file_picker.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
+
+/// Guarda [bytes] en disco ofreciendo el diálogo nativo de guardado, para que
+/// TODOS los exports de reportes (Excel y PDF) se comporten igual:
+///   - Windows (y demás desktop): diálogo "Guardar como". file_picker devuelve
+///     la ruta pero NO escribe el contenido, así que lo escribimos nosotros.
+///   - Android: file_picker abre el selector de ubicación del sistema y guarda
+///     el archivo con `bytes:`; devuelve la ruta (puede ser un content URI no
+///     escribible por dart:io, por eso ahí NO reescribimos). No requiere
+///     permisos de almacenamiento (el usuario elige la ubicación).
+///   - Web: file_picker.saveFile no existe en la línea 8.x; como web no es un
+///     target del producto, avisamos con un mensaje claro.
+///
+/// [fileName] debe incluir la extensión (ej. 'cobros_2026_06.pdf'); [extension]
+/// es solo la extensión sin punto (ej. 'pdf' / 'xlsx') para el filtro del
+/// diálogo. Devuelve la ruta donde se guardó, o `null` si el usuario canceló.
+Future<String?> guardarArchivo({
+  required String fileName,
+  required List<int> bytes,
+  required String extension,
+}) async {
+  final data = bytes is Uint8List ? bytes : Uint8List.fromList(bytes);
+
+  if (kIsWeb) {
+    throw UnsupportedError(
+      'La descarga de archivos está disponible en la app de Windows o Android, '
+      'no en la versión web.',
+    );
+  }
+
+  final path = await FilePicker.platform.saveFile(
+    dialogTitle: 'Guardar reporte',
+    fileName: fileName,
+    type: FileType.custom,
+    allowedExtensions: [extension],
+    // En Android/iOS file_picker escribe el archivo con estos bytes; en
+    // desktop solo abre el diálogo (los bytes los escribimos abajo).
+    bytes: data,
+  );
+  if (path == null) return null; // el usuario canceló el diálogo
+
+  // En desktop file_picker devuelve la ruta pero NO escribe el contenido →
+  // lo hacemos nosotros. En Android ya quedó escrito por el `bytes:` de arriba.
+  if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
+    await File(path).writeAsBytes(data, flush: true);
+  }
+  return path;
+}

@@ -1,21 +1,10 @@
-import 'dart:io' show File, Platform;
-import 'dart:typed_data';
-
 import 'package:excel/excel.dart';
-import 'package:file_picker/file_picker.dart';
-import 'package:flutter/foundation.dart' show kIsWeb;
+
+import '../descarga_archivo.dart';
 
 /// Construye un archivo Excel (.xlsx) de UNA hoja con encabezado + filas y lo
-/// ofrece para descargar/guardar. Targets soportados: **Android** y **Windows**.
-///   - Windows (y demás desktop): abre el diálogo nativo "Guardar como" y
-///     escribimos los bytes a la ruta elegida (file_picker en desktop devuelve
-///     la ruta pero NO escribe el contenido — hay que hacerlo a mano).
-///   - Android: file_picker guarda el archivo directamente con `bytes:` y
-///     devuelve la ruta (que puede ser un content URI no escribible por
-///     dart:io, por eso ahí NO reescribimos).
-///   - Web: `saveFile` no está implementado en file_picker 8.x; como web no es
-///     un target del producto, avisamos con un mensaje claro en vez de fallar
-///     con un error críptico.
+/// ofrece para descargar/guardar vía [guardarArchivo] (diálogo "Guardar como"
+/// en Windows, selector de ubicación en Android).
 ///
 /// Pensado para los reportes del admin: reutiliza las mismas queries que ya
 /// alimentaban el export CSV, pero produce un .xlsx con formato (encabezado
@@ -104,33 +93,8 @@ Future<String?> descargarExcel({
   if (saved == null) {
     throw Exception('No se pudo generar el archivo Excel');
   }
-  final bytes = Uint8List.fromList(saved);
 
-  // Web fuera de scope: file_picker.saveFile no existe en la línea 8.x.
-  if (kIsWeb) {
-    throw UnsupportedError(
-      'La exportación a Excel está disponible en la app de Windows o Android, '
-      'no en la versión web.',
-    );
-  }
-
-  final path = await FilePicker.platform.saveFile(
-    dialogTitle: 'Guardar reporte',
-    fileName: fileName,
-    type: FileType.custom,
-    allowedExtensions: const ['xlsx'],
-    // En Android/iOS file_picker escribe el archivo con estos bytes; en
-    // desktop solo abre el diálogo (los bytes los escribimos abajo).
-    bytes: bytes,
-  );
-  if (path == null) return null; // el usuario canceló el diálogo
-
-  // En desktop file_picker devuelve la ruta pero NO escribe el contenido →
-  // lo hacemos nosotros. En Android ya quedó escrito por el `bytes:` de arriba.
-  if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
-    await File(path).writeAsBytes(bytes, flush: true);
-  }
-  return path;
+  return guardarArchivo(fileName: fileName, bytes: saved, extension: 'xlsx');
 }
 
 /// Mapea un valor crudo de una fila a la celda tipada de Excel. Los números
