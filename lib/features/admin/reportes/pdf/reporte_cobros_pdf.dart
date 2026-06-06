@@ -27,7 +27,9 @@ Future<pw.Document> buildReporteCobros({
   pdf.addPage(
     pw.MultiPage(
       theme: theme,
-      pageFormat: PdfPageFormat.letter,
+      // Landscape: la tabla suma columnas de moneda/tasa/vuelto y no entra en
+      // vertical.
+      pageFormat: PdfPageFormat.letter.landscape,
       margin: const pw.EdgeInsets.all(40),
       header: (context) => buildHeaderEstandar(
         empresaNombre: empresaNombre,
@@ -59,26 +61,39 @@ pw.Widget _buildTable(List<Map<String, dynamic>> rows) {
     headerAlignment: pw.Alignment.centerLeft,
     cellAlignment: pw.Alignment.centerLeft,
     columnWidths: {
-      0: const pw.FlexColumnWidth(1.4), // Fecha de cobro
+      0: const pw.FlexColumnWidth(1.3), // Fecha de cobro
       1: const pw.FlexColumnWidth(2.0), // Cliente
-      2: const pw.FlexColumnWidth(1.5), // Monto cobrado
-      3: const pw.FlexColumnWidth(1.2), // Método de pago
-      4: const pw.FlexColumnWidth(1.6), // Cobrador
-      5: const pw.FlexColumnWidth(1.2), // N° de recibo
-      6: const pw.FlexColumnWidth(1.4), // Ref. cobro múltiple
+      2: const pw.FlexColumnWidth(1.3), // Monto cobrado (C$)
+      3: const pw.FlexColumnWidth(0.8), // Moneda
+      4: const pw.FlexColumnWidth(1.2), // Entregado (orig.)
+      5: const pw.FlexColumnWidth(0.8), // Tasa
+      6: const pw.FlexColumnWidth(1.1), // Vuelto (C$)
+      7: const pw.FlexColumnWidth(1.1), // Método de pago
+      8: const pw.FlexColumnWidth(1.5), // Cobrador
+      9: const pw.FlexColumnWidth(1.1), // N° de recibo
+      10: const pw.FlexColumnWidth(1.2), // Ref. cobro múltiple
     },
     headers: ['Fecha de cobro', 'Cliente', 'Monto cobrado (C\$)',
+        'Moneda', 'Entregado (orig.)', 'Tasa', 'Vuelto (C\$)',
         'Método de pago', 'Cobrador', 'Nro. de recibo', 'Ref. cobro múltiple'],
     data: rows.isEmpty
-        ? [['', '', 'Sin cobros en el período', '', '', '', '']]
+        ? [['', '', 'Sin cobros en el período', '', '', '', '', '', '', '', '']]
         : List.generate(rows.length, (i) {
       final r = rows[i];
       final fecha = r['fecha_pago'] as String? ?? '';
       final fechaFmt = _formatearFecha(fecha);
+      final moneda = r['moneda'] as String?;
+      final esUsd = moneda == 'USD';
+      final vuelto = ((r['vuelto_cordobas'] as num?) ?? 0).toDouble();
       return [
         fechaFmt,
         (r['cliente_nombre'] as String?) ?? '—',
         fmtCordobas((r['monto'] as num?) ?? 0),
+        monedaSimbolo(moneda),
+        fmtMontoMoneda((r['monto_original'] as num?) ?? 0, moneda),
+        // Tasa solo si es USD (en C$ siempre es 1 → '—').
+        esUsd ? ((r['tasa_conversion'] as num?) ?? 1).toStringAsFixed(2) : '—',
+        vuelto > 0 ? fmtCordobas(vuelto) : '—',
         MetodoPago.fromString((r['metodo'] as String?) ?? '').label,
         (r['cobrador_nombre'] as String?) ?? '—',
         (r['numero_recibo'] as String?) ?? '—',

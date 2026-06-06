@@ -511,6 +511,8 @@ class _DescargarPdfMenu extends ConsumerWidget {
         final rows = await ps.db.getAll('''
           SELECT p.fecha_pago, c.nombre AS cliente_nombre,
                  p.monto_cordobas AS monto, p.metodo,
+                 p.moneda, p.monto_original, p.tasa_conversion,
+                 p.vuelto_cordobas,
                  cb.nombre AS cobrador_nombre,
                  r.numero_completo AS numero_recibo,
                  SUBSTR(p.grupo_cobro, 1, 8) AS ref_grupo
@@ -594,6 +596,8 @@ class _DescargarPdfMenu extends ConsumerWidget {
         final rows = await ps.db.getAll('''
           SELECT p.fecha_pago, c.nombre AS cliente_nombre,
                  p.monto_cordobas AS monto, p.metodo,
+                 p.moneda, p.monto_original, p.tasa_conversion,
+                 p.vuelto_cordobas,
                  r.numero_completo AS numero_recibo
             FROM pagos p
             JOIN cuotas cu ON cu.id = p.cuota_id
@@ -678,8 +682,9 @@ class _DescargarPdfMenu extends ConsumerWidget {
     final rows = await ps.db.getAll('''
       SELECT strftime('%Y-%m', p.fecha_pago) AS mes,
              COALESCE(pl.nombre, 'Sin plan') AS plan_nombre,
-             p.metodo,
+             p.metodo, p.moneda,
              COALESCE(SUM(p.monto_cordobas), 0) AS total_monto,
+             COALESCE(SUM(p.monto_original), 0) AS total_entregado,
              COUNT(p.id) AS cantidad
         FROM pagos p
         JOIN cuotas cu ON cu.id = p.cuota_id
@@ -687,8 +692,8 @@ class _DescargarPdfMenu extends ConsumerWidget {
    LEFT JOIN planes pl ON pl.id = ct.plan_id
        WHERE p.anulado = 0
          AND date(p.fecha_pago) BETWEEN ? AND ?
-       GROUP BY mes, plan_nombre, p.metodo
-       ORDER BY mes DESC, plan_nombre, p.metodo
+       GROUP BY mes, plan_nombre, p.metodo, p.moneda
+       ORDER BY mes DESC, plan_nombre, p.metodo, p.moneda
     ''', [rango.desdeSql, rango.hastaSql]);
 
     final now = DateTime.now();
@@ -921,6 +926,8 @@ class _DescargarPdfMenu extends ConsumerWidget {
         final rows = await ps.db.getAll('''
           SELECT p.fecha_pago, c.nombre AS cliente_nombre,
                  p.monto_cordobas AS monto, p.metodo,
+                 p.moneda, p.monto_original, p.tasa_conversion,
+                 p.vuelto_cordobas,
                  cb.nombre AS cobrador_nombre,
                  r.numero_completo AS numero_recibo,
                  SUBSTR(p.grupo_cobro, 1, 8) AS ref_grupo
@@ -935,17 +942,27 @@ class _DescargarPdfMenu extends ConsumerWidget {
         ''', [rango.desdeSql, rango.hastaSql]);
         return (
           headers: ['Fecha de cobro', 'Cliente', 'Monto cobrado (C\$)',
+                    'Moneda', 'Entregado (orig.)', 'Tasa', 'Vuelto (C\$)',
                     'Método de pago', 'Cobrador', 'Nro. de recibo',
                     'Ref. cobro múltiple'],
-          filas: rows.map((r) => <Object?>[
-            Fmt.fechaHoraNi(r['fecha_pago'] as String?),
-            r['cliente_nombre']?.toString() ?? '',
-            (r['monto'] as num?) ?? 0,
-            MetodoPago.fromString(r['metodo']?.toString() ?? '').label,
-            r['cobrador_nombre']?.toString() ?? '',
-            r['numero_recibo']?.toString() ?? '',
-            r['ref_grupo']?.toString() ?? '',
-          ]).toList(),
+          filas: rows.map((r) {
+            final esUsd = (r['moneda']?.toString() ?? 'NIO') == 'USD';
+            final vuelto = ((r['vuelto_cordobas'] as num?) ?? 0).toDouble();
+            return <Object?>[
+              Fmt.fechaHoraNi(r['fecha_pago'] as String?),
+              r['cliente_nombre']?.toString() ?? '',
+              (r['monto'] as num?) ?? 0,
+              esUsd ? 'US\$' : 'C\$',
+              (r['monto_original'] as num?) ?? 0,
+              // Tasa solo cuando es USD (en C$ siempre es 1 → ruido).
+              esUsd ? (r['tasa_conversion'] as num?) ?? '' : '',
+              vuelto > 0 ? vuelto : '',
+              MetodoPago.fromString(r['metodo']?.toString() ?? '').label,
+              r['cobrador_nombre']?.toString() ?? '',
+              r['numero_recibo']?.toString() ?? '',
+              r['ref_grupo']?.toString() ?? '',
+            ];
+          }).toList(),
         );
 
       case 'mora':
@@ -1014,8 +1031,9 @@ class _DescargarPdfMenu extends ConsumerWidget {
         final rows = await ps.db.getAll('''
           SELECT strftime('%Y-%m', p.fecha_pago) AS mes,
                  COALESCE(pl.nombre, 'Sin plan') AS plan_nombre,
-                 p.metodo,
+                 p.metodo, p.moneda,
                  COALESCE(SUM(p.monto_cordobas), 0) AS total_monto,
+                 COALESCE(SUM(p.monto_original), 0) AS total_entregado,
                  COUNT(p.id) AS cantidad
             FROM pagos p
             JOIN cuotas cu ON cu.id = p.cuota_id
@@ -1023,19 +1041,25 @@ class _DescargarPdfMenu extends ConsumerWidget {
        LEFT JOIN planes pl ON pl.id = ct.plan_id
            WHERE p.anulado = 0
              AND date(p.fecha_pago) BETWEEN ? AND ?
-           GROUP BY mes, plan_nombre, p.metodo
-           ORDER BY mes DESC, plan_nombre, p.metodo
+           GROUP BY mes, plan_nombre, p.metodo, p.moneda
+           ORDER BY mes DESC, plan_nombre, p.metodo, p.moneda
         ''', [rango.desdeSql, rango.hastaSql]);
         return (
-          headers: ['Mes', 'Plan', 'Método de pago', 'Total recaudado (C\$)',
+          headers: ['Mes', 'Plan', 'Método de pago', 'Moneda',
+                    'Total recaudado (C\$)', 'Total entregado (orig.)',
                     'Cantidad de cobros'],
-          filas: rows.map((r) => <Object?>[
-            r['mes']?.toString() ?? '',
-            r['plan_nombre']?.toString() ?? '',
-            MetodoPago.fromString(r['metodo']?.toString() ?? '').label,
-            (r['total_monto'] as num?) ?? 0,
-            (r['cantidad'] as num?) ?? 0,
-          ]).toList(),
+          filas: rows.map((r) {
+            final esUsd = (r['moneda']?.toString() ?? 'NIO') == 'USD';
+            return <Object?>[
+              r['mes']?.toString() ?? '',
+              r['plan_nombre']?.toString() ?? '',
+              MetodoPago.fromString(r['metodo']?.toString() ?? '').label,
+              esUsd ? 'US\$' : 'C\$',
+              (r['total_monto'] as num?) ?? 0,
+              (r['total_entregado'] as num?) ?? 0,
+              (r['cantidad'] as num?) ?? 0,
+            ];
+          }).toList(),
         );
 
       case 'eficiencia':

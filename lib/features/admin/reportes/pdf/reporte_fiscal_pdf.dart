@@ -22,7 +22,8 @@ Future<pw.Document> buildReporteFiscal({
   pdf.addPage(
     pw.MultiPage(
       theme: theme,
-      pageFormat: PdfPageFormat.letter,
+      // Landscape: el desglose por moneda agrega columnas.
+      pageFormat: PdfPageFormat.letter.landscape,
       margin: const pw.EdgeInsets.all(40),
       header: (context) => buildHeaderEstandar(
         empresaNombre: empresaNombre,
@@ -54,23 +55,29 @@ pw.Widget _buildTable(List<Map<String, dynamic>> rows) {
     headerAlignment: pw.Alignment.centerLeft,
     cellAlignment: pw.Alignment.centerLeft,
     columnWidths: {
-      0: const pw.FlexColumnWidth(1.2), // Mes
+      0: const pw.FlexColumnWidth(1.0), // Mes
       1: const pw.FlexColumnWidth(2.2), // Plan
-      2: const pw.FlexColumnWidth(1.5), // Método de pago
-      3: const pw.FlexColumnWidth(2),   // Total recaudado
-      4: const pw.FlexColumnWidth(1.3), // Cantidad de cobros
+      2: const pw.FlexColumnWidth(1.4), // Método de pago
+      3: const pw.FlexColumnWidth(0.8), // Moneda
+      4: const pw.FlexColumnWidth(1.6), // Total recaudado (C$)
+      5: const pw.FlexColumnWidth(1.6), // Total entregado (orig.)
+      6: const pw.FlexColumnWidth(1.2), // Cantidad de cobros
     },
-    headers: ['Mes', 'Plan', 'Método de pago', 'Total recaudado (C\$)',
+    headers: ['Mes', 'Plan', 'Método de pago', 'Moneda',
+        'Total recaudado (C\$)', 'Total entregado (orig.)',
         'Cantidad de cobros'],
     data: rows.isEmpty
-        ? [['', '', 'Sin ingresos en el periodo', '', '']]
+        ? [['', '', 'Sin ingresos en el periodo', '', '', '', '']]
         : List.generate(rows.length, (i) {
             final r = rows[i];
+            final moneda = r['moneda'] as String?;
             return [
               _mesLabel(r['mes'] as String? ?? ''),
               (r['plan_nombre'] as String?) ?? 'Sin plan',
               MetodoPago.fromString((r['metodo'] as String?) ?? '').label,
+              monedaSimbolo(moneda),
               fmtCordobas((r['total_monto'] as num?) ?? 0),
+              fmtMontoMoneda((r['total_entregado'] as num?) ?? 0, moneda),
               '${(r['cantidad'] as num?) ?? 0}',
             ];
           }),

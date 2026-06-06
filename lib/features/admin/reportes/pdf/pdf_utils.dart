@@ -23,6 +23,13 @@ final _usd = NumberFormat.currency(
 String fmtCordobas(num v) => _nio.format(v);
 String fmtDolares(num v) => _usd.format(v);
 
+/// Símbolo corto de una moneda guardada en `pagos.moneda` ('USD'/'NIO').
+String monedaSimbolo(String? moneda) => moneda == 'USD' ? 'US\$' : 'C\$';
+
+/// Formatea un monto en su moneda original ('USD' → US$, resto → C$).
+String fmtMontoMoneda(num v, String? moneda) =>
+    moneda == 'USD' ? fmtDolares(v) : fmtCordobas(v);
+
 /// Fecha corta dd/MM/yyyy en locale es_NI.
 final _fechaCorta = DateFormat('dd/MM/yyyy', 'es_NI');
 String fmtFechaCorta(DateTime d) => _fechaCorta.format(d);

@@ -20,7 +20,8 @@ Future<pw.Document> buildReportePorCobrador({
   pdf.addPage(
     pw.MultiPage(
       theme: theme,
-      pageFormat: PdfPageFormat.letter,
+      // Landscape: columnas extra de moneda/tasa/vuelto no entran en vertical.
+      pageFormat: PdfPageFormat.letter.landscape,
       header: (context) => buildHeaderEstandar(
         empresaNombre: empresaNombre,
         titulo: '$titulo — $cobradorNombre',
@@ -47,22 +48,36 @@ pw.Widget _buildTable(List<Map<String, dynamic>> rows) {
     headerAlignment: pw.Alignment.centerLeft,
     cellAlignment: pw.Alignment.centerLeft,
     columnWidths: {
-      0: const pw.FlexColumnWidth(1.5),
-      1: const pw.FlexColumnWidth(2.5),
-      2: const pw.FlexColumnWidth(1.5),
-      3: const pw.FlexColumnWidth(1.2),
-      4: const pw.FlexColumnWidth(1.3),
+      0: const pw.FlexColumnWidth(1.4), // Fecha
+      1: const pw.FlexColumnWidth(2.3), // Cliente
+      2: const pw.FlexColumnWidth(1.4), // Monto cobrado (C$)
+      3: const pw.FlexColumnWidth(0.9), // Moneda
+      4: const pw.FlexColumnWidth(1.3), // Entregado (orig.)
+      5: const pw.FlexColumnWidth(0.9), // Tasa
+      6: const pw.FlexColumnWidth(1.2), // Vuelto (C$)
+      7: const pw.FlexColumnWidth(1.2), // Método
+      8: const pw.FlexColumnWidth(1.3), // Recibo
     },
     headers: ['Fecha de cobro', 'Cliente', 'Monto cobrado (C\$)',
+        'Moneda', 'Entregado (orig.)', 'Tasa', 'Vuelto (C\$)',
         'Método de pago', 'Nro. de recibo'],
     data: rows.isEmpty
-        ? [['', 'Sin cobros en el período', '', '', '']]
+        ? [['', 'Sin cobros en el período', '', '', '', '', '', '', '']]
         : List.generate(rows.length, (i) {
             final r = rows[i];
+            final moneda = r['moneda'] as String?;
+            final esUsd = moneda == 'USD';
+            final vuelto = ((r['vuelto_cordobas'] as num?) ?? 0).toDouble();
             return [
               _formatearFecha(r['fecha_pago'] as String? ?? ''),
               (r['cliente_nombre'] as String?) ?? '—',
               fmtCordobas((r['monto'] as num?) ?? 0),
+              monedaSimbolo(moneda),
+              fmtMontoMoneda((r['monto_original'] as num?) ?? 0, moneda),
+              esUsd
+                  ? ((r['tasa_conversion'] as num?) ?? 1).toStringAsFixed(2)
+                  : '—',
+              vuelto > 0 ? fmtCordobas(vuelto) : '—',
               MetodoPago.fromString((r['metodo'] as String?) ?? '').label,
               (r['numero_recibo'] as String?) ?? '—',
             ];
