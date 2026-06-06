@@ -911,10 +911,11 @@ class _DescargarPdfMenu extends ConsumerWidget {
            ORDER BY p.fecha_pago DESC
         ''', [rango.desdeSql, rango.hastaSql]);
         return (
-          headers: ['Fecha', 'Cliente', 'Monto', 'Método', 'Cobrador',
-                    'Recibo', 'Grupo'],
+          headers: ['Fecha de cobro', 'Cliente', 'Monto cobrado (C\$)',
+                    'Método de pago', 'Cobrador', 'N° de recibo',
+                    'Ref. cobro múltiple'],
           filas: rows.map((r) => <Object?>[
-            r['fecha_pago']?.toString() ?? '',
+            Fmt.fechaHoraNi(r['fecha_pago'] as String?),
             r['cliente_nombre']?.toString() ?? '',
             (r['monto'] as num?) ?? 0,
             MetodoPago.fromString(r['metodo']?.toString() ?? '').label,
@@ -943,8 +944,8 @@ class _DescargarPdfMenu extends ConsumerWidget {
            ORDER BY dias_mora DESC
         ''', [diasGracia]);
         return (
-          headers: ['Cliente', 'Comunidad', 'Cuotas vencidas', 'Monto adeudado',
-                    'Días mora'],
+          headers: ['Cliente', 'Comunidad', 'Cuotas vencidas',
+                    'Monto adeudado (C\$)', 'Días de mora'],
           filas: rows.map((r) => <Object?>[
             r['cliente_nombre']?.toString() ?? '',
             r['comunidad']?.toString() ?? '',
@@ -972,15 +973,18 @@ class _DescargarPdfMenu extends ConsumerWidget {
            ORDER BY saldo DESC
         ''');
         return (
-          headers: ['Cliente', 'Comunidad', 'Pendientes', 'Saldo',
-                    'Último pago'],
-          filas: rows.map((r) => <Object?>[
-            r['nombre']?.toString() ?? '',
-            r['comunidad']?.toString() ?? '',
-            (r['pendientes'] as num?) ?? 0,
-            (r['saldo'] as num?) ?? 0,
-            r['ultimo_pago']?.toString() ?? 'Sin pagos',
-          ]).toList(),
+          headers: ['Cliente', 'Comunidad', 'Cuotas pendientes',
+                    'Saldo pendiente (C\$)', 'Último pago'],
+          filas: rows.map((r) {
+            final ultimoPago = r['ultimo_pago'] as String?;
+            return <Object?>[
+              r['nombre']?.toString() ?? '',
+              r['comunidad']?.toString() ?? '',
+              (r['pendientes'] as num?) ?? 0,
+              (r['saldo'] as num?) ?? 0,
+              ultimoPago == null ? 'Sin pagos' : Fmt.fechaNi(ultimoPago),
+            ];
+          }).toList(),
         );
 
       case 'fiscal':
@@ -1000,7 +1004,8 @@ class _DescargarPdfMenu extends ConsumerWidget {
            ORDER BY mes DESC, plan_nombre, p.metodo
         ''', [rango.desdeSql, rango.hastaSql]);
         return (
-          headers: ['Mes', 'Plan', 'Método', 'Monto total', 'Cantidad cobros'],
+          headers: ['Mes', 'Plan', 'Método de pago', 'Total recaudado (C\$)',
+                    'Cantidad de cobros'],
           filas: rows.map((r) => <Object?>[
             r['mes']?.toString() ?? '',
             r['plan_nombre']?.toString() ?? '',
@@ -1032,8 +1037,8 @@ class _DescargarPdfMenu extends ConsumerWidget {
            ORDER BY monto_total DESC
         ''', [rango.desdeSql, rango.hastaSql, rango.desdeSql, rango.hastaSql]);
         return (
-          headers: ['Cobrador', 'Cobros', 'Clientes visitados', 'Monto total',
-                    'Cuotas asignadas', '% Éxito'],
+          headers: ['Cobrador', 'Cobros realizados', 'Clientes cobrados',
+                    'Total recaudado (C\$)', 'Cuotas asignadas', '% de éxito'],
           filas: rows.map((r) {
             final cobros = ((r['total_cobros'] as num?) ?? 0).toInt();
             final asignadas = ((r['cuotas_asignadas'] as num?) ?? 0).toInt();
@@ -1071,14 +1076,17 @@ class _DescargarPdfMenu extends ConsumerWidget {
         ''');
         return (
           headers: ['Cliente', 'Comunidad', 'Teléfono', 'Último pago',
-                    'Días sin pago'],
-          filas: rows.map((r) => <Object?>[
-            r['nombre']?.toString() ?? '',
-            r['comunidad']?.toString() ?? '',
-            r['telefono']?.toString() ?? '',
-            r['ultimo_pago']?.toString() ?? 'Sin pagos',
-            r['dias_sin_pago'] as num?,
-          ]).toList(),
+                    'Días sin pagar'],
+          filas: rows.map((r) {
+            final ultimoPago = r['ultimo_pago'] as String?;
+            return <Object?>[
+              r['nombre']?.toString() ?? '',
+              r['comunidad']?.toString() ?? '',
+              r['telefono']?.toString() ?? '',
+              ultimoPago == null ? 'Sin pagos' : Fmt.fechaNi(ultimoPago),
+              r['dias_sin_pago'] as num?,
+            ];
+          }).toList(),
         );
 
       case 'anulaciones':
@@ -1099,10 +1107,10 @@ class _DescargarPdfMenu extends ConsumerWidget {
            ORDER BY p.anulado_en DESC, p.fecha_pago DESC
         ''', [rango.desdeSql, rango.hastaSql]);
         return (
-          headers: ['Fecha', 'Cliente', 'Monto', 'Motivo', 'Anulado por',
-                    'Recibo'],
+          headers: ['Fecha de cobro', 'Cliente', 'Monto anulado (C\$)',
+                    'Motivo de anulación', 'Anulado por', 'N° de recibo'],
           filas: rows.map((r) => <Object?>[
-            r['fecha_pago']?.toString() ?? '',
+            Fmt.fechaHoraNi(r['fecha_pago'] as String?),
             r['cliente_nombre']?.toString() ?? '',
             (r['monto'] as num?) ?? 0,
             r['motivo_anulacion']?.toString() ?? 'Sin motivo',
@@ -1118,9 +1126,10 @@ class _DescargarPdfMenu extends ConsumerWidget {
         ]);
         return (
           headers: [
-            'Cobrador', 'Total cobros', 'Efectivo USD', 'Efectivo C\$',
-            'Vuelto C\$', 'Efectivo neto C\$', 'Transferencia', 'Depósito',
-            'Tarjeta', 'Equivalente total C\$', 'Ingreso total',
+            'Cobrador', 'Total de cobros', 'Efectivo (US\$)', 'Efectivo (C\$)',
+            'Vuelto (C\$)', 'Efectivo neto (C\$)', 'Transferencia (C\$)',
+            'Depósito (C\$)', 'Tarjeta (C\$)', 'Equivalente total (C\$)',
+            'Ingreso total (C\$)',
           ],
           filas: rows.map((r) {
             double d(String k) => ((r[k] as num?) ?? 0).toDouble();

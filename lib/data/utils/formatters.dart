@@ -18,6 +18,7 @@ class Fmt {
   static final _mes = DateFormat('MMMM y', 'es_NI');
   static final _diaSemana = DateFormat('EEEE', 'es_NI');
   static final _hora = DateFormat('HH:mm', 'es_NI');
+  static final _fechaHora = DateFormat('dd/MM/yyyy HH:mm', 'es_NI');
 
   static String cordobas(num v) => _nio.format(v);
   static String dolares(num v) => _usd.format(v);
@@ -30,6 +31,24 @@ class Fmt {
   static String diaSemana(DateTime d) =>
       _diaSemana.format(d)[0].toUpperCase() + _diaSemana.format(d).substring(1);
   static String hora(DateTime d) => _hora.format(d);
+
+  /// Convierte un timestamp ISO de la DB (UTC, con `Z`) a hora de Nicaragua
+  /// (UTC-6, sin DST) y lo formatea. Para reportes/exports donde la fila trae
+  /// el string crudo de SQLite y no un DateTime. Si no parsea, devuelve el raw.
+  static String fechaHoraNi(String? iso) {
+    if (iso == null || iso.isEmpty) return '';
+    final dt = DateTime.tryParse(iso);
+    if (dt == null) return iso;
+    return _fechaHora.format(dt.toUtc().subtract(const Duration(hours: 6)));
+  }
+
+  /// Igual que [fechaHoraNi] pero solo la fecha (dd/MM/yyyy), hora Nicaragua.
+  static String fechaNi(String? iso) {
+    if (iso == null || iso.isEmpty) return '';
+    final dt = DateTime.tryParse(iso);
+    if (dt == null) return iso;
+    return _fechaCorta.format(dt.toUtc().subtract(const Duration(hours: 6)));
+  }
 
   static String fechaRelativa(DateTime d, [DateTime? hoy]) {
     final ref = hoy ?? DateTime.now();
