@@ -10,7 +10,7 @@
 ## Estado actual
 
 - **Branch de trabajo:** `claude/stoic-tesla-cGkJ6`
-- **Último commit:** `68577f9` — Dashboard sin acciones rápidas + transición fade secuencial
+- **Último commit:** `ee89980` — Router: fade secuencial a nivel de página (arregla overlap)
 - **Schema PowerSync:** `_schemaVersion = 16` (`lib/powersync/db.dart`). Sin cambios de DB pendientes.
 - **Plataformas target:** Android + Windows (web degrada sin romper, NO es target).
 - **App version:** v0.9.0 (ver `RELEASE.md`).
@@ -22,7 +22,11 @@ Lote UX/reportes, **sin migraciones**, auditado (3 agentes, 0 bloqueantes):
    Entregado (orig.) / Tasa / Vuelto. Recaudado sigue = `monto_cordobas`. PDFs en landscape.
 2. **Impresora del sistema en PC** (recibo, solo desktop): `Printing.layoutPdf`.
 3. **Búsqueda multi-campo en el mapa**: nombre/cédula/teléfono/código cliente/código contrato.
-4. **Transición fade secuencial** entre vistas (`_ShellFade` en `router.dart`).
+4. **Transición fade secuencial** entre vistas. OJO: primer intento con
+   `AnimatedSwitcher`/`_ShellFade` (body wrapper) **fallaba** — el Navigator
+   interno del ShellRoute hacía su propia transición y se veían 2 pantallas
+   encimadas. Fix final (`ee89980`): transición **por ruta** (`pageBuilder` +
+   `CustomTransitionPage` con curva `Interval(0.5,1.0)`) → `_fadePage` en `router.dart`.
 5. **Dashboard** sin card "Acciones rápidas".
 
 Detalle completo → `REPORTE-SESION.md` (entrada 2026-06-06 cont.).
