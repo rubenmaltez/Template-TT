@@ -264,46 +264,53 @@ class _AccionesImpresion extends ConsumerStatefulWidget {
 class _AccionesImpresionState extends ConsumerState<_AccionesImpresion> {
   bool _imprimiendo = false;
   bool _descargandoPdf = false;
+  bool _imprimiendoSistema = false;
+
+  /// Construye los bytes del PDF del recibo + un filename legible. Lo COMPARTEN
+  /// "Descargar PDF" (web) e "Imprimir en impresora del sistema" (desktop), así
+  /// la lógica de logo/mora no se duplica.
+  Future<({Uint8List bytes, String filename})> _generarReciboPdf() async {
+    // Logo del PDF (best-effort): bytes del provider offline-first (cache +
+    // fallback red). Si no hay, el PDF se genera sin logo — no rompemos por un
+    // error de red en una imagen. Solo si el bloque `logo` está visible.
+    final logoVisible = widget.settings.reciboLayout
+        .any((b) => b.id == 'logo' && b.visible);
+    final logoBytes = logoVisible
+        ? ref.read(logoEmpresaBytesProvider).valueOrNull
+        : null;
+
+    // Detalle de mora del contrato para el bloque `mora` del PDF. Single:
+    // excluir la cuota cobrada. Multi: excluir TODAS las del grupo. Cuota
+    // manual (contrato_id null) → mora vacía.
+    final multiRows = widget.multiRows;
+    final contratoId = (multiRows != null ? multiRows.first : widget.recibo)[
+        'contrato_id'] as String?;
+    final excluir = (multiRows != null
+            ? multiRows.map((r) => r['cuota_id'])
+            : [widget.recibo['cuota_id']])
+        .whereType<Object>()
+        .toSet();
+    final moraRows = contratoId == null
+        ? const <Map<String, dynamic>>[]
+        : (await fetchMoraContrato(contratoId, widget.settings.diasGracia))
+            .where((m) => !excluir.contains(m['cuota_id']))
+            .toList();
+
+    final doc = await _construirReciboDoc(
+        logoBytes: logoBytes, moraRows: moraRows);
+    final bytes = await doc.save();
+    final numero =
+        (widget.recibo['numero_completo'] as String?) ?? widget.reciboId;
+    final filename =
+        'recibo_${numero.replaceAll(RegExp(r'[^A-Za-z0-9_-]'), '_')}.pdf';
+    return (bytes: bytes, filename: filename);
+  }
 
   Future<void> _descargarPdf() async {
     setState(() => _descargandoPdf = true);
     try {
-      // Logo del PDF (best-effort): bytes del provider offline-first (cache +
-      // fallback red). Si no hay, el PDF se genera sin logo — no rompemos la
-      // descarga por un error de red en una imagen. Solo si el bloque `logo`
-      // está visible en el layout (paridad con preview/térmica).
-      final logoVisible = widget.settings.reciboLayout
-          .any((b) => b.id == 'logo' && b.visible);
-      final logoBytes = logoVisible
-          ? ref.read(logoEmpresaBytesProvider).valueOrNull
-          : null;
-
-      // Detalle de mora del contrato para el bloque `mora` del PDF. El PDF no
-      // tiene `ref` ni hace IO, así que la mora se calcula acá (mismo
-      // `fetchMoraContrato` que el provider de pantalla) y se pasa hecha.
-      // Single: excluir la cuota cobrada. Multi: excluir TODAS las del grupo.
-      // Cuota manual (contrato_id null) → mora vacía.
-      final multiRows = widget.multiRows;
-      final contratoId = (multiRows != null ? multiRows.first : widget.recibo)[
-          'contrato_id'] as String?;
-      final excluir = (multiRows != null
-              ? multiRows.map((r) => r['cuota_id'])
-              : [widget.recibo['cuota_id']])
-          .whereType<Object>()
-          .toSet();
-      final moraRows = contratoId == null
-          ? const <Map<String, dynamic>>[]
-          : (await fetchMoraContrato(contratoId, widget.settings.diasGracia))
-              .where((m) => !excluir.contains(m['cuota_id']))
-              .toList();
-
-      final doc = await _construirReciboDoc(
-          logoBytes: logoBytes, moraRows: moraRows);
-      final bytes = await doc.save();
-      final numero = (widget.recibo['numero_completo'] as String?) ?? widget.reciboId;
-      final filename =
-          'recibo_${numero.replaceAll(RegExp(r'[^A-Za-z0-9_-]'), '_')}.pdf';
-      await Printing.sharePdf(bytes: bytes, filename: filename);
+      final pdf = await _generarReciboPdf();
+      await Printing.sharePdf(bytes: pdf.bytes, filename: pdf.filename);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('PDF generado')),
@@ -317,6 +324,29 @@ class _AccionesImpresionState extends ConsumerState<_AccionesImpresion> {
       }
     } finally {
       if (mounted) setState(() => _descargandoPdf = false);
+    }
+  }
+
+  /// Imprime el recibo en una impresora del SISTEMA (USB/cableada/red) vía el
+  /// diálogo nativo de Windows. Pensado para admins en PC con impresora térmica
+  /// USB (alternativa a la Bluetooth de campo). El PDF usa el mismo ancho de
+  /// rollo (58/80mm) configurado, así que sirve para la térmica USB.
+  Future<void> _imprimirSistema() async {
+    setState(() => _imprimiendoSistema = true);
+    try {
+      final pdf = await _generarReciboPdf();
+      await Printing.layoutPdf(
+        onLayout: (_) async => pdf.bytes,
+        name: pdf.filename,
+      );
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error al imprimir: $e')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _imprimiendoSistema = false);
     }
   }
 
@@ -505,6 +535,12 @@ class _AccionesImpresionState extends ConsumerState<_AccionesImpresion> {
   Widget build(BuildContext context) {
     final fav = ref.watch(impresoraFavoritaProvider).valueOrNull;
     final puedeImprimir = !kIsWeb;
+    // Desktop (PC): habilitar impresión por impresora del sistema (USB/cableada
+    // /red), además de la Bluetooth. Pensado para admins en Windows.
+    final esDesktop = !kIsWeb &&
+        (defaultTargetPlatform == TargetPlatform.windows ||
+            defaultTargetPlatform == TargetPlatform.linux ||
+            defaultTargetPlatform == TargetPlatform.macOS);
     return Column(
       children: [
         // Impresión Bluetooth térmica: solo mobile. En web se usa el PDF.
@@ -521,6 +557,22 @@ class _AccionesImpresionState extends ConsumerState<_AccionesImpresion> {
                 : 'Imprimir ${widget.settings.formatoReciboMm}mm'),
             onPressed: _imprimiendo || !puedeImprimir ? null : _imprimir,
           ),
+        // Impresión por impresora del sistema (cableada/USB/red) — solo desktop.
+        if (esDesktop) ...[
+          const SizedBox(height: 8),
+          FilledButton.tonalIcon(
+            icon: _imprimiendoSistema
+                ? const SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2))
+                : const Icon(Icons.print_outlined),
+            label: Text(_imprimiendoSistema
+                ? 'Abriendo impresora...'
+                : 'Imprimir en impresora del sistema'),
+            onPressed: _imprimiendoSistema ? null : _imprimirSistema,
+          ),
+        ],
         // PDF download — solo visible en web. En mobile usan la impresora
         // Bluetooth térmica, así que el PDF no aporta nada.
         if (kIsWeb) ...[
