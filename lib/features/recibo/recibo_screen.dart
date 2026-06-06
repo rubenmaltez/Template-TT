@@ -560,17 +560,22 @@ class _AccionesImpresionState extends ConsumerState<_AccionesImpresion> {
         // Impresión por impresora del sistema (cableada/USB/red) — solo desktop.
         if (esDesktop) ...[
           const SizedBox(height: 8),
-          FilledButton.tonalIcon(
-            icon: _imprimiendoSistema
-                ? const SizedBox(
-                    width: 18,
-                    height: 18,
-                    child: CircularProgressIndicator(strokeWidth: 2))
-                : const Icon(Icons.print_outlined),
-            label: Text(_imprimiendoSistema
-                ? 'Abriendo impresora...'
-                : 'Imprimir en impresora del sistema'),
-            onPressed: _imprimiendoSistema ? null : _imprimirSistema,
+          Tooltip(
+            message:
+                'Abre el diálogo de Windows. Usa el ancho de rollo ${widget.settings.formatoReciboMm}mm: '
+                'pensado para impresora térmica USB/cableada.',
+            child: FilledButton.tonalIcon(
+              icon: _imprimiendoSistema
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2))
+                  : const Icon(Icons.print_outlined),
+              label: Text(_imprimiendoSistema
+                  ? 'Abriendo impresora...'
+                  : 'Imprimir en impresora del sistema'),
+              onPressed: _imprimiendoSistema ? null : _imprimirSistema,
+            ),
           ),
         ],
         // PDF download — solo visible en web. En mobile usan la impresora

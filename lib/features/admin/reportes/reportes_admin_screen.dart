@@ -1056,7 +1056,9 @@ class _DescargarPdfMenu extends ConsumerWidget {
               MetodoPago.fromString(r['metodo']?.toString() ?? '').label,
               esUsd ? 'US\$' : 'C\$',
               (r['total_monto'] as num?) ?? 0,
-              (r['total_entregado'] as num?) ?? 0,
+              // "Entregado (orig.)" solo aporta en USD (dólares físicos que
+              // entran). En C$ sería recaudado+vuelto → confunde; va vacío.
+              esUsd ? (r['total_entregado'] as num?) ?? 0 : '',
               (r['cantidad'] as num?) ?? 0,
             ];
           }).toList(),

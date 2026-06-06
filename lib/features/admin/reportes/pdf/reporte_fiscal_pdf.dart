@@ -71,13 +71,16 @@ pw.Widget _buildTable(List<Map<String, dynamic>> rows) {
         : List.generate(rows.length, (i) {
             final r = rows[i];
             final moneda = r['moneda'] as String?;
+            final esUsd = moneda == 'USD';
             return [
               _mesLabel(r['mes'] as String? ?? ''),
               (r['plan_nombre'] as String?) ?? 'Sin plan',
               MetodoPago.fromString((r['metodo'] as String?) ?? '').label,
               monedaSimbolo(moneda),
               fmtCordobas((r['total_monto'] as num?) ?? 0),
-              fmtMontoMoneda((r['total_entregado'] as num?) ?? 0, moneda),
+              // "Entregado (orig.)" solo en USD (dólares físicos). En C$ sería
+              // recaudado+vuelto → confunde; va '—'.
+              esUsd ? fmtDolares((r['total_entregado'] as num?) ?? 0) : '—',
               '${(r['cantidad'] as num?) ?? 0}',
             ];
           }),
