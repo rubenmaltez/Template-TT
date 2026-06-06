@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../../data/providers/cobrador_provider.dart';
+import '../../../data/providers/cuotas_filtro_provider.dart';
 import '../../../data/repositories/settings_repo.dart';
 import '../../../data/utils/formatters.dart';
 import '../../../powersync/db.dart' as ps;
@@ -126,6 +127,25 @@ class _CuotasAdminScreenState extends ConsumerState<CuotasAdminScreen> {
     final cuotasManuales = settings.cuotasManuales;
     final cuotasEditarMonto = settings.cuotasEditarMonto;
 
+    // El chip "Parcial" se muestra si el tenant permite pago parcial O si ya
+    // existen cuotas parciales (históricas). Si queda oculto y estaba
+    // seleccionado, se vuelve a 'todas'.
+    final mostrarParcial = settings.pagoParcialPermitido ||
+        (ref.watch(hayCuotasParcialesProvider).valueOrNull ?? false);
+    if (!mostrarParcial && _estado == 'parcial') {
+      _estado = 'todas';
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) setState(() => _cuotasStream = _buildStream());
+      });
+    }
+    final estadosFiltro = [
+      'todas',
+      'pendiente',
+      if (mostrarParcial) 'parcial',
+      'pagada',
+      'anulada',
+    ];
+
     return Stack(
       children: [
         Column(
@@ -159,7 +179,7 @@ class _CuotasAdminScreenState extends ConsumerState<CuotasAdminScreen> {
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
               child: Row(
                 children: [
-                  for (final e in ['todas', 'pendiente', 'parcial', 'pagada', 'anulada']) ...[
+                  for (final e in estadosFiltro) ...[
                     ChoiceChip(
                       label: Text(e[0].toUpperCase() + e.substring(1)),
                       selected: _estado == e,

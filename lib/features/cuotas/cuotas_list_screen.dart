@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../data/providers/cobrador_provider.dart';
+import '../../data/providers/cuotas_filtro_provider.dart';
 import '../../data/repositories/settings_repo.dart';
 import '../../data/utils/formatters.dart';
 import '../../powersync/db.dart' as ps;
@@ -230,6 +231,15 @@ class _CuotasListScreenState extends ConsumerState<CuotasListScreen>
     final multiCuotaEnabled = settings.pagoAdelantadoPermitido;
     final scheme = Theme.of(context).colorScheme;
 
+    // El filtro "Parciales" se muestra si el tenant permite pago parcial O si ya
+    // hay cuotas parciales (históricas). Si queda oculto y estaba activo, se
+    // vuelve a 'todas'.
+    final mostrarParcial = settings.pagoParcialPermitido ||
+        (ref.watch(hayCuotasParcialesProvider).valueOrNull ?? false);
+    if (!mostrarParcial && _filtro == _Filtro.parciales) {
+      _filtro = _Filtro.todas;
+    }
+
     return Stack(
       children: [
         Column(
@@ -262,6 +272,7 @@ class _CuotasListScreenState extends ConsumerState<CuotasListScreen>
                   // Tab B: Por cobrar (con filtros + multi-select)
                   _TabPorCobrar(
                     filtro: _filtro,
+                    mostrarParcial: mostrarParcial,
                     diasGracia: diasGracia,
                     diasVisibles: diasVisibles,
                     multiSelect: multiCuotaEnabled,
@@ -320,6 +331,7 @@ class _CuotasListScreenState extends ConsumerState<CuotasListScreen>
 class _TabPorCobrar extends StatelessWidget {
   const _TabPorCobrar({
     required this.filtro,
+    required this.mostrarParcial,
     required this.diasGracia,
     required this.diasVisibles,
     required this.multiSelect,
@@ -331,6 +343,7 @@ class _TabPorCobrar extends StatelessWidget {
     this.comunidadId,
   });
   final _Filtro filtro;
+  final bool mostrarParcial;
   final int diasGracia;
   final int diasVisibles;
   final bool multiSelect;
@@ -351,14 +364,15 @@ class _TabPorCobrar extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
           child: Row(
             children: [
-              for (final f in _Filtro.values) ...[
-                FilterChip(
-                  label: Text(_label(f)),
-                  selected: filtro == f,
-                  onSelected: (_) => onFiltroChanged(f),
-                ),
-                const SizedBox(width: 8),
-              ],
+              for (final f in _Filtro.values)
+                if (mostrarParcial || f != _Filtro.parciales) ...[
+                  FilterChip(
+                    label: Text(_label(f)),
+                    selected: filtro == f,
+                    onSelected: (_) => onFiltroChanged(f),
+                  ),
+                  const SizedBox(width: 8),
+                ],
             ],
           ),
         ),
