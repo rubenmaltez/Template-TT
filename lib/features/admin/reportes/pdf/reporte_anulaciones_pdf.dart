@@ -134,6 +134,7 @@ pw.Widget _buildResumen(List<Map<String, dynamic>> rows) {
 String _formatearFecha(String raw) {
   final dt = DateTime.tryParse(raw);
   if (dt == null) return raw;
-  // Hora de Nicaragua (UTC-6) para que el día coincida con el Excel.
-  return fmtFechaCorta(dt.toUtc().subtract(const Duration(hours: 6)));
+  // fecha_pago es hora local Nicaragua (wall-clock): formatear directo, sin
+  // shift de TZ. Coincide con el recibo y con el bucket date(fecha_pago).
+  return fmtFechaCorta(dt);
 }

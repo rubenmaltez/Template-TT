@@ -32,22 +32,25 @@ class Fmt {
       _diaSemana.format(d)[0].toUpperCase() + _diaSemana.format(d).substring(1);
   static String hora(DateTime d) => _hora.format(d);
 
-  /// Convierte un timestamp ISO de la DB (UTC, con `Z`) a hora de Nicaragua
-  /// (UTC-6, sin DST) y lo formatea. Para reportes/exports donde la fila trae
-  /// el string crudo de SQLite y no un DateTime. Si no parsea, devuelve el raw.
+  /// Formatea un timestamp `fecha_pago` (string crudo de SQLite) a
+  /// dd/MM/yyyy HH:mm. `fecha_pago` se guarda como hora LOCAL de Nicaragua
+  /// (wall-clock, sin `Z`), así que se formatea DIRECTO: `DateTime.parse` toma
+  /// los campos tal cual del string en cualquier dispositivo, sin shift de TZ.
+  /// Coincide con cómo el recibo muestra la misma fecha y con cómo los reportes
+  /// la agrupan (`date(fecha_pago)` crudo). Si no parsea, devuelve el raw.
   static String fechaHoraNi(String? iso) {
     if (iso == null || iso.isEmpty) return '';
     final dt = DateTime.tryParse(iso);
     if (dt == null) return iso;
-    return _fechaHora.format(dt.toUtc().subtract(const Duration(hours: 6)));
+    return _fechaHora.format(dt);
   }
 
-  /// Igual que [fechaHoraNi] pero solo la fecha (dd/MM/yyyy), hora Nicaragua.
+  /// Igual que [fechaHoraNi] pero solo la fecha (dd/MM/yyyy).
   static String fechaNi(String? iso) {
     if (iso == null || iso.isEmpty) return '';
     final dt = DateTime.tryParse(iso);
     if (dt == null) return iso;
-    return _fechaCorta.format(dt.toUtc().subtract(const Duration(hours: 6)));
+    return _fechaCorta.format(dt);
   }
 
   static String fechaRelativa(DateTime d, [DateTime? hoy]) {
