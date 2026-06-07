@@ -521,6 +521,7 @@ class _ClienteFormScreenState extends ConsumerState<ClienteFormScreen> {
             titulo: 'Conexión de red (opcional)',
             children: [
               RedPicker(
+                tenantId: ref.read(tenantIdProvider) ?? '',
                 puertoId: _puertoId,
                 onChanged: (id) => setState(() {
                   _puertoId = id;

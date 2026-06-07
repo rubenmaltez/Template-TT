@@ -7,7 +7,13 @@ import '../../../../powersync/db.dart' as ps;
 /// el admin en `/admin/red`; acá no se crea inline). El Hub y el Nodo se
 /// derivan del Puerto elegido. Asignación opcional en el cliente.
 class RedPicker extends StatefulWidget {
-  const RedPicker({super.key, required this.puertoId, required this.onChanged});
+  const RedPicker({
+    super.key,
+    required this.tenantId,
+    required this.puertoId,
+    required this.onChanged,
+  });
+  final String tenantId;
   final String? puertoId;
   final ValueChanged<String?> onChanged;
 
@@ -41,8 +47,14 @@ class _RedPickerState extends State<RedPicker> {
   @override
   void initState() {
     super.initState();
-    _nodosStream =
-        ps.db.watch('SELECT id, nombre FROM red_nodos ORDER BY nombre');
+    // Filtro por tenant (F1): igual que geo_picker — la red está en
+    // catalogo_tenant, así que la SQLite del super_admin impersonando tiene los
+    // nodos de System + del impersonado; sin el WHERE el dropdown daría la unión.
+    // Hub/Puerto ya filtran por FK del padre.
+    _nodosStream = ps.db.watch(
+      'SELECT id, nombre FROM red_nodos WHERE tenant_id = ? ORDER BY nombre',
+      parameters: [widget.tenantId],
+    );
     _puertoId = widget.puertoId;
     _resolverCascada();
   }

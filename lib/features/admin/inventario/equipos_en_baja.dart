@@ -116,7 +116,8 @@ Future<void> _aplicarATodos(
              VALUES (?, ?, 'baja', ?, ?, 1, ?, ?, ?, ?, ?)''',
           [
             const Uuid().v4(), tenantId, cur['producto_id'], e['id'],
-            cur['cliente_id'], 'Retiro por baja del $tipo', hechoPor, now, now,
+            cur['cliente_id'], 'Retirado al dar de baja el servicio',
+            hechoPor, now, now,
           ],
         );
       }

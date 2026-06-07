@@ -52,8 +52,12 @@ class _GeoPickerState extends State<GeoPicker> {
   @override
   void initState() {
     super.initState();
+    // Filtro por tenant (F1): la SQLite del super_admin impersonando tiene la geo
+    // de System (vía catalogo_tenant) + la del tenant impersonado → sin el WHERE
+    // el dropdown raíz daría la unión. Los hijos (muni/comunidad) ya filtran por FK.
     _deptosStream = ps.db.watch(
-      'SELECT id, nombre FROM departamentos ORDER BY nombre',
+      'SELECT id, nombre FROM departamentos WHERE tenant_id = ? ORDER BY nombre',
+      parameters: [widget.tenantId],
     );
     _comId = widget.comunidadId;
     _resolverCascada();
