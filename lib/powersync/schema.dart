@@ -268,6 +268,23 @@ const schema = Schema([
     Index('by_serial', [IndexedColumn('serial_id')]),
   ]),
 
+  // Incidentes / outages (Fase 3D). Alcance por nodo/hub/puerto o general.
+  Table('incidentes', [
+    Column.text('tenant_id'),
+    Column.text('titulo'),
+    Column.text('descripcion'),
+    Column.text('nodo_id'),
+    Column.text('hub_id'),
+    Column.text('puerto_id'),
+    Column.text('estado'),
+    Column.text('inicio'),
+    Column.text('fin'),
+    Column.text('created_at'),
+    Column.text('ocurrido_en'),
+  ], indexes: [
+    Index('by_tenant', [IndexedColumn('tenant_id'), IndexedColumn('estado')]),
+  ]),
+
   // ── Catálogo del tenant ───────────────────────────────────────────────────
   Table('planes', [
     Column.text('tenant_id'),

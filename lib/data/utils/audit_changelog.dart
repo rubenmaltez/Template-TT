@@ -118,6 +118,8 @@ const Map<String, Set<String>> kAuditCamposVisiblesDefault = {
   // ticket_materiales (Fase 3C): producto/serial son FK; cantidad es el dato
   // legible. El evento se rotula "Consumido en ticket" en HistorialSerialWidget.
   'ticket_materiales': {'cantidad'},
+  // incidentes (Fase 3D): nodo/hub/puerto son FK; el alcance lo narra la UI.
+  'incidentes': {'titulo', 'descripcion', 'estado'},
 };
 
 // ---------------------------------------------------------------------------
@@ -241,6 +243,7 @@ const Map<String, List<String>> kAuditCamposCatalogo = {
   'ticket_eventos': ['tipo_evento', 'comentario', 'estado_nuevo'],
   'ticket_adjuntos': ['descripcion'],
   'ticket_materiales': ['cantidad'],
+  'incidentes': ['titulo', 'descripcion', 'estado'],
 };
 
 // Label humano por entidad (para los títulos de las secciones del panel).
@@ -271,6 +274,7 @@ const Map<String, String> kAuditEntidadLabel = {
   'ticket_eventos': 'Eventos de ticket',
   'ticket_adjuntos': 'Adjuntos de ticket',
   'ticket_materiales': 'Materiales de ticket',
+  'incidentes': 'Incidentes',
 };
 
 // Columnas computadas / auto que se omiten en cualquier snapshot, además del
@@ -520,6 +524,9 @@ String _fmtField(String key, dynamic v, {String? tabla, AuditLookups? lookups}) 
   if (tabla == 'ticket_eventos' && key == 'tipo_evento' &&
       v is String && v.isNotEmpty) {
     return _tipoEventoTicketLabel(v);
+  }
+  if (tabla == 'incidentes' && key == 'estado' && v is String && v.isNotEmpty) {
+    return v == 'abierto' ? 'Abierto' : (v == 'resuelto' ? 'Resuelto' : v);
   }
   // Enums: mostrar el label humano que usa el resto de la app, no el slug.
   if (key == 'metodo' && v is String && v.isNotEmpty) {
