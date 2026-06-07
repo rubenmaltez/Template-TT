@@ -83,6 +83,54 @@ const schema = Schema([
     Index('by_hub', [IndexedColumn('tenant_id'), IndexedColumn('hub_id')]),
   ]),
 
+  // ── Feature flags por tenant (read-only en la app; los togglea el
+  //    super_admin vía RPC). Gatea módulos opcionales como Inventario. ───────
+  Table('tenant_modulos', [
+    Column.text('tenant_id'),
+    Column.text('modulo_codigo'),
+    Column.integer('habilitado'),
+  ], indexes: [
+    Index('by_tenant', [IndexedColumn('tenant_id')]),
+  ]),
+
+  // ── Inventario (módulo opcional, migración 0099). Per-tenant. ─────────────
+  Table('inv_categorias', [
+    Column.text('tenant_id'),
+    Column.text('nombre'),
+    Column.integer('orden'),
+    Column.integer('activo'),
+    Column.text('created_at'),
+  ], indexes: [
+    Index('by_tenant', [IndexedColumn('tenant_id')]),
+  ]),
+
+  Table('inv_proveedores', [
+    Column.text('tenant_id'),
+    Column.text('nombre'),
+    Column.text('telefono'),
+    Column.text('notas'),
+    Column.integer('activo'),
+    Column.text('created_at'),
+  ], indexes: [
+    Index('by_tenant', [IndexedColumn('tenant_id')]),
+  ]),
+
+  Table('inv_productos', [
+    Column.text('tenant_id'),
+    Column.text('categoria_id'),
+    Column.text('codigo'),
+    Column.text('nombre'),
+    Column.integer('es_serializado'),
+    Column.text('unidad'),
+    Column.integer('maneja_decimal'),
+    Column.real('costo_promedio'),
+    Column.integer('activo'),
+    Column.text('created_at'),
+  ], indexes: [
+    Index('by_categoria',
+        [IndexedColumn('tenant_id'), IndexedColumn('categoria_id')]),
+  ]),
+
   // ── Catálogo del tenant ───────────────────────────────────────────────────
   Table('planes', [
     Column.text('tenant_id'),

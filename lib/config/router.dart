@@ -14,6 +14,7 @@ import '../features/contratos/contrato_detail_screen.dart';
 import '../features/admin/cuotas/cuotas_admin_screen.dart';
 import '../features/admin/dashboard/dashboard_admin_screen.dart';
 import '../features/admin/geografia/geografia_admin_screen.dart';
+import '../features/admin/inventario/inventario_screen.dart';
 import '../features/admin/red/red_admin_screen.dart';
 import '../features/admin/notificaciones/notificaciones_mora_screen.dart';
 import '../features/admin/pagos/pagos_admin_screen.dart';
@@ -250,6 +251,7 @@ final routerProvider = Provider<GoRouter>((ref) {
         '/admin/audit',
         '/admin/geografia',
         '/admin/red',
+        '/admin/inventario',
         '/admin/settings',
         '/admin/planes',
         '/admin/pagos',
@@ -357,6 +359,8 @@ final routerProvider = Provider<GoRouter>((ref) {
               pageBuilder: (_, s) => _fadePage(s, _titled('Geografía', const GeografiaAdminScreen()))),
           GoRoute(path: '/admin/red',
               pageBuilder: (_, s) => _fadePage(s, _titled('Topología de red', const RedAdminScreen()))),
+          GoRoute(path: '/admin/inventario',
+              pageBuilder: (_, s) => _fadePage(s, _titled('Inventario', const InventarioScreen()))),
           GoRoute(path: '/admin/settings',
               pageBuilder: (_, s) => _fadePage(s, _titled('Configuración', const SettingsAdminScreen()))),
           GoRoute(path: '/admin/settings/historial-campos',

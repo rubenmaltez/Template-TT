@@ -98,6 +98,12 @@ const Map<String, Set<String>> kAuditCamposVisiblesDefault = {
   'red_nodos': {'nombre', 'codigo', 'tipo', 'notas', 'activo'},
   'red_hubs': {'nombre', 'codigo', 'nodo_id', 'notas', 'activo'},
   'red_puertos': {'nombre', 'codigo', 'hub_id', 'notas', 'activo'},
+  // Inventario (módulo opcional, 0099).
+  'inv_categorias': {'nombre', 'orden', 'activo'},
+  'inv_proveedores': {'nombre', 'telefono', 'notas', 'activo'},
+  'inv_productos': {
+    'nombre', 'codigo', 'es_serializado', 'unidad', 'maneja_decimal', 'activo',
+  },
 };
 
 // ---------------------------------------------------------------------------
@@ -208,6 +214,11 @@ const Map<String, List<String>> kAuditCamposCatalogo = {
   'red_nodos': ['nombre', 'codigo', 'tipo', 'notas', 'activo'],
   'red_hubs': ['nombre', 'codigo', 'nodo_id', 'notas', 'activo'],
   'red_puertos': ['nombre', 'codigo', 'hub_id', 'notas', 'activo'],
+  'inv_categorias': ['nombre', 'orden', 'activo'],
+  'inv_proveedores': ['nombre', 'telefono', 'notas', 'activo'],
+  'inv_productos': [
+    'nombre', 'codigo', 'es_serializado', 'unidad', 'maneja_decimal', 'activo',
+  ],
 };
 
 // Label humano por entidad (para los títulos de las secciones del panel).
@@ -227,6 +238,9 @@ const Map<String, String> kAuditEntidadLabel = {
   'red_nodos': 'Nodos de red',
   'red_hubs': 'Hubs de red',
   'red_puertos': 'Puertos de red',
+  'inv_categorias': 'Categorías de inventario',
+  'inv_proveedores': 'Proveedores',
+  'inv_productos': 'Productos',
 };
 
 // Columnas computadas / auto que se omiten en cualquier snapshot, además del

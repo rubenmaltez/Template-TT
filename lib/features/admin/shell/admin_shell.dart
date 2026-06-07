@@ -6,6 +6,7 @@ import '../../../config/router.dart';
 import '../../../data/providers/cobrador_provider.dart';
 import '../../../data/providers/crud_error_provider.dart';
 import '../../../data/providers/impersonation_provider.dart';
+import '../../../data/providers/modulos_provider.dart';
 import '../../../data/providers/sync_status_provider.dart';
 import '../../../data/repositories/settings_repo.dart';
 import '../../shared/widgets/app_version_label.dart';
@@ -284,6 +285,10 @@ const _adminMenu = [
       adminOnly: true, settingKey: 'cobranza.pantalla_pagos'),
   _MenuItem(Icons.notifications_active, 'Notificaciones', '/admin/notificaciones',
       adminOnly: true, settingKey: 'cobranza.pantalla_notificaciones'),
+  // Módulo opcional Inventario: aparece solo si el super_admin lo habilitó
+  // para el tenant (tenant_modulos 'inventario'). adminOnly.
+  _MenuItem(Icons.inventory_2, 'Inventario', '/admin/inventario',
+      adminOnly: true, moduloKey: 'inventario'),
   _MenuItem(Icons.bar_chart, 'Reportes', '/admin/reportes'),
   _MenuItem(Icons.map, 'Mapa', '/admin/mapa'),
   _MenuItem(Icons.settings, 'Configuración', '/admin/settings', adminOnly: true),
@@ -298,6 +303,7 @@ class _MenuItem {
     this.adminOnly = false,
     this.superAdminOnly = false,
     this.settingKey,
+    this.moduloKey,
     this.children = const [],
   });
   final IconData icon;
@@ -308,6 +314,11 @@ class _MenuItem {
   // Si está seteado, el item solo se muestra cuando ese setting booleano está
   // en ON (pantallas opcionales que habilita el super_admin por tenant).
   final String? settingKey;
+  // Si está seteado, el item solo se muestra cuando el tenant tiene ese módulo
+  // habilitado (tenant_modulos). Ej: 'inventario'. A diferencia de settingKey,
+  // NO lo bypassa el super_admin: si el (sub)tenant no tiene el módulo, no se ve
+  // (el super_admin lo habilita en /super/tenants/:id y entonces aparece).
+  final String? moduloKey;
   final List<_MenuItem> children;
 }
 
@@ -317,6 +328,7 @@ bool _menuVisible(
   required bool tieneAccesoAdmin,
   bool impersonating = false,
   Set<String> pantallasOn = const {},
+  Set<String> modulosOn = const {},
 }) {
   // Pantallas/opciones gateadas por un setting per-tenant (las habilita el
   // super_admin). El super_admin las ve SIEMPRE (acceso total al panel del
@@ -325,6 +337,12 @@ bool _menuVisible(
   if (m.settingKey != null &&
       !esSuperAdmin &&
       !pantallasOn.contains(m.settingKey)) {
+    return false;
+  }
+  // Módulo opcional (tenant_modulos). Se gatea por el tenant ACTUAL (o el
+  // impersonado): si no lo tiene habilitado, no se muestra ni al super_admin
+  // (refleja el módulo real del tenant; el super lo habilita en /super).
+  if (m.moduloKey != null && !modulosOn.contains(m.moduloKey)) {
     return false;
   }
   // Cuando el super_admin está impersonando, ocultar el item de
@@ -361,12 +379,14 @@ class _ExpandableMenuItem extends ConsumerWidget {
         ref.watch(impersonatedTenantIdProvider).valueOrNull != null;
     final settings = ref.watch(appSettingsProvider);
     final pantallasOn = _pantallasOn(settings);
+    final modulosOn = ref.watch(modulosHabilitadosProvider).valueOrNull ?? {};
     final visibleChildren = item.children
         .where((child) => _menuVisible(child,
             esSuperAdmin: esSuperAdmin,
             tieneAccesoAdmin: tieneAccesoAdmin,
             impersonating: impersonating,
-            pantallasOn: pantallasOn))
+            pantallasOn: pantallasOn,
+            modulosOn: modulosOn))
         .toList();
     // Si no quedó ningún hijo visible, no mostramos el grupo vacío.
     if (visibleChildren.isEmpty) return const SizedBox.shrink();
@@ -416,12 +436,14 @@ class _AdminRail extends ConsumerWidget {
         ref.watch(impersonatedTenantIdProvider).valueOrNull != null;
     final settings = ref.watch(appSettingsProvider);
     final pantallasOn = _pantallasOn(settings);
+    final modulosOn = ref.watch(modulosHabilitadosProvider).valueOrNull ?? {};
     final items = _adminMenu
         .where((m) => _menuVisible(m,
             esSuperAdmin: esSuperAdmin,
             tieneAccesoAdmin: tieneAccesoAdmin,
             impersonating: impersonating,
-            pantallasOn: pantallasOn))
+            pantallasOn: pantallasOn,
+            modulosOn: modulosOn))
         .toList();
     // Los grupos (con children) no se "seleccionan" como tile plano — su
     // estado activo lo maneja el _ExpandableMenuItem mirando sus hijos.
@@ -498,12 +520,14 @@ class _AdminDrawer extends ConsumerWidget {
         ref.watch(impersonatedTenantIdProvider).valueOrNull != null;
     final settings = ref.watch(appSettingsProvider);
     final pantallasOn = _pantallasOn(settings);
+    final modulosOn = ref.watch(modulosHabilitadosProvider).valueOrNull ?? {};
     final items = _adminMenu
         .where((m) => _menuVisible(m,
             esSuperAdmin: esSuperAdmin,
             tieneAccesoAdmin: tieneAccesoAdmin,
             impersonating: impersonating,
-            pantallasOn: pantallasOn))
+            pantallasOn: pantallasOn,
+            modulosOn: modulosOn))
         .toList();
 
     return Drawer(
