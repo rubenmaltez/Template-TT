@@ -2,7 +2,6 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:latlong2/latlong.dart';
@@ -10,10 +9,10 @@ import 'package:uuid/uuid.dart';
 
 import '../../../data/providers/cobrador_provider.dart';
 import '../../../data/providers/form_dirty_provider.dart';
-import '../../../data/services/map_tile_cache.dart';
 import '../../../data/utils/validators.dart';
 import '../../../powersync/db.dart' as ps;
 import '../../shared/widgets/confirm_discard_dialog.dart';
+import '../../shared/widgets/mapa_picker_screen.dart';
 import '../../shared/widgets/phone_text_field.dart';
 import 'widgets/geo_picker.dart';
 import 'widgets/red_picker.dart';
@@ -279,7 +278,7 @@ class _ClienteFormScreenState extends ConsumerState<ClienteFormScreen> {
         ? LatLng(double.parse(_lat.text), double.parse(_lng.text))
         : const LatLng(12.13, -86.25); // Managua como centro default
     final picked = await Navigator.of(context).push<LatLng>(
-      MaterialPageRoute(builder: (_) => _MapaPickerScreen(inicial: inicial)),
+      MaterialPageRoute(builder: (_) => MapaPickerScreen(inicial: inicial)),
     );
     if (picked != null) {
       setState(() {
@@ -704,77 +703,4 @@ class _SelectorCobradorState extends State<_SelectorCobrador> {
   }
 }
 
-/// Pantalla full-screen para elegir coordenadas con clic en el mapa.
-class _MapaPickerScreen extends StatefulWidget {
-  const _MapaPickerScreen({required this.inicial});
-  final LatLng inicial;
-
-  @override
-  State<_MapaPickerScreen> createState() => _MapaPickerScreenState();
-}
-
-class _MapaPickerScreenState extends State<_MapaPickerScreen> {
-  late LatLng _punto;
-
-  @override
-  void initState() {
-    super.initState();
-    _punto = widget.inicial;
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Seleccionar ubicación'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.check),
-            onPressed: () => Navigator.pop(context, _punto),
-          ),
-        ],
-      ),
-      body: Column(
-        children: [
-          Expanded(
-            child: FlutterMap(
-              options: MapOptions(
-                initialCenter: _punto,
-                initialZoom: 13,
-                onTap: (_, p) => setState(() => _punto = p),
-              ),
-              children: [
-                TileLayer(
-                  urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                  userAgentPackageName: 'com.ispbilling.app',
-                  // Mismo store compartido que el mapa principal: los tiles
-                  // del selector de ubicación también quedan cacheados offline.
-                  tileProvider: MapTileCache.instance.tileProvider(),
-                ),
-                MarkerLayer(
-                  markers: [
-                    Marker(
-                      point: _punto,
-                      width: 40, height: 40,
-                      child: Icon(Icons.location_on,
-                          color: Theme.of(context).colorScheme.error, size: 40),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.all(16),
-            child: Text(
-              'Lat: ${_punto.latitude.toStringAsFixed(6)}, '
-              'Lng: ${_punto.longitude.toStringAsFixed(6)}',
-              textAlign: TextAlign.center,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
 

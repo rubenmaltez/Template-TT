@@ -1,10 +1,21 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:latlong2/latlong.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../../data/providers/cobrador_provider.dart';
 import '../../../powersync/db.dart' as ps;
 import '../../shared/widgets/empty_state.dart';
+import '../../shared/widgets/mapa_picker_screen.dart';
+
+/// Datos capturados por `_NodoDialog` (crear/editar nodo).
+typedef _NodoData = ({
+  String nombre,
+  String? tipo,
+  String? notas,
+  double? lat,
+  double? lng,
+});
 
 /// CRUD de la topología de red (Nodo → Hub → Puerto). Parte del módulo de
 /// cobranza base (no es módulo opcional). Mismo patrón de ExpansionTile
@@ -87,7 +98,7 @@ class _RedAdminScreenState extends ConsumerState<RedAdminScreen> {
   }
 
   Future<void> _crearNodo(BuildContext context) async {
-    final res = await showDialog<({String nombre, String? tipo, double? lat, double? lng})?>(
+    final res = await showDialog<_NodoData?>(
       context: context,
       builder: (_) => const _NodoDialog(),
     );
@@ -96,8 +107,8 @@ class _RedAdminScreenState extends ConsumerState<RedAdminScreen> {
     if (tenantId == null) return; // sin tenant resuelto no se puede crear
     try {
       await ps.db.execute(
-        'INSERT INTO red_nodos (id, tenant_id, nombre, tipo, lat, lng, activo, created_at) VALUES (?, ?, ?, ?, ?, ?, 1, ?)',
-        [const Uuid().v4(), tenantId, res.nombre, res.tipo, res.lat, res.lng, DateTime.now().toIso8601String()],
+        'INSERT INTO red_nodos (id, tenant_id, nombre, tipo, notas, lat, lng, activo, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?)',
+        [const Uuid().v4(), tenantId, res.nombre, res.tipo, res.notas, res.lat, res.lng, DateTime.now().toIso8601String()],
       );
     } catch (e) {
       if (context.mounted) {
@@ -328,7 +339,10 @@ Future<({String nombre, String? notas})?> promptNombreNotasRed(
 
 /// Diálogo de Nodo: nombre + tipo (fibra/wireless/híbrido) + lat/lng (opcionales).
 class _NodoDialog extends StatefulWidget {
-  const _NodoDialog();
+  const _NodoDialog({this.inicial});
+
+  /// Fila del nodo a editar (null = crear nuevo).
+  final Map<String, dynamic>? inicial;
 
   @override
   State<_NodoDialog> createState() => _NodoDialogState();
@@ -336,22 +350,53 @@ class _NodoDialog extends StatefulWidget {
 
 class _NodoDialogState extends State<_NodoDialog> {
   final _nombre = TextEditingController();
+  final _notas = TextEditingController();
   final _lat = TextEditingController();
   final _lng = TextEditingController();
   String? _tipo;
 
   @override
+  void initState() {
+    super.initState();
+    final n = widget.inicial;
+    if (n != null) {
+      _nombre.text = n['nombre'] as String? ?? '';
+      _notas.text = n['notas'] as String? ?? '';
+      _lat.text = (n['lat'] as num?)?.toString() ?? '';
+      _lng.text = (n['lng'] as num?)?.toString() ?? '';
+      _tipo = n['tipo'] as String?;
+    }
+  }
+
+  @override
   void dispose() {
     _nombre.dispose();
+    _notas.dispose();
     _lat.dispose();
     _lng.dispose();
     super.dispose();
   }
 
+  Future<void> _elegirEnMapa() async {
+    final inicial = (double.tryParse(_lat.text) != null &&
+            double.tryParse(_lng.text) != null)
+        ? LatLng(double.parse(_lat.text), double.parse(_lng.text))
+        : const LatLng(12.13, -86.25); // Managua default
+    final picked = await Navigator.of(context).push<LatLng>(
+      MaterialPageRoute(builder: (_) => MapaPickerScreen(inicial: inicial)),
+    );
+    if (picked != null && mounted) {
+      setState(() {
+        _lat.text = picked.latitude.toStringAsFixed(6);
+        _lng.text = picked.longitude.toStringAsFixed(6);
+      });
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
-      title: const Text('Nuevo nodo'),
+      title: Text(widget.inicial == null ? 'Nuevo nodo' : 'Editar nodo'),
       content: SingleChildScrollView(
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -375,6 +420,14 @@ class _NodoDialogState extends State<_NodoDialog> {
               ],
             ),
             const SizedBox(height: 12),
+            TextField(
+              controller: _notas,
+              textCapitalization: TextCapitalization.sentences,
+              decoration: const InputDecoration(
+                  labelText: 'Notas (opcional)',
+                  hintText: 'Ej. torre detrás de la iglesia'),
+            ),
+            const SizedBox(height: 12),
             Row(
               children: [
                 Expanded(
@@ -396,6 +449,15 @@ class _NodoDialogState extends State<_NodoDialog> {
                 ),
               ],
             ),
+            const SizedBox(height: 8),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: TextButton.icon(
+                icon: const Icon(Icons.map),
+                label: const Text('Elegir en el mapa'),
+                onPressed: _elegirEnMapa,
+              ),
+            ),
           ],
         ),
       ),
@@ -408,12 +470,14 @@ class _NodoDialogState extends State<_NodoDialog> {
           onPressed: () {
             final nombre = _nombre.text.trim();
             if (nombre.isEmpty) return;
+            final notas = _notas.text.trim();
             Navigator.pop(context, (
               nombre: nombre,
               tipo: _tipo,
+              notas: notas.isEmpty ? null : notas,
               lat: double.tryParse(_lat.text.trim()),
               lng: double.tryParse(_lng.text.trim()),
-            ));
+            ) as _NodoData);
           },
           child: const Text('Guardar'),
         ),
