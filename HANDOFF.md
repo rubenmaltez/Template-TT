@@ -10,10 +10,13 @@
 ## Estado actual
 
 - **Branch ÚNICA de trabajo:** `claude/new-features-inventory-tickets-and-technicians`
-  (tip `c89954e`). Contiene TODO: 2C-2/2D + el vaciado de backlog pre-Fase 3. Es la
-  branch viva — desarrollar acá. Las branches viejas (`nifty-cori-KF2PZ`,
-  `inventory-tickets-technician-role`) se ELIMINARON (estaban contenidas en esta, nada
-  se perdió). `stoic-tesla-cGkJ6` no existe en el repo.
+  (tip en `origin`). Contiene TODO: 2C-2/2D + el vaciado de backlog pre-Fase 3. Es la
+  branch viva — desarrollar acá. Las viejas (`nifty-cori-KF2PZ`,
+  `inventory-tickets-technician-role`) se borraron LOCALMENTE.
+  ⚠️ **Borrado de ramas REMOTAS bloqueado por el entorno** (el proxy git devuelve 403 en
+  `push --delete`; los MCP de GitHub no exponen delete). **Pendiente: Rubén limpia desde
+  GitHub UI** — 40 ramas mergeadas (safe) + 29 con commits únicos (revisar). Lista y
+  comando `git push origin --delete ...` en el chat de cierre de esta sesión.
 - **Schema PowerSync:** `_schemaVersion = 20` (`lib/powersync/db.dart`). Todo el trabajo
   de inventario reusa las migraciones 0099-0101 → sin bump nuevo, sin redeploy de sync rules.
 - **Plataformas target:** Android + Windows (web degrada sin romper, NO es target).
