@@ -200,7 +200,7 @@ por diseño) · serial instalado en ticket-sin-cliente (outage) queda sin client
 consumo-install no aparece en el change-log del **cliente** (es nieto vía ticket → regla de
 profundidad; sí aparece en el del serial + el ticket).
 
-Commits: `4677cdf` (datos) · `81282e7` (UI) · `65fc29d` (fixes audit) · `f349f1f` (cross-módulo).
+Commits: `56c2a49` (datos) · `3393461` (UI) · `65fc29d` (fixes audit) · `f349f1f` (cross-módulo).
 Archivos: `0106_ticket_materiales.sql` (nuevo) · `ticket_materiales_widget.dart` (nuevo) ·
 `ticket_detail_screen.dart` · `historial_cambios_widget.dart` · `equipos_en_baja.dart` ·
 `audit_changelog.dart` · `schema.dart` · `db.dart` · `sync-rules.yaml`.

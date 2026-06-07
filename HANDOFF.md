@@ -102,8 +102,8 @@ router/roles/regresión · Dart/regresión — **0 ALTA/MEDIA**, SIN migración 
   del tenant (consistente con el bucket admin; la own-row los necesita) · `por_tecnico_tickets`
   crece 1 bucket por ticket de por vida (MVP-ok) · whitelist exact-match (sin sub-rutas hoy).
 
-**3C — MATERIALES (engancha INVENTARIO) HECHO + AUDITADO** (commits `4677cdf`,
-`81282e7`, `65fc29d`, `f349f1f`; 4 agentes: trigger/inventario/dinero · cross-módulo ·
+**3C — MATERIALES (engancha INVENTARIO) HECHO + AUDITADO** (commits `56c2a49`,
+`3393461`, `65fc29d`, `f349f1f`; 4 agentes: trigger/inventario/dinero · cross-módulo ·
 sync/RLS · Dart/UI — dinero **hermético**, **1 ALTA fixed**, resto BAJA):
 - **Migración 0106**: tabla `ticket_materiales` (append-only, RLS insert=`is_ticket_staff`
   → el técnico registra) + FK `inv_movimientos.ticket_id` + trigger **SECURITY DEFINER**
