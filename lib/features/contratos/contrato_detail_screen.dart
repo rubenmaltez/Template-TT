@@ -101,6 +101,10 @@ class _ContratoDetailScreenState extends ConsumerState<ContratoDetailScreen> {
     // El change-log / auditoría se oculta al cobrador puro (least-privilege:
     // si el rol aún no cargó → null → oculto). admin/admin_cobranza/super sí.
     final verHistorial = cobrador != null && !cobrador.esCobrador;
+    // El AdminShell ya dibuja el banner de impersonación en /admin/*; evitamos
+    // duplicarlo (solo lo ponemos inline en la variante push fuera del shell).
+    final enAdminShell =
+        GoRouterState.of(context).uri.path.startsWith('/admin');
     final settings = ref.watch(appSettingsProvider);
     final multiCuotaEnabled = settings.pagoAdelantadoPermitido;
     final diasGracia = settings.diasGracia;
@@ -143,7 +147,7 @@ class _ContratoDetailScreenState extends ConsumerState<ContratoDetailScreen> {
                   bottom: _selected.isNotEmpty ? 96 : 16,
                 ),
                 children: [
-                  const ImpersonationBanner(), // #9a
+                  if (!enAdminShell) const ImpersonationBanner(),
                   _ContratoHeader(
                     contrato: contrato,
                     esAdmin: esAdmin,

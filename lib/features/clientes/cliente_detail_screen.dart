@@ -134,7 +134,10 @@ class _ClienteDetailScreenState extends ConsumerState<ClienteDetailScreen> {
               child: ListView(
                 padding: const EdgeInsets.only(bottom: 80),
                 children: [
-                  const ImpersonationBanner(), // #9a
+                  // El AdminShell ya dibuja el banner de impersonación para
+                  // /admin/*; acá solo lo ponemos en la variante push (cobrador,
+                  // fuera del shell) para no duplicarlo.
+                  if (!enAdminShell) const ImpersonationBanner(),
                   _ClienteHeader(
                     codigo: cliente.codigo,
                     nombre: cliente.nombre,
