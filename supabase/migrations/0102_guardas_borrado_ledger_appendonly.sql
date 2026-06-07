@@ -17,6 +17,11 @@
 -- progreso, ej. rollback de crear-tenant) NO bloquean, así no rompen el cascade.
 -- `inv_productos` NO necesita guard: sus FK (seriales/movimientos.producto_id)
 -- ya son ON DELETE RESTRICT (el server lo rechaza solo).
+--
+-- IDEMPOTENTE: cada CREATE TRIGGER/POLICY lleva su DROP ... IF EXISTS y todo va
+-- en una transacción → se puede re-correr por Dashboard sin dejar estado a medias.
+
+BEGIN;
 
 -- =========================================================================
 -- 1. Guard: inv_ubicaciones en uso (seriales o movimientos)
@@ -38,6 +43,7 @@ BEGIN
 END;
 $$;
 
+DROP TRIGGER IF EXISTS trg_inv_ubicaciones_guard_borrado ON public.inv_ubicaciones;
 CREATE TRIGGER trg_inv_ubicaciones_guard_borrado
   BEFORE DELETE ON public.inv_ubicaciones
   FOR EACH ROW EXECUTE FUNCTION public.inv_ubicaciones_guard_borrado();
@@ -58,6 +64,7 @@ BEGIN
 END;
 $$;
 
+DROP TRIGGER IF EXISTS trg_inv_proveedores_guard_borrado ON public.inv_proveedores;
 CREATE TRIGGER trg_inv_proveedores_guard_borrado
   BEFORE DELETE ON public.inv_proveedores
   FOR EACH ROW EXECUTE FUNCTION public.inv_proveedores_guard_borrado();
@@ -78,6 +85,7 @@ BEGIN
 END;
 $$;
 
+DROP TRIGGER IF EXISTS trg_red_puertos_guard_borrado ON public.red_puertos;
 CREATE TRIGGER trg_red_puertos_guard_borrado
   BEFORE DELETE ON public.red_puertos
   FOR EACH ROW EXECUTE FUNCTION public.red_puertos_guard_borrado();
@@ -98,6 +106,7 @@ BEGIN
 END;
 $$;
 
+DROP TRIGGER IF EXISTS trg_comunidades_guard_borrado ON public.comunidades;
 CREATE TRIGGER trg_comunidades_guard_borrado
   BEFORE DELETE ON public.comunidades
   FOR EACH ROW EXECUTE FUNCTION public.comunidades_guard_borrado();
@@ -106,8 +115,12 @@ CREATE TRIGGER trg_comunidades_guard_borrado
 -- 5. Ledger append-only estricto: super_admin solo SELECT + INSERT
 -- =========================================================================
 DROP POLICY IF EXISTS "super_admin_all" ON public.inv_movimientos;
+DROP POLICY IF EXISTS "super_admin_select" ON public.inv_movimientos;
+DROP POLICY IF EXISTS "super_admin_insert" ON public.inv_movimientos;
 
 CREATE POLICY "super_admin_select" ON public.inv_movimientos
   FOR SELECT USING (public.is_super_admin());
 CREATE POLICY "super_admin_insert" ON public.inv_movimientos
   FOR INSERT WITH CHECK (public.is_super_admin());
+
+COMMIT;
