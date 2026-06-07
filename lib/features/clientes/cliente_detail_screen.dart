@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../data/providers/cobrador_provider.dart';
 import '../../data/providers/impersonation_provider.dart';
+import '../../data/providers/modulos_provider.dart';
 import '../../data/repositories/clientes_repo.dart';
 import '../../data/services/external_actions.dart';
 import '../../data/services/visitas_service.dart';
@@ -79,6 +80,11 @@ class _ClienteDetailScreenState extends ConsumerState<ClienteDetailScreen> {
     final verHistorial = cobrador != null && !cobrador.esCobrador;
     final loc = GoRouterState.of(context).uri.path;
     final enAdminShell = loc.startsWith('/admin');
+    // Sección "Equipos instalados" solo si el módulo Inventario está activo
+    // para el tenant (tenant_modulos). Si el rol/módulos aún no cargó → oculto.
+    final inventarioOn =
+        ref.watch(modulosHabilitadosProvider).valueOrNull?.contains('inventario') ??
+            false;
 
     return Scaffold(
       appBar: AppBar(
@@ -158,6 +164,12 @@ class _ClienteDetailScreenState extends ConsumerState<ClienteDetailScreen> {
                     enAdminShell: enAdminShell,
                   ),
                   const SizedBox(height: 8),
+                  // Equipos de inventario: solo admin/admin_cobranza (las tablas
+                  // inv_ no sincronizan al cobrador) y con el módulo activo.
+                  if (inventarioOn && puedeGestionar) ...[
+                    _EquiposInstaladosSection(clienteId: widget.clienteId),
+                    const SizedBox(height: 8),
+                  ],
                   Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 16),
                     child: FotoGalleryWidget(
@@ -805,6 +817,108 @@ class _ContratoCard extends StatelessWidget {
               ),
             ],
           ),
+        ),
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Sección de equipos de inventario instalados en el cliente (2D)
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _EquiposInstaladosSection extends StatefulWidget {
+  const _EquiposInstaladosSection({required this.clienteId});
+  final String clienteId;
+
+  @override
+  State<_EquiposInstaladosSection> createState() =>
+      _EquiposInstaladosSectionState();
+}
+
+class _EquiposInstaladosSectionState extends State<_EquiposInstaladosSection> {
+  late final Stream<List<Map<String, dynamic>>> _stream;
+
+  @override
+  void initState() {
+    super.initState();
+    _stream = ps.db.watch(
+      '''
+      SELECT s.id, s.serial, s.mac, p.nombre AS producto
+        FROM inv_seriales s
+        JOIN inv_productos p ON p.id = s.producto_id
+       WHERE s.cliente_id = ? AND s.estado = 'instalado'
+       ORDER BY p.nombre, s.serial
+      ''',
+      parameters: [widget.clienteId],
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+      child: Card(
+        child: StreamBuilder<List<Map<String, dynamic>>>(
+          stream: _stream,
+          initialData: const [],
+          builder: (context, snap) {
+            if (snap.hasError) {
+              return Padding(
+                padding: const EdgeInsets.all(16),
+                child: Text('Error: ${snap.error}'),
+              );
+            }
+            final rows = snap.data!;
+            if (rows.isEmpty) {
+              return Padding(
+                padding: const EdgeInsets.all(16),
+                child: Row(
+                  children: [
+                    Icon(Icons.router, size: 18, color: scheme.outline),
+                    const SizedBox(width: 8),
+                    Text('Sin equipos instalados',
+                        style: TextStyle(color: scheme.outline)),
+                  ],
+                ),
+              );
+            }
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+                  child: Row(
+                    children: [
+                      Icon(Icons.router, size: 20, color: scheme.primary),
+                      const SizedBox(width: 8),
+                      Text('Equipos instalados',
+                          style: Theme.of(context).textTheme.titleMedium),
+                      const SizedBox(width: 8),
+                      Text('(${rows.length})',
+                          style:
+                              TextStyle(color: scheme.outline, fontSize: 13)),
+                    ],
+                  ),
+                ),
+                ...rows.map((r) {
+                  final mac = r['mac'] as String?;
+                  return ListTile(
+                    dense: true,
+                    leading:
+                        Icon(Icons.qr_code_2, color: scheme.outline, size: 22),
+                    title: Text(r['serial'] as String),
+                    subtitle: Text([
+                      r['producto'] as String? ?? '',
+                      if (mac != null && mac.isNotEmpty) 'MAC $mac',
+                    ].join(' · ')),
+                  );
+                }),
+                const SizedBox(height: 8),
+              ],
+            );
+          },
         ),
       ),
     );
