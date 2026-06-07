@@ -410,15 +410,27 @@ class _ExistenciasTabState extends ConsumerState<_ExistenciasTab> {
   @override
   void initState() {
     super.initState();
-    // Stock TOTAL por producto = Σ(cantidad con destino) − Σ(cantidad con
-    // origen) sobre el ledger. Las transferencias internas netean a 0.
+    // Stock por producto. Dos derivaciones según el tipo:
+    //  · Serializado: COUNT de seriales en estado 'en_stock'. El estado del
+    //    serial es la verdad física de la unidad → evita que el ledger y el
+    //    estado diverjan (un movimiento con ubicación NULL o una doble
+    //    asignación NO pueden inflar/desinflar el stock).
+    //  · Granel: Σ(cantidad con destino) − Σ(cantidad con origen) del ledger.
+    //    Las transferencias internas netean a 0.
     _stock = ps.db.watch('''
       SELECT p.id, p.nombre, p.unidad, p.es_serializado,
-             COALESCE((
-               SELECT SUM(CASE WHEN m.ubicacion_destino_id IS NOT NULL THEN m.cantidad ELSE 0 END)
-                    - SUM(CASE WHEN m.ubicacion_origen_id  IS NOT NULL THEN m.cantidad ELSE 0 END)
-                 FROM inv_movimientos m WHERE m.producto_id = p.id
-             ), 0) AS stock
+             CASE WHEN p.es_serializado = 1 THEN
+               COALESCE((
+                 SELECT COUNT(*) FROM inv_seriales s
+                  WHERE s.producto_id = p.id AND s.estado = 'en_stock'
+               ), 0)
+             ELSE
+               COALESCE((
+                 SELECT SUM(CASE WHEN m.ubicacion_destino_id IS NOT NULL THEN m.cantidad ELSE 0 END)
+                      - SUM(CASE WHEN m.ubicacion_origen_id  IS NOT NULL THEN m.cantidad ELSE 0 END)
+                   FROM inv_movimientos m WHERE m.producto_id = p.id
+               ), 0)
+             END AS stock
         FROM inv_productos p
        WHERE p.activo = 1
        ORDER BY p.nombre
@@ -888,32 +900,85 @@ class _EquiposTabState extends ConsumerState<_EquiposTab> {
     final tenantId = ref.read(tenantIdProvider);
     if (tenantId == null) return;
     final hechoPor = ref.read(cobradorActualProvider).valueOrNull?.id;
+
+    // 1. Elegir cliente.
     final cliente = await showModalBottomSheet<({String id, String nombre})>(
       context: context,
       isScrollControlled: true,
       showDragHandle: true,
       builder: (_) => const _ClientePicker(),
     );
-    if (cliente == null) return;
+    if (cliente == null || !context.mounted) return;
+
+    // 2. Aviso suave de red: el plan pide puerto_id para asignar equipos. Hasta
+    // que la topología de red esté en producción, advertimos pero dejamos
+    // seguir (se endurece a bloqueo cuando la red esté viva).
+    final cli = await ps.db.getOptional(
+        'SELECT puerto_id FROM clientes WHERE id = ?', [cliente.id]);
+    if ((cli?['puerto_id'] as String?) == null) {
+      if (!context.mounted) return;
+      final seguir = await _confirmarAccion(
+        context,
+        titulo: 'Cliente sin red',
+        mensaje: '${cliente.nombre} no tiene un puerto de red asignado. '
+            'Conviene asignarle red antes del equipo. ¿Asignar igual?',
+        confirmar: 'Asignar igual',
+      );
+      if (!seguir || !context.mounted) return;
+    }
+
+    // 3. Elegir contrato del cliente (auto si tiene uno; opcional si no tiene).
+    final contratos = await ps.db.getAll('''
+      SELECT ct.id, ct.codigo, ct.estado, pl.nombre AS plan
+        FROM contratos ct
+   LEFT JOIN planes pl ON pl.id = ct.plan_id
+       WHERE ct.cliente_id = ?
+       ORDER BY (ct.estado = 'activo') DESC, ct.created_at DESC
+    ''', [cliente.id]);
+    String? contratoId;
+    if (contratos.length == 1) {
+      contratoId = contratos.first['id'] as String;
+    } else if (contratos.length > 1) {
+      if (!context.mounted) return;
+      final elegido = await showDialog<String>(
+        context: context,
+        builder: (_) => _ContratoPicker(contratos: contratos),
+      );
+      if (elegido == null || !context.mounted) return; // canceló
+      contratoId = elegido;
+    }
+
+    // 4. Persistir atómico. Re-valida el estado DENTRO de la transacción para
+    // evitar doble-asignación sobre data stale (otro tap / otra pestaña).
     final now = DateTime.now().toIso8601String();
     try {
       await ps.db.writeTransaction((tx) async {
+        final cur = await tx.getOptional(
+            'SELECT estado, ubicacion_id, producto_id FROM inv_seriales WHERE id = ?',
+            [s['id']]);
+        if (cur == null || cur['estado'] != 'en_stock') {
+          throw const _InvError('El equipo ya no está disponible en stock.');
+        }
         await tx.execute(
-          "UPDATE inv_seriales SET estado = 'instalado', cliente_id = ?, ubicacion_id = NULL WHERE id = ?",
-          [cliente.id, s['id']],
+          "UPDATE inv_seriales SET estado = 'instalado', cliente_id = ?, "
+          "contrato_id = ?, ubicacion_id = NULL WHERE id = ?",
+          [cliente.id, contratoId, s['id']],
         );
         await tx.execute(
           '''INSERT INTO inv_movimientos
              (id, tenant_id, tipo, producto_id, serial_id, cantidad,
-              ubicacion_origen_id, cliente_id, hecho_por, ocurrido_en, created_at)
-             VALUES (?, ?, 'asignacion', ?, ?, 1, ?, ?, ?, ?, ?)''',
+              ubicacion_origen_id, cliente_id, contrato_id, hecho_por,
+              ocurrido_en, created_at)
+             VALUES (?, ?, 'asignacion', ?, ?, 1, ?, ?, ?, ?, ?, ?)''',
           [
-            const Uuid().v4(), tenantId, s['producto_id'], s['id'],
-            s['ubicacion_id'], cliente.id, hechoPor, now, now,
+            const Uuid().v4(), tenantId, cur['producto_id'], s['id'],
+            cur['ubicacion_id'], cliente.id, contratoId, hechoPor, now, now,
           ],
         );
       });
       _snack(context, 'Equipo asignado a ${cliente.nombre}');
+    } on _InvError catch (e) {
+      _snack(context, e.message);
     } catch (e) {
       _snack(context, 'Error: $e');
     }
@@ -934,10 +999,14 @@ class _ClientePickerState extends State<_ClientePicker> {
   Widget build(BuildContext context) {
     final like = '%${_q.toLowerCase()}%';
     final stream = ps.db.watch(
-      '''SELECT id, nombre, codigo FROM clientes
-          WHERE activo = 1 AND lower(nombre) LIKE ?
+      '''SELECT id, nombre, codigo, cedula, telefono FROM clientes
+          WHERE activo = 1 AND (
+                lower(nombre) LIKE ?
+             OR lower(coalesce(codigo, '')) LIKE ?
+             OR lower(coalesce(cedula, '')) LIKE ?
+             OR lower(coalesce(telefono, '')) LIKE ?)
           ORDER BY nombre LIMIT 50''',
-      parameters: [like],
+      parameters: [like, like, like, like],
     );
     return SafeArea(
       child: Padding(
@@ -952,7 +1021,7 @@ class _ClientePickerState extends State<_ClientePicker> {
               autofocus: true,
               decoration: const InputDecoration(
                 prefixIcon: Icon(Icons.search),
-                hintText: 'Buscar cliente por nombre',
+                hintText: 'Buscar por nombre, código, cédula o teléfono',
               ),
               onChanged: (v) => setState(() => _q = v.trim()),
             ),
@@ -971,10 +1040,15 @@ class _ClientePickerState extends State<_ClientePicker> {
                     itemCount: rows.length,
                     itemBuilder: (_, i) {
                       final c = rows[i];
-                      final cod = c['codigo'] as String?;
+                      final sub = [
+                        if ((c['codigo'] as String?)?.isNotEmpty ?? false)
+                          c['codigo'] as String,
+                        if ((c['cedula'] as String?)?.isNotEmpty ?? false)
+                          c['cedula'] as String,
+                      ].join(' · ');
                       return ListTile(
                         title: Text(c['nombre'] as String),
-                        subtitle: cod != null && cod.isNotEmpty ? Text(cod) : null,
+                        subtitle: sub.isEmpty ? null : Text(sub),
                         onTap: () => Navigator.pop(context, (
                           id: c['id'] as String,
                           nombre: c['nombre'] as String,
@@ -1370,6 +1444,83 @@ Future<bool> _confirmar(BuildContext context, String que) async {
     ),
   );
   return ok ?? false;
+}
+
+/// Confirmación genérica (título/mensaje/label propios). Para avisos suaves y
+/// confirmaciones de movimientos (devolución, baja, etc.).
+Future<bool> _confirmarAccion(
+  BuildContext context, {
+  required String titulo,
+  required String mensaje,
+  String confirmar = 'Confirmar',
+}) async {
+  final ok = await showDialog<bool>(
+    context: context,
+    builder: (ctx) => AlertDialog(
+      title: Text(titulo),
+      content: Text(mensaje),
+      actions: [
+        TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancelar')),
+        FilledButton(
+            onPressed: () => Navigator.pop(ctx, true), child: Text(confirmar)),
+      ],
+    ),
+  );
+  return ok ?? false;
+}
+
+/// Error de negocio del inventario con mensaje apto para mostrar al usuario
+/// (ej. guard de estado roto dentro de un writeTransaction).
+class _InvError implements Exception {
+  const _InvError(this.message);
+  final String message;
+  @override
+  String toString() => message;
+}
+
+/// Picker de contrato cuando el cliente tiene más de uno. Devuelve el id.
+class _ContratoPicker extends StatelessWidget {
+  const _ContratoPicker({required this.contratos});
+  final List<Map<String, dynamic>> contratos;
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Elegí el contrato'),
+      content: SizedBox(
+        width: double.maxFinite,
+        child: ListView.separated(
+          shrinkWrap: true,
+          itemCount: contratos.length,
+          separatorBuilder: (_, __) => const Divider(height: 1),
+          itemBuilder: (_, i) {
+            final c = contratos[i];
+            final cod = c['codigo'] as String?;
+            final plan = c['plan'] as String?;
+            final estado = c['estado'] as String? ?? '';
+            final sub = [
+              if (plan != null && plan.isNotEmpty) plan,
+              if (estado.isNotEmpty) estado,
+            ].join(' · ');
+            return ListTile(
+              title: Text(cod != null && cod.isNotEmpty
+                  ? cod
+                  : (plan ?? 'Contrato')),
+              subtitle: sub.isEmpty ? null : Text(sub),
+              onTap: () => Navigator.pop(context, c['id'] as String),
+            );
+          },
+        ),
+      ),
+      actions: [
+        TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancelar')),
+      ],
+    );
+  }
 }
 
 class _InvRowMenu extends StatelessWidget {
