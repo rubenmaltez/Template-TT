@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../../data/providers/cobrador_provider.dart';
+import '../../../data/utils/formatters.dart';
 import '../../../powersync/db.dart' as ps;
 import '../../shared/widgets/empty_state.dart';
 import '../../shared/widgets/historial_cambios_widget.dart';
@@ -466,7 +467,7 @@ class _ExistenciasTabState extends ConsumerState<_ExistenciasTab> {
     //  · Granel: Σ(cantidad con destino) − Σ(cantidad con origen) del ledger.
     //    Las transferencias internas netean a 0.
     _stock = ps.db.watch('''
-      SELECT p.id, p.nombre, p.unidad, p.es_serializado,
+      SELECT p.id, p.nombre, p.unidad, p.es_serializado, p.costo_promedio,
              CASE WHEN p.es_serializado = 1 THEN
                COALESCE((
                  SELECT COUNT(*) FROM inv_seriales s
@@ -530,10 +531,22 @@ class _ExistenciasTabState extends ConsumerState<_ExistenciasTab> {
               final serial = (r['es_serializado'] as int? ?? 0) == 1;
               final unidad = serial ? 'u' : (r['unidad'] as String? ?? 'u');
               final bajo = stock <= 0;
+              final costo = (r['costo_promedio'] as num?) ?? 0;
+              final valor = stock > 0 ? stock * costo : 0;
               return ListTile(
                 leading: Icon(Icons.inventory,
                     color: Theme.of(context).colorScheme.outline),
                 title: Text(r['nombre'] as String),
+                subtitle: costo > 0
+                    ? Text(
+                        'Costo prom. ${Fmt.cordobas(costo)}'
+                        '${valor > 0 ? ' · Valor ${Fmt.cordobas(valor)}' : ''}',
+                        style: TextStyle(
+                            color: Theme.of(context).colorScheme.outline,
+                            fontSize: 12),
+                      )
+                    : null,
+                onTap: () => _verStockPorUbicacion(context, r),
                 trailing: Text(
                   '${_fmtCant(stock)} $unidad',
                   style: TextStyle(
@@ -587,6 +600,24 @@ class _ExistenciasTabState extends ConsumerState<_ExistenciasTab> {
       // Atómico: cada serial + su movimiento (y todo el lote) viven o caen
       // juntos (patrón writeTransaction del repo, igual que el cobro).
       await ps.db.writeTransaction((tx) async {
+        // Costo promedio ponderado: capturamos stock y promedio ANTES del
+        // ingreso (solo si vino un costo unitario; sin costo no tocamos el avg).
+        num stockPrevio = 0;
+        double avgPrevio = 0;
+        if (res.costoUnitario != null) {
+          final stockSql = res.esSerializado
+              ? "SELECT COUNT(*) AS s FROM inv_seriales WHERE producto_id = ? AND estado = 'en_stock'"
+              : '''SELECT COALESCE(SUM(CASE WHEN ubicacion_destino_id IS NOT NULL THEN cantidad ELSE 0 END)
+                                - SUM(CASE WHEN ubicacion_origen_id  IS NOT NULL THEN cantidad ELSE 0 END), 0) AS s
+                     FROM inv_movimientos WHERE producto_id = ?''';
+          final sr = await tx.getAll(stockSql, [res.productoId]);
+          stockPrevio = (sr.first['s'] as num?) ?? 0;
+          final pr = await tx.getAll(
+              'SELECT costo_promedio FROM inv_productos WHERE id = ?',
+              [res.productoId]);
+          avgPrevio = (pr.first['costo_promedio'] as num?)?.toDouble() ?? 0;
+        }
+
         if (res.esSerializado) {
           for (final s in res.seriales) {
             final serialId = const Uuid().v4();
@@ -610,6 +641,21 @@ class _ExistenciasTabState extends ConsumerState<_ExistenciasTab> {
             res.ubicacionDestinoId, res.proveedorId, res.numeroFactura,
             res.costoUnitario, hechoPor, now, now,
           ]);
+        }
+
+        // Promedio ponderado móvil: (stock·avg + cant·costo) / (stock + cant).
+        // Si no había stock (o era negativo) arranca del costo de este ingreso.
+        if (res.costoUnitario != null) {
+          final n = res.esSerializado
+              ? res.seriales.length.toDouble()
+              : res.cantidad;
+          final nuevoAvg = stockPrevio <= 0
+              ? res.costoUnitario!
+              : (stockPrevio * avgPrevio + n * res.costoUnitario!) /
+                  (stockPrevio + n);
+          await tx.execute(
+              'UPDATE inv_productos SET costo_promedio = ? WHERE id = ?',
+              [nuevoAvg, res.productoId]);
         }
       });
     } catch (e) {
@@ -701,6 +747,39 @@ class _ExistenciasTabState extends ConsumerState<_ExistenciasTab> {
     } catch (e) {
       _snack(context, 'Error: $e');
     }
+  }
+
+  // Desglose del stock de un producto POR UBICACIÓN (M2). Serializado = conteo
+  // de seriales en_stock por ubicación; granel = Σdestino−Σorigen por ubicación.
+  void _verStockPorUbicacion(BuildContext context, Map<String, dynamic> p) {
+    final serial = (p['es_serializado'] as int? ?? 0) == 1;
+    final sql = serial
+        ? '''SELECT u.nombre, COUNT(s.id) AS n
+               FROM inv_ubicaciones u
+          LEFT JOIN inv_seriales s ON s.ubicacion_id = u.id
+                 AND s.producto_id = ? AND s.estado = 'en_stock'
+              WHERE u.activa = 1
+              GROUP BY u.id, u.nombre
+             HAVING COUNT(s.id) > 0
+              ORDER BY u.nombre'''
+        : '''SELECT u.nombre,
+                    COALESCE((
+                      SELECT SUM(CASE WHEN m.ubicacion_destino_id = u.id THEN m.cantidad ELSE 0 END)
+                           - SUM(CASE WHEN m.ubicacion_origen_id  = u.id THEN m.cantidad ELSE 0 END)
+                        FROM inv_movimientos m WHERE m.producto_id = ?), 0) AS n
+               FROM inv_ubicaciones u
+              WHERE u.activa = 1
+              ORDER BY u.nombre''';
+    showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (_) => _StockPorUbicacionSheet(
+        titulo: p['nombre'] as String,
+        sql: sql,
+        productoId: p['id'] as String,
+        unidad: serial ? 'u' : (p['unidad'] as String? ?? 'u'),
+      ),
+    );
   }
 }
 
@@ -2211,6 +2290,83 @@ class _BajaDialogState extends State<_BajaDialog> {
           child: Text(widget.esCambioEstado ? 'Guardar' : 'Dar de baja'),
         ),
       ],
+    );
+  }
+}
+
+/// Bottom sheet: desglose del stock de un producto por ubicación. La query la
+/// arma el caller (difiere serializado vs granel). Muestra solo ubicaciones con
+/// stock distinto de 0.
+class _StockPorUbicacionSheet extends StatefulWidget {
+  const _StockPorUbicacionSheet({
+    required this.titulo,
+    required this.sql,
+    required this.productoId,
+    required this.unidad,
+  });
+  final String titulo;
+  final String sql;
+  final String productoId;
+  final String unidad;
+
+  @override
+  State<_StockPorUbicacionSheet> createState() =>
+      _StockPorUbicacionSheetState();
+}
+
+class _StockPorUbicacionSheetState extends State<_StockPorUbicacionSheet> {
+  late final Stream<List<Map<String, dynamic>>> _stream;
+
+  @override
+  void initState() {
+    super.initState();
+    _stream = ps.db.watch(widget.sql, parameters: [widget.productoId]);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+        child: StreamBuilder<List<Map<String, dynamic>>>(
+          stream: _stream,
+          initialData: const [],
+          builder: (context, snap) {
+            final rows = (snap.data ?? const [])
+                .where((r) => ((r['n'] as num?) ?? 0) != 0)
+                .toList();
+            return Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  child: Text('Stock por ubicación · ${widget.titulo}',
+                      style: Theme.of(context).textTheme.titleMedium),
+                ),
+                if (rows.isEmpty)
+                  Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Text('Sin stock en ninguna ubicación.',
+                        style: TextStyle(color: scheme.outline)),
+                  )
+                else
+                  ...rows.map((r) => ListTile(
+                        dense: true,
+                        leading: Icon(Icons.warehouse,
+                            color: scheme.outline, size: 20),
+                        title: Text(r['nombre'] as String),
+                        trailing: Text(
+                          '${_fmtCant((r['n'] as num?) ?? 0)} ${widget.unidad}',
+                          style: const TextStyle(fontWeight: FontWeight.w600),
+                        ),
+                      )),
+              ],
+            );
+          },
+        ),
+      ),
     );
   }
 }
