@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
 
@@ -356,7 +357,8 @@ class _SlaPrioridadDialogState extends State<_SlaPrioridadDialog> {
             const Text(
               'Horas para responder según la prioridad del ticket. El SLA real '
               'usa el MENOR entre esto y el SLA del tipo. Dejá vacío para que esa '
-              'prioridad no imponga límite.',
+              'prioridad no imponga límite. Aplica a TODOS los tickets con '
+              'prioridad, incluidos los ya creados.',
               style: TextStyle(fontSize: 12),
             ),
             const SizedBox(height: 12),
@@ -366,6 +368,7 @@ class _SlaPrioridadDialogState extends State<_SlaPrioridadDialog> {
                   child: TextField(
                     controller: _ctrls[p],
                     keyboardType: TextInputType.number,
+                    inputFormatters: [FilteringTextInputFormatter.digitsOnly],
                     decoration: InputDecoration(
                       labelText: prioridadLabel(p),
                       suffixText: 'horas',

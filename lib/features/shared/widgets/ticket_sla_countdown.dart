@@ -11,13 +11,16 @@ import '../../../data/utils/ticket_sla.dart';
 /// `slaHoras` debe ser el SLA EFECTIVO ([slaHorasEfectivas]: min tipo/prioridad).
 /// Render por situación:
 ///   - en plazo / por vencer / vencido → chip con el restante (color por estado)
-///   - en_espera → chip estático "En espera (SLA pausado)" (no ticker)
+///   - en_espera → chip estático "SLA pausado" (no ticker)
 ///   - sin SLA / cerrado → nada (`SizedBox.shrink`) — el estado ya se ve aparte
 ///
 /// `tick`: 1 min en listas (suficiente para SLAs en horas), 1 s en el detalle
 /// (donde ver el número bajar construye urgencia). El reloj del device es la
 /// fuente — un device con la hora mal verá un restante mal (fuera de alcance;
 /// los timestamps del server siguen siendo la verdad).
+///
+/// `compact`: en listas (trailing angosto) muestra "2h 15m" / "Pausado" sin las
+/// palabras "restantes"/"hace"/"SLA" — el color del chip ya comunica el estado.
 class TicketSlaCountdown extends StatefulWidget {
   const TicketSlaCountdown({
     super.key,
@@ -27,6 +30,7 @@ class TicketSlaCountdown extends StatefulWidget {
     this.prioridad,
     this.segundosPausado = 0,
     this.tick = const Duration(minutes: 1),
+    this.compact = false,
   });
 
   final String estado;
@@ -35,6 +39,7 @@ class TicketSlaCountdown extends StatefulWidget {
   final String? prioridad;
   final int segundosPausado;
   final Duration tick;
+  final bool compact;
 
   @override
   State<TicketSlaCountdown> createState() => _TicketSlaCountdownState();
@@ -73,7 +78,7 @@ class _TicketSlaCountdownState extends State<TicketSlaCountdown> {
     final color = slaColor(estadoSla, scheme);
     final String texto;
     if (estadoSla == SlaEstado.pausado) {
-      texto = 'En espera (SLA pausado)';
+      texto = widget.compact ? 'Pausado' : 'SLA pausado';
     } else {
       final restante = ticketSlaRestante(
         estado: widget.estado,
@@ -81,7 +86,9 @@ class _TicketSlaCountdownState extends State<TicketSlaCountdown> {
         slaHoras: widget.slaHoras,
         segundosPausado: widget.segundosPausado,
       );
-      texto = restante == null ? slaLabel(estadoSla) : formatSlaRestante(restante);
+      texto = restante == null
+          ? slaLabel(estadoSla)
+          : formatSlaRestante(restante, compact: widget.compact);
     }
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),

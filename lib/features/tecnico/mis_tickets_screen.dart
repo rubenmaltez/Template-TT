@@ -145,6 +145,7 @@ class _MisTicketsScreenState extends ConsumerState<MisTicketsScreen> {
                                 slaHoras: ef,
                                 prioridad: prioridad,
                                 segundosPausado: pausado,
+                                compact: true,
                               ),
                     onTap: () => context.push('/tecnico/tickets/${t['id']}'),
                   );

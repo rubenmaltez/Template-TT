@@ -73,6 +73,9 @@ int? slaHorasEfectivas(int? tipoSla, int? prioridadSla) {
 /// Es matemática pura sobre data local (`DateTime.now()` + la fila del ticket):
 /// TICKEA OFFLINE sin tocar la red. El `segundosPausado` es server-computed; off-
 /// line mid-pausa queda levemente conservador (más urgente, nunca oculta vencido).
+/// `createdAt` se compara como instante absoluto (`Duration.difference`), así que
+/// da bien sea el `created_at` device-local pre-sync o el normalizado post-sync —
+/// asume el offset único de Nicaragua (UTC-6, sin DST), igual que `fecha_pago`.
 Duration? ticketSlaRestante({
   required String estado,
   required DateTime createdAt,
@@ -89,14 +92,26 @@ Duration? ticketSlaRestante({
   return deadline.difference(ahora ?? DateTime.now());
 }
 
-/// Formato legible del restante: "2h 15m restantes" · "12m restantes" ·
-/// "vencido hace 30m". Granularidad de minutos (suficiente para SLAs en horas).
-String formatSlaRestante(Duration d) {
+/// Formato legible del restante. `compact` (listas, donde el ancho importa) omite
+/// "restantes"/"hace" — el color del chip ya comunica el estado:
+///   compact=false: "2h 15m restantes" · "vencido hace 2d 3h"
+///   compact=true:  "2h 15m"           · "vencido 2d 3h"
+/// Rolea a días arriba de 24h (acota el ancho y se lee más rápido que "50h").
+String formatSlaRestante(Duration d, {bool compact = false}) {
   final vencido = d.isNegative;
   final a = d.abs();
-  final h = a.inHours;
+  final dias = a.inDays;
+  final h = a.inHours.remainder(24);
   final m = a.inMinutes.remainder(60);
-  final cuerpo = h > 0 ? '${h}h ${m}m' : '${m}m';
+  final String cuerpo;
+  if (dias > 0) {
+    cuerpo = '${dias}d ${h}h';
+  } else if (h > 0) {
+    cuerpo = '${h}h ${m}m';
+  } else {
+    cuerpo = '${m}m';
+  }
+  if (compact) return vencido ? 'vencido $cuerpo' : cuerpo;
   return vencido ? 'vencido hace $cuerpo' : '$cuerpo restantes';
 }
 
@@ -109,11 +124,16 @@ String slaLabel(SlaEstado s) => switch (s) {
       SlaEstado.cerrado => 'Cerrado',
     };
 
+// Semáforo del SLA: verde (en plazo) → ámbar (por vencer) → rojo (vencido).
+// `c.tertiary` ES AppColors.success (verde, theme.dart); `c.primary` es el AZUL
+// de marca, NO sirve para "ok". El ámbar espeja la convención "En gracia → ámbar"
+// (Colors.amber.shade700) del resto de la app. Pausado va NEUTRO (gris): el reloj
+// está congelado, nunca debe leerse como "ok".
 Color slaColor(SlaEstado s, ColorScheme c) => switch (s) {
       SlaEstado.vencido => c.error,
-      SlaEstado.porVencer => Colors.orange,
-      SlaEstado.enPlazo => c.primary,
-      SlaEstado.pausado => c.tertiary,
+      SlaEstado.porVencer => Colors.amber.shade700,
+      SlaEstado.enPlazo => c.tertiary,
+      SlaEstado.pausado => c.outline,
       SlaEstado.cerrado => c.outline,
       SlaEstado.sinSla => c.outline,
     };

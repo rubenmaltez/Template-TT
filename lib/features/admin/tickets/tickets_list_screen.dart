@@ -179,6 +179,7 @@ class _TicketsListScreenState extends ConsumerState<TicketsListScreen> {
                               slaHoras: ef,
                               prioridad: prioridad,
                               segundosPausado: pausado,
+                              compact: true,
                             ),
                       onTap: () => context.push('/admin/tickets/${t['id']}'),
                     );
