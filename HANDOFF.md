@@ -56,6 +56,34 @@ Lote UX/reportes, **sin migraciones**, auditado (3 agentes, 0 bloqueantes):
 
 Detalle completo → `REPORTE-SESION.md` (entrada 2026-06-06 cont.).
 
+## Fase 1.1 — Fixes + features de red post-testing de Rubén (EN CURSO)
+
+Rubén testeó (super_admin impersonando) y reportó bugs/pedidos. Estado:
+- ✅ **Puerto no persistía** (`a93ab98`): el `RedPicker` dejaba `_puertosStream` vacío
+  al elegir Hub (faltó espejar `_watchPuertos(id)`). Era MI bug, confirmado por
+  rastreo de data-flow (no era impersonación). Afectaba a todos los roles.
+- ✅ **Banner impersonación duplicado** (`3ac3597`): el inline en detalle cliente/
+  contrato se sumaba al del AdminShell → gateado por `!enAdminShell`.
+- ✅ **Map-picker + notas del nodo** (`c2ea65d`): `MapaPickerScreen` extraído a
+  shared; `_NodoDialog` con notas + "Elegir en el mapa"; soporta edición.
+- ✅ **Red editable + historial** (`9115a7f`): menú Editar/Historial por nodo/hub/
+  puerto (UPDATE + `HistorialCambiosWidget`).
+- ✅ **Geografía: historial** (`cb76bab`): 🕐 por depto/municipio/comunidad.
+
+**PENDIENTE (próximo, bien especificado por los agentes):**
+- **Filtro por Nodo** en lista de clientes (`clientes_admin_screen`: clonar
+  `_ComunidadChip` → `_NodoChip` + subquery `c.puerto_id IN (SELECT p.id FROM
+  red_puertos p JOIN red_hubs h ... WHERE h.nodo_id=?)`) y en **mapa**
+  (`mapa_screen`: traer `c.puerto_id`+nodo vía LEFT JOINs, `DropdownFiltro` Nodo).
+- **Eliminar (soft, activo=0)** nodo/hub/puerto + geo → requiere filtrar `activo=1`
+  en red_admin/red_picker/geografia (varias queries) → su propio pase con audit.
+- **Geo: editar** (parametrizar `_promptNombre`) para consistencia con red.
+- (Opcional) mostrar nodo en `/admin/mapa`, badge libre/ocupado del puerto.
+
+**⚠️ Foot-gun latente (backlog):** `connector.dart:68-86` traga errores de upload
+no-retryables → una fila podría quedar local-only sin persistir (hoy no se dispara
+porque RLS permite los INSERT). Documentar/endurecer a futuro.
+
 ## Fase 1 — CÓDIGO COMPLETO, falta DEPLOY + TESTING de Rubén
 
 Geografía per-tenant + topología de red (Nodo→Hub→Puerto). Auditada por 4 agentes
