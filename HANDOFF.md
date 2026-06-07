@@ -71,8 +71,12 @@ ni trigger de proyección. Fase 2 es admin-facing; custodia por técnico = Fase 
 - ✅ **2B (ubicaciones + proveedores)** commit `d690c13`, **en auditoría**: migración
   0100 (inv_ubicaciones); InventarioScreen en pestañas (Productos|Ubicaciones|
   Proveedores), CRUD+historial en cada una. schema **v19**.
-- ⏳ **2C**: `inv_movimientos` (ledger) + `inv_seriales` + `inv_recepciones` + stock
-  derivado + ingreso/egreso/ajuste/transferencia + asignar equipo a cliente.
+- ✅ **2C-1 (ledger + ingreso + existencias)** commit `5e55f47`, **en auditoría**:
+  migración 0101 (inv_seriales + inv_movimientos append-only); pestaña Existencias
+  (stock derivado = Σdestino−Σorigen); Ingreso (serializado/granel). schema **v20**.
+  Nota: `costo_promedio` NO se auto-recalcula aún (se guarda costo_unitario).
+- ⏳ **2C-2**: asignar equipo serializado a cliente (estado→instalado) + egreso/
+  ajuste/transferencia/baja + guardas de borrado de producto/ubicación.
 - ⏳ **2D**: equipos instalados en pantalla de cliente/contrato.
 
 > ⚠️ Deploy Fase 2 (al final, todo junto): correr `0099` + `0100` (+ las de 2C) por
