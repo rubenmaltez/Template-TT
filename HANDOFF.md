@@ -7,16 +7,17 @@
 
 ---
 
-## Fase 3 — Tickets (3A + 3B + 3C COMPLETOS y auditados → próximo 3D incidentes)
+## Fase 3 — Tickets (3A+3B+3C+3D COMPLETOS y auditados → próximo 3E notificaciones)
 
 Propuesta aprobada en `FASE3-PLAN.md` (decisiones: D1 trigger server-side de
 descuento de stock · D2 trigger de transición de estado · D3 shell propio del
 técnico · D4 correlativo `T-00001` · D5 3A completo).
 
-> **3A + 3B + 3C cerrados y auditados, SIN backlog bloqueante.** El loop completo
+> **3A+3B+3C+3D cerrados y auditados, SIN backlog bloqueante.** El loop completo
 > funciona: admin crea/asigna → técnico resuelve offline + **consume materiales de su
-> custodia (descuenta inventario)** → sincroniza → admin cierra. Próximo: **3D
-> (incidentes/outages)** + **3E (notificaciones in-app + audit integral de cierre)**.
+> custodia (descuenta inventario)** → sincroniza → admin cierra; los cortes se agrupan
+> como **incidentes** con clientes afectados derivados de la red. Próximo y ÚLTIMO slice:
+> **3E (notificaciones in-app + audit integral de cierre de Fase 3)**.
 
 **3A capa 1 — HECHA** (commits `a62a8fb`, `04a5999`):
 - **Migración 0103** (server-side, idempotente, transaccional): roles `tecnico`+
@@ -126,16 +127,39 @@ sync/RLS · Dart/UI — dinero **hermético**, **1 ALTA fixed**, resto BAJA):
 - **Fix ALTA (`65fc29d`)**: el trigger SECURITY DEFINER valida que producto/ubicación/
   serial pertenezcan a `NEW.tenant_id` (aislamiento multi-tenant; SECURITY DEFINER saltea RLS).
 - **Accepted/v2 (no re-flag):** granel offline puede doble-descontar (tolerancia negativa,
-  por diseño) · serial instalado en ticket sin cliente (outage) queda sin cliente (v2) ·
-  el consumo-install NO aparece en el change-log del **cliente** (es nieto vía ticket →
-  regla de profundidad; sí en el del serial + ticket) · snack "se descuenta al sincronizar".
+  por diseño) · el consumo-install NO aparece en el change-log del **cliente** (es nieto
+  vía ticket → regla de profundidad; sí en el del serial + ticket) · snack "se descuenta
+  al sincronizar". (El "serial en ticket sin cliente" SE CERRÓ en 3D: se bloquea el
+  consumo serializado si el ticket no tiene cliente.)
 
-> ⚠️ **Deploy Fase 3 (al final, todo junto)**: correr `0103` + **`0104`** + **`0105`** +
-> **`0106`** por Dashboard **en orden** (dependen de `0103`) + **redeploy sync rules**
-> (tablas/columnas + buckets **`por_tecnico*`** incl. **`por_tecnico_inventario`** +
-> `ticket_materiales`) + restart (**schema v23**). Verificar "Active" en PowerSync.
-> El super_admin enciende 'tickets' (y 'inventario' para materiales) del tenant en
-> `/super/tenants/:id`, y crea una ubicación `tipo='tecnico'` con `cobrador_id` del técnico.
+**3D — INCIDENTES (outages) HECHO + AUDITADO** (commits `5d43dd9`, `ab8f5b0`, `5d8a218`;
+3 agentes: DB/RLS/sync · cross-módulo/lifecycle · Dart/UI — **0 ALTA**, 1 MEDIA fixed):
+- **Migración 0107**: tabla `incidentes` (alcance nodo|hub|puerto|general con CHECK de
+  un-solo-nivel, estado abierto/resuelto, inicio/fin) + FK diferida `tickets.incidente_id`
+  → incidentes (ON DELETE SET NULL). RLS write=`is_admin_or_tickets` (el técnico NO crea).
+  **Migración 0108**: `alcance_label` (snapshot del alcance, fix MEDIA del audit).
+  schema **v23→v25**.
+- **UI** (admin-only, módulo tickets): `/admin/incidentes` lista + crear (alcance en
+  cascada nodo→hub→puerto) + detalle con **clientes afectados DERIVADOS de la red**
+  (puerto→hub→nodo) + tickets agrupados + resolver + historial. ticket_form: picker de
+  incidente. ticket_detail: muestra el incidente + acción **"Vincular a incidente"**
+  (admin, para tickets ya creados — el flujo real es tickets-primero).
+- **Cross-módulo verificado**: incidentes↔red (FK SET NULL + delete-guard) · incidentes↔
+  clientes (derivación correcta por nivel, money-clean) · incidentes↔tickets (grouping,
+  picker sólo outages abiertos) · **técnico aislado** (no sincroniza incidentes, degrada
+  sin crash) · dinero **hermético**.
+- **Fixes del audit (`5d8a218`)**: snapshot `alcance_label` (MEDIA) · vincular ticket
+  existente (alto valor real) · filtro tenant_id en corte general (defensa).
+- **Accepted (no re-flag):** índice por scope (perf, ISP chico) · `_evento` duplicado en
+  ticket_form/detail (preexistente, candidato a helper) · lista de afectados cap 50.
+
+> ⚠️ **Deploy Fase 3 (al final, todo junto)**: correr `0103`→`0104`→`0105`→`0106`→`0107`→
+> `0108` por Dashboard **en orden** + **redeploy sync rules** (tablas/columnas + buckets
+> **`por_tecnico*`** incl. `por_tecnico_inventario` + `ticket_materiales` + `incidentes`) +
+> restart (**schema v25**). Verificar "Active" en PowerSync. El super_admin enciende
+> 'tickets' (y 'inventario' para materiales) del tenant en `/super/tenants/:id`, crea una
+> ubicación `tipo='tecnico'` con `cobrador_id` del técnico, y la topología de red (nodos/
+> hubs/puertos) para poder scopear incidentes.
 
 ## Estado actual
 
@@ -167,9 +191,9 @@ sync/RLS · Dart/UI — dinero **hermético**, **1 ALTA fixed**, resto BAJA):
   `push --delete`; los MCP de GitHub no exponen delete). **Pendiente: Rubén limpia desde
   GitHub UI** — 40 ramas mergeadas (safe) + 29 con commits únicos (revisar). Lista y
   comando `git push origin --delete ...` en el chat de cierre de esta sesión.
-- **Schema PowerSync:** `_schemaVersion = 23` (`lib/powersync/db.dart`). Inventario reusa
+- **Schema PowerSync:** `_schemaVersion = 25` (`lib/powersync/db.dart`). Inventario reusa
   0099-0101 (sin bump). Tickets sumó 0103 (v21, 4 tablas) + 0105 (v22, pausa SLA) + 0106
-  (v23, `ticket_materiales`).
+  (v23, `ticket_materiales`) + 0107 (v24, `incidentes`) + 0108 (v25, `alcance_label`).
 - **Plataformas target:** Android + Windows (web degrada sin romper, NO es target).
 - **App version:** v0.9.0 (ver `RELEASE.md`).
 

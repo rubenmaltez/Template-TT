@@ -145,14 +145,16 @@ fotos del cobrador). **Contención**: el router lo mantiene en `/tecnico/*` (no 
 dinero/admin/super) + el sync NO le baja contratos/cuotas/pagos (doble defensa). Auditado
 3 agentes, 0 ALTA/MEDIA. `admin_tickets` DIFERIDO (no asignable aún). SIN migración (schema v22).
 
-### Tickets admin (`/admin/tickets`) — ✅ Fase 3A+3C (módulo opcional, soloAdmin)
+### Tickets admin (`/admin/tickets` + `/admin/incidentes`) — ✅ Fase 3A+3C+3D (módulo opcional, soloAdmin)
 Lista (filtro de estado en SQL), tipos de ticket (CRUD + SLA por tipo), crear+asignar,
 detalle (transiciones validadas server-side + reasignar + comentar + bitácora append-only
 + adjuntos). Correlativo `T-00001`. SLA derivado en Dart con pausa exacta (trigger 0105).
 **3C: materiales** — sección en el detalle (si el módulo inventario está on) para registrar
 equipos/insumos consumidos (serial de stock o granel); un trigger server-side (0106)
-descuenta el inventario e instala el serial en el cliente del ticket. Migraciones 0103-0106
-(schema v23). admin_cobranza NO entra (intencional).
+descuenta el inventario e instala el serial en el cliente del ticket. **3D: incidentes**
+(`/admin/incidentes`) — registrar outages con alcance nodo/hub/puerto/general, ver clientes
+afectados derivados de la red, agrupar tickets, resolver. Migraciones 0103-0108 (schema v25).
+admin_cobranza NO entra (intencional).
 
 ### Reportes (`/admin/reportes`) — ✅ completo
 8 PDF (cobros, mora, por cobrador, estado de clientes, fiscal, eficiencia, inactivos,

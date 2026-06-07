@@ -87,6 +87,15 @@ CLAUDE.md):
   serial). Probá **offline**: registrar un material sin red → al volver, el stock se
   descuenta. *Si falla:* el botón Registrar de granel debe exigir cantidad >0; un técnico
   sin custodia ve el aviso "no tenés una custodia asignada".
+- **Incidentes / outages (3D, admin, módulo tickets):** con topología de red cargada
+  (nodos/hubs/puertos) y clientes asignados a puertos, entrá a **Incidentes › +** → elegí
+  alcance (general / nodo / hub / puerto) → Registrar. En el detalle: *ver* los **clientes
+  afectados** correctos (los que cuelgan de ese nodo/hub/puerto), agregá tickets vía el
+  picker al crear un ticket o con **"Vincular a incidente"** en un ticket existente, y
+  **resolvé**. *Ver:* el alcance sigue mostrándose aunque borres el puerto/hub/nodo
+  (snapshot); un técnico NO puede entrar a `/admin/incidentes` (rebota) ni ve el incidente
+  en su ticket. *Si falla:* el corte general lista TODOS los clientes activos; un corte por
+  puerto, sólo los de ese puerto.
 - **⟨agregar acá los features nuevos a medida que se entregan⟩**
 
 ---

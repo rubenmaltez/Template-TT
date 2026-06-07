@@ -285,9 +285,13 @@ datos sin leer todo el código.
   trigger SECURITY DEFINER (0106) que inserta `inv_movimientos 'consumo'` (descuenta del
   origen) y marca el serial `'instalado'` en el cliente del ticket → el equipo aparece en
   "Equipos instalados" del cliente y en `equipos_en_baja`. El técnico consume de su
-  custodia (`inv_ubicaciones tipo='tecnico'`). · (3D) `incidente_id` → **incidentes**
-  (outages). Eventos de la bitácora en la timeline del ticket; el consumo se surfacea en el
-  cuna-a-tumba del serial (via `ticket_materiales`). El audit_log genérico cubre las 5 tablas.
+  custodia (`inv_ubicaciones tipo='tecnico'`). · **`incidente_id` → incidentes (3D, HECHO)**:
+  un outage agrupa tickets; sus clientes afectados se DERIVAN de la red (clientes.puerto_id →
+  red_puertos.hub_id → red_hubs.nodo_id). Admin-only (RLS `is_admin_or_tickets`, no sync al
+  técnico). `incidentes.alcance_label` snapshotea el alcance por si se borra el nodo/hub/
+  puerto. Eventos de la bitácora en la timeline del ticket; el consumo se surfacea en el
+  cuna-a-tumba del serial (via `ticket_materiales`). El audit_log genérico cubre las 6 tablas
+  de ticket (ticket_tipos/tickets/ticket_eventos/ticket_adjuntos/ticket_materiales/incidentes).
 - **Sync (buckets)**: admin/impersonado bajan las 5 tablas de ticket (`todo_tenant_admin`/
   `impersonated_tenant`). El **técnico** baja sólo lo suyo: `por_tecnico` (ticket_tipos +
   cobradores + catálogo inv), `por_tecnico_tickets` (dinámico: sus tickets + bitácora +

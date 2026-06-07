@@ -158,6 +158,52 @@ consistentes → auditoría.
 
 > Más reciente arriba. Formato por ítem: error → fix → expectativa.
 
+### 2026-06-07 (cont. 8) — Fase 3 slice 3D: incidentes (outages)
+
+Slice 3D aprobado (FASE3-PLAN.md; mapa de outages DIFERIDO por decisión de Rubén).
+Migraciones **0107** (incidentes + FK tickets) y **0108** (alcance_label, fix del audit),
+schema **v23→v25**. Auditado con **3 agentes** (DB/RLS/sync · cross-módulo/lifecycle ·
+Dart/UI): **0 ALTA**, 1 MEDIA corregida.
+
+**Comportamiento esperado:**
+- El admin (módulo tickets) entra a **Incidentes** (`/admin/incidentes`), registra un corte
+  con un **alcance**: general, o por nodo / hub / puerto (dropdowns en cascada). El técnico
+  NO ve ni crea incidentes (admin-only: RLS `is_admin_or_tickets` + router + sin sync).
+- El detalle muestra los **clientes afectados DERIVADOS de la topología de red**
+  (clientes.puerto_id → red_puertos.hub_id → red_hubs.nodo_id), los **tickets agrupados**
+  bajo el incidente, y un botón **resolver** (estado→resuelto, fin=ahora).
+- Los tickets se vinculan a un incidente: al crear (picker de outages abiertos) o, para
+  uno ya creado, con la acción **"Vincular a incidente"** en el detalle del ticket (el
+  flujo real es: entran tickets → el admin nota que es un corte → lo declara y los agrupa).
+- Un incidente resuelto conserva sus tickets vinculados (histórico). El dinero NO se toca.
+
+**Errores → fixes (audit):**
+- **Ambigüedad de etiqueta del alcance (MEDIA, `5d8a218`)**: el alcance es FK ON DELETE
+  SET NULL; al borrar el nodo/hub/puerto, un incidente histórico se leía como "corte
+  general (todos los clientes)". Fix = columna **`alcance_label`** (snapshot al crear); la
+  UI prefiere el nombre vivo del FK (maneja renombres) y cae al snapshot si el FK quedó
+  NULL. **Expectativa**: un "Corte puerto 3" resuelto sigue diciendo "Puerto 3" aunque se
+  borre el puerto.
+- **No se podía agrupar un ticket preexistente (alto valor, `5d8a218`)**: `incidente_id`
+  sólo se seteaba al crear el ticket. Fix = acción "Vincular a incidente" en el detalle.
+  **Expectativa**: cubre la secuencia real (tickets-primero, corte-después).
+- **Corte general sin filtro de tenant (defensa, `5d8a218`)**: la derivación de afectados
+  en un corte general consultaba `clientes WHERE activo=1` sin `tenant_id`. Fix = filtro
+  explícito de tenant. **Expectativa**: consistente con el resto (aunque el SQLite local ya
+  es mono-tenant, no hay leak).
+
+**Cierre de backlog 3C** (en este slice, `ab8f5b0`): el consumo de material **serializado**
+se bloquea si el ticket NO tiene cliente (outage) — no se instala un equipo "a nadie".
+
+**Accepted (no re-flag):** índice por scope (perf, ISP chico) · `_evento` duplicado en
+ticket_form/detail (preexistente) · lista de afectados cap visual 50.
+
+Commits: `5d43dd9` (datos) · `ab8f5b0` (UI + cierre 3C) · `5d8a218` (fixes audit).
+Archivos: `0107_incidentes.sql` + `0108_incidente_alcance_label.sql` (nuevos) ·
+`incidentes_screen.dart` + `incidente_detail_screen.dart` (nuevos) · `ticket_form_screen.dart` ·
+`ticket_detail_screen.dart` · `ticket_materiales_widget.dart` · `router.dart` · `admin_shell.dart` ·
+`schema.dart` · `db.dart` · `sync-rules.yaml` · `audit_changelog.dart`.
+
 ### 2026-06-07 (cont. 7) — Fase 3 slice 3C: materiales (engancha inventario)
 
 Slice 3C aprobado (FASE3-PLAN.md D1 + decisiones de Rubén: 3C completo, trazabilidad

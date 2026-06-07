@@ -312,7 +312,7 @@ per-tenant** (departamentos/municipios/comunidades, 0097) + **red**
 (red_nodos/red_hubs/red_puertos, 0098) + **inventario** (inv_categorias/
 inv_proveedores/inv_productos/inv_ubicaciones/inv_seriales/inv_movimientos,
 0099-0101) + **tickets** (ticket_tipos/tickets/ticket_eventos/ticket_adjuntos,
-0103; **ticket_materiales**, 0106). Los eventos de **recibos** (emitido / anulado)
+0103; **ticket_materiales**, 0106; **incidentes**, 0107). Los eventos de **recibos** (emitido / anulado)
 se SURFACEAN en el timeline de la cuota (`HistorialCuotaWidget`). Los **movimientos
 de inventario** y los cambios del **serial** se unen en `HistorialSerialWidget`
 (Agregador cuna-a-tumba), que **TAMBIÉN une `ticket_materiales`** (3C): el consumo
