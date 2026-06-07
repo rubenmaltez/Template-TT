@@ -142,6 +142,50 @@ const schema = Schema([
     Index('by_tenant', [IndexedColumn('tenant_id')]),
   ]),
 
+  Table('inv_seriales', [
+    Column.text('tenant_id'),
+    Column.text('producto_id'),
+    Column.text('serial'),
+    Column.text('mac'),
+    Column.text('estado'),
+    Column.text('ubicacion_id'),
+    Column.text('cliente_id'),
+    Column.text('contrato_id'),
+    Column.real('costo_ingreso'),
+    Column.text('notas'),
+    Column.text('created_at'),
+  ], indexes: [
+    Index('by_producto',
+        [IndexedColumn('tenant_id'), IndexedColumn('producto_id')]),
+    Index('by_cliente',
+        [IndexedColumn('tenant_id'), IndexedColumn('cliente_id')]),
+  ]),
+
+  Table('inv_movimientos', [
+    Column.text('tenant_id'),
+    Column.text('tipo'),
+    Column.text('producto_id'),
+    Column.text('serial_id'),
+    Column.real('cantidad'),
+    Column.text('ubicacion_origen_id'),
+    Column.text('ubicacion_destino_id'),
+    Column.text('cliente_id'),
+    Column.text('contrato_id'),
+    Column.text('proveedor_id'),
+    Column.text('numero_factura'),
+    Column.real('costo_unitario'),
+    Column.text('motivo'),
+    Column.text('notas'),
+    Column.text('ticket_id'),
+    Column.text('hecho_por'),
+    Column.text('ocurrido_en'),
+    Column.text('created_at'),
+  ], indexes: [
+    Index('by_producto',
+        [IndexedColumn('tenant_id'), IndexedColumn('producto_id')]),
+    Index('by_serial', [IndexedColumn('serial_id')]),
+  ]),
+
   // ── Catálogo del tenant ───────────────────────────────────────────────────
   Table('planes', [
     Column.text('tenant_id'),

@@ -16,16 +16,18 @@ class InventarioScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return DefaultTabController(
-      length: 3,
+      length: 4,
       child: Column(
         children: const [
-          TabBar(tabs: [
+          TabBar(isScrollable: true, tabs: [
+            Tab(text: 'Existencias'),
             Tab(text: 'Productos'),
             Tab(text: 'Ubicaciones'),
             Tab(text: 'Proveedores'),
           ]),
           Expanded(
             child: TabBarView(children: [
+              _ExistenciasTab(),
               _ProductosTab(),
               _UbicacionesTab(),
               _ProveedoresTab(),
@@ -390,6 +392,402 @@ class _ProveedoresTabState extends ConsumerState<_ProveedoresTab> {
     }
   }
 }
+
+// ===========================================================================
+// EXISTENCIAS (stock derivado del ledger) + INGRESO
+// ===========================================================================
+class _ExistenciasTab extends ConsumerStatefulWidget {
+  const _ExistenciasTab();
+  @override
+  ConsumerState<_ExistenciasTab> createState() => _ExistenciasTabState();
+}
+
+class _ExistenciasTabState extends ConsumerState<_ExistenciasTab> {
+  late final Stream<List<Map<String, dynamic>>> _stock;
+
+  @override
+  void initState() {
+    super.initState();
+    // Stock TOTAL por producto = Σ(cantidad con destino) − Σ(cantidad con
+    // origen) sobre el ledger. Las transferencias internas netean a 0.
+    _stock = ps.db.watch('''
+      SELECT p.id, p.nombre, p.unidad, p.es_serializado,
+             COALESCE((
+               SELECT SUM(CASE WHEN m.ubicacion_destino_id IS NOT NULL THEN m.cantidad ELSE 0 END)
+                    - SUM(CASE WHEN m.ubicacion_origen_id  IS NOT NULL THEN m.cantidad ELSE 0 END)
+                 FROM inv_movimientos m WHERE m.producto_id = p.id
+             ), 0) AS stock
+        FROM inv_productos p
+       WHERE p.activo = 1
+       ORDER BY p.nombre
+    ''');
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      floatingActionButton: FloatingActionButton.extended(
+        icon: const Icon(Icons.add_box),
+        label: const Text('Ingreso'),
+        onPressed: () => _ingreso(context),
+      ),
+      body: StreamBuilder<List<Map<String, dynamic>>>(
+        stream: _stock,
+        initialData: const [],
+        builder: (context, snap) {
+          if (snap.hasError) return Center(child: Text('Error: ${snap.error}'));
+          final rows = snap.data!;
+          if (rows.isEmpty) {
+            return const EmptyState(
+              icon: Icons.warehouse_outlined,
+              titulo: 'Sin existencias',
+              descripcion: 'Cargá productos y registrá un ingreso.',
+            );
+          }
+          return ListView.separated(
+            padding: const EdgeInsets.fromLTRB(8, 8, 8, 88),
+            itemCount: rows.length,
+            separatorBuilder: (_, __) => const Divider(height: 1),
+            itemBuilder: (_, i) {
+              final r = rows[i];
+              final stock = (r['stock'] as num?) ?? 0;
+              final serial = (r['es_serializado'] as int? ?? 0) == 1;
+              final unidad = serial ? 'u' : (r['unidad'] as String? ?? 'u');
+              final bajo = stock <= 0;
+              return ListTile(
+                leading: Icon(Icons.inventory,
+                    color: Theme.of(context).colorScheme.outline),
+                title: Text(r['nombre'] as String),
+                trailing: Text(
+                  '${_fmtCant(stock)} $unidad',
+                  style: TextStyle(
+                    fontWeight: FontWeight.w600,
+                    color: bajo
+                        ? Theme.of(context).colorScheme.error
+                        : null,
+                  ),
+                ),
+              );
+            },
+          );
+        },
+      ),
+    );
+  }
+
+  Future<void> _ingreso(BuildContext context) async {
+    final tenantId = ref.read(tenantIdProvider);
+    if (tenantId == null) return;
+    final hechoPor = ref.read(cobradorActualProvider).valueOrNull?.id;
+    final res = await showDialog<_IngresoData>(
+      context: context,
+      builder: (_) => const _IngresoDialog(),
+    );
+    if (res == null) return;
+    final now = DateTime.now().toIso8601String();
+    try {
+      if (res.esSerializado) {
+        // Validar que ningún serial ya exista en el tenant (UNIQUE).
+        for (final s in res.seriales) {
+          final dup = await ps.db.getAll(
+            'SELECT 1 FROM inv_seriales WHERE tenant_id = ? AND serial = ? LIMIT 1',
+            [tenantId, s],
+          );
+          if (dup.isNotEmpty) {
+            _snack(context, 'El serial "$s" ya existe.');
+            return;
+          }
+        }
+        for (final s in res.seriales) {
+          final serialId = const Uuid().v4();
+          await ps.db.execute(
+            '''INSERT INTO inv_seriales
+               (id, tenant_id, producto_id, serial, estado, ubicacion_id,
+                costo_ingreso, created_at)
+               VALUES (?, ?, ?, ?, 'en_stock', ?, ?, ?)''',
+            [serialId, tenantId, res.productoId, s, res.ubicacionDestinoId,
+              res.costoUnitario, now],
+          );
+          await _movIngreso(tenantId, res, productoSerialId: serialId,
+              cantidad: 1, hechoPor: hechoPor, now: now);
+        }
+      } else {
+        await _movIngreso(tenantId, res, productoSerialId: null,
+            cantidad: res.cantidad, hechoPor: hechoPor, now: now);
+      }
+    } catch (e) {
+      _snack(context, 'Error: $e');
+    }
+  }
+
+  Future<void> _movIngreso(String tenantId, _IngresoData res,
+      {required String? productoSerialId,
+      required double cantidad,
+      required String? hechoPor,
+      required String now}) {
+    return ps.db.execute(
+      '''INSERT INTO inv_movimientos
+         (id, tenant_id, tipo, producto_id, serial_id, cantidad,
+          ubicacion_destino_id, proveedor_id, numero_factura, costo_unitario,
+          hecho_por, ocurrido_en, created_at)
+         VALUES (?, ?, 'ingreso', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+      [
+        const Uuid().v4(), tenantId, res.productoId, productoSerialId, cantidad,
+        res.ubicacionDestinoId, res.proveedorId, res.numeroFactura,
+        res.costoUnitario, hechoPor, now, now,
+      ],
+    );
+  }
+}
+
+class _IngresoData {
+  const _IngresoData({
+    required this.productoId,
+    required this.esSerializado,
+    required this.ubicacionDestinoId,
+    required this.proveedorId,
+    required this.numeroFactura,
+    required this.costoUnitario,
+    required this.cantidad,
+    required this.seriales,
+  });
+  final String productoId;
+  final bool esSerializado;
+  final String ubicacionDestinoId;
+  final String? proveedorId;
+  final String? numeroFactura;
+  final double? costoUnitario;
+  final double cantidad;
+  final List<String> seriales;
+}
+
+class _IngresoDialog extends StatefulWidget {
+  const _IngresoDialog();
+  @override
+  State<_IngresoDialog> createState() => _IngresoDialogState();
+}
+
+class _IngresoDialogState extends State<_IngresoDialog> {
+  String? _productoId;
+  bool _serializado = false;
+  String? _ubicacionId;
+  String? _proveedorId;
+  final _factura = TextEditingController();
+  final _costo = TextEditingController();
+  final _cantidad = TextEditingController(text: '1');
+  final _seriales = TextEditingController();
+
+  late final Stream<List<Map<String, dynamic>>> _productos;
+  late final Stream<List<Map<String, dynamic>>> _ubicaciones;
+  late final Stream<List<Map<String, dynamic>>> _proveedores;
+
+  @override
+  void initState() {
+    super.initState();
+    _productos = ps.db.watch(
+        'SELECT id, nombre, es_serializado FROM inv_productos WHERE activo = 1 ORDER BY nombre');
+    _ubicaciones = ps.db.watch(
+        'SELECT id, nombre FROM inv_ubicaciones WHERE activa = 1 ORDER BY nombre');
+    _proveedores = ps.db.watch(
+        'SELECT id, nombre FROM inv_proveedores WHERE activo = 1 ORDER BY nombre');
+  }
+
+  @override
+  void dispose() {
+    _factura.dispose();
+    _costo.dispose();
+    _cantidad.dispose();
+    _seriales.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Ingreso de mercadería'),
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // Producto (define si es serializado o granel).
+            StreamBuilder<List<Map<String, dynamic>>>(
+              stream: _productos,
+              initialData: const [],
+              builder: (context, snap) {
+                final rows = snap.data!;
+                final exists =
+                    _productoId == null || rows.any((r) => r['id'] == _productoId);
+                return DropdownButtonFormField<String?>(
+                  value: exists ? _productoId : null,
+                  decoration: const InputDecoration(labelText: 'Producto'),
+                  isExpanded: true,
+                  onChanged: (v) {
+                    final row = rows.firstWhere((r) => r['id'] == v,
+                        orElse: () => const {});
+                    setState(() {
+                      _productoId = v;
+                      _serializado = (row['es_serializado'] as int? ?? 0) == 1;
+                    });
+                  },
+                  items: rows
+                      .map((r) => DropdownMenuItem(
+                            value: r['id'] as String,
+                            child: Text(r['nombre'] as String),
+                          ))
+                      .toList(),
+                );
+              },
+            ),
+            const SizedBox(height: 12),
+            StreamBuilder<List<Map<String, dynamic>>>(
+              stream: _ubicaciones,
+              initialData: const [],
+              builder: (context, snap) {
+                final rows = snap.data!;
+                final exists = _ubicacionId == null ||
+                    rows.any((r) => r['id'] == _ubicacionId);
+                return DropdownButtonFormField<String?>(
+                  value: exists ? _ubicacionId : null,
+                  decoration: const InputDecoration(labelText: 'Ubicación destino'),
+                  isExpanded: true,
+                  onChanged: (v) => setState(() => _ubicacionId = v),
+                  items: rows
+                      .map((r) => DropdownMenuItem(
+                            value: r['id'] as String,
+                            child: Text(r['nombre'] as String),
+                          ))
+                      .toList(),
+                );
+              },
+            ),
+            const SizedBox(height: 12),
+            // Cantidad (granel) o seriales (serializado).
+            if (_productoId != null && _serializado)
+              TextField(
+                controller: _seriales,
+                minLines: 2,
+                maxLines: 5,
+                decoration: const InputDecoration(
+                  labelText: 'Seriales (uno por línea)',
+                  hintText: 'SN001\nSN002',
+                ),
+              )
+            else
+              TextField(
+                controller: _cantidad,
+                keyboardType:
+                    const TextInputType.numberWithOptions(decimal: true),
+                decoration: const InputDecoration(labelText: 'Cantidad'),
+              ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _costo,
+              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              decoration:
+                  const InputDecoration(labelText: 'Costo unitario (opcional)'),
+            ),
+            const SizedBox(height: 12),
+            StreamBuilder<List<Map<String, dynamic>>>(
+              stream: _proveedores,
+              initialData: const [],
+              builder: (context, snap) {
+                final rows = snap.data!;
+                final exists = _proveedorId == null ||
+                    rows.any((r) => r['id'] == _proveedorId);
+                return DropdownButtonFormField<String?>(
+                  value: exists ? _proveedorId : null,
+                  decoration:
+                      const InputDecoration(labelText: 'Proveedor (opcional)'),
+                  isExpanded: true,
+                  onChanged: (v) => setState(() => _proveedorId = v),
+                  items: [
+                    const DropdownMenuItem<String?>(value: null, child: Text('—')),
+                    ...rows.map((r) => DropdownMenuItem(
+                          value: r['id'] as String,
+                          child: Text(r['nombre'] as String),
+                        )),
+                  ],
+                );
+              },
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _factura,
+              decoration:
+                  const InputDecoration(labelText: 'N° de factura (opcional)'),
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancelar')),
+        FilledButton(
+          onPressed: () {
+            if (_productoId == null || _ubicacionId == null) {
+              _snack(context, 'Elegí producto y ubicación.');
+              return;
+            }
+            final costo = double.tryParse(_costo.text.trim());
+            if (_serializado) {
+              final seriales = _seriales.text
+                  .split('\n')
+                  .map((s) => s.trim())
+                  .where((s) => s.isNotEmpty)
+                  .toSet()
+                  .toList();
+              if (seriales.isEmpty) {
+                _snack(context, 'Ingresá al menos un serial.');
+                return;
+              }
+              Navigator.pop(
+                context,
+                _IngresoData(
+                  productoId: _productoId!,
+                  esSerializado: true,
+                  ubicacionDestinoId: _ubicacionId!,
+                  proveedorId: _proveedorId,
+                  numeroFactura: _factura.text.trim().isEmpty
+                      ? null
+                      : _factura.text.trim(),
+                  costoUnitario: costo,
+                  cantidad: seriales.length.toDouble(),
+                  seriales: seriales,
+                ),
+              );
+            } else {
+              final cant = double.tryParse(_cantidad.text.trim()) ?? 0;
+              if (cant <= 0) {
+                _snack(context, 'Cantidad inválida.');
+                return;
+              }
+              Navigator.pop(
+                context,
+                _IngresoData(
+                  productoId: _productoId!,
+                  esSerializado: false,
+                  ubicacionDestinoId: _ubicacionId!,
+                  proveedorId: _proveedorId,
+                  numeroFactura: _factura.text.trim().isEmpty
+                      ? null
+                      : _factura.text.trim(),
+                  costoUnitario: costo,
+                  cantidad: cant,
+                  seriales: const [],
+                ),
+              );
+            }
+          },
+          child: const Text('Registrar'),
+        ),
+      ],
+    );
+  }
+}
+
+String _fmtCant(num n) =>
+    n == n.roundToDouble() ? n.toInt().toString() : n.toString();
 
 // ===========================================================================
 // Diálogos
