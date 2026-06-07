@@ -250,6 +250,24 @@ const schema = Schema([
     Index('by_ticket', [IndexedColumn('ticket_id')]),
   ]),
 
+  // Materiales consumidos en un ticket (Fase 3C). El descuento de stock lo hace
+  // un trigger server-side; el cliente sólo inserta esta fila.
+  Table('ticket_materiales', [
+    Column.text('tenant_id'),
+    Column.text('ticket_id'),
+    Column.text('producto_id'),
+    Column.text('serial_id'),
+    Column.real('cantidad'),
+    Column.text('ubicacion_origen_id'),
+    Column.real('costo_unit_snapshot'),
+    Column.text('hecho_por'),
+    Column.text('ocurrido_en'),
+    Column.text('created_at'),
+  ], indexes: [
+    Index('by_ticket', [IndexedColumn('ticket_id')]),
+    Index('by_serial', [IndexedColumn('serial_id')]),
+  ]),
+
   // ── Catálogo del tenant ───────────────────────────────────────────────────
   Table('planes', [
     Column.text('tenant_id'),

@@ -101,10 +101,15 @@ bucket_definitions:
       - SELECT id, tenant_id, nombre, telefono, rol, prefijo_recibo, activo
         FROM cobradores
         WHERE tenant_id = bucket.tenant_id
+      # Catálogo de inventario (Fase 3C) — para nombrar/elegir el material que
+      # consume. Son DEFINICIONES (no stock); el stock de su custodia va aparte
+      # (por_tecnico_inventario). Si el tenant no tiene inventario, viene vacío.
+      - SELECT * FROM inv_categorias WHERE tenant_id = bucket.tenant_id
+      - SELECT * FROM inv_productos  WHERE tenant_id = bucket.tenant_id
 
-  # Sus tickets asignados + bitácora + adjuntos. Bucket DINÁMICO: una instancia
-  # por ticket asignado (el parameters selecciona los ids del propio técnico).
-  # Cada query de `data:` usa AMBOS parámetros (ticket_id + tenant_id).
+  # Sus tickets asignados + bitácora + adjuntos + materiales. Bucket DINÁMICO:
+  # una instancia por ticket asignado (el parameters selecciona los ids del
+  # propio técnico). Cada query de `data:` usa AMBOS parámetros (ticket_id+tenant).
   por_tecnico_tickets:
     parameters: |
       SELECT id AS ticket_id, tenant_id
@@ -117,6 +122,27 @@ bucket_definitions:
         WHERE ticket_id = bucket.ticket_id AND tenant_id = bucket.tenant_id
       - SELECT * FROM ticket_adjuntos
         WHERE ticket_id = bucket.ticket_id AND tenant_id = bucket.tenant_id
+      - SELECT * FROM ticket_materiales
+        WHERE ticket_id = bucket.ticket_id AND tenant_id = bucket.tenant_id
+
+  # Custodia de inventario del técnico (Fase 3C): su ubicación tipo='tecnico'
+  # (cobrador_id = él) + los seriales que tiene + el ledger de ESA ubicación
+  # (para derivar el stock de granel). Bucket DINÁMICO parametrizado por la
+  # ubicación de custodia. SÓLO lo suyo — NO todo el inventario del tenant.
+  por_tecnico_inventario:
+    parameters: |
+      SELECT id AS ubicacion_id, tenant_id
+      FROM inv_ubicaciones
+      WHERE cobrador_id = request.user_id() AND tipo = 'tecnico'
+    data:
+      - SELECT * FROM inv_ubicaciones
+        WHERE id = bucket.ubicacion_id AND tenant_id = bucket.tenant_id
+      - SELECT * FROM inv_seriales
+        WHERE ubicacion_id = bucket.ubicacion_id AND tenant_id = bucket.tenant_id
+      - SELECT * FROM inv_movimientos
+        WHERE ubicacion_destino_id = bucket.ubicacion_id AND tenant_id = bucket.tenant_id
+      - SELECT * FROM inv_movimientos
+        WHERE ubicacion_origen_id = bucket.ubicacion_id AND tenant_id = bucket.tenant_id
 
   # Clientes de sus tickets asignados (para el detalle + el mapa). Bucket
   # DINÁMICO: una instancia por cliente_id distinto. SÓLO clientes — NADA de
@@ -165,6 +191,7 @@ bucket_definitions:
       - SELECT * FROM tickets           WHERE tenant_id = bucket.tenant_id
       - SELECT * FROM ticket_eventos    WHERE tenant_id = bucket.tenant_id
       - SELECT * FROM ticket_adjuntos   WHERE tenant_id = bucket.tenant_id
+      - SELECT * FROM ticket_materiales WHERE tenant_id = bucket.tenant_id
 
   # ── Vista global para admin_cobranza (mismo dataset que admin) ─────────
   # admin_cobranza ve todo pero sus permisos de escritura los limita RLS.
@@ -270,3 +297,4 @@ bucket_definitions:
       - SELECT * FROM tickets            WHERE tenant_id = bucket.tenant_id
       - SELECT * FROM ticket_eventos     WHERE tenant_id = bucket.tenant_id
       - SELECT * FROM ticket_adjuntos    WHERE tenant_id = bucket.tenant_id
+      - SELECT * FROM ticket_materiales  WHERE tenant_id = bucket.tenant_id
