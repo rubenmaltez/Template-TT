@@ -7,6 +7,7 @@ import '../../../data/utils/formatters.dart';
 import '../../../data/utils/ticket_sla.dart';
 import '../../../powersync/db.dart' as ps;
 import '../../shared/widgets/empty_state.dart';
+import 'ticket_adjuntos_widget.dart';
 
 /// Detalle de un ticket: header (estado/SLA/tipo/cliente/asignado), acciones de
 /// transición de estado (válidas según el estado actual; el server re-valida),
@@ -75,6 +76,10 @@ class _TicketDetailScreenState extends ConsumerState<TicketDetailScreen> {
                 _acciones(context, t),
                 const SizedBox(height: 16),
                 _comentarRow(context, t),
+                const SizedBox(height: 16),
+                TicketAdjuntosWidget(
+                    ticketId: widget.ticketId,
+                    tenantId: t['tenant_id'] as String),
                 const SizedBox(height: 16),
                 _timeline(context),
               ],
