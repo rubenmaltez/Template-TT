@@ -4,10 +4,12 @@ import 'package:flutter/material.dart';
 /// transiciones válidas y labels/colores. Sin model class: las pantallas usan
 /// `Map<String, dynamic>` de `ps.db.watch` (mismo patrón que inventario).
 
-/// Estado del SLA, DERIVADO en el cliente (no se persiste). El SLA es por TIPO
-/// (`ticket_tipos.sla_horas`). Plazo = created_at + sla_horas + segundos_pausado.
-/// Mientras el ticket está `en_espera` el SLA se considera PAUSADO (no vence);
-/// resuelto/cerrado/cancelado lo cierran.
+/// Estado del SLA, DERIVADO en el cliente (no se persiste). El SLA EFECTIVO es el
+/// MENOR entre el del TIPO (`ticket_tipos.sla_horas`) y el de la PRIORIDAD (setting
+/// `tickets.sla_horas_por_prioridad`), resuelto con [slaHorasEfectivas] — el caller
+/// pasa ese número ya combinado en `slaHoras`. Plazo = created_at + sla_horas +
+/// segundos_pausado. Mientras el ticket está `en_espera` el SLA se considera
+/// PAUSADO (no vence); resuelto/cerrado/cancelado lo cierran.
 ///
 /// PAUSA EXACTA (migración 0105): el trigger server-side acumula en
 /// `tickets.segundos_pausado` TODO el tiempo que el ticket estuvo en `en_espera`
@@ -22,7 +24,8 @@ const _estadosCerrados = {'resuelto', 'cerrado', 'cancelado'};
 SlaEstado ticketSlaEstado({
   required String estado,
   required DateTime createdAt,
-  int? slaHoras,
+  int? slaHoras, // SLA EFECTIVO (ver [slaHorasEfectivas])
+  String? prioridad, // ajusta el lead-time del "por vencer"
   int segundosPausado = 0, // tiempo acumulado en en_espera (no consume SLA)
   DateTime? ahora,
 }) {
@@ -35,19 +38,66 @@ SlaEstado ticketSlaEstado({
       .add(Duration(hours: slaHoras))
       .add(Duration(seconds: segundosPausado));
   if (now.isAfter(deadline)) return SlaEstado.vencido;
-  // Por vencer: dentro del último 20% del plazo, con piso de 1h para SLAs largos,
-  // pero NUNCA más del 50% del plazo — sin el techo, un SLA corto (1-5h) nacería
-  // directo en "por vencer" porque el piso de 1h cubriría casi todo el plazo.
+  // Por vencer: dentro del último 20% del plazo. El PISO del lead-time depende de
+  // la prioridad — urgente/alta avisan con 15 min (no se puede dar 1h de aviso en
+  // un SLA de 1h); media/baja con 1h. NUNCA más del 50% del plazo (techo) — sin
+  // él un SLA corto (1-5h) nacería directo en "por vencer".
   final restante = deadline.difference(now);
   final minutosSla = slaHoras * 60;
   var umbralMin = (minutosSla * 0.2).round();
-  if (umbralMin < 60) umbralMin = 60; // piso 1h
+  final piso = (prioridad == 'urgente' || prioridad == 'alta') ? 15 : 60;
+  if (umbralMin < piso) umbralMin = piso;
   final techo = (minutosSla * 0.5).round();
   if (umbralMin > techo) umbralMin = techo; // techo 50% del SLA
   if (restante <= Duration(minutes: umbralMin)) {
     return SlaEstado.porVencer;
   }
   return SlaEstado.enPlazo;
+}
+
+/// SLA EFECTIVO en horas = el MENOR entre el SLA del tipo y el de la prioridad,
+/// ignorando nulos y no-positivos (modelo híbrido "la restricción más urgente
+/// gana"). Devuelve null cuando ninguno aplica → el ticket no tiene SLA.
+///   - ambos null/≤0 → null (sin SLA)
+///   - sólo uno seteado → ese
+///   - ambos seteados → min(a, b)
+int? slaHorasEfectivas(int? tipoSla, int? prioridadSla) {
+  final vals = [tipoSla, prioridadSla].whereType<int>().where((h) => h > 0);
+  return vals.isEmpty ? null : vals.reduce((a, b) => a < b ? a : b);
+}
+
+/// Tiempo restante hasta el vencimiento del SLA. Positivo = falta; negativo =
+/// vencido hace |x|. Devuelve null cuando NO hay cuenta regresiva viva (sin SLA /
+/// en espera / cerrado). `slaHoras` debe ser el EFECTIVO ([slaHorasEfectivas]).
+///
+/// Es matemática pura sobre data local (`DateTime.now()` + la fila del ticket):
+/// TICKEA OFFLINE sin tocar la red. El `segundosPausado` es server-computed; off-
+/// line mid-pausa queda levemente conservador (más urgente, nunca oculta vencido).
+Duration? ticketSlaRestante({
+  required String estado,
+  required DateTime createdAt,
+  int? slaHoras,
+  int segundosPausado = 0,
+  DateTime? ahora,
+}) {
+  if (_estadosCerrados.contains(estado)) return null;
+  if (slaHoras == null || slaHoras <= 0) return null;
+  if (estado == 'en_espera') return null; // pausado → no hay cuenta regresiva
+  final deadline = createdAt
+      .add(Duration(hours: slaHoras))
+      .add(Duration(seconds: segundosPausado));
+  return deadline.difference(ahora ?? DateTime.now());
+}
+
+/// Formato legible del restante: "2h 15m restantes" · "12m restantes" ·
+/// "vencido hace 30m". Granularidad de minutos (suficiente para SLAs en horas).
+String formatSlaRestante(Duration d) {
+  final vencido = d.isNegative;
+  final a = d.abs();
+  final h = a.inHours;
+  final m = a.inMinutes.remainder(60);
+  final cuerpo = h > 0 ? '${h}h ${m}m' : '${m}m';
+  return vencido ? 'vencido hace $cuerpo' : '$cuerpo restantes';
 }
 
 String slaLabel(SlaEstado s) => switch (s) {

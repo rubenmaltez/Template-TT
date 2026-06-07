@@ -3,10 +3,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../../data/providers/cobrador_provider.dart';
+import '../../../data/repositories/settings_repo.dart';
 import '../../../data/utils/formatters.dart';
 import '../../../data/utils/ticket_sla.dart';
 import '../../../powersync/db.dart' as ps;
 import '../../shared/widgets/empty_state.dart';
+import '../../shared/widgets/ticket_sla_countdown.dart';
 import 'ticket_adjuntos_widget.dart';
 import 'ticket_materiales_widget.dart';
 
@@ -65,6 +67,9 @@ class _TicketDetailScreenState extends ConsumerState<TicketDetailScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // SLA por prioridad se lee acá (build del Consumer), no dentro del builder
+    // del StreamBuilder (que puede reconstruirse solo). Se pasa a _header.
+    final slaMap = ref.watch(appSettingsProvider).slaHorasPorPrioridad;
     return StreamBuilder<List<Map<String, dynamic>>>(
       stream: _ticket,
       initialData: const [],
@@ -83,7 +88,7 @@ class _TicketDetailScreenState extends ConsumerState<TicketDetailScreen> {
             child: ListView(
               padding: const EdgeInsets.fromLTRB(16, 16, 16, 80),
               children: [
-                _header(context, t),
+                _header(context, t, slaMap),
                 const SizedBox(height: 8),
                 _acciones(context, t),
                 const SizedBox(height: 16),
@@ -110,16 +115,26 @@ class _TicketDetailScreenState extends ConsumerState<TicketDetailScreen> {
     );
   }
 
-  Widget _header(BuildContext context, Map<String, dynamic> t) {
+  Widget _header(
+      BuildContext context, Map<String, dynamic> t, Map<String, int> slaMap) {
     final scheme = Theme.of(context).colorScheme;
     final estado = t['estado'] as String? ?? 'abierto';
+    final prioridad = t['prioridad'] as String?;
+    final createdAt = DateTime.parse(t['created_at'] as String);
+    final pausado = (t['segundos_pausado'] as int?) ?? 0;
+    // SLA EFECTIVO = min(SLA del tipo, SLA de la prioridad). El chip muestra la
+    // cuenta regresiva viva (tick 1s en el detalle).
+    final ef = slaHorasEfectivas(t['sla_horas'] as int?, slaMap[prioridad]);
     final sla = ticketSlaEstado(
       estado: estado,
-      createdAt: DateTime.parse(t['created_at'] as String),
-      slaHoras: t['sla_horas'] as int?,
-      segundosPausado: (t['segundos_pausado'] as int?) ?? 0,
+      createdAt: createdAt,
+      slaHoras: ef,
+      prioridad: prioridad,
+      segundosPausado: pausado,
     );
-    final prioridad = t['prioridad'] as String?;
+    final viva = sla == SlaEstado.enPlazo ||
+        sla == SlaEstado.porVencer ||
+        sla == SlaEstado.vencido;
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(16),
@@ -135,7 +150,14 @@ class _TicketDetailScreenState extends ConsumerState<TicketDetailScreen> {
             Wrap(spacing: 8, runSpacing: 8, children: [
               _chip(estadoTicketLabel(estado), estadoTicketColor(estado, scheme)),
               if (sla != SlaEstado.sinSla && sla != SlaEstado.cerrado)
-                _chip(slaLabel(sla), slaColor(sla, scheme)),
+                TicketSlaCountdown(
+                  estado: estado,
+                  createdAt: createdAt,
+                  slaHoras: ef,
+                  prioridad: prioridad,
+                  segundosPausado: pausado,
+                  tick: const Duration(seconds: 1),
+                ),
               if (prioridad != null)
                 _chip(prioridadLabel(prioridad), prioridadColor(prioridad, scheme)),
             ]),
@@ -154,11 +176,57 @@ class _TicketDetailScreenState extends ConsumerState<TicketDetailScreen> {
               _row(context, Icons.cell_tower, 'Incidente',
                   t['incidente_titulo'] as String?),
             _row(context, Icons.schedule, 'Creado',
-                Fmt.fechaCorta(DateTime.parse(t['created_at'] as String).toLocal())),
+                Fmt.fechaCorta(createdAt.toLocal())),
+            // Vencimiento del SLA (sólo con cuenta regresiva viva; en espera el
+            // plazo se corre, así que no mostramos una fecha que cambiaría).
+            if (viva && ef != null)
+              _row(context, Icons.timer_outlined, 'Vence',
+                  _fmtVence(createdAt, ef, pausado)),
           ],
         ),
       ),
     );
+  }
+
+  // Chip compacto reutilizado en el header (estado / prioridad).
+  Widget _chip(String label, Color color) => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+        decoration: BoxDecoration(
+          color: color.withValues(alpha: 0.15),
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Text(label,
+            style: TextStyle(
+                color: color, fontSize: 12, fontWeight: FontWeight.w600)),
+      );
+
+  // Fila ícono + label + valor. Se oculta si el valor es vacío/null.
+  Widget _row(BuildContext context, IconData icon, String label, String? value) {
+    if (value == null || value.isEmpty) return const SizedBox.shrink();
+    final scheme = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, size: 18, color: scheme.outline),
+          const SizedBox(width: 12),
+          SizedBox(
+              width: 90,
+              child: Text(label, style: TextStyle(color: scheme.outline))),
+          Expanded(child: Text(value)),
+        ],
+      ),
+    );
+  }
+
+  // Fecha/hora local del vencimiento del SLA: created_at + sla efectivo + pausa.
+  String _fmtVence(DateTime createdAt, int slaHoras, int segundosPausado) {
+    final d = createdAt
+        .add(Duration(hours: slaHoras))
+        .add(Duration(seconds: segundosPausado))
+        .toLocal();
+    return '${Fmt.fechaCorta(d)} ${Fmt.hora(d)}';
   }
 
   Widget _acciones(BuildContext context, Map<String, dynamic> t) {

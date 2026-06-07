@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../../config/router.dart';
 import '../../data/providers/crud_error_provider.dart';
 import '../../data/providers/sync_status_provider.dart';
+import '../../data/providers/tickets_alerta_provider.dart';
 import '../../data/repositories/settings_repo.dart';
 import '../shared/utils/shell_nav.dart';
 import '../shared/widgets/offline_banner.dart';
@@ -114,8 +115,8 @@ class _TecnicoBottomNav extends StatelessWidget {
       onDestinationSelected: (i) => context.closeModalsAndGo(_rutas[i]),
       destinations: const [
         NavigationDestination(
-          icon: Icon(Icons.confirmation_number_outlined),
-          selectedIcon: Icon(Icons.confirmation_number),
+          icon: _MisTicketsIcon(icon: Icons.confirmation_number_outlined),
+          selectedIcon: _MisTicketsIcon(icon: Icons.confirmation_number),
           label: 'Mis tickets',
         ),
         NavigationDestination(
@@ -130,5 +131,21 @@ class _TecnicoBottomNav extends StatelessWidget {
         ),
       ],
     );
+  }
+}
+
+/// Ícono de "Mis tickets" con badge = cantidad de tickets EN RIESGO (por vencer +
+/// vencidos) asignados al técnico. Derivado client-side de la cuenta regresiva del
+/// SLA → se actualiza offline. Sin riesgo (0) → ícono pelado.
+class _MisTicketsIcon extends ConsumerWidget {
+  const _MisTicketsIcon({required this.icon});
+  final IconData icon;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final n = ref.watch(ticketsEnRiesgoCountProvider).valueOrNull ?? 0;
+    final base = Icon(icon);
+    if (n == 0) return base;
+    return Badge(label: Text('$n'), child: base);
   }
 }

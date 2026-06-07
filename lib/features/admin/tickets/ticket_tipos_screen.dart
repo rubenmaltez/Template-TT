@@ -3,6 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../../data/providers/cobrador_provider.dart';
+import '../../../data/repositories/settings_repo.dart';
+import '../../../data/utils/ticket_sla.dart';
 import '../../../powersync/db.dart' as ps;
 import '../../shared/widgets/empty_state.dart';
 import '../../shared/widgets/historial_cambios_widget.dart';
@@ -33,56 +35,104 @@ class _TicketTiposScreenState extends ConsumerState<TicketTiposScreen> {
         label: const Text('Tipo'),
         onPressed: () => _crear(context),
       ),
-      body: StreamBuilder<List<Map<String, dynamic>>>(
-        stream: _tipos,
-        initialData: const [],
-        builder: (context, snap) {
-          if (snap.hasError) return Center(child: Text('Error: ${snap.error}'));
-          final rows = snap.data!;
-          if (rows.isEmpty) {
-            return EmptyState(
-              icon: Icons.label_outline,
-              titulo: 'Sin tipos de ticket',
-              descripcion: 'Definí los tipos (instalación, reparación…) con su SLA.',
-              accion: FilledButton.icon(
-                icon: const Icon(Icons.add),
-                label: const Text('Agregar primero'),
-                onPressed: () => _crear(context),
+      body: Column(
+        children: [
+          _slaPrioridadHeader(context),
+          const Divider(height: 1),
+          Expanded(child: _buildLista(context, scheme)),
+        ],
+      ),
+    );
+  }
+
+  /// Acceso al editor de SLA por prioridad (setting per-tenant). El resumen
+  /// muestra las horas vigentes, de la más urgente a la más laxa.
+  Widget _slaPrioridadHeader(BuildContext context) {
+    final slaMap = ref.watch(appSettingsProvider).slaHorasPorPrioridad;
+    final resumen = kTicketPrioridades.reversed
+        .map((p) =>
+            '${prioridadLabel(p)} ${slaMap[p] != null ? '${slaMap[p]}h' : '—'}')
+        .join(' · ');
+    return ListTile(
+      leading: const Icon(Icons.timer_outlined),
+      title: const Text('Tiempo de respuesta por prioridad'),
+      subtitle: Text(resumen),
+      trailing: const Icon(Icons.chevron_right),
+      onTap: () => _editarSlaPrioridad(context),
+    );
+  }
+
+  Future<void> _editarSlaPrioridad(BuildContext context) async {
+    final tenantId = ref.read(tenantIdProvider);
+    if (tenantId == null) return;
+    final actual = ref.read(appSettingsProvider).slaHorasPorPrioridad;
+    final res = await showDialog<Map<String, int>>(
+      context: context,
+      builder: (_) => _SlaPrioridadDialog(actual: actual),
+    );
+    if (res == null) return;
+    try {
+      await ref.read(settingsRepoProvider).upsert(
+            tenantId,
+            'tickets.sla_horas_por_prioridad',
+            res,
+            categoria: 'tickets',
+          );
+    } catch (e) {
+      if (context.mounted) _snack(context, 'Error: $e');
+    }
+  }
+
+  Widget _buildLista(BuildContext context, ColorScheme scheme) {
+    return StreamBuilder<List<Map<String, dynamic>>>(
+      stream: _tipos,
+      initialData: const [],
+      builder: (context, snap) {
+        if (snap.hasError) return Center(child: Text('Error: ${snap.error}'));
+        final rows = snap.data!;
+        if (rows.isEmpty) {
+          return EmptyState(
+            icon: Icons.label_outline,
+            titulo: 'Sin tipos de ticket',
+            descripcion: 'Definí los tipos (instalación, reparación…) con su SLA.',
+            accion: FilledButton.icon(
+              icon: const Icon(Icons.add),
+              label: const Text('Agregar primero'),
+              onPressed: () => _crear(context),
+            ),
+          );
+        }
+        return ListView.separated(
+          padding: const EdgeInsets.fromLTRB(8, 8, 8, 88),
+          itemCount: rows.length,
+          separatorBuilder: (_, __) => const Divider(height: 1),
+          itemBuilder: (_, i) {
+            final t = rows[i];
+            final sla = t['sla_horas'] as int?;
+            return ListTile(
+              leading: Icon(Icons.label_outline, color: scheme.outline),
+              title: Text(t['nombre'] as String),
+              subtitle: Text(sla != null ? 'SLA: $sla h' : 'Sin SLA'),
+              trailing: PopupMenuButton<String>(
+                onSelected: (v) {
+                  if (v == 'editar') {
+                    _crear(context, existente: t);
+                  } else if (v == 'eliminar') {
+                    _eliminar(context, t);
+                  } else {
+                    _showHistorial(context, t['id'] as String);
+                  }
+                },
+                itemBuilder: (_) => const [
+                  PopupMenuItem(value: 'editar', child: Text('Editar')),
+                  PopupMenuItem(value: 'historial', child: Text('Historial')),
+                  PopupMenuItem(value: 'eliminar', child: Text('Eliminar')),
+                ],
               ),
             );
-          }
-          return ListView.separated(
-            padding: const EdgeInsets.fromLTRB(8, 8, 8, 88),
-            itemCount: rows.length,
-            separatorBuilder: (_, __) => const Divider(height: 1),
-            itemBuilder: (_, i) {
-              final t = rows[i];
-              final sla = t['sla_horas'] as int?;
-              return ListTile(
-                leading: Icon(Icons.label_outline, color: scheme.outline),
-                title: Text(t['nombre'] as String),
-                subtitle: Text(sla != null ? 'SLA: $sla h' : 'Sin SLA'),
-                trailing: PopupMenuButton<String>(
-                  onSelected: (v) {
-                    if (v == 'editar') {
-                      _crear(context, existente: t);
-                    } else if (v == 'eliminar') {
-                      _eliminar(context, t);
-                    } else {
-                      _showHistorial(context, t['id'] as String);
-                    }
-                  },
-                  itemBuilder: (_) => const [
-                    PopupMenuItem(value: 'editar', child: Text('Editar')),
-                    PopupMenuItem(value: 'historial', child: Text('Historial')),
-                    PopupMenuItem(value: 'eliminar', child: Text('Eliminar')),
-                  ],
-                ),
-              );
-            },
-          );
-        },
-      ),
+          },
+        );
+      },
     );
   }
 
@@ -256,6 +306,88 @@ class _TipoDialogState extends State<_TipoDialog> {
               descripcion: desc.isEmpty ? null : desc,
               sla: sla,
             ));
+          },
+          child: const Text('Guardar'),
+        ),
+      ],
+    );
+  }
+}
+
+/// Editor del SLA de respuesta por prioridad (horas). Devuelve el map con SÓLO
+/// los niveles con valor > 0; un campo vacío/0 = esa prioridad no impone límite
+/// (cae al SLA del tipo).
+class _SlaPrioridadDialog extends StatefulWidget {
+  const _SlaPrioridadDialog({required this.actual});
+  final Map<String, int> actual;
+  @override
+  State<_SlaPrioridadDialog> createState() => _SlaPrioridadDialogState();
+}
+
+class _SlaPrioridadDialogState extends State<_SlaPrioridadDialog> {
+  late final Map<String, TextEditingController> _ctrls;
+
+  @override
+  void initState() {
+    super.initState();
+    _ctrls = {
+      for (final p in kTicketPrioridades)
+        p: TextEditingController(text: widget.actual[p]?.toString() ?? ''),
+    };
+  }
+
+  @override
+  void dispose() {
+    for (final c in _ctrls.values) {
+      c.dispose();
+    }
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Tiempo de respuesta por prioridad'),
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Horas para responder según la prioridad del ticket. El SLA real '
+              'usa el MENOR entre esto y el SLA del tipo. Dejá vacío para que esa '
+              'prioridad no imponga límite.',
+              style: TextStyle(fontSize: 12),
+            ),
+            const SizedBox(height: 12),
+            // De la más urgente a la más laxa.
+            ...kTicketPrioridades.reversed.map((p) => Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: TextField(
+                    controller: _ctrls[p],
+                    keyboardType: TextInputType.number,
+                    decoration: InputDecoration(
+                      labelText: prioridadLabel(p),
+                      suffixText: 'horas',
+                      isDense: true,
+                    ),
+                  ),
+                )),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancelar')),
+        FilledButton(
+          onPressed: () {
+            final map = <String, int>{};
+            for (final p in kTicketPrioridades) {
+              final v = int.tryParse(_ctrls[p]!.text.trim());
+              if (v != null && v > 0) map[p] = v;
+            }
+            Navigator.pop(context, map);
           },
           child: const Text('Guardar'),
         ),

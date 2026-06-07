@@ -258,6 +258,32 @@ class AppSettings {
   List<ReciboBloque> get reciboLayout =>
       ReciboLayout.fromRaw(_map?['recibo.layout']?.valor);
 
+  /// Tickets (Fase 3) — SLA de respuesta por PRIORIDAD, en horas (setting
+  /// `tickets.sla_horas_por_prioridad`, map JSONB `{urgente, alta, media, baja}`).
+  /// El SLA EFECTIVO de un ticket es el MENOR entre esto y el SLA del tipo (ver
+  /// `slaHorasEfectivas`). Sólo se devuelven niveles con valor > 0 — un nivel en
+  /// 0/ausente significa "sin SLA por prioridad" → cae al del tipo. Si el setting
+  /// NO existe, default razonable out-of-the-box (urgente 1h … baja 12h).
+  Map<String, int> get slaHorasPorPrioridad {
+    const def = {'urgente': 1, 'alta': 2, 'media': 6, 'baja': 12};
+    final s = _map?['tickets.sla_horas_por_prioridad'];
+    if (s == null) return def;
+    dynamic raw = s.valor;
+    if (raw is String) {
+      try {
+        raw = jsonDecode(raw);
+      } catch (_) {
+        return def;
+      }
+    }
+    if (raw is! Map) return def;
+    final result = <String, int>{};
+    raw.forEach((k, v) {
+      if (k is String && v is num && v > 0) result[k] = v.toInt();
+    });
+    return result;
+  }
+
   /// Config del CHANGE LOG (Fase C): qué campos se muestran en el historial
   /// de cambios, por entidad. Lee el setting `audit.campos_visibles`, un map
   /// JSONB `{tabla: [campos]}`.

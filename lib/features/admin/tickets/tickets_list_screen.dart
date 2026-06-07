@@ -2,9 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../data/repositories/settings_repo.dart';
 import '../../../data/utils/ticket_sla.dart';
 import '../../../powersync/db.dart' as ps;
 import '../../shared/widgets/empty_state.dart';
+import '../../shared/widgets/ticket_sla_countdown.dart';
 
 /// Lista de tickets del tenant (admin). Filtro por grupo de estado + acceso a
 /// los tipos. Tap → detalle. FAB → nuevo ticket.
@@ -54,6 +56,7 @@ class _TicketsListScreenState extends ConsumerState<TicketsListScreen> {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
+    final slaMap = ref.watch(appSettingsProvider).slaHorasPorPrioridad;
     return Scaffold(
       floatingActionButton: FloatingActionButton.extended(
         icon: const Icon(Icons.add),
@@ -133,11 +136,17 @@ class _TicketsListScreenState extends ConsumerState<TicketsListScreen> {
                   itemBuilder: (_, i) {
                     final t = rows[i];
                     final estado = t['estado'] as String? ?? 'abierto';
+                    final prioridad = t['prioridad'] as String?;
+                    final createdAt = DateTime.parse(t['created_at'] as String);
+                    final pausado = (t['segundos_pausado'] as int?) ?? 0;
+                    final ef = slaHorasEfectivas(
+                        t['sla_horas'] as int?, slaMap[prioridad]);
                     final sla = ticketSlaEstado(
                       estado: estado,
-                      createdAt: DateTime.parse(t['created_at'] as String),
-                      slaHoras: t['sla_horas'] as int?,
-                      segundosPausado: (t['segundos_pausado'] as int?) ?? 0,
+                      createdAt: createdAt,
+                      slaHoras: ef,
+                      prioridad: prioridad,
+                      segundosPausado: pausado,
                     );
                     final cli = t['cliente_nombre'] as String?;
                     final asig = t['asignado_nombre'] as String?;
@@ -164,7 +173,13 @@ class _TicketsListScreenState extends ConsumerState<TicketsListScreen> {
                               style: TextStyle(
                                   color: estadoTicketColor(estado, scheme),
                                   fontSize: 12))
-                          : _SlaChip(sla: sla),
+                          : TicketSlaCountdown(
+                              estado: estado,
+                              createdAt: createdAt,
+                              slaHoras: ef,
+                              prioridad: prioridad,
+                              segundosPausado: pausado,
+                            ),
                       onTap: () => context.push('/admin/tickets/${t['id']}'),
                     );
                   },
@@ -174,24 +189,6 @@ class _TicketsListScreenState extends ConsumerState<TicketsListScreen> {
           ),
         ],
       ),
-    );
-  }
-}
-
-class _SlaChip extends StatelessWidget {
-  const _SlaChip({required this.sla});
-  final SlaEstado sla;
-  @override
-  Widget build(BuildContext context) {
-    final c = slaColor(sla, Theme.of(context).colorScheme);
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-      decoration: BoxDecoration(
-        color: c.withValues(alpha: 0.15),
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Text(slaLabel(sla),
-          style: TextStyle(color: c, fontSize: 12, fontWeight: FontWeight.w600)),
     );
   }
 }
