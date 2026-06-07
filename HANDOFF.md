@@ -7,17 +7,18 @@
 
 ---
 
-## Fase 3 — Tickets (3A+3B+3C+3D COMPLETOS y auditados → próximo 3E notificaciones)
+## Fase 3 — Tickets (3A+3B+3C+3D+3E COMPLETOS y auditados ✅)
 
 Propuesta aprobada en `FASE3-PLAN.md` (decisiones: D1 trigger server-side de
 descuento de stock · D2 trigger de transición de estado · D3 shell propio del
 técnico · D4 correlativo `T-00001` · D5 3A completo).
 
-> **3A+3B+3C+3D cerrados y auditados, SIN backlog bloqueante.** El loop completo
+> **Fase 3 COMPLETA (3A→3E) y auditada, SIN backlog bloqueante.** El loop completo
 > funciona: admin crea/asigna → técnico resuelve offline + **consume materiales de su
 > custodia (descuenta inventario)** → sincroniza → admin cierra; los cortes se agrupan
-> como **incidentes** con clientes afectados derivados de la red. Próximo y ÚLTIMO slice:
-> **3E (notificaciones in-app + audit integral de cierre de Fase 3)**.
+> como **incidentes** con clientes afectados derivados de la red. **3E reframeó
+> "notificaciones" → cuenta regresiva de SLA OFFLINE por ticket + badge en riesgo
+> (lean, sin tabla)**, con SLA híbrido por prioridad. Ver bloque 3E abajo.
 
 **3A capa 1 — HECHA** (commits `a62a8fb`, `04a5999`):
 - **Migración 0103** (server-side, idempotente, transaccional): roles `tecnico`+
@@ -152,6 +153,34 @@ sync/RLS · Dart/UI — dinero **hermético**, **1 ALTA fixed**, resto BAJA):
   existente (alto valor real) · filtro tenant_id en corte general (defensa).
 - **Accepted (no re-flag):** índice por scope (perf, ISP chico) · `_evento` duplicado en
   ticket_form/detail (preexistente, candidato a helper) · lista de afectados cap 50.
+
+**3E — CUENTA REGRESIVA DE SLA (offline) HECHO + AUDITADO** (commits `a523157`,
+`c1a9869`; 3 agentes: code+DB integrity · QA · UX — **0 bloqueantes**, **SIN
+migración / sin bump / sin redeploy de sync rules**):
+- **Reframe (Rubén + experto en ticket-mgmt):** "notificaciones" → **cuenta regresiva
+  viva del SLA por ticket** ("2h 15m" verde → ámbar → "vencido hace 30m" rojo).
+  Matemática pura sobre data local (reloj del device + la fila) → **TICKEA OFFLINE**.
+  Notificaciones = **lean** (badge derivado, sin tabla/triggers/cron).
+- **SLA híbrido por prioridad** (`slaHorasEfectivas` = min(tipo, prioridad), nulls
+  ignorados): setting `tickets.sla_horas_por_prioridad` (default urgente1/alta2/media6/
+  baja12, editable en el editor de Tipos). Plazo = created_at + sla_efectivo + segundos_pausado.
+- **`TicketSlaCountdown`** (widget shared, `Timer.periodic` self-tick: 1min listas / 1s
+  detalle; `compact` en listas) en mis_tickets + tickets_list + detalle (+ fila "Vence").
+  en_espera → "SLA pausado" (no tickea); sin SLA/cerrado → nada.
+- **Badge "en riesgo"** (`ticketsEnRiesgoCountProvider`) en la tab "Mis tickets" del
+  técnico = count(porVencer+vencido); recomputa por sync Y cada 60s (el tiempo solo cruza
+  a "por vencer"). Offline-correcto.
+- **Fix de BUILD-BREAK PRE-EXISTENTE** (introducido en `ab8f5b0`/3D): `ticket_detail_screen`
+  usaba `_chip`/`_row` SIN definirlos → **la app no compilaba**. Restaurados. Barrido
+  tickets/tecnico/incidentes: no hay otros del mismo tipo.
+- **Fixes del audit (`c1a9869`):** semáforo invertido (enPlazo era AZUL de marca, pausado
+  VERDE → ahora verde/ámbar/rojo + gris pausado; `slaColor` solo alimenta el countdown) ·
+  rollover a días ("2d 3h") · labels compactos en listas · editor digits-only + nota.
+- **Accepted/by-design (no re-flag):** el default-map aplica a tickets YA creados (un ticket
+  viejo abierto puede nacer "vencido" — correcto, ES el punto del SLA; hay nota en el editor) ·
+  `created_at` device-local-naive (pre-existente, consistente con `fecha_pago`, offline-correcto) ·
+  `appSettingsProvider` re-dispara el provider del badge en cualquier cambio de settings (sin
+  leak, solo trabajo redundante; memoizar el map en v2).
 
 > ⚠️ **Deploy Fase 3 (al final, todo junto)**: correr `0103`→`0104`→`0105`→`0106`→`0107`→
 > `0108` por Dashboard **en orden** + **redeploy sync rules** (tablas/columnas + buckets

@@ -136,7 +136,9 @@ correctos + correlativo server-MAX + denormalización en INSERT.
 Rol de campo para el módulo **tickets** (OFF por defecto; lo enciende el super_admin).
 Shell propio `TecnicoShell` (bottom-nav **Mis tickets · Mapa · Perfil**), offline-first.
 **Mis tickets**: sólo sus tickets asignados (el bucket `por_tecnico_tickets` los acota),
-filtro activos/cerrados en SQL, badges estado/SLA. **Detalle** (`/tecnico/tickets/:id`):
+filtro activos/cerrados en SQL, **cuenta regresiva de SLA viva y offline** por ticket
+(3E: "2h 15m" → ámbar → "vencido hace 30m") + **badge "en riesgo"** en la tab (count de
+por-vencer/vencido). **Detalle** (`/tecnico/tickets/:id`):
 avanzar/pausar/resolver (`kEstadosDestinoTecnico`), comentar, adjuntar fotos, **registrar
 materiales de su custodia** (3C — descuenta inventario server-side, instala el serial en el
 cliente); NO reasigna ni cierra/cancela (admin). **Mapa**: sólo clientes de sus tickets, sin datos de cobranza.
@@ -145,10 +147,14 @@ fotos del cobrador). **Contención**: el router lo mantiene en `/tecnico/*` (no 
 dinero/admin/super) + el sync NO le baja contratos/cuotas/pagos (doble defensa). Auditado
 3 agentes, 0 ALTA/MEDIA. `admin_tickets` DIFERIDO (no asignable aún). SIN migración (schema v22).
 
-### Tickets admin (`/admin/tickets` + `/admin/incidentes`) — ✅ Fase 3A+3C+3D (módulo opcional, soloAdmin)
-Lista (filtro de estado en SQL), tipos de ticket (CRUD + SLA por tipo), crear+asignar,
+### Tickets admin (`/admin/tickets` + `/admin/incidentes`) — ✅ Fase 3A+3C+3D+3E (módulo opcional, soloAdmin)
+Lista (filtro de estado en SQL) con **cuenta regresiva de SLA viva** por ticket, tipos de
+ticket (CRUD + SLA por tipo + **editor de horas por prioridad**, 3E), crear+asignar,
 detalle (transiciones validadas server-side + reasignar + comentar + bitácora append-only
-+ adjuntos). Correlativo `T-00001`. SLA derivado en Dart con pausa exacta (trigger 0105).
++ adjuntos + **chip de SLA con cuenta regresiva + fila "Vence"**). Correlativo `T-00001`.
+SLA derivado en Dart con pausa exacta (trigger 0105); **3E: SLA EFECTIVO = min(SLA del tipo,
+SLA de la prioridad)**, cuenta regresiva offline (`TicketSlaCountdown`), semáforo verde/ámbar/
+rojo. Setting `tickets.sla_horas_por_prioridad` (sin migración, ya sincroniza).
 **3C: materiales** — sección en el detalle (si el módulo inventario está on) para registrar
 equipos/insumos consumidos (serial de stock o granel); un trigger server-side (0106)
 descuenta el inventario e instala el serial en el cliente del ticket. **3D: incidentes**

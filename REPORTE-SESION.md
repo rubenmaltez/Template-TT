@@ -158,6 +158,56 @@ consistentes → auditoría.
 
 > Más reciente arriba. Formato por ítem: error → fix → expectativa.
 
+### 2026-06-07 (cont. 9) — Fase 3 slice 3E: cuenta regresiva de SLA (offline)
+
+Slice 3E reframeado con Rubén + un agente experto en ticket-management: el pedido
+real no era una "bandeja de notificaciones" sino **ver el tiempo de vencimiento de
+cada ticket, contando en vivo y OFFLINE**. Decisiones aprobadas: **SLA híbrido
+"min(tipo, prioridad)"** y **notificaciones lean (badge derivado, sin tabla)**.
+Commits `a523157` (feature) + `c1a9869` (fixes del audit). **SIN migración / sin
+bump de schema / sin redeploy de sync rules** — usa columnas y un setting que ya
+sincronizan a ambos buckets. Auditado (3 agentes: code+DB · QA · UX), 0 bloqueantes.
+
+- **Cuenta regresiva viva del SLA** (feature central): error previo = el chip solo
+  mostraba un ESTADO ("Por vencer") sin el tiempo restante. Fix = `ticketSlaRestante`
+  + `formatSlaRestante` + widget `TicketSlaCountdown` (`Timer.periodic`, 1min en listas
+  / 1s en detalle). **Expectativa:** cada ticket asignado muestra "2h 15m restantes" →
+  ámbar "por vencer" → rojo "vencido hace 30m", **tickeando sin conexión** (es
+  `DateTime.now()` + la fila local; nada toca la red). En espera → "SLA pausado" (no
+  tickea); sin SLA / cerrado → no muestra chip de SLA.
+- **SLA por prioridad** (pedido explícito "alta → 1h, baja → 12h"): error previo = el SLA
+  era solo por TIPO; la prioridad era una etiqueta muerta. Fix = `slaHorasEfectivas` =
+  **menor entre el SLA del tipo y el de la prioridad** (nulls ignorados) + setting
+  `tickets.sla_horas_por_prioridad` (default urgente1/alta2/media6/baja12) + editor en la
+  pantalla de Tipos. **Expectativa:** un ticket *alta* se aprieta a ~1-2h aunque el tipo
+  permita más; uno sin prioridad cae al SLA del tipo. El admin edita las horas y el técnico
+  las ve tras sincronizar settings.
+- **Badge "en riesgo" del técnico** (notificación lean): no había aviso de vencimiento
+  inminente. Fix = `ticketsEnRiesgoCountProvider` → badge rojo en la tab "Mis tickets" =
+  count(porVencer + vencido), recomputado por sync **y cada 60s** (el paso del tiempo solo
+  ya cruza un ticket a "por vencer"). **Expectativa:** el técnico no se pierde un ticket
+  asignado (aparece solo en su lista vía el bucket) ni un vencimiento inminente (badge).
+- **BUILD-BREAK PRE-EXISTENTE corregido** (regresión de `ab8f5b0`/3D): error = `ticket_detail_screen`
+  llamaba `_chip`/`_row` que **no estaban definidos en ningún lado** → la app no compilaba.
+  Fix = restaurar los dos helpers (estilo espejado de `cliente_detail`). Barrido de
+  tickets/tecnico/incidentes: no hay otros casos. **Expectativa:** la app compila y el
+  detalle del ticket renderiza chips + filas como siempre.
+- **Semáforo del SLA invertido** (fix del audit UX): error = `slaColor` mapeaba `enPlazo`
+  al AZUL de marca (`primary`) y `pausado` al VERDE (`tertiary=success`) → "en plazo" se
+  veía azul y "pausado" verde (señal invertida). Fix = verde (`c.tertiary`) en plazo,
+  ámbar (`amber.shade700`, espeja "En gracia") por vencer, rojo vencido, **gris neutro**
+  pausado. `slaColor` ahora solo alimenta el countdown → cambio localizado. **Expectativa:**
+  el semáforo verde→ámbar→rojo es real; un SLA congelado nunca se ve "ok".
+- **Legibilidad** (fix audit UX/QA): `formatSlaRestante` rolea a días arriba de 24h ("2d 3h"
+  en vez de "50h") + modo `compact` (listas muestran "2h 15m" sin "restantes"; detalle full);
+  chip pausado dice "SLA pausado" (no duplica el chip de estado "En espera"). Editor con
+  `digitsOnly` + nota de que el SLA aplica también a tickets ya creados.
+- **By-design (no re-flag):** el default-map de prioridad aplica a tickets YA creados (uno
+  viejo abierto puede nacer "vencido" — correcto, ES el punto del SLA; hay nota en el editor) ·
+  `created_at` device-local-naive (pre-existente, consistente con `fecha_pago`, offline-correcto) ·
+  `appSettingsProvider` re-dispara el provider del badge en cualquier cambio de settings (sin
+  leak, solo trabajo redundante; memoizar el map es v2).
+
 ### 2026-06-07 (cont. 8) — Fase 3 slice 3D: incidentes (outages)
 
 Slice 3D aprobado (FASE3-PLAN.md; mapa de outages DIFERIDO por decisión de Rubén).
