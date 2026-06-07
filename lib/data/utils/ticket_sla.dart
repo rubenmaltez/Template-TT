@@ -145,11 +145,6 @@ String ticketCodigo(num? correlativo) {
 }
 
 // ── Estados del ticket ─────────────────────────────────────────────────────
-const kTicketEstados = [
-  'abierto', 'asignado', 'en_progreso', 'en_espera',
-  'resuelto', 'cerrado', 'reabierto', 'cancelado',
-];
-
 String estadoTicketLabel(String e) => switch (e) {
       'abierto' => 'Abierto',
       'asignado' => 'Asignado',

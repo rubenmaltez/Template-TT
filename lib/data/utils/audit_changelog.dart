@@ -513,9 +513,18 @@ String _fmtField(String key, dynamic v, {String? tabla, AuditLookups? lookups}) 
   if (tabla == 'inv_seriales' && key == 'estado' && v is String && v.isNotEmpty) {
     return _estadoSerialLabel(v);
   }
-  // Tickets: estado del ticket y tipo de evento de la bitácora.
+  // Tickets: estado del ticket, prioridad y tipo de evento de la bitácora.
   if (tabla == 'tickets' && key == 'estado' && v is String && v.isNotEmpty) {
     return _estadoTicketLabel(v);
+  }
+  if (tabla == 'tickets' && key == 'prioridad' && v is String && v.isNotEmpty) {
+    return switch (v) {
+      'baja' => 'Baja',
+      'media' => 'Media',
+      'alta' => 'Alta',
+      'urgente' => 'Urgente',
+      _ => v,
+    };
   }
   if ((key == 'estado_anterior' || key == 'estado_nuevo') &&
       v is String && v.isNotEmpty) {

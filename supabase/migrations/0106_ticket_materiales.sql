@@ -104,7 +104,31 @@ BEGIN
     RAISE EXCEPTION 'Serial % no pertenece al tenant %', NEW.serial_id, NEW.tenant_id;
   END IF;
 
-  -- 1. Movimiento de consumo (descuenta del origen = custodia/ubicación).
+  -- 1. Serializado: el serial pasa a 'instalado' en el cliente del ticket.
+  --    Guards: estado='en_stock' (no pisa un serial ya instalado/dado de baja) +
+  --    ubicacion_id == ubicacion_origen_id declarada. Este 2º guard cierra dos cosas:
+  --    (a) custodia intra-tenant — sólo consumís un serial de DONDE realmente está
+  --        (la UI siempre setea ubicacion_origen_id = la ubicación del serial), así un
+  --        insert crafteado con un serial ajeno + otra ubicación no lo instala;
+  --    (b) idempotencia del dup offline — el 2º consumo del mismo serial ya no está
+  --        en_stock allí → no consume.
+  --    Si no consumió nada → no-op SIN registrar movimiento (offline-safe, sin RAISE
+  --    para no trabar la cola de upload de PowerSync). La fila ticket_materiales queda
+  --    igual como registro del intento.
+  IF NEW.serial_id IS NOT NULL THEN
+    UPDATE public.inv_seriales
+       SET estado = 'instalado', cliente_id = v_cliente, ubicacion_id = NULL
+     WHERE id = NEW.serial_id AND tenant_id = NEW.tenant_id AND estado = 'en_stock'
+       AND ubicacion_id IS NOT DISTINCT FROM NEW.ubicacion_origen_id;
+    IF NOT FOUND THEN
+      RETURN NEW; -- ya instalado / no está en el origen → no duplicamos el movimiento
+    END IF;
+  END IF;
+
+  -- 2. Movimiento de consumo (descuenta del origen = custodia/ubicación). Serial:
+  --    sólo si se consumió arriba. Granel (serial NULL): siempre — el stock granel
+  --    tolera ir negativo si dos devices descuentan offline (por diseño; se reconcilia
+  --    en el ledger append-only).
   INSERT INTO public.inv_movimientos
     (id, tenant_id, tipo, producto_id, serial_id, cantidad,
      ubicacion_origen_id, cliente_id, ticket_id, costo_unitario,
@@ -114,15 +138,6 @@ BEGIN
      NEW.cantidad, NEW.ubicacion_origen_id, v_cliente, NEW.ticket_id,
      NEW.costo_unit_snapshot, 'Consumo en ticket', NEW.hecho_por,
      NEW.ocurrido_en, now());
-
-  -- 2. Serializado: el serial pasa a 'instalado' en el cliente del ticket.
-  --    Guard estado='en_stock' → evita doble-instalación (dup offline) y no pisa
-  --    un serial ya instalado/dado de baja.
-  IF NEW.serial_id IS NOT NULL THEN
-    UPDATE public.inv_seriales
-       SET estado = 'instalado', cliente_id = v_cliente, ubicacion_id = NULL
-     WHERE id = NEW.serial_id AND tenant_id = NEW.tenant_id AND estado = 'en_stock';
-  END IF;
 
   RETURN NEW;
 END;
