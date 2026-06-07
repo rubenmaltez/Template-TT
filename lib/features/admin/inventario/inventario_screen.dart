@@ -410,9 +410,20 @@ class _ProveedoresTabState extends ConsumerState<_ProveedoresTab> {
   }
 
   Future<void> _eliminar(BuildContext context, Map<String, dynamic> p) async {
+    final id = p['id'] as String;
+    // Guarda de "en uso": no borrar un proveedor con movimientos (su FK es
+    // ON DELETE SET NULL → borrarlo perdería la procedencia del ingreso).
+    final enMovs = await _contar(
+        'SELECT COUNT(*) AS n FROM inv_movimientos WHERE proveedor_id = ?', [id]);
+    if (!context.mounted) return;
+    if (enMovs > 0) {
+      _snack(context,
+          'No se puede eliminar "${p['nombre']}": tiene movimientos asociados ($enMovs).');
+      return;
+    }
     if (!await _confirmar(context, '"${p['nombre']}"')) return;
     try {
-      await ps.db.execute('DELETE FROM inv_proveedores WHERE id = ?', [p['id']]);
+      await ps.db.execute('DELETE FROM inv_proveedores WHERE id = ?', [id]);
     } catch (e) {
       _snack(context, 'Error: $e');
     }
@@ -599,11 +610,28 @@ class _ExistenciasTabState extends ConsumerState<_ExistenciasTab> {
     final tenantId = ref.read(tenantIdProvider);
     if (tenantId == null) return;
     final hechoPor = ref.read(cobradorActualProvider).valueOrNull?.id;
+    // Estado vacío (M5): sin productos a granel o sin ubicaciones el diálogo es
+    // inusable; avisamos en vez de abrir un form imposible de completar.
+    final granel = await _contar(
+        'SELECT COUNT(*) AS n FROM inv_productos WHERE activo = 1 AND es_serializado = 0',
+        const []);
+    final ubis = await _contar(
+        'SELECT COUNT(*) AS n FROM inv_ubicaciones WHERE activa = 1', const []);
+    if (!context.mounted) return;
+    if (granel == 0) {
+      _snack(context,
+          'No hay productos a granel. Los equipos serializados se mueven desde la pestaña Equipos.');
+      return;
+    }
+    if (ubis == 0) {
+      _snack(context, 'No hay ubicaciones. Creá una primero.');
+      return;
+    }
     final res = await showDialog<_MovimientoData>(
       context: context,
       builder: (_) => const _MovimientoDialog(),
     );
-    if (res == null) return;
+    if (res == null || !context.mounted) return;
     final now = DateTime.now().toIso8601String();
 
     // Mapear el tipo al par origen/destino que entiende la fórmula de stock.
@@ -634,7 +662,29 @@ class _ExistenciasTabState extends ConsumerState<_ExistenciasTab> {
           origen, destino, res.motivo, hechoPor, now, now,
         ],
       );
-      _snack(context, 'Movimiento registrado');
+      // M1: mostrar el stock resultante (y avisar si quedó negativo). Stock de
+      // granel = Σdestino − Σorigen del ledger.
+      final stockRows = await ps.db.getAll(
+        '''SELECT p.nombre,
+                  COALESCE((
+                    SELECT SUM(CASE WHEN ubicacion_destino_id IS NOT NULL THEN cantidad ELSE 0 END)
+                         - SUM(CASE WHEN ubicacion_origen_id  IS NOT NULL THEN cantidad ELSE 0 END)
+                      FROM inv_movimientos WHERE producto_id = p.id), 0) AS stock
+             FROM inv_productos p WHERE p.id = ?''',
+        [res.productoId],
+      );
+      if (!context.mounted) return;
+      final nombre =
+          stockRows.isNotEmpty ? stockRows.first['nombre'] as String? : null;
+      final num stock =
+          stockRows.isNotEmpty ? (stockRows.first['stock'] as num?) ?? 0 : 0;
+      final etq = nombre != null ? ' de $nombre' : '';
+      _snack(
+        context,
+        stock < 0
+            ? '⚠ Movimiento registrado. Stock$etq: ${_fmtCant(stock)} (negativo)'
+            : 'Movimiento registrado. Stock$etq: ${_fmtCant(stock)}',
+      );
     } catch (e) {
       _snack(context, 'Error: $e');
     }
@@ -1237,8 +1287,12 @@ class _EquiposTabState extends ConsumerState<_EquiposTab> {
                     const PopupMenuItem(
                         value: 'devolver', child: Text('Devolver a stock')),
                   if (estado != 'baja')
-                    const PopupMenuItem(
-                        value: 'baja', child: Text('Dar de baja')),
+                    PopupMenuItem(
+                        value: 'baja',
+                        child: Text(
+                            (estado == 'danado' || estado == 'retirado')
+                                ? 'Cambiar estado'
+                                : 'Dar de baja')),
                   const PopupMenuItem(
                       value: 'historial', child: Text('Historial')),
                 ],
@@ -1430,9 +1484,12 @@ class _EquiposTabState extends ConsumerState<_EquiposTab> {
     final tenantId = ref.read(tenantIdProvider);
     if (tenantId == null) return;
     final hechoPor = ref.read(cobradorActualProvider).valueOrNull?.id;
+    // Si el equipo ya está dañado/retirado, esto es un cambio de estado, no una
+    // baja (B3): adaptamos textos. La baja definitiva está bloqueada en el menú.
+    final yaDeBaja = s['estado'] == 'danado' || s['estado'] == 'retirado';
     final res = await showDialog<({String estado, String? motivo})>(
       context: context,
-      builder: (_) => const _BajaDialog(),
+      builder: (_) => _BajaDialog(esCambioEstado: yaDeBaja),
     );
     if (res == null || !context.mounted) return;
     final now = DateTime.now().toIso8601String();
@@ -1463,8 +1520,11 @@ class _EquiposTabState extends ConsumerState<_EquiposTab> {
           ],
         );
       });
-      _snack(context,
-          'Equipo dado de baja (${_estadoSerial[res.estado] ?? res.estado})');
+      _snack(
+          context,
+          yaDeBaja
+              ? 'Estado actualizado: ${_estadoSerial[res.estado] ?? res.estado}'
+              : 'Equipo dado de baja (${_estadoSerial[res.estado] ?? res.estado})');
     } on _InvError catch (e) {
       _snack(context, e.message);
     } catch (e) {
@@ -2051,7 +2111,9 @@ Future<({String id, String nombre})?> _pickUbicacion(
 
 /// Diálogo de baja de un equipo serializado: estado destino + motivo opcional.
 class _BajaDialog extends StatefulWidget {
-  const _BajaDialog();
+  const _BajaDialog({this.esCambioEstado = false});
+  // true si el equipo YA está dañado/retirado → es un cambio de estado, no baja.
+  final bool esCambioEstado;
   @override
   State<_BajaDialog> createState() => _BajaDialogState();
 }
@@ -2075,7 +2137,9 @@ class _BajaDialogState extends State<_BajaDialog> {
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
-      title: const Text('Dar de baja el equipo'),
+      title: Text(widget.esCambioEstado
+          ? 'Cambiar estado del equipo'
+          : 'Dar de baja el equipo'),
       content: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -2105,7 +2169,7 @@ class _BajaDialogState extends State<_BajaDialog> {
             Navigator.pop(
                 context, (estado: _estado, motivo: m.isEmpty ? null : m));
           },
-          child: const Text('Dar de baja'),
+          child: Text(widget.esCambioEstado ? 'Guardar' : 'Dar de baja'),
         ),
       ],
     );
