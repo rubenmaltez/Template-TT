@@ -182,8 +182,75 @@ class _TicketDetailScreenState extends ConsumerState<TicketDetailScreen> {
             label: const Text('Reasignar'),
             onPressed: () => _reasignar(t),
           ),
+        // Vincular a un incidente/outage abierto (sólo admin). El flujo real es
+        // tickets-primero → el admin declara el corte → agrupa los tickets.
+        if (!widget.tecnicoMode)
+          TextButton.icon(
+            icon: const Icon(Icons.cell_tower, size: 18),
+            label: const Text('Incidente'),
+            onPressed: () => _vincularIncidente(t),
+          ),
       ],
     );
+  }
+
+  Future<void> _vincularIncidente(Map<String, dynamic> t) async {
+    final incidentes = await ps.db.getAll(
+        "SELECT id, titulo FROM incidentes WHERE estado = 'abierto' ORDER BY inicio DESC");
+    if (!mounted) return;
+    if (incidentes.isEmpty) {
+      _snack('No hay incidentes abiertos para vincular.');
+      return;
+    }
+    final actual = t['incidente_id'] as String?;
+    final elegido = await showModalBottomSheet<({String? id})>(
+      context: context,
+      showDragHandle: true,
+      builder: (_) => SafeArea(
+        child: ListView(
+          shrinkWrap: true,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.link_off),
+              title: const Text('— Sin incidente —'),
+              selected: actual == null,
+              onTap: () => Navigator.pop(context, (id: null)),
+            ),
+            ...incidentes.map((i) => ListTile(
+                  leading: const Icon(Icons.cell_tower),
+                  title: Text(i['titulo'] as String),
+                  selected: actual == i['id'],
+                  onTap: () =>
+                      Navigator.pop(context, (id: i['id'] as String?)),
+                )),
+          ],
+        ),
+      ),
+    );
+    if (elegido == null || elegido.id == actual) return;
+    final tenantId = ref.read(tenantIdProvider);
+    if (tenantId == null) return;
+    final hechoPor = ref.read(cobradorActualProvider).valueOrNull?.id;
+    final now = DateTime.now().toIso8601String();
+    final ocurrido = DateTime.now().toUtc().toIso8601String();
+    final nombreInc = elegido.id == null
+        ? null
+        : incidentes.firstWhere((i) => i['id'] == elegido.id)['titulo'] as String;
+    try {
+      await ps.db.writeTransaction((tx) async {
+        await tx.execute(
+          'UPDATE tickets SET incidente_id = ?, ocurrido_en = ? WHERE id = ?',
+          [elegido.id, ocurrido, t['id']],
+        );
+        await _evento(tx, t['id'] as String, tenantId, 'comentario', null, null,
+            hechoPor, ocurrido, now,
+            comentario: elegido.id == null
+                ? 'Desvinculado del incidente'
+                : 'Vinculado al incidente: $nombreInc');
+      });
+    } catch (e) {
+      _snack('Error: $e');
+    }
   }
 
   Widget _comentarRow(BuildContext context, Map<String, dynamic> t) {

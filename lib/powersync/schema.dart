@@ -276,6 +276,7 @@ const schema = Schema([
     Column.text('nodo_id'),
     Column.text('hub_id'),
     Column.text('puerto_id'),
+    Column.text('alcance_label'), // snapshot del alcance (0108): sobrevive al borrado del FK
     Column.text('estado'),
     Column.text('inicio'),
     Column.text('fin'),

@@ -29,7 +29,7 @@ class _IncidentesScreenState extends ConsumerState<IncidentesScreen> {
   Stream<List<Map<String, dynamic>>> _buildStream() {
     return ps.db.watch('''
       SELECT i.id, i.titulo, i.estado, i.inicio, i.fin,
-             i.nodo_id, i.hub_id, i.puerto_id,
+             i.nodo_id, i.hub_id, i.puerto_id, i.alcance_label,
              n.nombre AS nodo, h.nombre AS hub, p.nombre AS puerto
         FROM incidentes i
    LEFT JOIN red_nodos   n ON n.id = i.nodo_id
@@ -142,11 +142,12 @@ class _IncidentesScreenState extends ConsumerState<IncidentesScreen> {
       await ps.db.execute(
         '''INSERT INTO incidentes
            (id, tenant_id, titulo, descripcion, nodo_id, hub_id, puerto_id,
-            estado, inicio, created_at, ocurrido_en)
-           VALUES (?, ?, ?, ?, ?, ?, ?, 'abierto', ?, ?, ?)''',
+            alcance_label, estado, inicio, created_at, ocurrido_en)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'abierto', ?, ?, ?)''',
         [
           const Uuid().v4(), tenantId, res.titulo, res.descripcion,
-          res.nodoId, res.hubId, res.puertoId, ocurrido, now, ocurrido,
+          res.nodoId, res.hubId, res.puertoId, res.alcanceLabel,
+          ocurrido, now, ocurrido,
         ],
       );
       if (mounted) {
@@ -162,11 +163,14 @@ class _IncidentesScreenState extends ConsumerState<IncidentesScreen> {
   }
 }
 
-/// Etiqueta del alcance de un incidente a partir de su fila.
+/// Etiqueta del alcance: prefiere el nombre VIVO del FK (maneja renombres) y cae
+/// al snapshot `alcance_label` cuando el FK quedó NULL (el nodo/hub/puerto se borró).
 String _alcanceLabel(Map<String, dynamic> r) {
   if (r['puerto_id'] != null) return 'Puerto: ${r['puerto'] ?? '—'}';
   if (r['hub_id'] != null) return 'Hub: ${r['hub'] ?? '—'}';
   if (r['nodo_id'] != null) return 'Nodo: ${r['nodo'] ?? '—'}';
+  final snap = r['alcance_label'] as String?;
+  if (snap != null && snap.isNotEmpty) return snap;
   return 'Corte general';
 }
 
@@ -178,12 +182,14 @@ class _NuevoIncidente {
     this.nodoId,
     this.hubId,
     this.puertoId,
+    required this.alcanceLabel,
   });
   final String titulo;
   final String? descripcion;
   final String? nodoId;
   final String? hubId;
   final String? puertoId;
+  final String alcanceLabel; // snapshot legible del alcance al crear
 }
 
 class _CrearIncidenteSheet extends ConsumerStatefulWidget {
@@ -248,9 +254,21 @@ class _CrearIncidenteSheetState extends ConsumerState<_CrearIncidenteSheet> {
         _ => true, // general
       };
 
+  // Nombre del item elegido en una lista por su id.
+  String _nombre(List<Map<String, dynamic>> lista, String? id) =>
+      lista.firstWhere((e) => e['id'] == id,
+          orElse: () => const {'nombre': '—'})['nombre'] as String;
+
   void _confirmar() {
     final t = _titulo.text.trim();
     if (t.isEmpty || !_scopeOk) return;
+    // Snapshot legible del alcance (sobrevive al borrado del nodo/hub/puerto).
+    final label = switch (_nivel) {
+      'puerto' => 'Puerto: ${_nombre(_puertos, _puertoId)}',
+      'hub' => 'Hub: ${_nombre(_hubs, _hubId)}',
+      'nodo' => 'Nodo: ${_nombre(_nodos, _nodoId)}',
+      _ => 'Corte general',
+    };
     Navigator.pop(
       context,
       _NuevoIncidente(
@@ -259,6 +277,7 @@ class _CrearIncidenteSheetState extends ConsumerState<_CrearIncidenteSheet> {
         nodoId: _nivel == 'nodo' ? _nodoId : null,
         hubId: _nivel == 'hub' ? _hubId : null,
         puertoId: _nivel == 'puerto' ? _puertoId : null,
+        alcanceLabel: label,
       ),
     );
   }

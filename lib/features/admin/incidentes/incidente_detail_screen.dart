@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../data/providers/cobrador_provider.dart';
 import '../../../data/utils/formatters.dart';
 import '../../../data/utils/ticket_sla.dart';
 import '../../../powersync/db.dart' as ps;
@@ -54,6 +55,7 @@ class _IncidenteDetailScreenState extends ConsumerState<IncidenteDetailScreen> {
               titulo: 'Incidente no encontrado');
         }
         final inc = rows.first;
+        final tenantId = ref.read(tenantIdProvider);
         return Center(
           child: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 1000),
@@ -62,7 +64,7 @@ class _IncidenteDetailScreenState extends ConsumerState<IncidenteDetailScreen> {
               children: [
                 _header(context, inc),
                 const SizedBox(height: 16),
-                _ClientesAfectados(inc: inc),
+                _ClientesAfectados(inc: inc, tenantId: tenantId),
                 const SizedBox(height: 16),
                 _ticketsCard(context),
                 const SizedBox(height: 16),
@@ -149,6 +151,9 @@ class _IncidenteDetailScreenState extends ConsumerState<IncidenteDetailScreen> {
     if (inc['puerto_id'] != null) return 'Puerto: ${inc['puerto'] ?? '—'}';
     if (inc['hub_id'] != null) return 'Hub: ${inc['hub'] ?? '—'}';
     if (inc['nodo_id'] != null) return 'Nodo: ${inc['nodo'] ?? '—'}';
+    // FK borrado: usar el snapshot del alcance si lo hay (no es general real).
+    final snap = inc['alcance_label'] as String?;
+    if (snap != null && snap.isNotEmpty && snap != 'Corte general') return snap;
     return 'Corte general (todo el tenant)';
   }
 
@@ -229,8 +234,9 @@ class _IncidenteDetailScreenState extends ConsumerState<IncidenteDetailScreen> {
 /// Clientes afectados DERIVADOS del alcance del incidente (clientes.puerto_id →
 /// red_puertos.hub_id → red_hubs.nodo_id). Conteo + lista.
 class _ClientesAfectados extends StatefulWidget {
-  const _ClientesAfectados({required this.inc});
+  const _ClientesAfectados({required this.inc, this.tenantId});
   final Map<String, dynamic> inc;
+  final String? tenantId;
   @override
   State<_ClientesAfectados> createState() => _ClientesAfectadosState();
 }
@@ -279,9 +285,12 @@ class _ClientesAfectadosState extends State<_ClientesAfectados> {
          WHERE h.nodo_id = ? AND c.activo = 1 ORDER BY c.nombre
       ''', parameters: [inc['nodo_id']]);
     }
-    // Corte general: todos los clientes activos.
+    // Corte general: todos los clientes activos del tenant (filtro explícito de
+    // tenant_id por defensa en profundidad, aunque el SQLite local ya es mono-tenant).
     return ps.db.watch(
-        "SELECT id, nombre, telefono FROM clientes WHERE activo = 1 ORDER BY nombre");
+        "SELECT id, nombre, telefono FROM clientes "
+        "WHERE activo = 1 AND tenant_id = ? ORDER BY nombre",
+        parameters: [widget.tenantId]);
   }
 
   @override
