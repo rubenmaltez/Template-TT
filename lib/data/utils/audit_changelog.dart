@@ -115,6 +115,9 @@ const Map<String, Set<String>> kAuditCamposVisiblesDefault = {
   'tickets': {'titulo', 'descripcion', 'estado', 'prioridad', 'cliente_id'},
   'ticket_eventos': {'tipo_evento', 'comentario', 'estado_nuevo'},
   'ticket_adjuntos': {'descripcion'},
+  // ticket_materiales (Fase 3C): producto/serial son FK; cantidad es el dato
+  // legible. El evento se rotula "Consumido en ticket" en HistorialSerialWidget.
+  'ticket_materiales': {'cantidad'},
 };
 
 // ---------------------------------------------------------------------------
@@ -237,6 +240,7 @@ const Map<String, List<String>> kAuditCamposCatalogo = {
   'tickets': ['titulo', 'descripcion', 'estado', 'prioridad', 'cliente_id'],
   'ticket_eventos': ['tipo_evento', 'comentario', 'estado_nuevo'],
   'ticket_adjuntos': ['descripcion'],
+  'ticket_materiales': ['cantidad'],
 };
 
 // Label humano por entidad (para los títulos de las secciones del panel).
@@ -266,6 +270,7 @@ const Map<String, String> kAuditEntidadLabel = {
   'tickets': 'Tickets',
   'ticket_eventos': 'Eventos de ticket',
   'ticket_adjuntos': 'Adjuntos de ticket',
+  'ticket_materiales': 'Materiales de ticket',
 };
 
 // Columnas computadas / auto que se omiten en cualquier snapshot, además del

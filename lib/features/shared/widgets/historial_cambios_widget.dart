@@ -289,6 +289,12 @@ class _CambioTile extends StatelessWidget {
           'delete' => (Icons.delete_outline, scheme.error, 'Movimiento eliminado'),
           _ => (Icons.edit, scheme.primary, 'Movimiento actualizado'),
         };
+      case 'ticket_materiales':
+        return switch (accion) {
+          'create' =>
+            (Icons.build_circle_outlined, scheme.tertiary, 'Consumido en ticket'),
+          _ => (Icons.edit, scheme.primary, 'Material de ticket'),
+        };
       default:
         return switch (accion) {
           'create' => (Icons.add_circle_outline, scheme.tertiary, 'Creado'),
@@ -586,8 +592,11 @@ class _HistorialCuotaWidgetState extends ConsumerState<HistorialCuotaWidget> {
 // (ingreso → asignación → devolución/baja) que el plan describe. El movimiento
 // es nieto-conceptual del serial pero se incluye porque es la hoja del ledger
 // que da el detalle (ubicación de devolución, proveedor, motivo) que el UPDATE
-// del serial no captura. Solo admin/admin_cobranza/super sincronizan audit_log
-// e inv_movimientos.
+// del serial no captura. También une `ticket_materiales` (Fase 3C): el consumo
+// en un ticket instala el serial; como el inv_movimientos/serial derivados los
+// hace un trigger a depth 2 (no se auditan), la fila ticket_materiales (sí
+// auditada) es la que surfacea ese evento acá. Solo admin/admin_cobranza/super
+// sincronizan audit_log + inv_movimientos + ticket_materiales.
 // ---------------------------------------------------------------------------
 class HistorialSerialWidget extends ConsumerStatefulWidget {
   const HistorialSerialWidget({super.key, required this.serialId});
@@ -627,9 +636,11 @@ class _HistorialSerialWidgetState extends ConsumerState<HistorialSerialWidget> {
        WHERE (a.tabla = 'inv_seriales' AND a.registro_id = ?)
           OR (a.tabla = 'inv_movimientos' AND a.registro_id IN (
                 SELECT id FROM inv_movimientos WHERE serial_id = ?))
+          OR (a.tabla = 'ticket_materiales' AND a.registro_id IN (
+                SELECT id FROM ticket_materiales WHERE serial_id = ?))
        ORDER BY COALESCE(a.ocurrido_en, a.created_at) DESC
       ''',
-      parameters: [widget.serialId, widget.serialId],
+      parameters: [widget.serialId, widget.serialId, widget.serialId],
     );
   }
 
