@@ -19,13 +19,19 @@
 
 ## Objetivo de este branch
 
-Features nuevos (a definir el detalle con Rubén antes de implementar):
-1. **Inventario** — módulo de inventario (existe el feature flag `tenant_modulos` "Inventario opcional"; ⟨definir alcance⟩).
-2. **Tickets** — sistema de tickets/órdenes de trabajo ⟨definir alcance⟩.
-3. **Rol técnico** — nuevo rol "técnico" (además de cobrador/admin/admin_cobranza/super_admin) ⟨definir permisos y vistas⟩.
+**Plan completo y alcance APROBADO en `PLAN-INVENTARIO-TICKETS-RED.md`** (leer ahí el detalle).
+Resumen: 4 features aditivos, por fases (cada una su PR + audit + testing):
+1. **Fase 1 (próxima):** Geografía global→per-tenant (con backfill + reconexión de
+   `clientes.comunidad_id`) + Topología de red per-tenant (Nodo→Hub→Puerto, `clientes.puerto_id`).
+2. **Fase 2:** Inventario (ledger de movimientos, módulo opcional ya seedeado).
+3. **Fase 3:** Tickets + roles `tecnico`/`admin_tickets` + `incidentes` (outages).
 
-> ⚠️ Tocan DB/roles/RLS → seguir el checklist de integridad de CLAUDE.md y la Fase 2
-> (proponer + esperar aprobación) ANTES de implementar.
+Decisiones cerradas: 1 rol por usuario; red opcional en cliente pero requerida para
+ticket/asignar equipos; SLA por tipo; notificaciones in-app; etc. (detalle en el PLAN).
+
+> ⚠️ Tocan DB/roles/RLS → checklist de integridad de CLAUDE.md. Fase 2 ya cumplida
+> (propuesta aprobada); **falta aprobar el detalle de la Fase 1 antes de implementar**.
+> ⚠️ Geografía toca DATA VIVA (FK de clientes) → migración con backfill + testing con data real.
 
 ## Sesión anterior (2026-06-06 cont.) — qué se hizo
 
