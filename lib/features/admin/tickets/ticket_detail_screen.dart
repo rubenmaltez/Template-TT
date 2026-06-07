@@ -146,11 +146,13 @@ class _TicketDetailScreenState extends ConsumerState<TicketDetailScreen> {
               onPressed: () => _cambiarEstado(t, to),
               child: Text(estadoTicketLabel(to)),
             )),
-        TextButton.icon(
-          icon: const Icon(Icons.engineering, size: 18),
-          label: const Text('Reasignar'),
-          onPressed: () => _reasignar(t),
-        ),
+        // Reasignar no tiene sentido en estados terminales (cerrado/cancelado).
+        if (estado != 'cerrado' && estado != 'cancelado')
+          TextButton.icon(
+            icon: const Icon(Icons.engineering, size: 18),
+            label: const Text('Reasignar'),
+            onPressed: () => _reasignar(t),
+          ),
       ],
     );
   }
@@ -323,21 +325,25 @@ class _TicketDetailScreenState extends ConsumerState<TicketDetailScreen> {
       ),
     );
     if (elegido == null || !mounted) return;
-    final anterior = t['estado'] as String? ?? 'abierto';
     final now = DateTime.now().toIso8601String();
     final ocurrido = DateTime.now().toUtc().toIso8601String();
-    // Asignar mueve abierto→asignado; si ya estaba en otro estado, solo cambia
-    // el responsable (sin tocar el estado, para no romper transiciones).
-    final nuevoEstado = anterior == 'abierto' && elegido.id != null
-        ? 'asignado'
-        : anterior;
     try {
       await ps.db.writeTransaction((tx) async {
+        // Re-leer el estado FRESCO dentro de la tx (simetría con _cambiarEstado):
+        // computamos nuevoEstado desde el valor real, no del snapshot stale, para
+        // no generar una transición inválida que el server rechazaría.
+        final cur = await tx.getOptional(
+            'SELECT estado FROM tickets WHERE id = ?', [t['id']]);
+        final estadoActual = cur?['estado'] as String? ?? 'abierto';
+        // Asignar mueve abierto→asignado; en cualquier otro estado solo cambia el
+        // responsable (sin tocar el estado, para no romper transiciones).
+        final nuevoEstado =
+            estadoActual == 'abierto' && elegido.id != null ? 'asignado' : estadoActual;
         await tx.execute(
           'UPDATE tickets SET asignado_a = ?, estado = ?, ocurrido_en = ? WHERE id = ?',
           [elegido.id, nuevoEstado, ocurrido, t['id']],
         );
-        await _evento(tx, t['id'] as String, tenantId, 'asignado', anterior,
+        await _evento(tx, t['id'] as String, tenantId, 'asignado', estadoActual,
             nuevoEstado, hechoPor, ocurrido, now,
             comentario: elegido.id == null ? 'Sin asignar' : 'Asignado a ${elegido.nombre}');
       });
