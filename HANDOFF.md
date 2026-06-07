@@ -9,6 +9,19 @@
 
 ## Estado actual
 
+- **AUDIT INTEGRAL DE FASE 2 — HECHO** (7 expertos paralelos: inventario, red/geo,
+  dinero, multi-tenant/RLS, sync, audit/change-log, cross-módulo/lifecycle).
+  Cimientos LIMPIOS (dinero+invariantes, aislamiento inventario↔dinero, integridad
+  DB↔schema↔sync, RLS/impersonación/gating). **Todos los findings accionables
+  CORREGIDOS** (commits `aa669a9`→`df5fc56`, grupos A-F): A1 re-validación de
+  estado · guarda es_serializado · try/catch de pickers · `_cambiarEstado` ·
+  fuga cross-tenant geo/red (F1) · **equipo-en-baja** (al cancelar contrato/
+  desactivar cliente ofrece devolver/retirar los equipos) · trazabilidad
+  Agregador del equipo + equipos en contrato/cliente · MAC en ingreso · guard de
+  router para cobrador · **migración 0102** (guardas de borrado server-side +
+  ledger append-only estricto). Decisiones: puerto **soft** en equipo+ticket
+  (endurecer cuando la red esté viva); equipo dañado se mantiene como está.
+  **→ listo para Fase 3.** Falta el audit FINAL de verificación.
 - **Branch ÚNICA de trabajo:** `claude/new-features-inventory-tickets-and-technicians`
   (tip en `origin`). Contiene TODO: 2C-2/2D + el vaciado de backlog pre-Fase 3. Es la
   branch viva — desarrollar acá. Las viejas (`nifty-cori-KF2PZ`,
@@ -115,10 +128,12 @@ ni trigger de proyección. Fase 2 es admin-facing; custodia por técnico = Fase 
     el surfaceo del connector son suficientes (single-admin en prod). **R1** (FK del
     puerto de red) → se pliega a la Fase 3 (que reworkea la red para tickets).
 
-> ⚠️ Deploy Fase 2 (al final, todo junto): correr `0099` + `0100` + `0101` por
-> Dashboard, redeploy sync rules, restart (**schema v20**). 2C-2/2D NO agregaron
-> migraciones (reusan 0099-0101). Para ver Inventario el super_admin habilita
-> 'inventario' del tenant en `/super/tenants/:id`.
+> ⚠️ Deploy Fase 2 (al final, todo junto): correr `0099` + `0100` + `0101` +
+> **`0102`** por Dashboard, redeploy sync rules, restart (**schema v20**). 2C-2/2D
+> NO agregaron migraciones; **0102 es server-side puro** (triggers de guarda de
+> borrado + ledger append-only estricto), NO toca schema/sync → no necesita bump
+> ni redeploy de sync rules, solo correr el SQL. Para ver Inventario el
+> super_admin habilita 'inventario' del tenant en `/super/tenants/:id`.
 
 ## Fase 1.1 — Fixes + features de red post-testing de Rubén (HECHO)
 

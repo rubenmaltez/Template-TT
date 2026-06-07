@@ -158,6 +158,44 @@ consistentes → auditoría.
 
 > Más reciente arriba. Formato por ítem: error → fix → expectativa.
 
+### 2026-06-07 (cont. 3) — Audit integral de Fase 2 + corrección de TODOS los findings
+
+Audit exhaustivo con **7 expertos en paralelo** (uno por módulo + cross-módulo),
+con lente de misión/visión e interacción entre módulos. **Cimientos limpios**:
+las 10 invariantes de dinero, el aislamiento hermético inventario↔dinero (0 JOINs,
+trigger 0083 blindado), la integridad DB↔schema↔sync, y el aislamiento RLS/
+impersonación/gating pasaron sin findings. Lo demás se corrigió (grupos A-F):
+
+**Comportamiento esperado (lo nuevo/corregido):**
+- **Equipo en baja del cliente:** al cancelar un contrato o desactivar un cliente
+  con equipos instalados, la app **avisa y ofrece** devolverlos a stock o
+  retirarlos (no quedan "fantasma" instalados en una entidad inactiva).
+- **Trazabilidad cuna-a-tumba:** el historial del equipo (Agregador) ahora muestra
+  el serial + TODOS sus movimientos (ingreso→asignación→devolución/baja con
+  ubicación, proveedor, motivo). El historial del cliente incluye sus equipos; el
+  serial dice a quién se asignó. El detalle del contrato muestra sus equipos.
+- **MAC:** el ingreso de seriales acepta "serial, MAC" por línea.
+
+**Fixes (error → fix):**
+- **A1** (`aa669a9`): `_devolver`/`_darDeBaja` no re-validaban el estado exacto →
+  movimiento fantasma en el ledger. Fix: re-validación dentro de la tx.
+- **es_serializado** (`aa669a9`): editar el tipo de un producto en uso dejaba
+  seriales huérfanos. Fix: guarda si tiene seriales/movimientos.
+- **Pickers colgados** (`6cea288`): `red_picker`/`geo_picker` sin try/catch en la
+  hidratación → spinner infinito al editar. Fix: try/catch/finally. `geo_picker`
+  además alineado al patrón de `RedPicker` (sin watch inline en build).
+- **`_cambiarEstado`** (`6cea288`): fallaba en silencio. Fix: try/catch + snack.
+- **Fuga cross-tenant geo/red** (`799ca1f`): `SELECT *` sin `WHERE tenant_id` en
+  las listas raíz daba la unión System∪impersonado. Fix: filtro por tenant.
+- **Trazabilidad** (`1e79006`): `HistorialSerialWidget` Agregador + `cliente_id` en
+  allowlist + equipos en log de cliente + sección Equipos en detalle de contrato.
+- **0102** (`df5fc56`): guardas de borrado server-side (ubicación/proveedor/puerto/
+  comunidad en uso) cascade-safe + ledger `inv_movimientos` append-only estricto
+  (super_admin solo SELECT+INSERT). Cierra la orfandad offline multi-device y R1.
+
+**Deploy:** correr 0099-0102 + redeploy sync rules + restart v20. **0102 es
+server-side puro** (no toca schema/sync).
+
 ### 2026-06-07 (cont. 2) — Vaciado del backlog de inventario + branch única (pre-Fase 3)
 
 Branch ÚNICA `claude/new-features-inventory-tickets-and-technicians` (tip `c89954e`):

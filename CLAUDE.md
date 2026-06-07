@@ -307,16 +307,17 @@ device-time, cuando aparece queda en su hora real, no en la de sync. No se
 pierde data.
 
 **Cobertura actual:** trigger en clientes, contratos, cuotas, pagos, recibos,
-cargos_extra, visitas, fotos_cliente (0062) + **planes** (0076). Los eventos de
-**recibos** (emitido / anulado) se SURFACEAN en el timeline de la cuota
-(`HistorialCuotaWidget`) con labels propios — antes el trigger los grababa pero
-ninguna UI los mostraba (#5).
-**Pendiente (documentado):** geografía (`departamentos` / `municipios` /
-`comunidades`) son tablas **globales sin `tenant_id`** → el trigger genérico no
-aplica tal cual (`audit_registrar` requiere tenant_id; `audit_log` scopa por
-`current_tenant_id()`). Cerrar cuando se decida el modelo de atribución de
-tenant para tablas globales (o si geografía pasa a per-tenant). Es data casi
-estática, bajo valor de auditoría hoy.
+cargos_extra, visitas, fotos_cliente (0062) + **planes** (0076) + **geografía
+per-tenant** (departamentos/municipios/comunidades, 0097) + **red**
+(red_nodos/red_hubs/red_puertos, 0098) + **inventario** (inv_categorias/
+inv_proveedores/inv_productos/inv_ubicaciones/inv_seriales/inv_movimientos,
+0099-0101). Los eventos de **recibos** (emitido / anulado) se SURFACEAN en el
+timeline de la cuota (`HistorialCuotaWidget`). Los **movimientos de inventario**
+y los cambios del **serial** se unen en `HistorialSerialWidget` (Agregador
+cuna-a-tumba); los equipos del cliente se surfacean en `HistorialClienteWidget`.
+Value-labels de `inv_movimientos.tipo` e `inv_seriales.estado` en `_fmtField`.
+**Geografía: gap CERRADO** — al pasar a per-tenant (0097) ya tiene `tenant_id` +
+trigger `audit_changelog_trg` + historial en `geografia_admin` (patrón Simple).
 
 
 | Capa | Tecnología |
@@ -457,18 +458,25 @@ Las sync rules usan `SELECT *` para todas las tablas operativas.
 Esto significa que columnas nuevas se incluyen automáticamente DESPUÉS
 de redeployar. Sin redeploy, PowerSync no ve las columnas nuevas.
 
-**Tablas sincronizadas** (via `SELECT *`):
-- clientes, contratos, cuotas, pagos, recibos, cargos_extra
-- notificaciones_mora, planes, settings, audit_log
-- departamentos, municipios, comunidades (globales)
-- cobradores (campos selectivos, no `SELECT *`)
+**Tablas sincronizadas** (via `SELECT *`), por bucket de rol:
+- **Todos los roles** (cobrador incluido): clientes, contratos, cuotas, pagos,
+  recibos, cargos_extra, notificaciones_mora, planes, settings, visitas,
+  fotos_cliente, y **departamentos/municipios/comunidades (per-tenant desde
+  0097)** + **red_nodos/red_hubs/red_puertos (0098)** — el cobrador necesita la
+  geo/puerto del cliente.
+- **Solo admin / admin_cobranza / super_admin impersonando**: `audit_log` +
+  **inv_categorias/inv_proveedores/inv_productos/inv_ubicaciones/inv_seriales/
+  inv_movimientos (0099-0101)** — inventario es admin-facing, NO baja al cobrador.
+- `tenant_modulos`: read-only, SÍ se sincroniza (campos selectivos, `id` agregado
+  en 0099 para que PowerSync sincronice la PK) — gatea los módulos opcionales.
+- `cobradores` (campos selectivos, no `SELECT *`).
 
-**Schema version ACTUAL (fuente de verdad)**: `_schemaVersion = 16` en
-`lib/powersync/db.dart` (cada user tiene su SQLite `sitecsa_{uid}_v16.db`).
-Las menciones a "Schema v4" / "Schema v6" más abajo son registros históricos
-de sprints viejos (BULK 12, etc.), NO el valor actual — el real es 16. Cada
-bump de schema redeploya sync rules. Verificar siempre el número en `db.dart`,
-no confiar en los logs de sprint.
+**Schema version ACTUAL (fuente de verdad)**: `_schemaVersion = 20` en
+`lib/powersync/db.dart` (cada user tiene su SQLite `sitecsa_{uid}_v20.db`). v17
+agregó geo per-tenant + red; v18-v20 el inventario (catálogo→ubicaciones→ledger).
+Las menciones a "Schema v4/v6/v16" más abajo o arriba son registros históricos,
+NO el valor actual — el real es **20**. Cada bump de schema redeploya sync rules.
+Verificar siempre el número en `db.dart`, no confiar en los logs de sprint.
 
 ### Proceso mandatorio de fixes y features (lifecycle)
 
