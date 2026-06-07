@@ -842,6 +842,11 @@ class _MovimientoDialogState extends State<_MovimientoDialog> {
   final _cantidad = TextEditingController(text: '1');
   final _motivo = TextEditingController();
 
+  // Stock por ubicación del producto elegido (M2): para egreso/transferencia el
+  // origen se restringe a ubicaciones con stock > 0, mostrando la cantidad.
+  List<Map<String, dynamic>> _stockPorUbi = const [];
+  bool _cargandoStock = false;
+
   late final Stream<List<Map<String, dynamic>>> _productos;
   late final Stream<List<Map<String, dynamic>>> _ubicaciones;
 
@@ -866,6 +871,79 @@ class _MovimientoDialogState extends State<_MovimientoDialog> {
     _cantidad.dispose();
     _motivo.dispose();
     super.dispose();
+  }
+
+  // Recarga el stock por ubicación del producto (solo egreso/transferencia, que
+  // salen de un origen concreto). El ajuste no lo necesita (corrige cualquier
+  // ubicación). Limpia el origen elegido si dejó de tener stock.
+  Future<void> _reloadStock() async {
+    final pid = _productoId;
+    final tipo = _tipo;
+    if (pid == null || (tipo != 'egreso' && tipo != 'transferencia')) {
+      if (mounted) setState(() => _stockPorUbi = const []);
+      return;
+    }
+    setState(() => _cargandoStock = true);
+    final rows = await ps.db.getAll('''
+      SELECT u.id, u.nombre,
+             COALESCE((
+               SELECT SUM(CASE WHEN m.ubicacion_destino_id = u.id THEN m.cantidad ELSE 0 END)
+                    - SUM(CASE WHEN m.ubicacion_origen_id  = u.id THEN m.cantidad ELSE 0 END)
+                 FROM inv_movimientos m WHERE m.producto_id = ?), 0) AS stock
+        FROM inv_ubicaciones u WHERE u.activa = 1 ORDER BY u.nombre
+    ''', [pid]);
+    // Si el producto/tipo cambió mientras cargaba, descartamos este resultado
+    // (el call más nuevo maneja el flag de carga y su propio resultado).
+    if (!mounted || pid != _productoId || tipo != _tipo) return;
+    setState(() {
+      _stockPorUbi = rows
+          .map((r) => {
+                'id': r['id'],
+                'nombre': r['nombre'],
+                'stock': (r['stock'] as num?) ?? 0,
+              })
+          .where((r) => (r['stock'] as num) > 0)
+          .toList();
+      if (_origenId != null &&
+          !_stockPorUbi.any((r) => r['id'] == _origenId)) {
+        _origenId = null;
+      }
+      _cargandoStock = false;
+    });
+  }
+
+  // Dropdown de origen para egreso/transferencia: solo ubicaciones con stock,
+  // con la cantidad disponible al lado.
+  Widget _origenStockDropdown() {
+    if (_cargandoStock) {
+      return const Padding(
+        padding: EdgeInsets.symmetric(vertical: 12),
+        child: LinearProgressIndicator(),
+      );
+    }
+    if (_productoId == null || _stockPorUbi.isEmpty) {
+      return InputDecorator(
+        decoration: const InputDecoration(labelText: 'Ubicación origen'),
+        child: Text(
+          _productoId == null
+              ? 'Elegí un producto'
+              : 'Sin stock en ninguna ubicación',
+          style: TextStyle(color: Theme.of(context).colorScheme.outline),
+        ),
+      );
+    }
+    return DropdownButtonFormField<String?>(
+      value: _stockPorUbi.any((r) => r['id'] == _origenId) ? _origenId : null,
+      decoration: const InputDecoration(labelText: 'Ubicación origen (con stock)'),
+      isExpanded: true,
+      onChanged: (v) => setState(() => _origenId = v),
+      items: _stockPorUbi
+          .map((r) => DropdownMenuItem(
+                value: r['id'] as String,
+                child: Text('${r['nombre']} (${_fmtCant(r['stock'] as num)})'),
+              ))
+          .toList(),
+    );
   }
 
   Widget _ubiDropdown(
@@ -904,7 +982,10 @@ class _MovimientoDialogState extends State<_MovimientoDialog> {
               value: _tipo,
               decoration: const InputDecoration(labelText: 'Tipo'),
               isExpanded: true,
-              onChanged: (v) => setState(() => _tipo = v ?? 'egreso'),
+              onChanged: (v) {
+                setState(() => _tipo = v ?? 'egreso');
+                _reloadStock();
+              },
               items: _tipos.entries
                   .map((e) =>
                       DropdownMenuItem(value: e.key, child: Text(e.value)))
@@ -923,7 +1004,10 @@ class _MovimientoDialogState extends State<_MovimientoDialog> {
                   decoration:
                       const InputDecoration(labelText: 'Producto (granel)'),
                   isExpanded: true,
-                  onChanged: (v) => setState(() => _productoId = v),
+                  onChanged: (v) {
+                    setState(() => _productoId = v);
+                    _reloadStock();
+                  },
                   items: rows
                       .map((r) => DropdownMenuItem(
                             value: r['id'] as String,
@@ -934,12 +1018,9 @@ class _MovimientoDialogState extends State<_MovimientoDialog> {
               },
             ),
             const SizedBox(height: 12),
-            if (_tipo == 'egreso')
-              _ubiDropdown('Ubicación origen', _origenId,
-                  (v) => setState(() => _origenId = v)),
+            if (_tipo == 'egreso') _origenStockDropdown(),
             if (_tipo == 'transferencia') ...[
-              _ubiDropdown('Ubicación origen', _origenId,
-                  (v) => setState(() => _origenId = v)),
+              _origenStockDropdown(),
               const SizedBox(height: 12),
               _ubiDropdown('Ubicación destino', _destinoId,
                   (v) => setState(() => _destinoId = v)),
