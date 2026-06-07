@@ -36,11 +36,29 @@ técnico · D4 correlativo `T-00001` · D5 3A completo).
   de menú (`moduloKey:'tickets'`).
 - **Adjuntos**: migración **0104** (bucket `ticket-adjuntos` + policies) +
   `TicketAdjuntosWidget` (galería + evento 'adjunto') en el detalle.
-- ⏳ Corriendo audit de 3A (3 agentes); fixes + testing al cerrar.
+- ✅ **Audit de 3A HECHO** (3 agentes): DB integrity **limpio**; Code+QA convergieron.
+  Fixes aplicados (`5238eac`): `_reasignar` re-valida el estado en la tx · Reasignar
+  oculto en estados terminales.
 
-**3A — DECISIÓN pendiente para 3B/futuro:** la pausa exacta del SLA (sumar todos
-los tramos en `en_espera`) hoy es aproximada (pausa solo si está en espera AHORA);
-refinamiento de v2. Buckets de `admin_tickets`/`tecnico` = 3B.
+**3A — CONCERNS A RESOLVER EN 3B (documentados, NO bloquean 3A):**
+- **(ALTA, verificar) Coalescing de transiciones offline:** si PowerSync junta varias
+  transiciones offline del mismo ticket en un solo PATCH con el estado final
+  (`abierto→...→resuelto` ⇒ `abierto→resuelto`), el trigger de transición (0103) lo
+  rechaza → divergencia. **No se materializa en 3A** (admin online; técnico no
+  asignable aún). En 3B: verificar el comportamiento real de la cola CRUD; si
+  coalescea, relajar el trigger (interactúa con D2 "server gana"). Si no coalescea
+  (sube cada op en orden), no hay bug.
+- **Wiring de roles `tecnico`/`admin_tickets`:** exponerlos en el picker de rol
+  (`tenant_dialogs_miembro.dart`), darles **shell propio** (técnico) + **landing** +
+  **bucket `por_tecnico`** + guard de router. Hoy NO se pueden asignar (a propósito,
+  para no crear un login roto). Todo 3B.
+- **SLA pausa exacta:** sumar los tramos en `en_espera` (hoy pausa solo si está en
+  espera AHORA). Refinamiento de v2.
+
+**3A — BACKLOG (no bloquea):** borrado de adjunto no-atómico (fila DB + objeto Storage
+en awaits separados, posible huérfano; mismo patrón que fotos_cliente) · lista de
+tickets sin paginación (carga todo + filtra en memoria; anti-patrón conocido) ·
+correlativo offline multi-device (R-class, igual que recibos: UNIQUE rechaza el 2º).
 
 > ⚠️ Deploy Fase 3 (al final del slice): correr `0103` + **`0104`** por Dashboard +
 > redeploy sync rules (tablas nuevas) + restart (**schema v21**). El super_admin
