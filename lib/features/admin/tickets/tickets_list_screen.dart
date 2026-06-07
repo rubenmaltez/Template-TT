@@ -22,22 +22,33 @@ const _grupos = {
 };
 
 class _TicketsListScreenState extends ConsumerState<TicketsListScreen> {
-  late final Stream<List<Map<String, dynamic>>> _tickets;
+  late Stream<List<Map<String, dynamic>>> _tickets;
   String _filtro = 'activos';
 
   @override
   void initState() {
     super.initState();
-    _tickets = ps.db.watch('''
+    _tickets = _buildStream();
+  }
+
+  // Filtra por grupo de estado EN SQL (no en memoria) + LIMIT acotado. El stream
+  // se recrea al cambiar el filtro.
+  Stream<List<Map<String, dynamic>>> _buildStream() {
+    final estados = _grupos[_filtro]!.toList();
+    final inClause = List.filled(estados.length, '?').join(', ');
+    return ps.db.watch('''
       SELECT t.id, t.correlativo, t.titulo, t.estado, t.prioridad,
-             t.cliente_id, t.created_at, tt.nombre AS tipo_nombre, tt.sla_horas,
+             t.cliente_id, t.created_at, t.segundos_pausado,
+             tt.nombre AS tipo_nombre, tt.sla_horas,
              cl.nombre AS cliente_nombre, co.nombre AS asignado_nombre
         FROM tickets t
    LEFT JOIN ticket_tipos tt ON tt.id = t.tipo_id
    LEFT JOIN clientes cl ON cl.id = t.cliente_id
    LEFT JOIN cobradores co ON co.id = t.asignado_a
+       WHERE t.estado IN ($inClause)
        ORDER BY t.created_at DESC
-    ''');
+       LIMIT 300
+    ''', parameters: estados);
   }
 
   @override
@@ -68,7 +79,10 @@ class _TicketsListScreenState extends ConsumerState<TicketsListScreen> {
                             _ => 'Cancelados',
                           }),
                           selected: _filtro == g,
-                          onSelected: (_) => setState(() => _filtro = g),
+                          onSelected: (_) => setState(() {
+                            _filtro = g;
+                            _tickets = _buildStream();
+                          }),
                         ),
                     ],
                   ),
@@ -89,10 +103,8 @@ class _TicketsListScreenState extends ConsumerState<TicketsListScreen> {
                 if (snap.hasError) {
                   return Center(child: Text('Error: ${snap.error}'));
                 }
-                final grupo = _grupos[_filtro]!;
-                final rows = (snap.data ?? const [])
-                    .where((t) => grupo.contains(t['estado'] as String? ?? ''))
-                    .toList();
+                // El filtro por grupo de estado ya se aplicó en SQL (_buildStream).
+                final rows = snap.data ?? const [];
                 if (rows.isEmpty) {
                   return EmptyState(
                     icon: Icons.confirmation_number_outlined,
@@ -125,6 +137,7 @@ class _TicketsListScreenState extends ConsumerState<TicketsListScreen> {
                       estado: estado,
                       createdAt: DateTime.parse(t['created_at'] as String),
                       slaHoras: t['sla_horas'] as int?,
+                      segundosPausado: (t['segundos_pausado'] as int?) ?? 0,
                     );
                     final cli = t['cliente_nombre'] as String?;
                     final asig = t['asignado_nombre'] as String?;

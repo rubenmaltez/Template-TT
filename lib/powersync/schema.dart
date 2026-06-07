@@ -215,6 +215,8 @@ const schema = Schema([
     Column.text('creado_por'),
     Column.text('resuelto_en'),
     Column.text('cerrado_en'),
+    Column.integer('segundos_pausado'),
+    Column.text('en_espera_desde'),
     Column.text('created_at'),
     Column.text('ocurrido_en'),
   ], indexes: [

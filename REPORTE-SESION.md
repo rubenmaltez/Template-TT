@@ -158,6 +158,46 @@ consistentes → auditoría.
 
 > Más reciente arriba. Formato por ítem: error → fix → expectativa.
 
+### 2026-06-07 (cont. 5) — Fase 3 slice 3A: vaciado de backlog + audit (pre-3B)
+
+Antes de arrancar 3B se vació TODO el backlog de 3A (pedido de Rubén: "no dejar
+ningún ítem en backlog, todo fixed y auditado antes de la siguiente fase").
+Auditado con 2 agentes (Code+offline-safety · DB-integrity+QA).
+
+- **Coalescing de transiciones offline (era ALTA "verificar"):** error supuesto = si
+  PowerSync junta varios saltos del mismo ticket en un PATCH con el estado final, el
+  trigger de transición (0103) lo rechaza. **Verificado FALSO POSITIVO** (docs PowerSync
+  + WebSearch): la cola CRUD es **FIFO y NO coalescea** updates a la misma fila; cada
+  `_cambiarEstado` es su propia tx → su propia op CRUD subida en orden. → sin cambio de
+  trigger. **Expectativa:** un técnico que mueve un ticket por varios estados offline
+  sincroniza cada salto en orden; el server los valida uno por uno.
+- **SLA pausa exacta** (antes "v2"): error = la pausa solo contaba si el ticket estaba en
+  espera AHORA (no sumaba tramos pasados). Fix = **migración 0105**: columnas
+  `tickets.segundos_pausado` + `en_espera_desde`; el trigger de transición acumula el
+  tiempo en `en_espera` usando el **device-time `ocurrido_en`** de cada transición
+  (offline-safe, FIFO server-side); el SLA derivado en el cliente suma `segundos_pausado`
+  al plazo. **Expectativa:** el plazo del SLA se "corre" por todo el tiempo que el ticket
+  estuvo en espera, aunque la pausa se haya hecho offline; el cliente lo ve al sincronizar
+  (trigger server-side). Mientras tanto el plazo local queda conservador (más urgente,
+  nunca oculta un vencimiento). Schema **v21→v22**.
+- **Lista de tickets — filtro en SQL** (era anti-patrón): error = cargaba TODOS los
+  tickets y filtraba por grupo de estado en memoria. Fix = `WHERE estado IN (?)` +
+  `LIMIT 300`, el stream se recrea al cambiar el chip de filtro. **Expectativa:** la lista
+  solo trae los tickets del grupo elegido (activos/resueltos/cancelados), acotada a 300.
+- **Umbral "por vencer" ruidoso** (audit E1, MEDIA): error = `max(20% del SLA, 1h)` hacía
+  que un SLA corto (1-5h) naciera directo en "por vencer". Fix = techo del **50% del SLA**
+  → un SLA de 1h muestra "en plazo" su primera mitad. **Expectativa:** "por vencer" aparece
+  proporcional al plazo, nunca desde el minuto 0.
+- **Matriz de transiciones cliente↔server:** verificada **idéntica** (incl. `cancelado →
+  reabierto` y `cerrado → reabierto`) — un agente la marcó divergente pero fue falso
+  positivo (misleyó el literal). Se agregó comentario aclaratorio.
+- **Deferred a v2 (documentado en HANDOFF):** `reabierto` nace vencido (anclar SLA a
+  `resuelto_en`) · over-count por clock-skew inter-device · lista sin "cargar más"
+  (LIMIT 300) · borrado de adjunto no-atómico (mismo patrón aceptado que fotos_cliente).
+
+Commits: ver abajo. Archivos: `0105_ticket_sla_pausa.sql` (nuevo) · `ticket_sla.dart` ·
+`tickets_list_screen.dart` · `ticket_detail_screen.dart` · `schema.dart` · `db.dart`.
+
 ### 2026-06-07 (cont. 4) — Fase 3 slice 3A: fundación de Tickets (código completo)
 
 Propuesta aprobada (`FASE3-PLAN.md`); 3A implementado completo (migraciones

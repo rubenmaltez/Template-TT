@@ -97,6 +97,7 @@ class _TicketDetailScreenState extends ConsumerState<TicketDetailScreen> {
       estado: estado,
       createdAt: DateTime.parse(t['created_at'] as String),
       slaHoras: t['sla_horas'] as int?,
+      segundosPausado: (t['segundos_pausado'] as int?) ?? 0,
     );
     final prioridad = t['prioridad'] as String?;
     return Card(

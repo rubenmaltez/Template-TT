@@ -7,11 +7,14 @@
 
 ---
 
-## Fase 3 — Tickets (EN CURSO, slice 3A)
+## Fase 3 — Tickets (slice 3A COMPLETO + backlog vaciado → arrancando 3B)
 
 Propuesta aprobada en `FASE3-PLAN.md` (decisiones: D1 trigger server-side de
 descuento de stock · D2 trigger de transición de estado · D3 shell propio del
 técnico · D4 correlativo `T-00001` · D5 3A completo).
+
+> **3A cerrado y auditado, SIN backlog pendiente** (ver "BACKLOG VACIADO" abajo).
+> Próximo: **slice 3B (técnico)** — roles asignables + shell móvil + bucket `por_tecnico`.
 
 **3A capa 1 — HECHA** (commits `a62a8fb`, `04a5999`):
 - **Migración 0103** (server-side, idempotente, transaccional): roles `tecnico`+
@@ -40,30 +43,49 @@ técnico · D4 correlativo `T-00001` · D5 3A completo).
   Fixes aplicados (`5238eac`): `_reasignar` re-valida el estado en la tx · Reasignar
   oculto en estados terminales.
 
-**3A — CONCERNS A RESOLVER EN 3B (documentados, NO bloquean 3A):**
-- **(ALTA, verificar) Coalescing de transiciones offline:** si PowerSync junta varias
-  transiciones offline del mismo ticket en un solo PATCH con el estado final
-  (`abierto→...→resuelto` ⇒ `abierto→resuelto`), el trigger de transición (0103) lo
-  rechaza → divergencia. **No se materializa en 3A** (admin online; técnico no
-  asignable aún). En 3B: verificar el comportamiento real de la cola CRUD; si
-  coalescea, relajar el trigger (interactúa con D2 "server gana"). Si no coalescea
-  (sube cada op en orden), no hay bug.
-- **Wiring de roles `tecnico`/`admin_tickets`:** exponerlos en el picker de rol
-  (`tenant_dialogs_miembro.dart`), darles **shell propio** (técnico) + **landing** +
-  **bucket `por_tecnico`** + guard de router. Hoy NO se pueden asignar (a propósito,
-  para no crear un login roto). Todo 3B.
-- **SLA pausa exacta:** sumar los tramos en `en_espera` (hoy pausa solo si está en
-  espera AHORA). Refinamiento de v2.
+**3A — BACKLOG VACIADO antes de 3B** (sesión 2026-06-07 cont., auditado 2 agentes):
+- ✅ **Coalescing de transiciones offline (era ALTA):** **FALSO POSITIVO, cerrado.**
+  Verificado (docs PowerSync + WebSearch): la cola CRUD es **FIFO y NO coalescea**
+  varias updates a la misma fila — cada `_cambiarEstado` es su propia tx → su propia op
+  CRUD que sube en orden. El trigger de transición (0103) ve cada salto individual →
+  no rechaza. Sin cambio de trigger.
+- ✅ **SLA pausa EXACTA — HECHO** (migración **0105**): trigger acumula en
+  `tickets.segundos_pausado` TODO el tiempo en `en_espera` usando el device-time
+  `ocurrido_en` de cada transición (offline-safe, FIFO server-side); el SLA derivado
+  en el cliente suma `segundos_pausado` al plazo. Ya NO es "pausa solo si está en
+  espera AHORA". Columnas `segundos_pausado`+`en_espera_desde` en schema, **schema v22**.
+- ✅ **Lista de tickets — filtro en SQL** (no en memoria): `WHERE estado IN (?)` +
+  `LIMIT 300`, stream se recrea al cambiar el chip. (Antes cargaba todo + filtraba en
+  memoria.)
+- ✅ **Umbral "por vencer"** (fix audit E1): techo del 50% del SLA → un SLA corto (1-5h)
+  ya no nace en "por vencer".
+- ✅ Matriz de transiciones cliente↔server **verificada idéntica** (incl. terminal→reabrir).
 
-**3A — BACKLOG (no bloquea):** borrado de adjunto no-atómico (fila DB + objeto Storage
-en awaits separados, posible huérfano; mismo patrón que fotos_cliente) · lista de
-tickets sin paginación (carga todo + filtra en memoria; anti-patrón conocido) ·
-correlativo offline multi-device (R-class, igual que recibos: UNIQUE rechaza el 2º).
+**3A — DEFERRED A v2 (documentado, NO bloquea):**
+- **`reabierto` nace vencido** (G1): al reabrir un ticket viejo, `deadline = created_at +
+  sla + pausa` ya pasó → muestra "Vencido" al instante. Consistente ("SLA corre desde la
+  creación") pero quizá no deseado. v2: anclar el SLA del reabierto a `resuelto_en` o
+  un campo `sla_reabierto_desde`. Decisión de producto.
+- **Over-count por clock-skew inter-device** (C2): si 2 devices con relojes
+  desincronizados tocan el MISMO ticket, la pausa puede sobre-contarse (deadline menos
+  urgente). Edge case sin fix limpio offline-first; MVP-tolerable.
+- **Lista sin "cargar más"** (LIMIT 300): un tenant con >300 tickets activos ve solo los
+  300 más recientes. Cursor/paginación cuando crezca.
+- **Borrado de adjunto no-atómico** (fila DB + objeto Storage en awaits separados,
+  posible huérfano; **mismo patrón aceptado que fotos_cliente** — no es regresión nueva).
+- **Correlativo offline multi-device** (R-class, igual que recibos: UNIQUE rechaza el 2º).
+- **admin_cobranza sin tickets**: intencional — `is_admin_or_tickets/is_ticket_staff`
+  excluyen ese rol (RLS) + router gatea a `soloAdmin` + bucket sin tickets. Consistente.
 
-> ⚠️ Deploy Fase 3 (al final del slice): correr `0103` + **`0104`** por Dashboard +
-> redeploy sync rules (tablas nuevas) + restart (**schema v21**). El super_admin
-> enciende 'tickets' del tenant en `/super/tenants/:id`. `0104` (Storage) depende
-> de `0103` — correr en orden.
+**Wiring de roles `tecnico`/`admin_tickets` → 3B:** exponerlos en el picker de rol
+(`tenant_dialogs_miembro.dart`), darles **shell propio** (técnico) + **landing** +
+**bucket `por_tecnico`** + guard de router. Hoy NO se pueden asignar (a propósito,
+para no crear un login roto).
+
+> ⚠️ Deploy Fase 3 (al final del slice): correr `0103` + **`0104`** + **`0105`** por
+> Dashboard (en orden — `0104`/`0105` dependen de `0103`) + redeploy sync rules
+> (tablas + columnas nuevas) + restart (**schema v22**). El super_admin enciende
+> 'tickets' del tenant en `/super/tenants/:id`.
 
 ## Estado actual
 
@@ -95,8 +117,8 @@ correlativo offline multi-device (R-class, igual que recibos: UNIQUE rechaza el 
   `push --delete`; los MCP de GitHub no exponen delete). **Pendiente: Rubén limpia desde
   GitHub UI** — 40 ramas mergeadas (safe) + 29 con commits únicos (revisar). Lista y
   comando `git push origin --delete ...` en el chat de cierre de esta sesión.
-- **Schema PowerSync:** `_schemaVersion = 20` (`lib/powersync/db.dart`). Todo el trabajo
-  de inventario reusa las migraciones 0099-0101 → sin bump nuevo, sin redeploy de sync rules.
+- **Schema PowerSync:** `_schemaVersion = 22` (`lib/powersync/db.dart`). Inventario reusa
+  0099-0101 (sin bump). Tickets sumó 0103 (v21, 4 tablas) + 0105 (v22, columnas de pausa SLA).
 - **Plataformas target:** Android + Windows (web degrada sin romper, NO es target).
 - **App version:** v0.9.0 (ver `RELEASE.md`).
 

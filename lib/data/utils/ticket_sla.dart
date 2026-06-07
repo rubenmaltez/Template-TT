@@ -5,10 +5,16 @@ import 'package:flutter/material.dart';
 /// `Map<String, dynamic>` de `ps.db.watch` (mismo patrón que inventario).
 
 /// Estado del SLA, DERIVADO en el cliente (no se persiste). El SLA es por TIPO
-/// (`ticket_tipos.sla_horas`). Plazo = created_at + sla_horas. Mientras el ticket
-/// está `en_espera` el SLA se considera PAUSADO (no vence); resuelto/cerrado/
-/// cancelado lo cierran. NOTA: la pausa exacta (sumar todos los tramos en
-/// `en_espera`) es refinamiento de v2; acá pausamos solo si está en espera AHORA.
+/// (`ticket_tipos.sla_horas`). Plazo = created_at + sla_horas + segundos_pausado.
+/// Mientras el ticket está `en_espera` el SLA se considera PAUSADO (no vence);
+/// resuelto/cerrado/cancelado lo cierran.
+///
+/// PAUSA EXACTA (migración 0105): el trigger server-side acumula en
+/// `tickets.segundos_pausado` TODO el tiempo que el ticket estuvo en `en_espera`
+/// (usando el device-time `ocurrido_en` de cada transición → offline-safe). Acá
+/// lo sumamos al plazo. Offline mid-pausa: el cliente recién ve el `segundos_pausado`
+/// actualizado al sincronizar (el trigger es server-side); hasta entonces el plazo
+/// queda levemente conservador (más urgente, nunca oculta un vencimiento).
 enum SlaEstado { sinSla, enPlazo, porVencer, vencido, pausado, cerrado }
 
 const _estadosCerrados = {'resuelto', 'cerrado', 'cancelado'};
@@ -17,18 +23,28 @@ SlaEstado ticketSlaEstado({
   required String estado,
   required DateTime createdAt,
   int? slaHoras,
+  int segundosPausado = 0, // tiempo acumulado en en_espera (no consume SLA)
   DateTime? ahora,
 }) {
   if (_estadosCerrados.contains(estado)) return SlaEstado.cerrado;
   if (slaHoras == null || slaHoras <= 0) return SlaEstado.sinSla;
   if (estado == 'en_espera') return SlaEstado.pausado;
   final now = ahora ?? DateTime.now();
-  final deadline = createdAt.add(Duration(hours: slaHoras));
+  // El plazo se corre por todo el tiempo que el ticket estuvo en espera.
+  final deadline = createdAt
+      .add(Duration(hours: slaHoras))
+      .add(Duration(seconds: segundosPausado));
   if (now.isAfter(deadline)) return SlaEstado.vencido;
-  // Por vencer: dentro del último 20% del plazo (o de la última hora).
+  // Por vencer: dentro del último 20% del plazo, con piso de 1h para SLAs largos,
+  // pero NUNCA más del 50% del plazo — sin el techo, un SLA corto (1-5h) nacería
+  // directo en "por vencer" porque el piso de 1h cubriría casi todo el plazo.
   final restante = deadline.difference(now);
-  final umbral = Duration(minutes: (slaHoras * 60 * 0.2).round());
-  if (restante <= umbral || restante <= const Duration(hours: 1)) {
+  final minutosSla = slaHoras * 60;
+  var umbralMin = (minutosSla * 0.2).round();
+  if (umbralMin < 60) umbralMin = 60; // piso 1h
+  final techo = (minutosSla * 0.5).round();
+  if (umbralMin > techo) umbralMin = techo; // techo 50% del SLA
+  if (restante <= Duration(minutes: umbralMin)) {
     return SlaEstado.porVencer;
   }
   return SlaEstado.enPlazo;
@@ -97,6 +113,8 @@ const Map<String, List<String>> kTransicionesTicket = {
   'en_espera': ['en_progreso', 'resuelto', 'cancelado'],
   'resuelto': ['cerrado', 'reabierto'],
   'reabierto': ['asignado', 'en_progreso', 'en_espera', 'resuelto', 'cancelado'],
+  // Estados terminales: solo se pueden REABRIR (ticket cancelado/cerrado por
+  // error). Espeja exactamente el trigger server-side de 0103/0105.
   'cerrado': ['reabierto'],
   'cancelado': ['reabierto'],
 };
