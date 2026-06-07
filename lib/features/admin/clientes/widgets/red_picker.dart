@@ -121,7 +121,8 @@ class _RedPickerState extends State<RedPicker> {
             setState(() {
               _hubId = id;
               _puertoId = null;
-              _puertosStream = const Stream.empty();
+              _puertosStream =
+                  id == null ? const Stream.empty() : _watchPuertos(id);
             });
             widget.onChanged(null);
           },
