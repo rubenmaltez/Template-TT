@@ -56,7 +56,28 @@ Lote UX/reportes, **sin migraciones**, auditado (3 agentes, 0 bloqueantes):
 
 Detalle completo → `REPORTE-SESION.md` (entrada 2026-06-06 cont.).
 
-## Fase 1.1 — Fixes + features de red post-testing de Rubén (EN CURSO)
+## Fase 2 — Inventario (EN CURSO, por slices auditados)
+
+Módulo OPCIONAL: gateado por `tenant_modulos` ('inventario', es_base=false → OFF
+por defecto; el super_admin lo habilita en `/super/tenants/:id`). Decisiones:
+stock se DERIVA del ledger (`inv_movimientos`, slice 2C) — **sin** tabla inv_stock
+ni trigger de proyección. Fase 2 es admin-facing; custodia por técnico = Fase 3.
+
+- ✅ **2A (gating + catálogo)** commit `cf32f3d`, **en auditoría**: migración 0099
+  (inv_categorias/proveedores/productos + RLS + audit + `id` en tenant_modulos para
+  sync); `tenant_modulos` synced + `modulosHabilitadosProvider` + `_MenuItem.moduloKey`
+  (no lo bypassa el super_admin); `InventarioScreen` = catálogo Productos (CRUD +
+  categoría inline + serializado/granel + historial). schema **v18**.
+- ⏳ **2B**: ubicaciones (central + técnico-ready) + proveedores UI + recepciones (ingreso).
+- ⏳ **2C**: `inv_movimientos` (ledger) + stock derivado + egreso/ajuste/transferencia
+  + asignar equipo a cliente. `inv_seriales` (equipos serializados).
+- ⏳ **2D**: equipos instalados en pantalla de cliente/contrato.
+
+> ⚠️ Deploy 2A (cuando se testee): correr `0099_inventario_catalogo.sql` + redeploy
+> sync rules (tenant_modulos + inv) + restart (bump v18). Para ver Inventario:
+> super_admin habilita el módulo 'inventario' del tenant en `/super/tenants/:id`.
+
+## Fase 1.1 — Fixes + features de red post-testing de Rubén (HECHO)
 
 Rubén testeó (super_admin impersonando) y reportó bugs/pedidos. Estado:
 - ✅ **Puerto no persistía** (`a93ab98`): el `RedPicker` dejaba `_puertosStream` vacío
