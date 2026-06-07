@@ -21,7 +21,14 @@
   router para cobrador · **migración 0102** (guardas de borrado server-side +
   ledger append-only estricto). Decisiones: puerto **soft** en equipo+ticket
   (endurecer cuando la red esté viva); equipo dañado se mantiene como está.
-  **→ listo para Fase 3.** Falta el audit FINAL de verificación.
+- **AUDIT FINAL de verificación — HECHO** (3 agentes: correctness de los fixes ·
+  migración 0102/DB · QA-regresión). Resultado: fixes correctos, sin regresiones.
+  Ajustes aplicados: 0102 idempotente (`a039418`) · completar el filtro tenant en
+  geo_picker/red_picker (`6d9e77f`, era el gap del fix C) · motivo cosmético.
+  El "leak de inventario" que marcó un agente es **falso positivo**: `inv_*` NO
+  está en `catalogo_tenant` (solo en buckets admin/impersonado parametrizados),
+  igual que clientes/contratos → no se filtra a propósito (verificado en
+  sync-rules). **→ Fase 2 cerrada y limpia, listo para arrancar Fase 3.**
 - **Branch ÚNICA de trabajo:** `claude/new-features-inventory-tickets-and-technicians`
   (tip en `origin`). Contiene TODO: 2C-2/2D + el vaciado de backlog pre-Fase 3. Es la
   branch viva — desarrollar acá. Las viejas (`nifty-cori-KF2PZ`,
