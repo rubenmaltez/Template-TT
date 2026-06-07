@@ -1068,7 +1068,7 @@ class _MovimientoDialogState extends State<_MovimientoDialog> {
     );
   }
 
-  void _submit() {
+  Future<void> _submit() async {
     if (_productoId == null) {
       _snack(context, 'Elegí un producto.');
       return;
@@ -1079,20 +1079,18 @@ class _MovimientoDialogState extends State<_MovimientoDialog> {
       return;
     }
     final motivo = _motivo.text.trim();
+    final _MovimientoData data;
     if (_tipo == 'egreso') {
       if (_origenId == null) {
         _snack(context, 'Elegí la ubicación origen.');
         return;
       }
-      Navigator.pop(
-        context,
-        _MovimientoData(
-          tipo: 'egreso',
-          productoId: _productoId!,
-          cantidad: cant,
-          ubicacionOrigenId: _origenId,
-          motivo: motivo.isEmpty ? null : motivo,
-        ),
+      data = _MovimientoData(
+        tipo: 'egreso',
+        productoId: _productoId!,
+        cantidad: cant,
+        ubicacionOrigenId: _origenId,
+        motivo: motivo.isEmpty ? null : motivo,
       );
     } else if (_tipo == 'transferencia') {
       if (_origenId == null || _destinoId == null) {
@@ -1103,16 +1101,13 @@ class _MovimientoDialogState extends State<_MovimientoDialog> {
         _snack(context, 'Origen y destino deben ser distintos.');
         return;
       }
-      Navigator.pop(
-        context,
-        _MovimientoData(
-          tipo: 'transferencia',
-          productoId: _productoId!,
-          cantidad: cant,
-          ubicacionOrigenId: _origenId,
-          ubicacionDestinoId: _destinoId,
-          motivo: motivo.isEmpty ? null : motivo,
-        ),
+      data = _MovimientoData(
+        tipo: 'transferencia',
+        productoId: _productoId!,
+        cantidad: cant,
+        ubicacionOrigenId: _origenId,
+        ubicacionDestinoId: _destinoId,
+        motivo: motivo.isEmpty ? null : motivo,
       );
     } else {
       if (_ajusteUbiId == null) {
@@ -1123,18 +1118,39 @@ class _MovimientoDialogState extends State<_MovimientoDialog> {
         _snack(context, 'El ajuste requiere un motivo.');
         return;
       }
-      Navigator.pop(
-        context,
-        _MovimientoData(
-          tipo: 'ajuste',
-          productoId: _productoId!,
-          cantidad: cant,
-          ubicacionId: _ajusteUbiId,
-          sumar: _sumar,
-          motivo: motivo,
-        ),
+      data = _MovimientoData(
+        tipo: 'ajuste',
+        productoId: _productoId!,
+        cantidad: cant,
+        ubicacionId: _ajusteUbiId,
+        sumar: _sumar,
+        motivo: motivo,
       );
     }
+
+    // Overselling (M2): egreso/transferencia que saca MÁS de lo disponible en la
+    // ubicación origen → aviso suave (el modelo permite stock negativo, pero lo
+    // señalamos para no romper una ubicación en silencio).
+    if (_tipo == 'egreso' || _tipo == 'transferencia') {
+      final disp = (_stockPorUbi.firstWhere(
+            (r) => r['id'] == _origenId,
+            orElse: () => const <String, dynamic>{},
+          )['stock'] as num?) ??
+          0;
+      if (cant > disp) {
+        final seguir = await _confirmarAccion(
+          context,
+          titulo: 'Más que el stock disponible',
+          mensaje: 'En esa ubicación hay ${_fmtCant(disp)} y vas a sacar '
+              '${_fmtCant(cant)}. Quedará en negativo. ¿Seguir?',
+          confirmar: 'Sacar igual',
+        );
+        if (!seguir || !mounted) return;
+      }
+    }
+
+    if (!mounted) return;
+    Navigator.pop(context, data);
   }
 }
 
