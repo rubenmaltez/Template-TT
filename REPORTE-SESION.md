@@ -158,6 +158,41 @@ consistentes → auditoría.
 
 > Más reciente arriba. Formato por ítem: error → fix → expectativa.
 
+### 2026-06-07 — Fase 1: geografía per-tenant + topología de red (Nodo→Hub→Puerto)
+
+Branch `claude/inventory-tickets-technician-role` (sale de `7bc16aa`; backup
+`claude/stoic-tesla-cGkJ6`). Primera fase del plan `PLAN-INVENTARIO-TICKETS-RED.md`.
+Migraciones **0097** (geografía) + **0098** (red). Schema **v16→17**. Commits
+`6f80653`/`32f9bb0`/`26f9705`/`ffb373c`. Auditada por 4 agentes (Code+DB, QA UI, QA
+UX, especialista red).
+
+**Comportamiento esperado — Geografía per-tenant**
+- `departamentos/municipios/comunidades` pasan de globales a **per-tenant**: cada
+  tenant arma la suya; RLS por `current_tenant_id()`; ahora entran al audit log.
+- El `geo_picker` (crear inline) y la pantalla de geografía escriben con `tenant_id`.
+- Migración: como era data de prueba, **vacía** la geo global y nulea
+  `clientes.comunidad_id` (no hay backfill). Para data real habría que replicar+re-apuntar.
+
+**Comportamiento esperado — Topología de red (parte de cobranza base, sin flag)**
+- Jerarquía **Nodo → Hub → Puerto** per-tenant. El admin la administra en
+  **`/admin/red`** (CRUD anidado, crea inline cada nivel; Nodo tiene tipo
+  fibra/wireless/híbrido + lat/lng; Hub/Puerto tienen notas).
+- El cliente se conecta a un **Puerto** (`clientes.puerto_id`, opcional) vía un
+  **selector en cascada** (solo-selección) en su form. El detalle del cliente
+  muestra read-only "Comunidad" y "Red (Nodo→Hub→Puerto)".
+- `clientes.puerto_id` es `ON DELETE SET NULL` (recablear/borrar un puerto no se bloquea).
+- Decisión: red opcional en el cliente, pero será **requerida** al crear ticket o
+  asignar equipos (Fases 2/3).
+
+**Fix de audit destacado (bloqueante de seguridad)**
+- *Error:* 0097 dropeaba las policies geo por nombres viejos (`geo_insert_authenticated`)
+  pero las reales eran `geo_insert_admins`/`geo_update_admins`/`geo_delete_admins`
+  (0016/0067), **sin scoping por tenant** → sobrevivían y un admin podía escribir
+  geografía de otro tenant. *Fix:* 0097 dropea los nombres reales. *Exp:* geografía
+  escribible solo dentro del propio tenant.
+
+**Pendiente:** deploy (Rubén, Dashboard) + testing. Ver HANDOFF para los pasos.
+
 ### 2026-06-06 (cont.) — Reportes con detalle USD + impresora PC + búsqueda mapa + transición + dashboard
 
 Branch `claude/stoic-tesla-cGkJ6`. Lote de UX/reportes pedido por Rubén, **sin

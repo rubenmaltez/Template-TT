@@ -56,24 +56,27 @@ Lote UX/reportes, **sin migraciones**, auditado (3 agentes, 0 bloqueantes):
 
 Detalle completo → `REPORTE-SESION.md` (entrada 2026-06-06 cont.).
 
-## Fase 1 EN CURSO — UI lista, en AUDITORÍA
+## Fase 1 — CÓDIGO COMPLETO, falta DEPLOY + TESTING de Rubén
 
-**Datos** (commit `6f80653`): migraciones 0097 (geografía per-tenant) + 0098 (red
-Nodo→Hub→Puerto + `clientes.puerto_id`), schema v16→17, sync rules per-tenant, audit.
-**UI** (commit `32f9bb0`): `red_admin_screen` (CRUD /admin/red, adminOnly) + `red_picker`
-(cascada solo-selección en form de cliente) + `cliente_form` guarda/carga `puerto_id`.
-Red es parte del módulo de cobranza **base** (sin flag). Geografía per-tenant completa.
+Geografía per-tenant + topología de red (Nodo→Hub→Puerto). Auditada por 4 agentes
+(Code+DB, QA UI, QA UX, especialista red); findings aplicados, incluido 1 BLOQUEANTE
+de seguridad (policies geo viejas no dropeadas → fuga cross-tenant, ya corregido).
+Commits clave: `6f80653` (datos), `32f9bb0` (UI), `26f9705` (fixes audit),
+`ffb373c` (campos red: tipo/lat/lng/notas). Schema **v17**.
 
-**Ahora:** corriendo auditoría (Code+DB, QA UI, QA UX, especialista red). Falta aplicar
-findings + pasos de deploy/testing para Rubén.
+**Pendiente: Rubén deploya y testea** (pasos detallados que le pasé en el chat):
+1. SQL Editor (Dashboard): correr `0097_geografia_per_tenant.sql` y después
+   `0098_red_topologia.sql`. ⚠️ 0097 **vacía la geografía** de prueba y nulea
+   `clientes.comunidad_id` (data de prueba, OK).
+2. PowerSync: **redeploy sync rules** (geo dejó de ser global; +red).
+3. App: **restart desde cero** (bump schema v16→17 → DB local nueva).
+4. Probar: Admin › Red (crear Nodo→Hub→Puerto), asignar puerto en form de cliente,
+   ver "Red"/"Comunidad" en el detalle del cliente, recargar geografía por tenant.
 
-**Recordatorio para Fases 2/3 (Inventario/Tickets):** esos módulos solo los activa el
-**super_admin** y quedan **deshabilitados por defecto** en el tenant (vía `tenant_modulos`).
-Red NO — red es base de cobranza.
-
-**Pendiente Fase 1:** aplicar findings del audit → deploy (Rubén, Dashboard: correr 0097
-y 0098 en orden + redeploy sync rules + restart app desde cero por bump v17) → testing.
-⚠️ 0097 vacía la geografía de prueba y nulea `clientes.comunidad_id`.
+**Recordatorio Fases 2/3 (Inventario/Tickets):** módulos solo activables por
+**super_admin**, **deshabilitados por defecto** en el tenant (`tenant_modulos`). Red NO
+(es base de cobranza). Notas del especialista para incidentes: tabla `incidentes` con
+3 FK nullables nodo/hub/puerto + CHECK; backhaul nodo→nodo cuando un ISP lo pida.
 
 ## Otros pendientes
 - 📄 `ARQUITECTURA.md` — revisar exactitud (3 puntos marcados) cuando haya tiempo.
