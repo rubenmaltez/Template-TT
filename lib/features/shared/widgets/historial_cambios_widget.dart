@@ -276,6 +276,19 @@ class _CambioTile extends StatelessWidget {
           'delete' => (Icons.delete_outline, scheme.error, 'Plan eliminado'),
           _ => (Icons.edit, scheme.primary, 'Plan actualizado'),
         };
+      case 'inv_seriales':
+        return switch (accion) {
+          'create' => (Icons.qr_code_2, scheme.tertiary, 'Equipo registrado'),
+          'delete' => (Icons.delete_outline, scheme.error, 'Equipo eliminado'),
+          _ => (Icons.edit, scheme.primary, 'Equipo actualizado'),
+        };
+      case 'inv_movimientos':
+        return switch (accion) {
+          'create' =>
+            (Icons.swap_horiz, scheme.tertiary, 'Movimiento de inventario'),
+          'delete' => (Icons.delete_outline, scheme.error, 'Movimiento eliminado'),
+          _ => (Icons.edit, scheme.primary, 'Movimiento actualizado'),
+        };
       default:
         return switch (accion) {
           'create' => (Icons.add_circle_outline, scheme.tertiary, 'Creado'),

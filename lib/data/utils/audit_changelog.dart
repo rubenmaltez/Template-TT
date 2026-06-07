@@ -381,8 +381,8 @@ List<CampoChange> auditExtraerCambios(
         if (_smartOmit(key, n)) continue;
         cambios.add(CampoChange(
           campo: auditFieldLabel(key),
-          antes: _fmtField(key, a, lookups: lookups),
-          despues: _fmtField(key, n, lookups: lookups),
+          antes: _fmtField(key, a, tabla: tabla, lookups: lookups),
+          despues: _fmtField(key, n, tabla: tabla, lookups: lookups),
         ));
       }
       return cambios;
@@ -459,7 +459,7 @@ List<CampoChange> _snapshotAsCambios(
     }
     // Reglas SMART: el valor relevante del snapshot es el propio `v`.
     if (_smartOmit(key, v)) continue;
-    final formateado = _fmtField(key, v, lookups: lookups);
+    final formateado = _fmtField(key, v, tabla: tabla, lookups: lookups);
     cambios.add(CampoChange(
       campo: auditFieldLabel(key),
       antes: isCreate ? '—' : formateado,
@@ -473,12 +473,20 @@ List<CampoChange> _snapshotAsCambios(
 // dinero se renderizan con `Fmt.cordobas` (C$500.00); enums con su label
 // humano; FKs con `lookups` (UUID → nombre); el resto cae al formateo
 // genérico de `_fmt`.
-String _fmtField(String key, dynamic v, {AuditLookups? lookups}) {
+String _fmtField(String key, dynamic v, {String? tabla, AuditLookups? lookups}) {
   if (kAuditMoneyKeys.contains(key)) {
     if (v == null) return '—';
     if (v is num) return Fmt.cordobas(v);
     final n = num.tryParse(v.toString());
     if (n != null) return Fmt.cordobas(n);
+  }
+  // Inventario: tipo de movimiento y estado del serial con label humano (el
+  // valor crudo —asignacion/en_stock/danado— no es lindo en el historial).
+  if (tabla == 'inv_movimientos' && key == 'tipo' && v is String && v.isNotEmpty) {
+    return _tipoMovimientoLabel(v);
+  }
+  if (tabla == 'inv_seriales' && key == 'estado' && v is String && v.isNotEmpty) {
+    return _estadoSerialLabel(v);
   }
   // Enums: mostrar el label humano que usa el resto de la app, no el slug.
   if (key == 'metodo' && v is String && v.isNotEmpty) {
@@ -527,6 +535,27 @@ String _tipoCargoLabel(String t) => switch (t) {
       'reparacion' => 'Reparación',
       'otro' => 'Otro',
       _ => t,
+    };
+
+String _tipoMovimientoLabel(String t) => switch (t) {
+      'ingreso' => 'Ingreso',
+      'egreso' => 'Egreso',
+      'ajuste' => 'Ajuste',
+      'transferencia' => 'Transferencia',
+      'asignacion' => 'Asignación',
+      'consumo' => 'Consumo',
+      'devolucion' => 'Devolución',
+      'baja' => 'Baja',
+      _ => t,
+    };
+
+String _estadoSerialLabel(String e) => switch (e) {
+      'en_stock' => 'En stock',
+      'instalado' => 'Instalado',
+      'danado' => 'Dañado',
+      'retirado' => 'Retirado',
+      'baja' => 'Baja',
+      _ => e,
     };
 
 String _fmt(dynamic v) {
