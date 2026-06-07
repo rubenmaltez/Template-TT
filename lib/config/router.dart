@@ -233,6 +233,14 @@ final routerProvider = Provider<GoRouter>((ref) {
         if (rol == 'admin' || rol == 'admin_cobranza') return '/admin';
       }
 
+      // Defensa en profundidad: el cobrador puro no entra a /admin/* por URL
+      // directa (su shell vive en `/`). RLS + sync ya lo cubren a nivel de datos
+      // (no baja inv_/audit_log, los writes se rechazan), esto evita además ver
+      // el chrome del admin. Solo rebota con rol resuelto = 'cobrador'.
+      if (rol == 'cobrador' && loc.startsWith('/admin')) {
+        return '/';
+      }
+
       // Auditoría: el admin sólo accede a /admin/audit si el super_admin
       // habilitó el toggle por tenant (cobranza.audit_visible_admin, 0089).
       // El super_admin la ve siempre (rol != 'admin', no entra acá).

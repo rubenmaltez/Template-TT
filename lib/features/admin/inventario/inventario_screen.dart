@@ -599,10 +599,10 @@ class _ExistenciasTabState extends ConsumerState<_ExistenciasTab> {
       for (final s in res.seriales) {
         final dup = await ps.db.getAll(
           'SELECT 1 FROM inv_seriales WHERE tenant_id = ? AND serial = ? LIMIT 1',
-          [tenantId, s],
+          [tenantId, s.serial],
         );
         if (dup.isNotEmpty) {
-          _snack(context, 'El serial "$s" ya existe.');
+          _snack(context, 'El serial "${s.serial}" ya existe.');
           return;
         }
       }
@@ -641,11 +641,11 @@ class _ExistenciasTabState extends ConsumerState<_ExistenciasTab> {
             final serialId = const Uuid().v4();
             await tx.execute(
               '''INSERT INTO inv_seriales
-                 (id, tenant_id, producto_id, serial, estado, ubicacion_id,
+                 (id, tenant_id, producto_id, serial, mac, estado, ubicacion_id,
                   costo_ingreso, created_at)
-                 VALUES (?, ?, ?, ?, 'en_stock', ?, ?, ?)''',
-              [serialId, tenantId, res.productoId, s, res.ubicacionDestinoId,
-                res.costoUnitario, now],
+                 VALUES (?, ?, ?, ?, ?, 'en_stock', ?, ?, ?)''',
+              [serialId, tenantId, res.productoId, s.serial, s.mac,
+                res.ubicacionDestinoId, res.costoUnitario, now],
             );
             await tx.execute(movSql, [
               const Uuid().v4(), tenantId, res.productoId, serialId, 1,
@@ -819,7 +819,8 @@ class _IngresoData {
   final String? numeroFactura;
   final double? costoUnitario;
   final double cantidad;
-  final List<String> seriales;
+  // Cada serial con su MAC opcional (formato "serial, MAC" por línea).
+  final List<({String serial, String? mac})> seriales;
 }
 
 class _MovimientoData {
@@ -1279,8 +1280,8 @@ class _IngresoDialogState extends State<_IngresoDialog> {
                 minLines: 2,
                 maxLines: 5,
                 decoration: const InputDecoration(
-                  labelText: 'Seriales (uno por línea)',
-                  hintText: 'SN001\nSN002',
+                  labelText: 'Seriales (uno por línea; opcional "serial, MAC")',
+                  hintText: 'SN001, AA:BB:CC:DD:EE:FF\nSN002',
                 ),
               )
             else
@@ -1342,12 +1343,16 @@ class _IngresoDialogState extends State<_IngresoDialog> {
             }
             final costo = double.tryParse(_costo.text.trim());
             if (_serializado) {
-              final seriales = _seriales.text
-                  .split('\n')
-                  .map((s) => s.trim())
-                  .where((s) => s.isNotEmpty)
-                  .toSet()
-                  .toList();
+              // Cada línea: "serial" o "serial, MAC". Dedup por serial.
+              final vistos = <String>{};
+              final seriales = <({String serial, String? mac})>[];
+              for (final linea in _seriales.text.split('\n')) {
+                final partes = linea.split(',');
+                final serial = partes[0].trim();
+                if (serial.isEmpty || !vistos.add(serial)) continue;
+                final mac = partes.length > 1 ? partes[1].trim() : '';
+                seriales.add((serial: serial, mac: mac.isEmpty ? null : mac));
+              }
               if (seriales.isEmpty) {
                 _snack(context, 'Ingresá al menos un serial.');
                 return;
