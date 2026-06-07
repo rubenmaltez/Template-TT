@@ -289,8 +289,10 @@ const _adminMenu = [
   // para el tenant (tenant_modulos 'inventario'). adminOnly.
   _MenuItem(Icons.inventory_2, 'Inventario', '/admin/inventario',
       adminOnly: true, moduloKey: 'inventario'),
-  // Módulo opcional Tickets (Fase 3).
+  // Módulo opcional Tickets (Fase 3): tickets + incidentes/outages (3D).
   _MenuItem(Icons.confirmation_number, 'Tickets', '/admin/tickets',
+      adminOnly: true, moduloKey: 'tickets'),
+  _MenuItem(Icons.cell_tower, 'Incidentes', '/admin/incidentes',
       adminOnly: true, moduloKey: 'tickets'),
   _MenuItem(Icons.bar_chart, 'Reportes', '/admin/reportes'),
   _MenuItem(Icons.map, 'Mapa', '/admin/mapa'),

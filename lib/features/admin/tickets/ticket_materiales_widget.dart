@@ -23,10 +23,15 @@ class TicketMaterialesWidget extends ConsumerStatefulWidget {
     super.key,
     required this.ticketId,
     required this.tenantId,
+    this.clienteId,
     this.tecnicoMode = false,
   });
   final String ticketId;
   final String tenantId;
+
+  /// Cliente del ticket. Si es null (outage), NO se permite consumir equipos
+  /// serializados (no se puede instalar un serial "a nadie"); sólo granel.
+  final String? clienteId;
   final bool tecnicoMode;
 
   @override
@@ -150,7 +155,8 @@ class _TicketMaterialesWidgetState
       context: context,
       isScrollControlled: true,
       showDragHandle: true,
-      builder: (_) => _AgregarMaterialSheet(ubicaciones: ubicaciones),
+      builder: (_) => _AgregarMaterialSheet(
+          ubicaciones: ubicaciones, permiteSerial: widget.clienteId != null),
     );
     if (elegido == null) return;
 
@@ -219,8 +225,12 @@ class _MaterialElegido {
 
 /// Sheet para elegir el material: ubicación-origen + (Serial | Granel).
 class _AgregarMaterialSheet extends StatefulWidget {
-  const _AgregarMaterialSheet({required this.ubicaciones});
+  const _AgregarMaterialSheet({
+    required this.ubicaciones,
+    required this.permiteSerial,
+  });
   final List<Map<String, dynamic>> ubicaciones;
+  final bool permiteSerial; // false = ticket sin cliente → sólo granel
 
   @override
   State<_AgregarMaterialSheet> createState() => _AgregarMaterialSheetState();
@@ -228,7 +238,7 @@ class _AgregarMaterialSheet extends StatefulWidget {
 
 class _AgregarMaterialSheetState extends State<_AgregarMaterialSheet> {
   late String _ubicacionId;
-  bool _serial = true; // true = serializado, false = granel
+  late bool _serial; // true = serializado, false = granel
   final _cantidadCtrl = TextEditingController(text: '1');
 
   // Datos cargados según ubicación + modo.
@@ -242,6 +252,8 @@ class _AgregarMaterialSheetState extends State<_AgregarMaterialSheet> {
   void initState() {
     super.initState();
     _ubicacionId = widget.ubicaciones.first['id'] as String;
+    // Sin cliente (outage) no se puede instalar un serial → arrancar en granel.
+    _serial = widget.permiteSerial;
     // Rebuild al tipear la cantidad → el botón "Registrar" se habilita/deshabilita.
     _cantidadCtrl.addListener(() => setState(() {}));
     _recargar();
@@ -368,14 +380,20 @@ class _AgregarMaterialSheetState extends State<_AgregarMaterialSheet> {
               Text('Desde: ${widget.ubicaciones.first['nombre']}',
                   style: TextStyle(color: scheme.outline)),
             const SizedBox(height: 12),
-            SegmentedButton<bool>(
-              segments: const [
-                ButtonSegment(value: true, label: Text('Serializado'), icon: Icon(Icons.qr_code_2)),
-                ButtonSegment(value: false, label: Text('Granel'), icon: Icon(Icons.category_outlined)),
-              ],
-              selected: {_serial},
-              onSelectionChanged: (s) => setState(() => _serial = s.first),
-            ),
+            // Sin cliente (outage) no se ofrece "Serializado": no se puede
+            // instalar un equipo a un ticket sin cliente.
+            if (widget.permiteSerial)
+              SegmentedButton<bool>(
+                segments: const [
+                  ButtonSegment(value: true, label: Text('Serializado'), icon: Icon(Icons.qr_code_2)),
+                  ButtonSegment(value: false, label: Text('Granel'), icon: Icon(Icons.category_outlined)),
+                ],
+                selected: {_serial},
+                onSelectionChanged: (s) => setState(() => _serial = s.first),
+              )
+            else
+              Text('Ticket sin cliente: sólo material a granel.',
+                  style: TextStyle(color: scheme.outline)),
             const SizedBox(height: 12),
             if (_cargando)
               const Padding(

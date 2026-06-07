@@ -21,6 +21,7 @@ class _TicketFormScreenState extends ConsumerState<TicketFormScreen> {
   String? _clienteId;
   String? _clienteNombre;
   String? _asignadoA;
+  String? _incidenteId;
   String _prioridad = 'media';
   final _titulo = TextEditingController();
   final _descripcion = TextEditingController();
@@ -28,6 +29,7 @@ class _TicketFormScreenState extends ConsumerState<TicketFormScreen> {
 
   late final Stream<List<Map<String, dynamic>>> _tipos;
   late final Stream<List<Map<String, dynamic>>> _tecnicos;
+  late final Stream<List<Map<String, dynamic>>> _incidentes;
 
   @override
   void initState() {
@@ -36,6 +38,8 @@ class _TicketFormScreenState extends ConsumerState<TicketFormScreen> {
         'SELECT id, nombre, sla_horas FROM ticket_tipos WHERE activo = 1 ORDER BY orden, nombre');
     _tecnicos = ps.db.watch(
         "SELECT id, nombre FROM cobradores WHERE activo = 1 AND rol IN ('tecnico','admin_tickets','admin') ORDER BY nombre");
+    _incidentes = ps.db.watch(
+        "SELECT id, titulo FROM incidentes WHERE estado = 'abierto' ORDER BY inicio DESC");
   }
 
   @override
@@ -147,6 +151,36 @@ class _TicketFormScreenState extends ConsumerState<TicketFormScreen> {
               );
             },
           ),
+          // Incidente (opcional): sólo si hay outages abiertos para agrupar.
+          StreamBuilder<List<Map<String, dynamic>>>(
+            stream: _incidentes,
+            initialData: const [],
+            builder: (context, snap) {
+              final rows = snap.data ?? const [];
+              if (rows.isEmpty) return const SizedBox.shrink();
+              final exists = _incidenteId == null ||
+                  rows.any((r) => r['id'] == _incidenteId);
+              return Padding(
+                padding: const EdgeInsets.only(top: 12),
+                child: DropdownButtonFormField<String?>(
+                  value: exists ? _incidenteId : null,
+                  isExpanded: true,
+                  decoration: const InputDecoration(
+                      labelText: 'Incidente / corte (opcional)'),
+                  onChanged: (v) => setState(() => _incidenteId = v),
+                  items: [
+                    const DropdownMenuItem<String?>(
+                        value: null, child: Text('— Ninguno —')),
+                    ...rows.map((r) => DropdownMenuItem(
+                          value: r['id'] as String,
+                          child: Text(r['titulo'] as String,
+                              overflow: TextOverflow.ellipsis),
+                        )),
+                  ],
+                ),
+              );
+            },
+          ),
           const SizedBox(height: 24),
           FilledButton.icon(
             icon: const Icon(Icons.save),
@@ -209,12 +243,12 @@ class _TicketFormScreenState extends ConsumerState<TicketFormScreen> {
         await tx.execute(
           '''INSERT INTO tickets
              (id, tenant_id, correlativo, tipo_id, cliente_id, puerto_id,
-              titulo, descripcion, estado, prioridad, asignado_a, creado_por,
-              created_at, ocurrido_en)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+              incidente_id, titulo, descripcion, estado, prioridad, asignado_a,
+              creado_por, created_at, ocurrido_en)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
           [
             id, tenantId, correlativo, _tipoId, _clienteId, puertoId,
-            _titulo.text.trim(),
+            _incidenteId, _titulo.text.trim(),
             _descripcion.text.trim().isEmpty ? null : _descripcion.text.trim(),
             estado, _prioridad, _asignadoA, hechoPor, now, ocurrido,
           ],

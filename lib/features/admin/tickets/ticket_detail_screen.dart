@@ -39,11 +39,13 @@ class _TicketDetailScreenState extends ConsumerState<TicketDetailScreen> {
     super.initState();
     _ticket = ps.db.watch('''
       SELECT t.*, tt.nombre AS tipo_nombre, tt.sla_horas,
-             cl.nombre AS cliente_nombre, co.nombre AS asignado_nombre
+             cl.nombre AS cliente_nombre, co.nombre AS asignado_nombre,
+             inc.titulo AS incidente_titulo
         FROM tickets t
    LEFT JOIN ticket_tipos tt ON tt.id = t.tipo_id
    LEFT JOIN clientes cl ON cl.id = t.cliente_id
    LEFT JOIN cobradores co ON co.id = t.asignado_a
+   LEFT JOIN incidentes inc ON inc.id = t.incidente_id
        WHERE t.id = ?
     ''', parameters: [widget.ticketId]);
     _eventos = ps.db.watch('''
@@ -96,6 +98,7 @@ class _TicketDetailScreenState extends ConsumerState<TicketDetailScreen> {
                 TicketMaterialesWidget(
                     ticketId: widget.ticketId,
                     tenantId: t['tenant_id'] as String,
+                    clienteId: t['cliente_id'] as String?,
                     tecnicoMode: widget.tecnicoMode),
                 const SizedBox(height: 16),
                 _timeline(context),
@@ -145,6 +148,11 @@ class _TicketDetailScreenState extends ConsumerState<TicketDetailScreen> {
             _row(context, Icons.person, 'Cliente', t['cliente_nombre'] as String?),
             _row(context, Icons.engineering, 'Asignado',
                 t['asignado_nombre'] as String?),
+            // Incidente vinculado (sólo el admin sincroniza incidentes → para el
+            // técnico viene null y no se muestra).
+            if (t['incidente_titulo'] != null)
+              _row(context, Icons.cell_tower, 'Incidente',
+                  t['incidente_titulo'] as String?),
             _row(context, Icons.schedule, 'Creado',
                 Fmt.fechaCorta(DateTime.parse(t['created_at'] as String).toLocal())),
           ],

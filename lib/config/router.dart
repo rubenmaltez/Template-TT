@@ -14,6 +14,8 @@ import '../features/contratos/contrato_detail_screen.dart';
 import '../features/admin/cuotas/cuotas_admin_screen.dart';
 import '../features/admin/dashboard/dashboard_admin_screen.dart';
 import '../features/admin/geografia/geografia_admin_screen.dart';
+import '../features/admin/incidentes/incidente_detail_screen.dart';
+import '../features/admin/incidentes/incidentes_screen.dart';
 import '../features/admin/inventario/inventario_screen.dart';
 import '../features/admin/red/red_admin_screen.dart';
 import '../features/admin/notificaciones/notificaciones_mora_screen.dart';
@@ -280,6 +282,7 @@ final routerProvider = Provider<GoRouter>((ref) {
         '/admin/red',
         '/admin/inventario',
         '/admin/tickets',
+        '/admin/incidentes',
         '/admin/settings',
         '/admin/planes',
         '/admin/pagos',
@@ -298,8 +301,10 @@ final routerProvider = Provider<GoRouter>((ref) {
         if (modulos != null && !modulos.contains('inventario')) return '/admin';
       }
 
-      // Módulo opcional Tickets (Fase 3): mismo gate que inventario.
-      if (loc == '/admin/tickets' || loc.startsWith('/admin/tickets/')) {
+      // Módulo opcional Tickets (Fase 3): mismo gate que inventario. Cubre
+      // tickets y los incidentes/outages (3D), ambos del módulo 'tickets'.
+      if (loc == '/admin/tickets' || loc.startsWith('/admin/tickets/') ||
+          loc == '/admin/incidentes' || loc.startsWith('/admin/incidentes/')) {
         final modulos = ref.read(modulosHabilitadosProvider).valueOrNull;
         if (modulos != null && !modulos.contains('tickets')) return '/admin';
       }
@@ -428,6 +433,12 @@ final routerProvider = Provider<GoRouter>((ref) {
           GoRoute(path: '/admin/tickets/:id',
               pageBuilder: (_, s) => _fadePage(s, _titled('Ticket',
                   TicketDetailScreen(ticketId: s.pathParameters['id']!)))),
+          // Incidentes (outages, Fase 3D). Específicas antes que /:id.
+          GoRoute(path: '/admin/incidentes',
+              pageBuilder: (_, s) => _fadePage(s, _titled('Incidentes', const IncidentesScreen()))),
+          GoRoute(path: '/admin/incidentes/:id',
+              pageBuilder: (_, s) => _fadePage(s, _titled('Incidente',
+                  IncidenteDetailScreen(incidenteId: s.pathParameters['id']!)))),
           GoRoute(path: '/admin/settings',
               pageBuilder: (_, s) => _fadePage(s, _titled('Configuración', const SettingsAdminScreen()))),
           GoRoute(path: '/admin/settings/historial-campos',
