@@ -9,11 +9,14 @@
 
 ## Estado actual
 
-- **Branch de trabajo:** `claude/inventory-tickets-technician-role` (NUEVO).
-- **Branch BACKUP (no tocar):** `claude/stoic-tesla-cGkJ6` — congelado en `7bc16aa`,
-  respaldo completo por si hay que volver atrás.
-- **Salió de:** `7bc16aa` (todo el trabajo previo está incluido).
-- **Schema PowerSync:** `_schemaVersion = 16` (`lib/powersync/db.dart`). Sin cambios de DB pendientes.
+- **Branch de trabajo (sesión 2026-06-07):** `claude/nifty-cori-KF2PZ`, tip `d380c82`
+  (salió de `6e2b03a`, el mismo punto que `claude/inventory-tickets-technician-role`).
+  ⚠️ **Las dos branches DIVERGIERON**: todo el 2C-2/2D de esta sesión está SOLO en
+  `nifty-cori-KF2PZ` (6 commits por encima). `inventory-tickets-technician-role` quedó
+  en `6e2b03a`. Reconciliar (merge/ff) cuando Rubén lo decida — no se tocó esa branch.
+- **Branch BACKUP (no tocar):** `claude/stoic-tesla-cGkJ6` — congelado en `7bc16aa`.
+- **Schema PowerSync:** `_schemaVersion = 20` (`lib/powersync/db.dart`). 2C-2/2D NO
+  agregaron tablas → sin bump nuevo, sin redeploy de sync rules.
 - **Plataformas target:** Android + Windows (web degrada sin romper, NO es target).
 - **App version:** v0.9.0 (ver `RELEASE.md`).
 
@@ -75,43 +78,37 @@ ni trigger de proyección. Fase 2 es admin-facing; custodia por técnico = Fase 
   migración 0101 (inv_seriales + inv_movimientos append-only); pestaña Existencias
   (stock derivado = Σdestino−Σorigen); Ingreso (serializado/granel, **atómico vía
   writeTransaction**). schema **v20**. `costo_promedio` NO se auto-recalcula aún.
-- ⏳ **2C-2 (PRÓXIMO — spec detallada para continuar sin re-derivar):**
-  Archivo principal: `lib/features/admin/inventario/inventario_screen.dart`
-  (patrones ya establecidos ahí: `_InvRowMenu`, `_showHistorialInv`, `_snack`,
-  `_confirmar`, `writeTransaction`, `tenantIdProvider`, `cobradorActualProvider.id`).
-  **NO requiere migración nueva** (las tablas/columnas de 0101 ya cubren todo);
-  por ende **no** bumpear schema ni tocar sync salvo que se agregue una tabla.
-  1. ✅ **Asignar equipo a cliente** — HECHO (commit ⬇, **falta audit formal**):
-     pestaña "Equipos" (`_EquiposTab`) lista seriales; acción "Asignar a cliente"
-     (`_ClientePicker` busca cliente) → `writeTransaction`: UPDATE serial
-     estado='instalado'+cliente_id+ubicacion_id=NULL + INSERT movimiento
-     'asignacion' (ubic_origen=previa → resta de existencias). NOTA: contrato_id
-     no se captura aún (queda null); agregar selector de contrato del cliente.
-     Pendiente: **devolución** (instalado→en_stock/retirado, mov 'devolucion' con
-     destino = una ubicación a elegir) — requiere picker de ubicación.
-  2. **Egreso / Baja** (granel o serial): mov con solo `ubicacion_origen_id` (−).
-     Baja de serial: estado→'baja'/'danado'. **Ajuste**: mov con destino(+) u
-     origen(−) según signo + `motivo` obligatorio. **Transferencia**: mov con
-     origen + destino (entre ubicaciones).
-  3. **Guardas de borrado** (ahora SÍ hay dependientes): en `_ProductosTab._eliminar`
-     bloquear si `inv_seriales` o `inv_movimientos` referencian el producto
-     (patrón `_borrarRedSiLibre`); en `_UbicacionesTab._eliminar` bloquear si hay
-     movimientos/seriales en esa ubicación. (Hoy esos deletes son hard sin guarda
-     — comentado en el código "agregar guarda en 2C".)
-  4. Listar movimientos por producto/serial (historial de existencias) — opcional.
-  5. Registrar labels de campo nuevos en `audit_changelog.dart` si hace falta
-     (estado de serial, tipo de movimiento ya están en kAuditEntidadLabel).
-  Auditar el slice (foco: signo del stock en asignacion/egreso/transferencia, y
-  atomicidad serial+movimiento en writeTransaction). Decisión de stock derivado:
-  `Σ(cantidad WHERE destino) − Σ(cantidad WHERE origen)` por producto (ya impl.).
-- ⏳ **2D**: equipos instalados en ficha del cliente/contrato. En
-  `cliente_detail_screen.dart` agregar sección "Equipos instalados" =
-  `SELECT s.serial, p.nombre FROM inv_seriales s JOIN inv_productos p ON p.id=s.producto_id
-  WHERE s.cliente_id=? AND s.estado='instalado'`. Solo si módulo inventario activo.
+- ✅ **2C-2 (ciclo de movimientos) — HECHO + AUDITADO** (sesión 2026-06-07, branch
+  `nifty-cori-KF2PZ`). **NO** requirió migración ni bump (0099-0101 ya cubrían todo).
+  - **Asignar** (`580f111`): stock de SERIALIZADOS pasa a derivarse del **estado del
+    serial** (`COUNT(estado='en_stock')`), no del ledger → cierra las 2 divergencias del
+    audit (doble-asignación / ubicación NULL ya no inflan/desinflan). Guard
+    `estado='en_stock'` re-validado DENTRO del writeTransaction. Captura `contrato_id`
+    (auto si 1, `_ContratoPicker` si varios). Aviso suave si el cliente no tiene
+    `puerto_id` (no bloquea — se endurece cuando la red esté en prod). Búsqueda de
+    cliente multi-campo (nombre/código/cédula/teléfono).
+  - **Ciclo del serial** (`c66eea4`): Devolver a stock / Transferir de ubicación / Dar de
+    baja (dañado/retirado/baja, con motivo). Cada una atómica + re-valida estado.
+  - **Granel** (`e554446`): Egreso / Ajuste± (motivo obligatorio) / Transferencia vía 2º
+    FAB en Existencias. Stock de granel sigue = `Σdestino − Σorigen`.
+  - **Guardas de borrado** (`b33c5be`): producto/ubicación no se borran si están en uso.
+  - **Fixes del audit** (`d380c82`): guarda de borrado de proveedor; feedback del stock
+    resultante (avisa si negativo) en movimiento de granel; estado vacío del diálogo de
+    granel; "Cambiar estado" vs "Dar de baja" según el estado del equipo.
+- ✅ **2D (equipos instalados en la ficha del cliente) — HECHO** (`df266ab`):
+  `cliente_detail_screen.dart` sección "Equipos instalados" (serial/producto/MAC),
+  gateada por módulo inventario + rol admin/admin_cobranza (las inv_ no sincronizan al cobrador).
+- ⏳ **Backlog 2C/2D (documentado, NO bloquea):** stock por UBICACIÓN (hoy es global por
+  producto → se puede "egresar de la ubicación equivocada" sin error, M2 del audit) ·
+  ciclo del equipo dañado-en-casa-del-cliente (hoy "dañado" limpia el vínculo y sale de
+  la ficha; el historial lo preserva — Rubén OK con esto) · `costo_promedio` ponderado ·
+  value-labels de tipos de movimiento en el change-log (hoy muestran el valor crudo) ·
+  TOCTOU advisory en guardas de borrado (server con FK respalda).
 
-> ⚠️ Deploy Fase 2 (al final, todo junto): correr `0099` + `0100` (+ las de 2C) por
-> Dashboard, redeploy sync rules, restart (schema v19+). Para ver Inventario el
-> super_admin habilita 'inventario' del tenant en `/super/tenants/:id`.
+> ⚠️ Deploy Fase 2 (al final, todo junto): correr `0099` + `0100` + `0101` por
+> Dashboard, redeploy sync rules, restart (**schema v20**). 2C-2/2D NO agregaron
+> migraciones (reusan 0099-0101). Para ver Inventario el super_admin habilita
+> 'inventario' del tenant en `/super/tenants/:id`.
 
 ## Fase 1.1 — Fixes + features de red post-testing de Rubén (HECHO)
 

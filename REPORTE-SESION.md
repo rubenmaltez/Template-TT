@@ -158,6 +158,52 @@ consistentes → auditoría.
 
 > Más reciente arriba. Formato por ítem: error → fix → expectativa.
 
+### 2026-06-07 (cont.) — Inventario 2C-2 (ciclo de movimientos) + 2D (equipos en ficha)
+
+Branch `claude/nifty-cori-KF2PZ` (tip `d380c82`, salió de `6e2b03a`). **Sin migraciones**
+(0099-0101 ya cubrían todo); schema sigue en **v20**. Auditado por 3 agentes (Code/QA/DB):
+0 bugs de datos. Archivos: `lib/features/admin/inventario/inventario_screen.dart` y
+`lib/features/clientes/cliente_detail_screen.dart`.
+
+**Comportamiento esperado (Inventario, módulo opcional admin-facing):**
+- **Stock de SERIALIZADOS = nº de seriales en `estado='en_stock'`** (la verdad física del
+  equipo manda). Stock de GRANEL = `Σdestino − Σorigen` del ledger `inv_movimientos`.
+  Nunca derivar el stock de un serializado del ledger (puede divergir).
+- Todo movimiento de equipo (asignar/devolver/transferir/baja) es **atómico**
+  (`writeTransaction`: UPDATE del serial + INSERT del movimiento) y **re-valida el estado
+  DENTRO de la transacción** antes de mutar (anti doble-acción sobre data stale).
+- Un equipo serializado recorre: `en_stock` → (asignar) `instalado` → (devolver) `en_stock`
+  / (baja) `danado`/`retirado`/`baja`. `baja` es terminal. Asignar/baja/devolver limpian o
+  setean `cliente_id`/`contrato_id`/`ubicacion_id` según corresponda.
+- Inventario lo ven SOLO admin/admin_cobranza/super (las tablas `inv_` no sincronizan al
+  cobrador). La ficha del cliente muestra "Equipos instalados" solo con módulo activo + rol admin.
+
+**Fixes/features de la sesión (audit del asignar → tramo → fixes del audit):**
+- **`580f111` Asignar**: el stock de serializados se inflaba/desinflaba ante doble-asignación
+  o serial con `ubicacion_id` NULL (las dos fuentes de verdad —estado y ledger— divergían).
+  Fix: stock de serializados = `COUNT(estado='en_stock')` + guard `estado='en_stock'`
+  re-validado en la transacción. Además: captura `contrato_id` (auto/`_ContratoPicker`),
+  aviso suave si el cliente no tiene `puerto_id`, búsqueda de cliente multi-campo.
+- **`c66eea4` Ciclo del serial**: faltaban devolución/baja (instalar era one-way). Fix:
+  acciones Devolver a stock (mov `devolucion`+), Transferir (mov `transferencia`), Dar de
+  baja (mov `baja`, estado dañado/retirado/baja). Helpers `_pickUbicacion` + `_BajaDialog`.
+- **`e554446` Granel**: no había egreso/ajuste/transferencia de productos a granel. Fix: 2º
+  FAB en Existencias → `_MovimientoDialog` (egreso −, ajuste ± con motivo obligatorio,
+  transferencia origen→destino; valida origen≠destino y cantidad>0).
+- **`b33c5be` Guardas de borrado**: producto/ubicación se borraban hard aun con dependientes.
+  Fix: bloqueo si hay seriales/movimientos (helper `_contar`).
+- **`df266ab` 2D**: la ficha del cliente no mostraba sus equipos. Fix: sección "Equipos
+  instalados" (serial/producto/MAC) gateada por módulo + rol admin.
+- **`d380c82` Fixes del audit**: (F1) guarda de borrado de proveedor; (M1) el movimiento de
+  granel muestra el stock resultante y avisa si quedó negativo; (M5) estado vacío del diálogo
+  de granel si no hay productos a granel/ubicaciones; (B3) "Cambiar estado" vs "Dar de baja"
+  según el estado del equipo.
+
+**Pendiente documentado (backlog, no bloquea):** stock por UBICACIÓN (hoy global por
+producto) · ciclo del equipo dañado-en-casa-del-cliente (Rubén OK con que "dañado" salga de
+la ficha; historial lo preserva) · `costo_promedio` ponderado · value-labels de tipos de
+movimiento en el change-log · TOCTOU advisory en guardas de borrado (server con FK respalda).
+
 ### 2026-06-07 — Fase 2 (Inventario): gating + catálogo + ubicaciones + ledger
 
 Módulo OPCIONAL gateado por `tenant_modulos` ('inventario', es_base=false → OFF
