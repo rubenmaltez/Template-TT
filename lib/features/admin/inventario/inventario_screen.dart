@@ -16,11 +16,12 @@ class InventarioScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return DefaultTabController(
-      length: 4,
+      length: 5,
       child: Column(
         children: const [
           TabBar(isScrollable: true, tabs: [
             Tab(text: 'Existencias'),
+            Tab(text: 'Equipos'),
             Tab(text: 'Productos'),
             Tab(text: 'Ubicaciones'),
             Tab(text: 'Proveedores'),
@@ -28,6 +29,7 @@ class InventarioScreen extends StatelessWidget {
           Expanded(
             child: TabBarView(children: [
               _ExistenciasTab(),
+              _EquiposTab(),
               _ProductosTab(),
               _UbicacionesTab(),
               _ProveedoresTab(),
@@ -790,6 +792,205 @@ class _IngresoDialogState extends State<_IngresoDialog> {
 
 String _fmtCant(num n) =>
     n == n.roundToDouble() ? n.toInt().toString() : n.toString();
+
+// ===========================================================================
+// EQUIPOS (seriales) + asignar a cliente
+// ===========================================================================
+const _estadoSerial = {
+  'en_stock': 'En stock',
+  'instalado': 'Instalado',
+  'danado': 'Dañado',
+  'retirado': 'Retirado',
+  'baja': 'Baja',
+};
+
+class _EquiposTab extends ConsumerStatefulWidget {
+  const _EquiposTab();
+  @override
+  ConsumerState<_EquiposTab> createState() => _EquiposTabState();
+}
+
+class _EquiposTabState extends ConsumerState<_EquiposTab> {
+  late final Stream<List<Map<String, dynamic>>> _seriales;
+
+  @override
+  void initState() {
+    super.initState();
+    _seriales = ps.db.watch('''
+      SELECT s.id, s.serial, s.estado, s.producto_id, s.ubicacion_id,
+             p.nombre AS producto, cl.nombre AS cliente_nombre
+        FROM inv_seriales s
+        JOIN inv_productos p ON p.id = s.producto_id
+   LEFT JOIN clientes cl ON cl.id = s.cliente_id
+       ORDER BY p.nombre, s.serial
+    ''');
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder<List<Map<String, dynamic>>>(
+      stream: _seriales,
+      initialData: const [],
+      builder: (context, snap) {
+        if (snap.hasError) return Center(child: Text('Error: ${snap.error}'));
+        final rows = snap.data!;
+        if (rows.isEmpty) {
+          return const EmptyState(
+            icon: Icons.qr_code_2,
+            titulo: 'Sin equipos',
+            descripcion: 'Los equipos serializados se cargan con un ingreso.',
+          );
+        }
+        return ListView.separated(
+          padding: const EdgeInsets.all(8),
+          itemCount: rows.length,
+          separatorBuilder: (_, __) => const Divider(height: 1),
+          itemBuilder: (_, i) {
+            final s = rows[i];
+            final estado = s['estado'] as String? ?? 'en_stock';
+            final cli = s['cliente_nombre'] as String?;
+            final sub = [
+              s['producto'] as String? ?? '',
+              _estadoSerial[estado] ?? estado,
+              if (estado == 'instalado' && cli != null) 'en $cli',
+            ].join(' · ');
+            return ListTile(
+              leading: Icon(Icons.qr_code_2,
+                  color: Theme.of(context).colorScheme.outline),
+              title: Text(s['serial'] as String),
+              subtitle: Text(sub),
+              trailing: PopupMenuButton<String>(
+                tooltip: 'Acciones',
+                onSelected: (v) {
+                  if (v == 'asignar') {
+                    _asignar(context, s);
+                  } else {
+                    _showHistorialInv(context, 'inv_seriales',
+                        s['id'] as String, 'Historial del equipo');
+                  }
+                },
+                itemBuilder: (_) => [
+                  if (estado == 'en_stock')
+                    const PopupMenuItem(
+                        value: 'asignar', child: Text('Asignar a cliente')),
+                  const PopupMenuItem(
+                      value: 'historial', child: Text('Historial')),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Future<void> _asignar(BuildContext context, Map<String, dynamic> s) async {
+    final tenantId = ref.read(tenantIdProvider);
+    if (tenantId == null) return;
+    final hechoPor = ref.read(cobradorActualProvider).valueOrNull?.id;
+    final cliente = await showModalBottomSheet<({String id, String nombre})>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (_) => const _ClientePicker(),
+    );
+    if (cliente == null) return;
+    final now = DateTime.now().toIso8601String();
+    try {
+      await ps.db.writeTransaction((tx) async {
+        await tx.execute(
+          "UPDATE inv_seriales SET estado = 'instalado', cliente_id = ?, ubicacion_id = NULL WHERE id = ?",
+          [cliente.id, s['id']],
+        );
+        await tx.execute(
+          '''INSERT INTO inv_movimientos
+             (id, tenant_id, tipo, producto_id, serial_id, cantidad,
+              ubicacion_origen_id, cliente_id, hecho_por, ocurrido_en, created_at)
+             VALUES (?, ?, 'asignacion', ?, ?, 1, ?, ?, ?, ?, ?)''',
+          [
+            const Uuid().v4(), tenantId, s['producto_id'], s['id'],
+            s['ubicacion_id'], cliente.id, hechoPor, now, now,
+          ],
+        );
+      });
+      _snack(context, 'Equipo asignado a ${cliente.nombre}');
+    } catch (e) {
+      _snack(context, 'Error: $e');
+    }
+  }
+}
+
+/// Selector de cliente (búsqueda) para asignar un equipo. Devuelve (id, nombre).
+class _ClientePicker extends StatefulWidget {
+  const _ClientePicker();
+  @override
+  State<_ClientePicker> createState() => _ClientePickerState();
+}
+
+class _ClientePickerState extends State<_ClientePicker> {
+  String _q = '';
+
+  @override
+  Widget build(BuildContext context) {
+    final like = '%${_q.toLowerCase()}%';
+    final stream = ps.db.watch(
+      '''SELECT id, nombre, codigo FROM clientes
+          WHERE activo = 1 AND lower(nombre) LIKE ?
+          ORDER BY nombre LIMIT 50''',
+      parameters: [like],
+    );
+    return SafeArea(
+      child: Padding(
+        padding: EdgeInsets.only(
+            left: 16,
+            right: 16,
+            bottom: MediaQuery.of(context).viewInsets.bottom + 16),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              autofocus: true,
+              decoration: const InputDecoration(
+                prefixIcon: Icon(Icons.search),
+                hintText: 'Buscar cliente por nombre',
+              ),
+              onChanged: (v) => setState(() => _q = v.trim()),
+            ),
+            const SizedBox(height: 8),
+            SizedBox(
+              height: 320,
+              child: StreamBuilder<List<Map<String, dynamic>>>(
+                stream: stream,
+                initialData: const [],
+                builder: (context, snap) {
+                  final rows = snap.data ?? const [];
+                  if (rows.isEmpty) {
+                    return const Center(child: Text('Sin resultados'));
+                  }
+                  return ListView.builder(
+                    itemCount: rows.length,
+                    itemBuilder: (_, i) {
+                      final c = rows[i];
+                      final cod = c['codigo'] as String?;
+                      return ListTile(
+                        title: Text(c['nombre'] as String),
+                        subtitle: cod != null && cod.isNotEmpty ? Text(cod) : null,
+                        onTap: () => Navigator.pop(context, (
+                          id: c['id'] as String,
+                          nombre: c['nombre'] as String,
+                        )),
+                      );
+                    },
+                  );
+                },
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
 
 // ===========================================================================
 // Diálogos

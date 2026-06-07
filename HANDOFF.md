@@ -81,14 +81,14 @@ ni trigger de proyección. Fase 2 es admin-facing; custodia por técnico = Fase 
   `_confirmar`, `writeTransaction`, `tenantIdProvider`, `cobradorActualProvider.id`).
   **NO requiere migración nueva** (las tablas/columnas de 0101 ya cubren todo);
   por ende **no** bumpear schema ni tocar sync salvo que se agregue una tabla.
-  1. **Asignar equipo a cliente** (acción sobre un serial `en_stock`):
-     diálogo elegir cliente (+ contrato opcional del cliente) → en `writeTransaction`:
-     `UPDATE inv_seriales SET estado='instalado', cliente_id=?, contrato_id=?,
-     ubicacion_id=NULL` + `INSERT inv_movimientos(tipo='asignacion', serial_id,
-     producto_id, cantidad=1, ubicacion_origen_id=<ubic previa del serial>,
-     cliente_id, contrato_id, hecho_por, ocurrido_en)`. La ubic_origen resta del
-     stock (Σorigen) → el equipo sale de existencias. Inverso = **devolución**
-     (estado→'retirado'/'en_stock', cliente_id NULL, mov tipo='devolucion' con destino).
+  1. ✅ **Asignar equipo a cliente** — HECHO (commit ⬇, **falta audit formal**):
+     pestaña "Equipos" (`_EquiposTab`) lista seriales; acción "Asignar a cliente"
+     (`_ClientePicker` busca cliente) → `writeTransaction`: UPDATE serial
+     estado='instalado'+cliente_id+ubicacion_id=NULL + INSERT movimiento
+     'asignacion' (ubic_origen=previa → resta de existencias). NOTA: contrato_id
+     no se captura aún (queda null); agregar selector de contrato del cliente.
+     Pendiente: **devolución** (instalado→en_stock/retirado, mov 'devolucion' con
+     destino = una ubicación a elegir) — requiere picker de ubicación.
   2. **Egreso / Baja** (granel o serial): mov con solo `ubicacion_origen_id` (−).
      Baja de serial: estado→'baja'/'danado'. **Ajuste**: mov con destino(+) u
      origen(−) según signo + `motivo` obligatorio. **Transferencia**: mov con
