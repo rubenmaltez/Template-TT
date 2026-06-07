@@ -56,20 +56,24 @@ Lote UX/reportes, **sin migraciones**, auditado (3 agentes, 0 bloqueantes):
 
 Detalle completo → `REPORTE-SESION.md` (entrada 2026-06-06 cont.).
 
-## Fase 1 EN CURSO (capa de datos lista)
+## Fase 1 EN CURSO — UI lista, en AUDITORÍA
 
-Migraciones **0097** (geografía per-tenant) + **0098** (red Nodo→Hub→Puerto +
-`clientes.puerto_id`). Schema bump **16→17**. Sync rules: geografía dejó de ser
-bucket global, geo+red van per-tenant en `catalogo_tenant` + `impersonated_tenant`.
-Audit registrado (6 entidades + lookups). **Geografía per-tenant COMPLETA**
-(DB + sync + escrituras con tenant_id en geo_picker y geografia_admin_screen + audit).
+**Datos** (commit `6f80653`): migraciones 0097 (geografía per-tenant) + 0098 (red
+Nodo→Hub→Puerto + `clientes.puerto_id`), schema v16→17, sync rules per-tenant, audit.
+**UI** (commit `32f9bb0`): `red_admin_screen` (CRUD /admin/red, adminOnly) + `red_picker`
+(cascada solo-selección en form de cliente) + `cliente_form` guarda/carga `puerto_id`.
+Red es parte del módulo de cobranza **base** (sin flag). Geografía per-tenant completa.
 
-**Pendiente Fase 1 (próximo):**
-- **UI de RED:** pantalla CRUD admin (Nodo/Hub/Puerto) + selector en cascada en el
-  form de cliente (`clientes.puerto_id`) + ruta en router + ítem de menú.
-- Luego: audit (Code+DB+QA) + pasos de testing. Migraciones las deploya Rubén por
-  Dashboard (0097 es destructiva de geo test — vacía geo y nulea `clientes.comunidad_id`).
-- ⚠️ **No deployar/testear hasta cerrar la UI de red** (queda coherente todo junto).
+**Ahora:** corriendo auditoría (Code+DB, QA UI, QA UX, especialista red). Falta aplicar
+findings + pasos de deploy/testing para Rubén.
+
+**Recordatorio para Fases 2/3 (Inventario/Tickets):** esos módulos solo los activa el
+**super_admin** y quedan **deshabilitados por defecto** en el tenant (vía `tenant_modulos`).
+Red NO — red es base de cobranza.
+
+**Pendiente Fase 1:** aplicar findings del audit → deploy (Rubén, Dashboard: correr 0097
+y 0098 en orden + redeploy sync rules + restart app desde cero por bump v17) → testing.
+⚠️ 0097 vacía la geografía de prueba y nulea `clientes.comunidad_id`.
 
 ## Otros pendientes
 - 📄 `ARQUITECTURA.md` — revisar exactitud (3 puntos marcados) cuando haya tiempo.
