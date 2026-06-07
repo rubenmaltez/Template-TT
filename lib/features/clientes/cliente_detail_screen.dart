@@ -281,6 +281,40 @@ class _IconButton extends StatelessWidget {
   }
 }
 
+/// Resuelve los labels de ubicación del cliente para mostrarlos read-only en el
+/// detalle: comunidad (Depto → Muni → Comunidad) y red (Nodo → Hub → Puerto).
+/// Una sola query a SQLite local; cada parte es null si no está asignada.
+final clienteUbicacionLabelsProvider = FutureProvider.autoDispose
+    .family<({String? comunidad, String? red}), String>((ref, clienteId) async {
+  final rows = await ps.db.getAll(
+    '''
+    SELECT co.nombre AS comunidad, m.nombre AS muni, d.nombre AS depto,
+           n.nombre AS nodo, h.nombre AS hub, p.nombre AS puerto
+      FROM clientes c
+ LEFT JOIN comunidades co  ON co.id = c.comunidad_id
+ LEFT JOIN municipios m    ON m.id = co.municipio_id
+ LEFT JOIN departamentos d ON d.id = m.departamento_id
+ LEFT JOIN red_puertos p   ON p.id = c.puerto_id
+ LEFT JOIN red_hubs h      ON h.id = p.hub_id
+ LEFT JOIN red_nodos n     ON n.id = h.nodo_id
+     WHERE c.id = ?
+    ''',
+    [clienteId],
+  );
+  if (rows.isEmpty) return (comunidad: null, red: null);
+  final r = rows.first;
+  String? cadena(List<String?> partes) {
+    final ps = partes.whereType<String>().where((s) => s.isNotEmpty).toList();
+    return ps.isEmpty ? null : ps.join(' → ');
+  }
+  return (
+    comunidad: cadena(
+        [r['depto'] as String?, r['muni'] as String?, r['comunidad'] as String?]),
+    red: cadena(
+        [r['nodo'] as String?, r['hub'] as String?, r['puerto'] as String?]),
+  );
+});
+
 class _ClienteInfo extends ConsumerWidget {
   const _ClienteInfo({required this.cliente, required this.puedeGestionar});
   final dynamic cliente;
@@ -291,6 +325,8 @@ class _ClienteInfo extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final cobradorNombre =
         ref.watch(clienteCobradorNombreProvider(cliente.id as String)).valueOrNull;
+    final ubic =
+        ref.watch(clienteUbicacionLabelsProvider(cliente.id as String)).valueOrNull;
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
       child: Card(
@@ -304,6 +340,8 @@ class _ClienteInfo extends ConsumerWidget {
               _row(context, Icons.home, 'Dirección', cliente.direccion),
               _row(context, Icons.location_on, 'Referencia',
                   cliente.direccionReferencia),
+              _row(context, Icons.location_city, 'Comunidad', ubic?.comunidad),
+              _row(context, Icons.hub, 'Red', ubic?.red),
               if (cliente.tieneUbicacion)
                 _row(context, Icons.gps_fixed, 'GPS',
                     '${cliente.latitud!.toStringAsFixed(5)}, ${cliente.longitud!.toStringAsFixed(5)}'),

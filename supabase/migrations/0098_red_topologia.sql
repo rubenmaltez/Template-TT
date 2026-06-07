@@ -45,8 +45,10 @@ CREATE INDEX red_hubs_by_nodo    ON public.red_hubs (tenant_id, nodo_id);
 CREATE INDEX red_puertos_by_hub  ON public.red_puertos (tenant_id, hub_id);
 
 -- Cliente → Puerto (opcional). Nodo/Hub se derivan de la cadena.
+-- ON DELETE SET NULL: borrar/recablear un puerto NO debe bloquearse por tener
+-- clientes; el cliente sigue existiendo, solo pierde su punto de conexión.
 ALTER TABLE public.clientes
-  ADD COLUMN puerto_id uuid REFERENCES public.red_puertos(id);
+  ADD COLUMN puerto_id uuid REFERENCES public.red_puertos(id) ON DELETE SET NULL;
 CREATE INDEX clientes_by_puerto ON public.clientes (puerto_id);
 
 -- =========================================================================

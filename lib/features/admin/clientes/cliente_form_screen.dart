@@ -438,14 +438,6 @@ class _ClienteFormScreenState extends ConsumerState<ClienteFormScreen> {
                   _dirty = true;
                 }),
               ),
-              const SizedBox(height: 16),
-              RedPicker(
-                puertoId: _puertoId,
-                onChanged: (id) => setState(() {
-                  _puertoId = id;
-                  _dirty = true;
-                }),
-              ),
               const SizedBox(height: 12),
               TextFormField(
                 controller: _direccion,
@@ -511,6 +503,20 @@ class _ClienteFormScreenState extends ConsumerState<ClienteFormScreen> {
                 icon: const Icon(Icons.map),
                 label: const Text('Seleccionar en mapa'),
                 onPressed: _abrirMapaPicker,
+              ),
+            ],
+          ),
+
+          // ── Conexión de red ───────────────────────────────────────────
+          _Section(
+            titulo: 'Conexión de red (opcional)',
+            children: [
+              RedPicker(
+                puertoId: _puertoId,
+                onChanged: (id) => setState(() {
+                  _puertoId = id;
+                  _dirty = true;
+                }),
               ),
             ],
           ),

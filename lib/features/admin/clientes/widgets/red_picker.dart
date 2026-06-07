@@ -21,9 +21,22 @@ class _RedPickerState extends State<RedPicker> {
   String? _puertoId;
   bool _cargando = true;
 
-  /// Stream cacheado de nodos (query fija). Hubs/puertos van inline porque sus
-  /// parámetros cambian con cada selección (cascading).
+  /// Streams cacheados (no inline en build): el form de cliente reconstruye en
+  /// cada tecla, así que crear el stream en build re-suscribiría el StreamBuilder
+  /// (anti-patrón "Stream already listened"). Los de hub/puerto se recrean en los
+  /// onChanged / al hidratar.
   late final Stream<List<Map<String, dynamic>>> _nodosStream;
+  Stream<List<Map<String, dynamic>>> _hubsStream = const Stream.empty();
+  Stream<List<Map<String, dynamic>>> _puertosStream = const Stream.empty();
+
+  Stream<List<Map<String, dynamic>>> _watchHubs(String nodoId) => ps.db.watch(
+        'SELECT id, nombre FROM red_hubs WHERE nodo_id = ? ORDER BY nombre',
+        parameters: [nodoId],
+      );
+  Stream<List<Map<String, dynamic>>> _watchPuertos(String hubId) => ps.db.watch(
+        'SELECT id, nombre FROM red_puertos WHERE hub_id = ? ORDER BY nombre',
+        parameters: [hubId],
+      );
 
   @override
   void initState() {
@@ -64,6 +77,8 @@ class _RedPickerState extends State<RedPicker> {
         _nodoId = rows.first['nodo'] as String?;
         _hubId = rows.first['hub'] as String?;
       }
+      if (_nodoId != null) _hubsStream = _watchHubs(_nodoId!);
+      if (_hubId != null) _puertosStream = _watchPuertos(_hubId!);
       _cargando = false;
     });
   }
@@ -79,20 +94,19 @@ class _RedPickerState extends State<RedPicker> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Text(
-          'Conexión de red (opcional)',
-          style: TextStyle(color: Theme.of(context).colorScheme.outline),
-        ),
-        const SizedBox(height: 8),
         _RedSelector(
           label: 'Nodo',
           valueId: _nodoId,
           stream: _nodosStream,
+          emptyHint: 'Aún no cargaste tu red. '
+              'Configurala en Administración → Red.',
           onChanged: (id) {
             setState(() {
               _nodoId = id;
               _hubId = null;
               _puertoId = null;
+              _hubsStream = id == null ? const Stream.empty() : _watchHubs(id);
+              _puertosStream = const Stream.empty();
             });
             widget.onChanged(null);
           },
@@ -102,16 +116,12 @@ class _RedPickerState extends State<RedPicker> {
           label: 'Hub',
           valueId: _hubId,
           enabled: _nodoId != null,
-          stream: _nodoId == null
-              ? const Stream.empty()
-              : ps.db.watch(
-                  'SELECT id, nombre FROM red_hubs WHERE nodo_id = ? ORDER BY nombre',
-                  parameters: [_nodoId!],
-                ),
+          stream: _hubsStream,
           onChanged: (id) {
             setState(() {
               _hubId = id;
               _puertoId = null;
+              _puertosStream = const Stream.empty();
             });
             widget.onChanged(null);
           },
@@ -121,12 +131,7 @@ class _RedPickerState extends State<RedPicker> {
           label: 'Puerto',
           valueId: _puertoId,
           enabled: _hubId != null,
-          stream: _hubId == null
-              ? const Stream.empty()
-              : ps.db.watch(
-                  'SELECT id, nombre FROM red_puertos WHERE hub_id = ? ORDER BY nombre',
-                  parameters: [_hubId!],
-                ),
+          stream: _puertosStream,
           onChanged: (id) {
             setState(() => _puertoId = id);
             widget.onChanged(id);
@@ -144,6 +149,7 @@ class _RedSelector extends StatelessWidget {
     required this.stream,
     required this.onChanged,
     this.enabled = true,
+    this.emptyHint,
   });
 
   final String label;
@@ -151,6 +157,10 @@ class _RedSelector extends StatelessWidget {
   final Stream<List<Map<String, dynamic>>> stream;
   final ValueChanged<String?> onChanged;
   final bool enabled;
+
+  /// Si el catálogo está vacío y este hint no es null, se muestra debajo del
+  /// dropdown (ej. en Nodo: "cargá tu red en Administración → Red").
+  final String? emptyHint;
 
   @override
   Widget build(BuildContext context) {
@@ -164,16 +174,30 @@ class _RedSelector extends StatelessWidget {
         final rows = snap.data!;
         final stillExists =
             valueId == null || rows.any((r) => r['id'] == valueId);
-        return DropdownButtonFormField<String?>(
-          value: stillExists ? valueId : null,
-          decoration: InputDecoration(labelText: label, enabled: enabled),
-          onChanged: enabled ? onChanged : null,
-          items: [
-            const DropdownMenuItem<String?>(value: null, child: Text('—')),
-            ...rows.map((r) => DropdownMenuItem(
-                  value: r['id'] as String,
-                  child: Text(r['nombre'] as String),
-                )),
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            DropdownButtonFormField<String?>(
+              value: stillExists ? valueId : null,
+              decoration: InputDecoration(labelText: label, enabled: enabled),
+              onChanged: enabled ? onChanged : null,
+              items: [
+                const DropdownMenuItem<String?>(value: null, child: Text('—')),
+                ...rows.map((r) => DropdownMenuItem(
+                      value: r['id'] as String,
+                      child: Text(r['nombre'] as String),
+                    )),
+              ],
+            ),
+            if (rows.isEmpty && emptyHint != null)
+              Padding(
+                padding: const EdgeInsets.only(top: 4, left: 4),
+                child: Text(
+                  emptyHint!,
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: Theme.of(context).colorScheme.outline),
+                ),
+              ),
           ],
         );
       },

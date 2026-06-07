@@ -90,6 +90,7 @@ class _RedAdminScreenState extends ConsumerState<RedAdminScreen> {
     final nombre = await promptNombreRed(context, 'Nuevo nodo');
     if (nombre == null) return;
     final tenantId = ref.read(tenantIdProvider);
+    if (tenantId == null) return; // sin tenant resuelto no se puede crear
     try {
       await ps.db.execute(
         'INSERT INTO red_nodos (id, tenant_id, nombre, activo, created_at) VALUES (?, ?, ?, 1, ?)',
@@ -136,7 +137,10 @@ class _NodoTileState extends State<_NodoTile> {
 
   @override
   Widget build(BuildContext context) {
-    return ExpansionTile(
+    return Card(
+      margin: const EdgeInsets.symmetric(vertical: 4),
+      clipBehavior: Clip.antiAlias,
+      child: ExpansionTile(
       leading: const Icon(Icons.hub),
       title: Text(widget.nodo['nombre'] as String),
       childrenPadding: const EdgeInsets.only(left: 16),
@@ -164,6 +168,7 @@ class _NodoTileState extends State<_NodoTile> {
           },
         ),
       ],
+      ),
     );
   }
 
@@ -295,7 +300,7 @@ Future<String?> promptNombreRed(BuildContext context, String titulo) async {
         ),
       ],
     ),
-  );
+  ).whenComplete(ctrl.dispose);
   final nombre = res?.trim();
   return (nombre == null || nombre.isEmpty) ? null : nombre;
 }

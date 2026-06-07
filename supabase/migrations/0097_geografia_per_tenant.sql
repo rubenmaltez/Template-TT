@@ -47,12 +47,24 @@ CREATE INDEX IF NOT EXISTS comunidades_by_tenant   ON public.comunidades (tenant
 -- =========================================================================
 -- 4. RLS: reemplazar las policies globales por scoping per-tenant
 -- =========================================================================
-DROP POLICY IF EXISTS "geo_read_authenticated"   ON public.departamentos;
-DROP POLICY IF EXISTS "geo_read_authenticated"   ON public.municipios;
-DROP POLICY IF EXISTS "geo_read_authenticated"   ON public.comunidades;
-DROP POLICY IF EXISTS "geo_insert_authenticated" ON public.departamentos;
-DROP POLICY IF EXISTS "geo_insert_authenticated" ON public.municipios;
-DROP POLICY IF EXISTS "geo_insert_authenticated" ON public.comunidades;
+-- Dropear TODAS las policies geo previas (globales). OJO: los nombres cambiaron
+-- a lo largo del historial — read=geo_read_authenticated (0003); insert pasó de
+-- geo_insert_authenticated (0003) a geo_insert_admins (0016); update/delete son
+-- geo_update_admins/geo_delete_admins (0067). Si no dropeamos los nombres REALES,
+-- esas policies viejas SIN scoping por tenant sobreviven y (combinadas con OR)
+-- anulan el scoping nuevo → fuga cross-tenant en escritura de geografía.
+DO $$
+DECLARE t text;
+BEGIN
+  FOREACH t IN ARRAY ARRAY['departamentos','municipios','comunidades']
+  LOOP
+    EXECUTE format('DROP POLICY IF EXISTS "geo_read_authenticated" ON public.%I;', t);
+    EXECUTE format('DROP POLICY IF EXISTS "geo_insert_authenticated" ON public.%I;', t);
+    EXECUTE format('DROP POLICY IF EXISTS "geo_insert_admins" ON public.%I;', t);
+    EXECUTE format('DROP POLICY IF EXISTS "geo_update_admins" ON public.%I;', t);
+    EXECUTE format('DROP POLICY IF EXISTS "geo_delete_admins" ON public.%I;', t);
+  END LOOP;
+END $$;
 
 -- Lectura: cualquier miembro del tenant (cobrador necesita la geo del cliente).
 -- Insert: cualquier miembro del tenant (preserva el "crear inline" del geo_picker).
