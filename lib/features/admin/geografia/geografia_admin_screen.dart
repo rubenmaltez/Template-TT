@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
 
+import '../../../data/providers/cobrador_provider.dart';
 import '../../../powersync/db.dart' as ps;
 import '../../shared/widgets/empty_state.dart';
 
@@ -17,14 +19,15 @@ import '../../shared/widgets/empty_state.dart';
 /// no se reproduce porque el padre no recibe triggers de rebuild
 /// externos, pero sería bomba de tiempo ante cualquier cambio futuro
 /// (provider watched arriba, resize de window en Web, theme switch).
-class GeografiaAdminScreen extends StatefulWidget {
+class GeografiaAdminScreen extends ConsumerStatefulWidget {
   const GeografiaAdminScreen({super.key});
 
   @override
-  State<GeografiaAdminScreen> createState() => _GeografiaAdminScreenState();
+  ConsumerState<GeografiaAdminScreen> createState() =>
+      _GeografiaAdminScreenState();
 }
 
-class _GeografiaAdminScreenState extends State<GeografiaAdminScreen> {
+class _GeografiaAdminScreenState extends ConsumerState<GeografiaAdminScreen> {
   late final Stream<List<Map<String, dynamic>>> _departamentos;
 
   @override
@@ -97,10 +100,11 @@ class _GeografiaAdminScreenState extends State<GeografiaAdminScreen> {
   Future<void> _crearDepto(BuildContext context) async {
     final nombre = await _promptNombre(context, 'Nuevo departamento');
     if (nombre == null) return;
+    final tenantId = ref.read(tenantIdProvider);
     try {
       await ps.db.execute(
-        'INSERT INTO departamentos (id, nombre, created_at) VALUES (?, ?, ?)',
-        [const Uuid().v4(), nombre, DateTime.now().toIso8601String()],
+        'INSERT INTO departamentos (id, tenant_id, nombre, created_at) VALUES (?, ?, ?, ?)',
+        [const Uuid().v4(), tenantId, nombre, DateTime.now().toIso8601String()],
       );
     } catch (e) {
       if (context.mounted) {
@@ -202,10 +206,12 @@ class _DeptoTileState extends State<_DeptoTile> {
   Future<void> _crearMunicipio(BuildContext context, String deptoId) async {
     final nombre = await _promptNombre(context, 'Nuevo municipio');
     if (nombre == null) return;
+    // tenant_id heredado del departamento padre (ya viene en la fila synced).
+    final tenantId = widget.depto['tenant_id'];
     try {
       await ps.db.execute(
-        'INSERT INTO municipios (id, departamento_id, nombre, created_at) VALUES (?, ?, ?, ?)',
-        [const Uuid().v4(), deptoId, nombre, DateTime.now().toIso8601String()],
+        'INSERT INTO municipios (id, tenant_id, departamento_id, nombre, created_at) VALUES (?, ?, ?, ?, ?)',
+        [const Uuid().v4(), tenantId, deptoId, nombre, DateTime.now().toIso8601String()],
       );
     } catch (e) {
       if (context.mounted) {
@@ -293,10 +299,12 @@ class _MunicipioTileState extends State<_MunicipioTile> {
   Future<void> _crearComunidad(BuildContext context, String municipioId) async {
     final nombre = await _promptNombre(context, 'Nueva comunidad');
     if (nombre == null) return;
+    // tenant_id heredado del municipio padre (ya viene en la fila synced).
+    final tenantId = widget.municipio['tenant_id'];
     try {
       await ps.db.execute(
-        'INSERT INTO comunidades (id, municipio_id, nombre, created_at) VALUES (?, ?, ?, ?)',
-        [const Uuid().v4(), municipioId, nombre, DateTime.now().toIso8601String()],
+        'INSERT INTO comunidades (id, tenant_id, municipio_id, nombre, created_at) VALUES (?, ?, ?, ?, ?)',
+        [const Uuid().v4(), tenantId, municipioId, nombre, DateTime.now().toIso8601String()],
       );
     } catch (e) {
       if (context.mounted) {

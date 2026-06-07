@@ -7,7 +7,16 @@ import '../../../../powersync/db.dart' as ps;
 /// opción de crear inline cualquier nivel si no existe.
 /// Recibe `comunidadId` (puede ser null) y notifica cambios.
 class GeoPicker extends StatefulWidget {
-  const GeoPicker({super.key, required this.comunidadId, required this.onChanged});
+  const GeoPicker({
+    super.key,
+    required this.tenantId,
+    required this.comunidadId,
+    required this.onChanged,
+  });
+
+  /// Tenant actual — la geografía es per-tenant (migración 0097), así que las
+  /// filas que se crean inline deben llevar `tenant_id` (la RLS lo exige).
+  final String tenantId;
   final String? comunidadId;
   final ValueChanged<String?> onChanged;
 
@@ -93,8 +102,8 @@ class _GeoPickerState extends State<GeoPicker> {
           onCreate: (nombre) async {
             final id = const Uuid().v4();
             await ps.db.execute(
-              'INSERT INTO departamentos (id, nombre, created_at) VALUES (?, ?, ?)',
-              [id, nombre, DateTime.now().toIso8601String()],
+              'INSERT INTO departamentos (id, tenant_id, nombre, created_at) VALUES (?, ?, ?, ?)',
+              [id, widget.tenantId, nombre, DateTime.now().toIso8601String()],
             );
             return id;
           },
@@ -122,8 +131,8 @@ class _GeoPickerState extends State<GeoPicker> {
               : (nombre) async {
                   final id = const Uuid().v4();
                   await ps.db.execute(
-                    'INSERT INTO municipios (id, departamento_id, nombre, created_at) VALUES (?, ?, ?, ?)',
-                    [id, _deptoId, nombre, DateTime.now().toIso8601String()],
+                    'INSERT INTO municipios (id, tenant_id, departamento_id, nombre, created_at) VALUES (?, ?, ?, ?, ?)',
+                    [id, widget.tenantId, _deptoId, nombre, DateTime.now().toIso8601String()],
                   );
                   return id;
                 },
@@ -148,8 +157,8 @@ class _GeoPickerState extends State<GeoPicker> {
               : (nombre) async {
                   final id = const Uuid().v4();
                   await ps.db.execute(
-                    'INSERT INTO comunidades (id, municipio_id, nombre, created_at) VALUES (?, ?, ?, ?)',
-                    [id, _munId, nombre, DateTime.now().toIso8601String()],
+                    'INSERT INTO comunidades (id, tenant_id, municipio_id, nombre, created_at) VALUES (?, ?, ?, ?, ?)',
+                    [id, widget.tenantId, _munId, nombre, DateTime.now().toIso8601String()],
                   );
                   return id;
                 },

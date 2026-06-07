@@ -56,10 +56,23 @@ Lote UX/reportes, **sin migraciones**, auditado (3 agentes, 0 bloqueantes):
 
 Detalle completo → `REPORTE-SESION.md` (entrada 2026-06-06 cont.).
 
-## Pendiente / próximo paso
+## Fase 1 EN CURSO (capa de datos lista)
 
-- ⏳ **Rubén está testeando** el lote en Windows (pull `68577f9` + **restart completo**, no hot reload). Falta su OK del fade secuencial y de la impresora cableada con su equipo real.
-- 📄 `ARQUITECTURA.md` recién generado — **revisar** que el mapa de módulos/interconexiones sea correcto antes de confiar 100%.
+Migraciones **0097** (geografía per-tenant) + **0098** (red Nodo→Hub→Puerto +
+`clientes.puerto_id`). Schema bump **16→17**. Sync rules: geografía dejó de ser
+bucket global, geo+red van per-tenant en `catalogo_tenant` + `impersonated_tenant`.
+Audit registrado (6 entidades + lookups). **Geografía per-tenant COMPLETA**
+(DB + sync + escrituras con tenant_id en geo_picker y geografia_admin_screen + audit).
+
+**Pendiente Fase 1 (próximo):**
+- **UI de RED:** pantalla CRUD admin (Nodo/Hub/Puerto) + selector en cascada en el
+  form de cliente (`clientes.puerto_id`) + ruta en router + ítem de menú.
+- Luego: audit (Code+DB+QA) + pasos de testing. Migraciones las deploya Rubén por
+  Dashboard (0097 es destructiva de geo test — vacía geo y nulea `clientes.comunidad_id`).
+- ⚠️ **No deployar/testear hasta cerrar la UI de red** (queda coherente todo junto).
+
+## Otros pendientes
+- 📄 `ARQUITECTURA.md` — revisar exactitud (3 puntos marcados) cuando haya tiempo.
 - Backlog persistente: ver fin de `CLAUDE.md` (no re-flaggear ítems ya resueltos).
 
 ## Docs del proyecto (qué leer y para qué)

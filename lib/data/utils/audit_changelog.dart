@@ -91,6 +91,13 @@ const Map<String, Set<String>> kAuditCamposVisiblesDefault = {
     'precio_mensual',
     'activo',
   },
+  // Geografía (per-tenant desde 0097) + topología de red (0098).
+  'departamentos': {'nombre', 'codigo'},
+  'municipios': {'nombre', 'departamento_id'},
+  'comunidades': {'nombre', 'municipio_id'},
+  'red_nodos': {'nombre', 'codigo', 'notas', 'activo'},
+  'red_hubs': {'nombre', 'codigo', 'nodo_id', 'activo'},
+  'red_puertos': {'nombre', 'codigo', 'hub_id', 'activo'},
 };
 
 // ---------------------------------------------------------------------------
@@ -195,6 +202,12 @@ const Map<String, List<String>> kAuditCamposCatalogo = {
     'precio_mensual',
     'activo',
   ],
+  'departamentos': ['nombre', 'codigo'],
+  'municipios': ['nombre', 'departamento_id'],
+  'comunidades': ['nombre', 'municipio_id'],
+  'red_nodos': ['nombre', 'codigo', 'notas', 'activo'],
+  'red_hubs': ['nombre', 'codigo', 'nodo_id', 'activo'],
+  'red_puertos': ['nombre', 'codigo', 'hub_id', 'activo'],
 };
 
 // Label humano por entidad (para los títulos de las secciones del panel).
@@ -208,6 +221,12 @@ const Map<String, String> kAuditEntidadLabel = {
   'visitas': 'Visitas',
   'fotos_cliente': 'Fotos',
   'planes': 'Planes',
+  'departamentos': 'Departamentos',
+  'municipios': 'Municipios',
+  'comunidades': 'Comunidades',
+  'red_nodos': 'Nodos de red',
+  'red_hubs': 'Hubs de red',
+  'red_puertos': 'Puertos de red',
 };
 
 // Columnas computadas / auto que se omiten en cualquier snapshot, además del
@@ -466,6 +485,7 @@ String _fmtField(String key, dynamic v, {AuditLookups? lookups}) {
 const Set<String> _kClavesFk = {
   'cobrador_id', 'cliente_id', 'plan_id', 'contrato_id',
   'comunidad_id', 'departamento_id', 'municipio_id',
+  'puerto_id', 'hub_id', 'nodo_id',
   'anulado_por', 'user_id',
 };
 
@@ -537,6 +557,9 @@ String auditFieldLabel(String raw) {
     'comunidad_id': 'Comunidad',
     'departamento_id': 'Departamento',
     'municipio_id': 'Municipio',
+    'puerto_id': 'Puerto',
+    'hub_id': 'Hub',
+    'nodo_id': 'Nodo',
     'activo': 'Activo',
     'referencia': 'Referencia',
     'notas': 'Notas',

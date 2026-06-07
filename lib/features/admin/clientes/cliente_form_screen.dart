@@ -428,6 +428,7 @@ class _ClienteFormScreenState extends ConsumerState<ClienteFormScreen> {
             titulo: 'Ubicación',
             children: [
               GeoPicker(
+                tenantId: ref.read(tenantIdProvider) ?? '',
                 comunidadId: _comunidadId,
                 onChanged: (id) => setState(() {
                   _comunidadId = id;

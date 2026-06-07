@@ -19,6 +19,9 @@ class AuditLookups {
     this.departamentos = const {},
     this.municipios = const {},
     this.contratos = const {},
+    this.nodos = const {},
+    this.hubs = const {},
+    this.puertos = const {},
   });
 
   final Map<String, String> cobradores;
@@ -27,6 +30,9 @@ class AuditLookups {
   final Map<String, String> comunidades;
   final Map<String, String> departamentos;
   final Map<String, String> municipios;
+  final Map<String, String> nodos;
+  final Map<String, String> hubs;
+  final Map<String, String> puertos;
   // Contratos no tienen nombre propio: usamos el nombre del plan asociado
   // ("Plan Básico 10 Mbps") como label, que es lo que el usuario reconoce.
   final Map<String, String> contratos;
@@ -43,6 +49,9 @@ class AuditLookups {
       'comunidad_id' => comunidades,
       'departamento_id' => departamentos,
       'municipio_id' => municipios,
+      'nodo_id' => nodos,
+      'hub_id' => hubs,
+      'puerto_id' => puertos,
       _ => null,
     };
     if (m == null) return null;
@@ -94,6 +103,9 @@ final auditLookupsProvider = FutureProvider.autoDispose<AuditLookups>((ref) asyn
     _cargar('SELECT id, nombre FROM departamentos'),
     _cargar('SELECT id, nombre FROM municipios'),
     _cargarContratos(),
+    _cargar('SELECT id, nombre FROM red_nodos'),
+    _cargar('SELECT id, nombre FROM red_hubs'),
+    _cargar('SELECT id, nombre FROM red_puertos'),
   ]);
 
   return AuditLookups(
@@ -104,5 +116,8 @@ final auditLookupsProvider = FutureProvider.autoDispose<AuditLookups>((ref) asyn
     departamentos: results[4],
     municipios: results[5],
     contratos: results[6],
+    nodos: results[7],
+    hubs: results[8],
+    puertos: results[9],
   );
 });

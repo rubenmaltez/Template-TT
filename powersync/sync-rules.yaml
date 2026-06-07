@@ -12,18 +12,10 @@
 
 bucket_definitions:
 
-  # ── Catálogos geo globales (compartidos entre tenants) ─────────────────
-  # Bucket sin `parameters:` = global. Cualquier usuario autenticado lo baja.
-  # Las tablas geo no tienen tenant_id (son catálogos compartidos —
-  # Nicaragua es Nicaragua para todos los tenants).
-  geografia:
-    data:
-      - SELECT * FROM departamentos
-      - SELECT * FROM municipios
-      - SELECT * FROM comunidades
-
-  # ── Catálogo del tenant (planes + settings) ───────────────────────────
-  # Todos los empleados del ISP los necesitan offline.
+  # ── Catálogo del tenant (planes + settings + geografía + red) ──────────
+  # Todos los empleados del ISP los necesitan offline. Geografía y topología
+  # de red son PER-TENANT (migraciones 0097/0098): cada miembro baja la de su
+  # tenant. (Antes geografía era un bucket global — ya no.)
   # Nota: `modulos` / `tenant_modulos` / `tenants` se consultan vía REST
   # desde el panel Super Admin (Sprint A2), no se sincronizan localmente.
   catalogo_tenant:
@@ -32,8 +24,14 @@ bucket_definitions:
       FROM cobradores
       WHERE id = request.user_id()
     data:
-      - SELECT * FROM planes   WHERE tenant_id = bucket.tenant_id
-      - SELECT * FROM settings WHERE tenant_id = bucket.tenant_id
+      - SELECT * FROM planes        WHERE tenant_id = bucket.tenant_id
+      - SELECT * FROM settings      WHERE tenant_id = bucket.tenant_id
+      - SELECT * FROM departamentos WHERE tenant_id = bucket.tenant_id
+      - SELECT * FROM municipios    WHERE tenant_id = bucket.tenant_id
+      - SELECT * FROM comunidades   WHERE tenant_id = bucket.tenant_id
+      - SELECT * FROM red_nodos     WHERE tenant_id = bucket.tenant_id
+      - SELECT * FROM red_hubs      WHERE tenant_id = bucket.tenant_id
+      - SELECT * FROM red_puertos   WHERE tenant_id = bucket.tenant_id
 
   # ── Datos operativos del cobrador ─────────────────────────────────────
   # Cada cobrador baja SÓLO sus clientes asignados + relacionados.
@@ -168,6 +166,12 @@ bucket_definitions:
     data:
       - SELECT * FROM planes             WHERE tenant_id = bucket.tenant_id
       - SELECT * FROM settings           WHERE tenant_id = bucket.tenant_id
+      - SELECT * FROM departamentos      WHERE tenant_id = bucket.tenant_id
+      - SELECT * FROM municipios         WHERE tenant_id = bucket.tenant_id
+      - SELECT * FROM comunidades        WHERE tenant_id = bucket.tenant_id
+      - SELECT * FROM red_nodos          WHERE tenant_id = bucket.tenant_id
+      - SELECT * FROM red_hubs           WHERE tenant_id = bucket.tenant_id
+      - SELECT * FROM red_puertos        WHERE tenant_id = bucket.tenant_id
       - SELECT * FROM clientes           WHERE tenant_id = bucket.tenant_id
       - SELECT * FROM contratos          WHERE tenant_id = bucket.tenant_id
       - SELECT * FROM cuotas             WHERE tenant_id = bucket.tenant_id

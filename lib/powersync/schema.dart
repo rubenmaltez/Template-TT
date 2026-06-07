@@ -10,27 +10,72 @@
 import 'package:powersync/powersync.dart';
 
 const schema = Schema([
-  // ── Catálogos geo (compartidos entre tenants) ────────────────────────────
+  // ── Catálogos geo (per-tenant desde migración 0097) ───────────────────────
   Table('departamentos', [
+    Column.text('tenant_id'),
     Column.text('nombre'),
     Column.text('codigo'),
     Column.text('created_at'),
+  ], indexes: [
+    Index('by_tenant', [IndexedColumn('tenant_id')]),
   ]),
 
   Table('municipios', [
+    Column.text('tenant_id'),
     Column.text('departamento_id'),
     Column.text('nombre'),
     Column.text('created_at'),
   ], indexes: [
-    Index('by_departamento', [IndexedColumn('departamento_id')]),
+    Index('by_departamento', [
+      IndexedColumn('tenant_id'),
+      IndexedColumn('departamento_id'),
+    ]),
   ]),
 
   Table('comunidades', [
+    Column.text('tenant_id'),
     Column.text('municipio_id'),
     Column.text('nombre'),
     Column.text('created_at'),
   ], indexes: [
-    Index('by_municipio', [IndexedColumn('municipio_id')]),
+    Index('by_municipio', [
+      IndexedColumn('tenant_id'),
+      IndexedColumn('municipio_id'),
+    ]),
+  ]),
+
+  // ── Topología de red (per-tenant, migración 0098): Nodo → Hub → Puerto ────
+  Table('red_nodos', [
+    Column.text('tenant_id'),
+    Column.text('nombre'),
+    Column.text('codigo'),
+    Column.text('notas'),
+    Column.integer('activo'),
+    Column.text('created_at'),
+  ], indexes: [
+    Index('by_tenant', [IndexedColumn('tenant_id')]),
+  ]),
+
+  Table('red_hubs', [
+    Column.text('tenant_id'),
+    Column.text('nodo_id'),
+    Column.text('nombre'),
+    Column.text('codigo'),
+    Column.integer('activo'),
+    Column.text('created_at'),
+  ], indexes: [
+    Index('by_nodo', [IndexedColumn('tenant_id'), IndexedColumn('nodo_id')]),
+  ]),
+
+  Table('red_puertos', [
+    Column.text('tenant_id'),
+    Column.text('hub_id'),
+    Column.text('nombre'),
+    Column.text('codigo'),
+    Column.integer('activo'),
+    Column.text('created_at'),
+  ], indexes: [
+    Index('by_hub', [IndexedColumn('tenant_id'), IndexedColumn('hub_id')]),
   ]),
 
   // ── Catálogo del tenant ───────────────────────────────────────────────────
@@ -66,6 +111,7 @@ const schema = Schema([
     Column.text('tenant_id'),
     Column.text('cobrador_id'),
     Column.text('comunidad_id'),
+    Column.text('puerto_id'),
     Column.text('codigo'),
     Column.text('nombre'),
     Column.text('cedula'),
