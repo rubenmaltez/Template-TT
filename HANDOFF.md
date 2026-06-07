@@ -182,7 +182,26 @@ migración / sin bump / sin redeploy de sync rules**):
   `appSettingsProvider` re-dispara el provider del badge en cualquier cambio de settings (sin
   leak, solo trabajo redundante; memoizar el map en v2).
 
-> ⚠️ **Deploy Fase 3 (al final, todo junto)**: correr `0103`→`0104`→`0105`→`0106`→`0107`→
+**CIERRE FASE 3 — AUDIT INTEGRAL HECHO** (commit `3cbd148`; 4 agentes paralelos:
+DB/schema/sync/RLS · Dart cross-módulo · dinero+audit-log · aislamiento+offline).
+**Veredicto: Fase 3 sólida, 0 ALTA.** Dinero **hermético**, sin fuga cross-tenant /
+role-bypass / offline-breaker, cadena DB↔schema↔sync íntegra, audit-log completo con
+profundidad bien cableada, state machine CHECK↔trigger↔Dart consistente.
+- **Fix MEDIA aplicado + re-auditado SAFE** (trigger consumo **0106**): consumir un
+  serial ahora exige que esté EN la ubicación de origen declarada (`ubicacion_id IS NOT
+  DISTINCT FROM ubicacion_origen_id`) + el `inv_movimientos` se inserta SOLO si se
+  consumió (reorden + early-return). Cierra el hueco de custodia intra-tenant (insert
+  crafteado) y el doble-descuento en dup offline del mismo serial. Granel sin cambios.
+  **⚠️ 0106 cambió → re-deployar (es `CREATE OR REPLACE`, idempotente).**
+- **Cleanups**: borrada `kTicketEstados` (constante muerta) · value-label de
+  `tickets.prioridad` en el change-log.
+- **Backlog (LOW/by-design, no bloquea):** surface de history del audit_log de tickets
+  (la bitácora cubre estado/asignación/comentarios/materiales) · huérfano de Storage al
+  borrar adjunto offline (= comprobantes) · enforcement de custodia full para granel ·
+  guard serial-sin-cliente en el trigger (la UI ya lo guarda) · comentarios de versión de
+  schema en headers de migración desfasados (cosmético; `db.dart`=v25 es la verdad).
+
+> ⚠️ **Deploy Fase 3 (al final, todo junto)**: correr `0103`→`0104`→`0105`→`0106`(actualizado)→`0107`→
 > `0108` por Dashboard **en orden** + **redeploy sync rules** (tablas/columnas + buckets
 > **`por_tecnico*`** incl. `por_tecnico_inventario` + `ticket_materiales` + `incidentes`) +
 > restart (**schema v25**). Verificar "Active" en PowerSync. El super_admin enciende

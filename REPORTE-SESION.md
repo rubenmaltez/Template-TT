@@ -158,6 +158,34 @@ consistentes → auditoría.
 
 > Más reciente arriba. Formato por ítem: error → fix → expectativa.
 
+### 2026-06-07 (cont. 10) — Cierre de Fase 3: audit integral + fix del trigger de consumo
+
+Audit integral de cierre de toda la Fase 3 (3A→3E) con 4 agentes paralelos
+(DB/schema/sync/RLS · Dart cross-módulo · dinero+audit-log · aislamiento+offline).
+**Veredicto: Fase 3 sólida, 0 ALTA.** Dinero hermético, sin fuga cross-tenant /
+role-bypass / offline-breaker, cadena DB↔schema↔sync íntegra, audit-log completo.
+Commit `3cbd148`. 1 MEDIA + cleanups aplicados (resto LOW/by-design → backlog).
+
+- **Hueco de custodia intra-tenant en el consumo de materiales (MEDIA):** error = el
+  trigger `ticket_materiales_consumo` (0106) validaba co-tenencia pero NO que el serial
+  estuviera EN la ubicación de origen declarada → un insert crafteado podía instalar un
+  serial de la custodia de otro técnico; y en un dup offline del mismo serial el
+  `inv_movimientos` se insertaba igual (doble-descuento). Fix = reordenar (UPDATE del
+  serial primero, con guard `ubicacion_id IS NOT DISTINCT FROM ubicacion_origen_id` +
+  `estado='en_stock'`) e insertar el movimiento SOLO si se consumió (`IF NOT FOUND THEN
+  RETURN NEW`). Re-auditado SAFE. **Expectativa:** sólo se consume un serial de donde
+  realmente está; el ledger queda consistente; el 2º consumo offline del mismo serial es
+  no-op (sin RAISE → no traba la cola de upload). Granel sin cambios (tolerancia negativa
+  por diseño). ⚠️ 0106 cambió → re-deployar (idempotente, `CREATE OR REPLACE`).
+- **Constante muerta (BAJA):** `kTicketEstados` estaba definida y nunca usada → borrada.
+- **Label de prioridad en el change-log (LOW):** `tickets.prioridad` no tenía value-label
+  → agregada la branch en `_fmtField` (Baja/Media/Alta/Urgente), así no se filtra el slug
+  crudo si en el futuro se expone el history del audit_log de tickets.
+- **Backlog documentado (no bloquea):** surface de history del audit_log de tickets ·
+  huérfano de Storage al borrar adjunto offline (= comprobantes) · enforcement de custodia
+  full para granel · guard serial-sin-cliente en el trigger · comentarios de versión de
+  schema en headers de migración (cosmético).
+
 ### 2026-06-07 (cont. 9) — Fase 3 slice 3E: cuenta regresiva de SLA (offline)
 
 Slice 3E reframeado con Rubén + un agente experto en ticket-management: el pedido
