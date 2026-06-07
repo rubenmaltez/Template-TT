@@ -62,25 +62,31 @@ class _RedPickerState extends State<RedPicker> {
       setState(() => _cargando = false);
       return;
     }
-    final rows = await ps.db.getAll(
-      '''
-      SELECT h.nodo_id AS nodo, p.hub_id AS hub
-        FROM red_puertos p
-        JOIN red_hubs h ON h.id = p.hub_id
-       WHERE p.id = ?
-      ''',
-      [_puertoId!],
-    );
-    if (!mounted) return;
-    setState(() {
+    // try/finally: si la hidratación lanza (SQLite ocupado, mismatch durante un
+    // bump), NO dejamos el spinner colgado para siempre → mostramos los
+    // selectores y el usuario re-elige la red.
+    try {
+      final rows = await ps.db.getAll(
+        '''
+        SELECT h.nodo_id AS nodo, p.hub_id AS hub
+          FROM red_puertos p
+          JOIN red_hubs h ON h.id = p.hub_id
+         WHERE p.id = ?
+        ''',
+        [_puertoId!],
+      );
+      if (!mounted) return;
       if (rows.isNotEmpty) {
         _nodoId = rows.first['nodo'] as String?;
         _hubId = rows.first['hub'] as String?;
       }
       if (_nodoId != null) _hubsStream = _watchHubs(_nodoId!);
       if (_hubId != null) _puertosStream = _watchPuertos(_hubId!);
-      _cargando = false;
-    });
+    } catch (_) {
+      // Silencioso: el usuario puede re-elegir manualmente la cascada.
+    } finally {
+      if (mounted) setState(() => _cargando = false);
+    }
   }
 
   @override

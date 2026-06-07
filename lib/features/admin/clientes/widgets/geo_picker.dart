@@ -30,10 +30,24 @@ class _GeoPickerState extends State<GeoPicker> {
   String? _comId;
   bool _cargando = true;
 
-  /// Stream cacheado para departamentos (query fija, no depende de state).
-  /// Los streams de municipios y comunidades se dejan inline porque sus
-  /// parámetros cambian con cada selección del usuario (cascading).
+  /// Streams cacheados (no inline en build): el form de cliente reconstruye en
+  /// cada tecla, así que crear el stream en build re-suscribiría el StreamBuilder.
+  /// Mismo patrón que RedPicker. Los de muni/comunidad se recrean en onChanged /
+  /// al hidratar.
   late final Stream<List<Map<String, dynamic>>> _deptosStream;
+  Stream<List<Map<String, dynamic>>> _munsStream = const Stream.empty();
+  Stream<List<Map<String, dynamic>>> _comsStream = const Stream.empty();
+
+  Stream<List<Map<String, dynamic>>> _watchMunicipios(String deptoId) =>
+      ps.db.watch(
+        'SELECT id, nombre FROM municipios WHERE departamento_id = ? ORDER BY nombre',
+        parameters: [deptoId],
+      );
+  Stream<List<Map<String, dynamic>>> _watchComunidades(String munId) =>
+      ps.db.watch(
+        'SELECT id, nombre FROM comunidades WHERE municipio_id = ? ORDER BY nombre',
+        parameters: [munId],
+      );
 
   @override
   void initState() {
@@ -60,20 +74,29 @@ class _GeoPickerState extends State<GeoPicker> {
       setState(() => _cargando = false);
       return;
     }
-    final rows = await ps.db.getAll(
-      '''
-      SELECT m.departamento_id AS depto, co.municipio_id AS mun
-        FROM comunidades co
-        JOIN municipios m ON m.id = co.municipio_id
-       WHERE co.id = ?
-      ''',
-      [_comId],
-    );
-    if (rows.isNotEmpty) {
-      _deptoId = rows.first['depto'] as String?;
-      _munId = rows.first['mun'] as String?;
+    // try/finally: si la hidratación lanza, NO dejamos el spinner colgado.
+    try {
+      final rows = await ps.db.getAll(
+        '''
+        SELECT m.departamento_id AS depto, co.municipio_id AS mun
+          FROM comunidades co
+          JOIN municipios m ON m.id = co.municipio_id
+         WHERE co.id = ?
+        ''',
+        [_comId],
+      );
+      if (!mounted) return;
+      if (rows.isNotEmpty) {
+        _deptoId = rows.first['depto'] as String?;
+        _munId = rows.first['mun'] as String?;
+      }
+      if (_deptoId != null) _munsStream = _watchMunicipios(_deptoId!);
+      if (_munId != null) _comsStream = _watchComunidades(_munId!);
+    } catch (_) {
+      // Silencioso: el usuario puede re-elegir manualmente la cascada.
+    } finally {
+      if (mounted) setState(() => _cargando = false);
     }
-    if (mounted) setState(() => _cargando = false);
   }
 
   @override
@@ -96,6 +119,9 @@ class _GeoPickerState extends State<GeoPicker> {
               _deptoId = id;
               _munId = null;
               _comId = null;
+              _munsStream =
+                  id == null ? const Stream.empty() : _watchMunicipios(id);
+              _comsStream = const Stream.empty();
             });
             widget.onChanged(null);
           },
@@ -113,16 +139,13 @@ class _GeoPickerState extends State<GeoPicker> {
           label: 'Municipio',
           valueId: _munId,
           enabled: _deptoId != null,
-          stream: _deptoId == null
-              ? const Stream.empty()
-              : ps.db.watch(
-                  'SELECT id, nombre FROM municipios WHERE departamento_id = ? ORDER BY nombre',
-                  parameters: [_deptoId!],
-                ),
+          stream: _munsStream,
           onChanged: (id) {
             setState(() {
               _munId = id;
               _comId = null;
+              _comsStream =
+                  id == null ? const Stream.empty() : _watchComunidades(id);
             });
             widget.onChanged(null);
           },
@@ -142,12 +165,7 @@ class _GeoPickerState extends State<GeoPicker> {
           label: 'Comunidad',
           valueId: _comId,
           enabled: _munId != null,
-          stream: _munId == null
-              ? const Stream.empty()
-              : ps.db.watch(
-                  'SELECT id, nombre FROM comunidades WHERE municipio_id = ? ORDER BY nombre',
-                  parameters: [_munId!],
-                ),
+          stream: _comsStream,
           onChanged: (id) {
             setState(() => _comId = id);
             widget.onChanged(id);

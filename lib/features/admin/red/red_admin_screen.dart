@@ -228,7 +228,9 @@ class _NodoTileState extends State<_NodoTile> {
   Future<void> _crearHub(BuildContext context, String nodoId) async {
     final res = await promptNombreNotasRed(context, 'Nuevo hub');
     if (res == null) return;
-    final tenantId = widget.nodo['tenant_id'];
+    // El hub hereda el tenant del nodo padre (siempre synced). Guard defensivo.
+    final tenantId = widget.nodo['tenant_id'] as String?;
+    if (tenantId == null) return;
     try {
       await ps.db.execute(
         'INSERT INTO red_hubs (id, tenant_id, nodo_id, nombre, notas, activo, created_at) VALUES (?, ?, ?, ?, ?, 1, ?)',
@@ -392,7 +394,9 @@ class _HubTileState extends State<_HubTile> {
   Future<void> _crearPuerto(BuildContext context, String hubId) async {
     final res = await promptNombreNotasRed(context, 'Nuevo puerto');
     if (res == null) return;
-    final tenantId = widget.hub['tenant_id'];
+    // El puerto hereda el tenant del hub padre (siempre synced). Guard defensivo.
+    final tenantId = widget.hub['tenant_id'] as String?;
+    if (tenantId == null) return;
     try {
       await ps.db.execute(
         'INSERT INTO red_puertos (id, tenant_id, hub_id, nombre, notas, activo, created_at) VALUES (?, ?, ?, ?, ?, 1, ?)',
