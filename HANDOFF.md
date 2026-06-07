@@ -7,14 +7,16 @@
 
 ---
 
-## Fase 3 — Tickets (slice 3A COMPLETO + backlog vaciado → arrancando 3B)
+## Fase 3 — Tickets (3A + 3B COMPLETOS y auditados → próximo 3C materiales)
 
 Propuesta aprobada en `FASE3-PLAN.md` (decisiones: D1 trigger server-side de
 descuento de stock · D2 trigger de transición de estado · D3 shell propio del
 técnico · D4 correlativo `T-00001` · D5 3A completo).
 
-> **3A cerrado y auditado, SIN backlog pendiente** (ver "BACKLOG VACIADO" abajo).
-> Próximo: **slice 3B (técnico)** — roles asignables + shell móvil + bucket `por_tecnico`.
+> **3A + 3B cerrados y auditados, SIN backlog bloqueante.** El loop admin→técnico
+> funciona: el admin crea/asigna un ticket → el técnico lo ve y resuelve en su shell
+> móvil offline → sincroniza → el admin cierra. Próximo: **slice 3C (materiales)** —
+> `ticket_materiales` + trigger de descuento de stock (engancha inventario).
 
 **3A capa 1 — HECHA** (commits `a62a8fb`, `04a5999`):
 - **Migración 0103** (server-side, idempotente, transaccional): roles `tecnico`+
@@ -77,15 +79,34 @@ técnico · D4 correlativo `T-00001` · D5 3A completo).
 - **admin_cobranza sin tickets**: intencional — `is_admin_or_tickets/is_ticket_staff`
   excluyen ese rol (RLS) + router gatea a `soloAdmin` + bucket sin tickets. Consistente.
 
-**Wiring de roles `tecnico`/`admin_tickets` → 3B:** exponerlos en el picker de rol
-(`tenant_dialogs_miembro.dart`), darles **shell propio** (técnico) + **landing** +
-**bucket `por_tecnico`** + guard de router. Hoy NO se pueden asignar (a propósito,
-para no crear un login roto).
+**3B — TÉCNICO HECHO + AUDITADO** (commit `9ca9fdc`, 3 agentes: sync-rules ·
+router/roles/regresión · Dart/regresión — **0 ALTA/MEDIA**, SIN migración nueva):
+- **Sync rules** (sólo redeploy, NO bump): `por_tecnico` (ticket_tipos + cobradores
+  del tenant, gateado a rol='tecnico') · `por_tecnico_tickets` (dinámico por ticket
+  asignado: ticket + bitácora + adjuntos) · `por_tecnico_clientes` (dinámico:
+  **sólo `clientes`** de sus tickets, CERO dinero). Geo/red/settings los hereda de
+  `catalogo_tenant`. Verificado: DSL-compliant + money-safe + scopeado por `asignado_a`.
+- **Rol `tecnico` asignable** desde el picker del super_admin (`tenant_dialogs_miembro`).
+- **Shell móvil-first** `TecnicoShell` (bottom-nav Mis tickets/Mapa/Perfil) +
+  `MisTicketsScreen` (filtro activos/cerrados en SQL) + reuse de `MapaScreen`
+  (vista de campo) y `PerfilScreen(tecnicoMode)`.
+- **Resolución**: `TicketDetailScreen(tecnicoMode)` push en `/tecnico/tickets/:id`
+  (Scaffold propio); transiciones acotadas a avanzar/pausar/resolver
+  (`kEstadosDestinoTecnico`), sin reasignar. RLS `is_ticket_staff` cubre el write.
+- **Router**: landing + guard de contención (el técnico vive en `/tecnico/*`, no
+  llega a /admin, /super, dinero; whitelist sólo `/perfil/impresora`).
+- **`admin_tickets` DIFERIDO** (decisión de Rubén): NO expuesto en el picker, sin
+  shell/bucket → no hay login roto. Su shell acotado en AdminShell es un slice propio.
+- **Accepted (no bugs, no re-flag):** título por-tab del AppBar cae al nombre del ISP
+  (idéntico al `AppShell` shippeado) · `por_tecnico` baja todos los campos de cobradores
+  del tenant (consistente con el bucket admin; la own-row los necesita) · `por_tecnico_tickets`
+  crece 1 bucket por ticket de por vida (MVP-ok) · whitelist exact-match (sin sub-rutas hoy).
 
 > ⚠️ Deploy Fase 3 (al final del slice): correr `0103` + **`0104`** + **`0105`** por
-> Dashboard (en orden — `0104`/`0105` dependen de `0103`) + redeploy sync rules
-> (tablas + columnas nuevas) + restart (**schema v22**). El super_admin enciende
-> 'tickets' del tenant en `/super/tenants/:id`.
+> Dashboard (en orden — `0104`/`0105` dependen de `0103`) + **redeploy sync rules**
+> (tablas + columnas + **buckets `por_tecnico*`**) + restart (**schema v22**). El
+> super_admin enciende 'tickets' del tenant en `/super/tenants/:id`. 3B NO agregó
+> migración ni bump → sólo el redeploy de sync rules expone los buckets del técnico.
 
 ## Estado actual
 

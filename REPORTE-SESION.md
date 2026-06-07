@@ -158,6 +158,48 @@ consistentes → auditoría.
 
 > Más reciente arriba. Formato por ítem: error → fix → expectativa.
 
+### 2026-06-07 (cont. 6) — Fase 3 slice 3B: rol técnico (shell móvil + resolución)
+
+Slice 3B aprobado (FASE3-PLAN.md D3) — el rol `tecnico` ya es asignable y operable.
+**SIN migración** (sólo redeploy de sync rules; schema v22 estable). Auditado con 3
+agentes (sync-rules · router/roles/regresión · Dart/regresión): **0 ALTA/MEDIA**.
+
+**Comportamiento esperado del técnico:**
+- El super_admin asigna el rol `Técnico` a un miembro desde el picker (necesita el
+  módulo `tickets` encendido en el tenant). El admin (o admin completo) crea tickets y
+  se los asigna a un técnico.
+- El técnico loguea y entra a su **shell móvil-first** (`/tecnico`): bottom-nav
+  **Mis tickets · Mapa · Perfil**. Es offline-first como el cobrador.
+- **Mis tickets**: ve SÓLO sus tickets asignados (el bucket `por_tecnico_tickets` ya
+  los acota — el SQLite local no tiene otros). Filtro Activos/Cerrados. Badges de
+  estado + SLA. Tap → detalle.
+- **Detalle** (`/tecnico/tickets/:id`, push con back): puede **avanzar / pausar /
+  resolver** (en_progreso · en_espera · resuelto — `kEstadosDestinoTecnico`), comentar
+  y adjuntar fotos. NO puede reasignar ni cerrar/cancelar/reabrir (eso es del admin).
+  El server re-valida la transición (trigger 0103) y la RLS (`is_ticket_staff`) permite
+  su escritura.
+- **Mapa**: ve en el mapa SÓLO los clientes de sus tickets (sin filtros de admin, sin
+  datos de cobranza — el técnico NO ve dinero). **Perfil**: su nombre/rol, impresora,
+  caché del mapa, cambiar contraseña, cerrar sesión (sin prefijo/historial-de-cobros/
+  fotos-de-comprobantes, que son del cobrador).
+- **Contención**: el técnico NO accede a /admin, /super, al shell del cobrador, ni a
+  pantallas de dinero (cobro/recibo/historial/detalle-de-cliente). El router lo rebota
+  a `/tecnico`; además el sync NO le baja contratos/cuotas/pagos (doble defensa).
+- **Loop completo**: admin crea+asigna → técnico resuelve offline → sincroniza (FIFO,
+  el trigger de pausa SLA corre server-side) → admin ve `resuelto` y **cierra**.
+
+**Decisiones / accepted (no re-flag):**
+- `admin_tickets` se DIFIRIÓ (no expuesto en el picker, sin shell/bucket → no hay login
+  roto). Su shell acotado en AdminShell es un slice propio.
+- Título por-tab del AppBar cae al nombre del ISP (idéntico al `AppShell` del cobrador
+  ya shippeado — no es regresión; el bottom-nav ya indica la tab).
+- `por_tecnico` baja todos los campos de cobradores del tenant (consistente con el
+  bucket admin; la own-row los necesita para `Cobrador.fromRow`).
+
+Commit: `9ca9fdc`. Archivos: `sync-rules.yaml` · `tenant_dialogs_miembro.dart` ·
+`ticket_sla.dart` · `ticket_detail_screen.dart` · `perfil_screen.dart` · `mapa_screen.dart`
+· `router.dart` + nuevos `tecnico/tecnico_shell.dart` · `tecnico/mis_tickets_screen.dart`.
+
 ### 2026-06-07 (cont. 5) — Fase 3 slice 3A: vaciado de backlog + audit (pre-3B)
 
 Antes de arrancar 3B se vació TODO el backlog de 3A (pedido de Rubén: "no dejar

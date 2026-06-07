@@ -132,6 +132,24 @@ snapshot), foto comprobante (gated), descuento/cargo (super-only), reconexión a
 (pantalla + PDF web + térmica BT + bloques configurables + mora). Invariantes de dinero
 correctos + correlativo server-MAX + denormalización en INSERT.
 
+### tecnico (`/tecnico/*`, móvil-first, bottom-nav) — ✅ Fase 3B (módulo opcional `tickets`)
+Rol de campo para el módulo **tickets** (OFF por defecto; lo enciende el super_admin).
+Shell propio `TecnicoShell` (bottom-nav **Mis tickets · Mapa · Perfil**), offline-first.
+**Mis tickets**: sólo sus tickets asignados (el bucket `por_tecnico_tickets` los acota),
+filtro activos/cerrados en SQL, badges estado/SLA. **Detalle** (`/tecnico/tickets/:id`):
+avanzar/pausar/resolver (`kEstadosDestinoTecnico`), comentar, adjuntar fotos; NO reasigna
+ni cierra/cancela (admin). **Mapa**: sólo clientes de sus tickets, sin datos de cobranza.
+**Perfil**: impresora/sync/caché-mapa/cambiar-pass/cerrar-sesión (sin prefijo/historial/
+fotos del cobrador). **Contención**: el router lo mantiene en `/tecnico/*` (no toca
+dinero/admin/super) + el sync NO le baja contratos/cuotas/pagos (doble defensa). Auditado
+3 agentes, 0 ALTA/MEDIA. `admin_tickets` DIFERIDO (no asignable aún). SIN migración (schema v22).
+
+### Tickets admin (`/admin/tickets`) — ✅ Fase 3A (módulo opcional, soloAdmin)
+Lista (filtro de estado en SQL), tipos de ticket (CRUD + SLA por tipo), crear+asignar,
+detalle (transiciones validadas server-side + reasignar + comentar + bitácora append-only
++ adjuntos). Correlativo `T-00001`. SLA derivado en Dart con pausa exacta (trigger 0105).
+Migraciones 0103-0105. admin_cobranza NO entra (intencional).
+
 ### Reportes (`/admin/reportes`) — ✅ completo
 8 PDF (cobros, mora, por cobrador, estado de clientes, fiscal, eficiencia, inactivos,
 anulaciones) + **8 Excel `.xlsx` descargables** (los mismos + arqueo; reemplazaron el

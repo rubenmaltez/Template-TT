@@ -60,6 +60,23 @@ CLAUDE.md):
   y de contrato → centra el pin correcto. Probar offline (tiles cacheados).
 - **Transición:** navegar entre items del sidebar/nav → fade secuencial (sale una,
   entra la otra), nunca las dos encimadas.
+- **Tickets — admin (`/admin/tickets`, Fase 3A):** requiere el módulo `tickets`
+  encendido (super_admin en `/super/tenants/:id`). Crear un **tipo** con SLA → crear
+  un **ticket** (tipo + cliente opcional + asignar a un técnico) → en el detalle,
+  cambiar estado (avanzar/pausar/resolver/cerrar), reasignar, comentar, adjuntar foto.
+  *Ver:* código `T-00001`, badge de estado/SLA, bitácora cronológica (creado/asignado/
+  cambio de estado/comentario/adjunto), transiciones inválidas no ofrecidas. *Si falla:*
+  módulo OFF → `/admin/tickets` rebota a `/admin`; admin_cobranza no lo ve.
+- **Técnico (`/tecnico`, móvil-first, Fase 3B):** el super_admin asigna rol **Técnico**
+  a un miembro (módulo `tickets` encendido). El admin crea un ticket y se lo asigna.
+  Loguear como el técnico → entra al shell **Mis tickets · Mapa · Perfil**.
+  *Ver:* en Mis tickets aparece SÓLO el ticket asignado (no otros del tenant); el detalle
+  ofrece **avanzar/pausar/resolver** (no reasignar/cerrar); comentar + adjuntar foto andan;
+  el Mapa muestra sólo el cliente del ticket; el Perfil NO tiene prefijo/historial/fotos.
+  Probar **offline** (modo avión): mover el ticket en_progreso→en_espera→resuelto, comentar
+  → al volver la red, sincroniza y el admin ve `resuelto` y puede **cerrar**. *Si falla:*
+  el técnico NO debe poder entrar a `/admin`, `/super`, ni ver dinero (intentá por URL →
+  rebota a `/tecnico`).
 - **⟨agregar acá los features nuevos a medida que se entregan⟩**
 
 ---

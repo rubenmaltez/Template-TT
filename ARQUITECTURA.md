@@ -256,6 +256,40 @@ datos sin leer todo el código.
 - **Interconexiones**: `geo_picker.dart` lo consume desde **clientes**. Nota:
   estas tablas NO tienen el trigger genérico de audit (ver pendiente en CLAUDE.md).
 
+### Tickets / Técnico — `lib/features/admin/tickets/*` (admin) · `lib/features/tecnico/*` (técnico) — MÓDULO OPCIONAL (Fase 3)
+- **Gating**: módulo `tickets` (`es_base=false`, OFF por defecto; el super_admin lo
+  enciende en `/super/tenants/:id`). Migraciones **0103** (roles+tablas+RLS+trigger de
+  transición), **0104** (Storage `ticket-adjuntos`), **0105** (pausa SLA exacta).
+- **Tablas**: `ticket_tipos` (catálogo con `sla_horas` por tipo), `tickets`
+  (correlativo `T-00001`, estado [8] validado por trigger server-side, `cliente_id`/
+  `puerto_id`/`incidente_id` nullable, `segundos_pausado`+`en_espera_desde` para la
+  pausa de SLA), `ticket_eventos` (bitácora **append-only**), `ticket_adjuntos` (fotos).
+- **Roles** (1 por usuario, `set_cobrador_rol`): `tecnico` (móvil-first, shell propio) y
+  `admin_tickets` (admin acotado — **DIFERIDO**, aún no asignable). RLS: lectura =
+  miembro del tenant; escritura = `is_ticket_staff()` (admin/admin_tickets/**tecnico**).
+- **SLA derivado en Dart** (`lib/data/utils/ticket_sla.dart`, patrón de `cuota_estado`):
+  `deadline = created_at + sla_horas + segundos_pausado`; estados en plazo/por vencer/
+  vencido/en espera/cerrado. La pausa la acumula el trigger 0105 con device-time
+  (offline-safe); el cliente sólo la suma.
+- **Admin (3A)**: `/admin/tickets` (lista, filtro de estado en SQL) · `ticket_tipos`
+  (CRUD) · `ticket_form` (crear + asignar) · `ticket_detail` (transiciones con
+  re-validación en tx + reasignar + comentar + bitácora + adjuntos). Gateado a
+  `soloAdmin` + módulo.
+- **Técnico (3B)**: `TecnicoShell` (bottom-nav **Mis tickets · Mapa · Perfil**),
+  offline-first como el cobrador. `MisTicketsScreen` (sus tickets, filtro activos/
+  cerrados) → `TicketDetailScreen(tecnicoMode)` en `/tecnico/tickets/:id` (transiciones
+  acotadas a avanzar/pausar/resolver, sin reasignar). Reusa `MapaScreen`+`PerfilScreen`.
+  Router lo **contiene** en `/tecnico/*` (no toca dinero/admin/super).
+- **Interconexiones**: `cliente_id` → **clientes** · `puerto_id` → **red** (soft) ·
+  (3C) `ticket_materiales` → **inventario** (trigger de descuento de stock `consumo`) ·
+  (3D) `incidente_id` → **incidentes** (outages). Eventos de la bitácora se renderizan
+  en la timeline del ticket; el audit_log genérico cubre las 4 tablas.
+- **Sync (buckets)**: admin/impersonado bajan las 4 tablas (`todo_tenant_admin`/
+  `impersonated_tenant`). El **técnico** baja sólo lo suyo: `por_tecnico` (ticket_tipos +
+  cobradores del tenant), `por_tecnico_tickets` (dinámico: sus tickets+bitácora+adjuntos),
+  `por_tecnico_clientes` (dinámico: **sólo `clientes`** de sus tickets — CERO dinero).
+  `admin_cobranza` NO baja tickets (intencional).
+
 ---
 
 ## 4. Flujos de datos críticos end-to-end
