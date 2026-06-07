@@ -26,6 +26,7 @@ import '../features/admin/shell/admin_shell.dart';
 import '../data/providers/cobrador_provider.dart';
 import '../data/providers/db_epoch_provider.dart';
 import '../data/providers/impersonation_provider.dart';
+import '../data/providers/modulos_provider.dart';
 import '../data/providers/sync_ready_provider.dart';
 import '../data/providers/sync_status_provider.dart';
 import '../data/providers/mora_count_provider.dart';
@@ -260,6 +261,14 @@ final routerProvider = Provider<GoRouter>((ref) {
       if (rol == 'admin_cobranza' &&
           soloAdmin.any((p) => loc == p || loc.startsWith('$p/'))) {
         return '/admin';
+      }
+
+      // Módulo opcional Inventario: si el tenant (o el impersonado) no lo tiene
+      // habilitado, no se entra por URL directa (el menú ya lo oculta). Si el
+      // provider aún no resolvió (null), dejamos pasar para no rebotar en carga.
+      if (loc == '/admin/inventario' || loc.startsWith('/admin/inventario/')) {
+        final modulos = ref.read(modulosHabilitadosProvider).valueOrNull;
+        if (modulos != null && !modulos.contains('inventario')) return '/admin';
       }
 
       // Panel /super/* sólo para super_admin. Cualquier otro rol que
