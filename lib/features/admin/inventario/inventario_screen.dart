@@ -876,15 +876,31 @@ class _EquiposTabState extends ConsumerState<_EquiposTab> {
                 onSelected: (v) {
                   if (v == 'asignar') {
                     _asignar(context, s);
+                  } else if (v == 'devolver') {
+                    _devolver(context, s);
+                  } else if (v == 'transferir') {
+                    _transferir(context, s);
+                  } else if (v == 'baja') {
+                    _darDeBaja(context, s);
                   } else {
                     _showHistorialInv(context, 'inv_seriales',
                         s['id'] as String, 'Historial del equipo');
                   }
                 },
                 itemBuilder: (_) => [
-                  if (estado == 'en_stock')
+                  if (estado == 'en_stock') ...[
                     const PopupMenuItem(
                         value: 'asignar', child: Text('Asignar a cliente')),
+                    const PopupMenuItem(
+                        value: 'transferir',
+                        child: Text('Transferir de ubicación')),
+                  ],
+                  if (estado != 'en_stock' && estado != 'baja')
+                    const PopupMenuItem(
+                        value: 'devolver', child: Text('Devolver a stock')),
+                  if (estado != 'baja')
+                    const PopupMenuItem(
+                        value: 'baja', child: Text('Dar de baja')),
                   const PopupMenuItem(
                       value: 'historial', child: Text('Historial')),
                 ],
@@ -977,6 +993,140 @@ class _EquiposTabState extends ConsumerState<_EquiposTab> {
         );
       });
       _snack(context, 'Equipo asignado a ${cliente.nombre}');
+    } on _InvError catch (e) {
+      _snack(context, e.message);
+    } catch (e) {
+      _snack(context, 'Error: $e');
+    }
+  }
+
+  // Devolver un equipo (instalado/dañado/retirado) al stock, en una ubicación.
+  Future<void> _devolver(BuildContext context, Map<String, dynamic> s) async {
+    final tenantId = ref.read(tenantIdProvider);
+    if (tenantId == null) return;
+    final hechoPor = ref.read(cobradorActualProvider).valueOrNull?.id;
+    final destino =
+        await _pickUbicacion(context, titulo: 'Devolver a qué ubicación');
+    if (destino == null || !context.mounted) return;
+    final now = DateTime.now().toIso8601String();
+    try {
+      await ps.db.writeTransaction((tx) async {
+        final cur = await tx.getOptional(
+            'SELECT estado, cliente_id, producto_id FROM inv_seriales WHERE id = ?',
+            [s['id']]);
+        if (cur == null) throw const _InvError('Equipo no encontrado.');
+        if (cur['estado'] == 'en_stock') {
+          throw const _InvError('El equipo ya está en stock.');
+        }
+        if (cur['estado'] == 'baja') {
+          throw const _InvError('El equipo está dado de baja definitiva.');
+        }
+        await tx.execute(
+          "UPDATE inv_seriales SET estado = 'en_stock', cliente_id = NULL, "
+          "contrato_id = NULL, ubicacion_id = ? WHERE id = ?",
+          [destino.id, s['id']],
+        );
+        await tx.execute(
+          '''INSERT INTO inv_movimientos
+             (id, tenant_id, tipo, producto_id, serial_id, cantidad,
+              ubicacion_destino_id, cliente_id, hecho_por, ocurrido_en, created_at)
+             VALUES (?, ?, 'devolucion', ?, ?, 1, ?, ?, ?, ?, ?)''',
+          [
+            const Uuid().v4(), tenantId, cur['producto_id'], s['id'],
+            destino.id, cur['cliente_id'], hechoPor, now, now,
+          ],
+        );
+      });
+      _snack(context, 'Equipo devuelto a ${destino.nombre}');
+    } on _InvError catch (e) {
+      _snack(context, e.message);
+    } catch (e) {
+      _snack(context, 'Error: $e');
+    }
+  }
+
+  // Transferir un equipo en stock a otra ubicación.
+  Future<void> _transferir(BuildContext context, Map<String, dynamic> s) async {
+    final tenantId = ref.read(tenantIdProvider);
+    if (tenantId == null) return;
+    final hechoPor = ref.read(cobradorActualProvider).valueOrNull?.id;
+    final destino = await _pickUbicacion(context,
+        titulo: 'Transferir a qué ubicación',
+        excluirId: s['ubicacion_id'] as String?);
+    if (destino == null || !context.mounted) return;
+    final now = DateTime.now().toIso8601String();
+    try {
+      await ps.db.writeTransaction((tx) async {
+        final cur = await tx.getOptional(
+            'SELECT estado, ubicacion_id, producto_id FROM inv_seriales WHERE id = ?',
+            [s['id']]);
+        if (cur == null || cur['estado'] != 'en_stock') {
+          throw const _InvError('Solo se puede transferir un equipo en stock.');
+        }
+        await tx.execute(
+          'UPDATE inv_seriales SET ubicacion_id = ? WHERE id = ?',
+          [destino.id, s['id']],
+        );
+        await tx.execute(
+          '''INSERT INTO inv_movimientos
+             (id, tenant_id, tipo, producto_id, serial_id, cantidad,
+              ubicacion_origen_id, ubicacion_destino_id, hecho_por,
+              ocurrido_en, created_at)
+             VALUES (?, ?, 'transferencia', ?, ?, 1, ?, ?, ?, ?, ?)''',
+          [
+            const Uuid().v4(), tenantId, cur['producto_id'], s['id'],
+            cur['ubicacion_id'], destino.id, hechoPor, now, now,
+          ],
+        );
+      });
+      _snack(context, 'Equipo transferido a ${destino.nombre}');
+    } on _InvError catch (e) {
+      _snack(context, e.message);
+    } catch (e) {
+      _snack(context, 'Error: $e');
+    }
+  }
+
+  // Dar de baja un equipo (dañado/retirado/baja) → sale del stock activo.
+  Future<void> _darDeBaja(BuildContext context, Map<String, dynamic> s) async {
+    final tenantId = ref.read(tenantIdProvider);
+    if (tenantId == null) return;
+    final hechoPor = ref.read(cobradorActualProvider).valueOrNull?.id;
+    final res = await showDialog<({String estado, String? motivo})>(
+      context: context,
+      builder: (_) => const _BajaDialog(),
+    );
+    if (res == null || !context.mounted) return;
+    final now = DateTime.now().toIso8601String();
+    try {
+      await ps.db.writeTransaction((tx) async {
+        final cur = await tx.getOptional(
+            'SELECT estado, ubicacion_id, cliente_id, producto_id FROM inv_seriales WHERE id = ?',
+            [s['id']]);
+        if (cur == null) throw const _InvError('Equipo no encontrado.');
+        if (cur['estado'] == 'baja') {
+          throw const _InvError('El equipo ya está dado de baja.');
+        }
+        final estabaEnStock = cur['estado'] == 'en_stock';
+        await tx.execute(
+          'UPDATE inv_seriales SET estado = ?, cliente_id = NULL, ubicacion_id = NULL WHERE id = ?',
+          [res.estado, s['id']],
+        );
+        await tx.execute(
+          '''INSERT INTO inv_movimientos
+             (id, tenant_id, tipo, producto_id, serial_id, cantidad,
+              ubicacion_origen_id, cliente_id, motivo, hecho_por,
+              ocurrido_en, created_at)
+             VALUES (?, ?, 'baja', ?, ?, 1, ?, ?, ?, ?, ?, ?)''',
+          [
+            const Uuid().v4(), tenantId, cur['producto_id'], s['id'],
+            estabaEnStock ? cur['ubicacion_id'] : null,
+            cur['cliente_id'], res.motivo, hechoPor, now, now,
+          ],
+        );
+      });
+      _snack(context,
+          'Equipo dado de baja (${_estadoSerial[res.estado] ?? res.estado})');
     } on _InvError catch (e) {
       _snack(context, e.message);
     } catch (e) {
@@ -1518,6 +1668,100 @@ class _ContratoPicker extends StatelessWidget {
         TextButton(
             onPressed: () => Navigator.pop(context),
             child: const Text('Cancelar')),
+      ],
+    );
+  }
+}
+
+/// Elegí una ubicación activa (devolución / transferencia). `excluirId` saca
+/// una de la lista (ej. la ubicación origen en una transferencia).
+Future<({String id, String nombre})?> _pickUbicacion(
+  BuildContext context, {
+  String titulo = 'Elegí la ubicación',
+  String? excluirId,
+}) async {
+  final ubis = await ps.db.getAll(
+      'SELECT id, nombre FROM inv_ubicaciones WHERE activa = 1 ORDER BY nombre');
+  final opciones = ubis.where((u) => u['id'] != excluirId).toList();
+  if (!context.mounted) return null;
+  if (opciones.isEmpty) {
+    _snack(context, 'No hay ubicaciones disponibles. Creá una primero.');
+    return null;
+  }
+  return showDialog<({String id, String nombre})>(
+    context: context,
+    builder: (_) => SimpleDialog(
+      title: Text(titulo),
+      children: [
+        for (final u in opciones)
+          SimpleDialogOption(
+            onPressed: () => Navigator.pop(
+                context, (id: u['id'] as String, nombre: u['nombre'] as String)),
+            child: Text(u['nombre'] as String),
+          ),
+      ],
+    ),
+  );
+}
+
+/// Diálogo de baja de un equipo serializado: estado destino + motivo opcional.
+class _BajaDialog extends StatefulWidget {
+  const _BajaDialog();
+  @override
+  State<_BajaDialog> createState() => _BajaDialogState();
+}
+
+class _BajaDialogState extends State<_BajaDialog> {
+  String _estado = 'danado';
+  final _motivo = TextEditingController();
+
+  static const _opciones = {
+    'danado': 'Dañado',
+    'retirado': 'Retirado',
+    'baja': 'Baja definitiva',
+  };
+
+  @override
+  void dispose() {
+    _motivo.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Dar de baja el equipo'),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          DropdownButtonFormField<String>(
+            value: _estado,
+            decoration: const InputDecoration(labelText: 'Estado'),
+            onChanged: (v) => setState(() => _estado = v ?? 'danado'),
+            items: _opciones.entries
+                .map((e) => DropdownMenuItem(value: e.key, child: Text(e.value)))
+                .toList(),
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: _motivo,
+            textCapitalization: TextCapitalization.sentences,
+            decoration: const InputDecoration(labelText: 'Motivo (opcional)'),
+          ),
+        ],
+      ),
+      actions: [
+        TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancelar')),
+        FilledButton(
+          onPressed: () {
+            final m = _motivo.text.trim();
+            Navigator.pop(
+                context, (estado: _estado, motivo: m.isEmpty ? null : m));
+          },
+          child: const Text('Dar de baja'),
+        ),
       ],
     );
   }
