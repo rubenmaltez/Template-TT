@@ -162,6 +162,7 @@ class _NodoTileState extends State<_NodoTile> {
         onEditar: () => _editarNodo(context),
         onHistorial: () => _showHistorialRed(context, 'red_nodos',
             widget.nodo['id'] as String, 'Historial del nodo'),
+        onEliminar: () => _eliminarNodo(context),
       ),
       childrenPadding: const EdgeInsets.only(left: 16),
       maintainState: true,
@@ -208,6 +209,19 @@ class _NodoTileState extends State<_NodoTile> {
         ScaffoldMessenger.of(context)
             .showSnackBar(SnackBar(content: Text('Error: $e')));
       }
+    }
+  }
+
+  Future<void> _eliminarNodo(BuildContext context) async {
+    if (!await _confirmarRed(context, 'el nodo')) return;
+    final err = await _borrarRedSiLibre(
+      tabla: 'red_nodos',
+      id: widget.nodo['id'] as String,
+      tablaUso: 'red_hubs',
+      fkColumna: 'nodo_id',
+    );
+    if (context.mounted && err != null) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(err)));
     }
   }
 
@@ -270,6 +284,7 @@ class _HubTileState extends State<_HubTile> {
           onEditar: () => _editarHub(context),
           onHistorial: () => _showHistorialRed(context, 'red_hubs',
               widget.hub['id'] as String, 'Historial del hub'),
+          onEliminar: () => _eliminarHub(context),
         ),
         childrenPadding: const EdgeInsets.only(left: 16),
         maintainState: true,
@@ -292,6 +307,7 @@ class _HubTileState extends State<_HubTile> {
                               'red_puertos',
                               p['id'] as String,
                               'Historial del puerto'),
+                          onEliminar: () => _eliminarPuerto(context, p),
                         ),
                       )),
                   ListTile(
@@ -344,6 +360,35 @@ class _HubTileState extends State<_HubTile> {
     }
   }
 
+  Future<void> _eliminarHub(BuildContext context) async {
+    if (!await _confirmarRed(context, 'el hub')) return;
+    final err = await _borrarRedSiLibre(
+      tabla: 'red_hubs',
+      id: widget.hub['id'] as String,
+      tablaUso: 'red_puertos',
+      fkColumna: 'hub_id',
+    );
+    if (context.mounted && err != null) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(err)));
+    }
+  }
+
+  Future<void> _eliminarPuerto(
+      BuildContext context, Map<String, dynamic> p) async {
+    if (!await _confirmarRed(context, 'el puerto')) return;
+    // FK clientes.puerto_id es ON DELETE SET NULL → no bloquea; por eso
+    // verificamos a mano que no haya clientes asignados antes de borrar.
+    final err = await _borrarRedSiLibre(
+      tabla: 'red_puertos',
+      id: p['id'] as String,
+      tablaUso: 'clientes',
+      fkColumna: 'puerto_id',
+    );
+    if (context.mounted && err != null) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(err)));
+    }
+  }
+
   Future<void> _crearPuerto(BuildContext context, String hubId) async {
     final res = await promptNombreNotasRed(context, 'Nuevo puerto');
     if (res == null) return;
@@ -365,24 +410,68 @@ class _HubTileState extends State<_HubTile> {
 /// Menú de acciones por fila de red (Editar / Historial), reusado en los 3
 /// niveles. Como `trailing` del ExpansionTile/ListTile.
 class _RedRowMenu extends StatelessWidget {
-  const _RedRowMenu({required this.onEditar, required this.onHistorial});
+  const _RedRowMenu({
+    required this.onEditar,
+    required this.onHistorial,
+    required this.onEliminar,
+  });
   final VoidCallback onEditar;
   final VoidCallback onHistorial;
+  final VoidCallback onEliminar;
 
   @override
   Widget build(BuildContext context) {
     return PopupMenuButton<String>(
       tooltip: 'Acciones',
-      onSelected: (v) {
-        if (v == 'editar') onEditar();
-        if (v == 'historial') onHistorial();
+      onSelected: (v) => switch (v) {
+        'editar' => onEditar(),
+        'eliminar' => onEliminar(),
+        _ => onHistorial(),
       },
       itemBuilder: (_) => const [
         PopupMenuItem(value: 'editar', child: Text('Editar')),
         PopupMenuItem(value: 'historial', child: Text('Historial')),
+        PopupMenuItem(value: 'eliminar', child: Text('Eliminar')),
       ],
     );
   }
+}
+
+/// Borra una fila de red solo si NO está en uso (tiene hijas o clientes
+/// asignados). Devuelve mensaje de error o null si borró OK.
+Future<String?> _borrarRedSiLibre({
+  required String tabla,
+  required String id,
+  required String tablaUso,
+  required String fkColumna,
+}) async {
+  final usos = await ps.db.getAll(
+    'SELECT COUNT(*) AS n FROM $tablaUso WHERE $fkColumna = ?',
+    [id],
+  );
+  final n = (usos.first['n'] as int?) ?? 0;
+  if (n > 0) return 'No se puede eliminar: está en uso ($n).';
+  await ps.db.execute('DELETE FROM $tabla WHERE id = ?', [id]);
+  return null;
+}
+
+Future<bool> _confirmarRed(BuildContext context, String que) async {
+  final ok = await showDialog<bool>(
+    context: context,
+    builder: (ctx) => AlertDialog(
+      title: const Text('Eliminar'),
+      content: Text('¿Eliminar $que? No se puede deshacer.'),
+      actions: [
+        TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancelar')),
+        FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Eliminar')),
+      ],
+    ),
+  );
+  return ok ?? false;
 }
 
 /// Abre el historial de cambios (audit log) de una fila de red, mismo patrón

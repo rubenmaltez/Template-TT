@@ -206,11 +206,11 @@ class _DeptoTileState extends State<_DeptoTile> {
         leading: const Icon(Icons.map),
         title: Text(depto['nombre'] as String),
         subtitle: depto['codigo'] != null ? Text(depto['codigo'] as String) : null,
-        trailing: IconButton(
-          icon: const Icon(Icons.history),
-          tooltip: 'Historial',
-          onPressed: () => _showHistorialGeo(context, 'departamentos',
+        trailing: _GeoRowMenu(
+          onEditar: () => _editarDepto(context),
+          onHistorial: () => _showHistorialGeo(context, 'departamentos',
               depto['id'] as String, 'Historial del departamento'),
+          onEliminar: () => _eliminarDepto(context),
         ),
         // maintainState: true para que el StreamBuilder interno NO se
         // desmonte al colapsar el tile. Sin esto, al re-expandir el
@@ -245,6 +245,34 @@ class _DeptoTileState extends State<_DeptoTile> {
         ],
       ),
     );
+  }
+
+  Future<void> _editarDepto(BuildContext context) async {
+    final nombre = await _promptNombre(context, 'Editar departamento',
+        inicial: widget.depto['nombre'] as String?);
+    if (nombre == null) return;
+    try {
+      await ps.db.execute('UPDATE departamentos SET nombre = ? WHERE id = ?',
+          [nombre, widget.depto['id']]);
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('Error: $e')));
+      }
+    }
+  }
+
+  Future<void> _eliminarDepto(BuildContext context) async {
+    if (!await _confirmarGeo(context, 'el departamento')) return;
+    final err = await _borrarGeoSiLibre(
+      tabla: 'departamentos',
+      id: widget.depto['id'] as String,
+      tablaHijaOClientes: 'municipios',
+      fkColumna: 'departamento_id',
+    );
+    if (context.mounted && err != null) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(err)));
+    }
   }
 
   Future<void> _crearMunicipio(BuildContext context, String deptoId) async {
@@ -308,11 +336,11 @@ class _MunicipioTileState extends State<_MunicipioTile> {
       child: ExpansionTile(
         leading: const Icon(Icons.location_city),
         title: Text(municipio['nombre'] as String),
-        trailing: IconButton(
-          icon: const Icon(Icons.history),
-          tooltip: 'Historial',
-          onPressed: () => _showHistorialGeo(context, 'municipios',
+        trailing: _GeoRowMenu(
+          onEditar: () => _editarMunicipio(context),
+          onHistorial: () => _showHistorialGeo(context, 'municipios',
               municipio['id'] as String, 'Historial del municipio'),
+          onEliminar: () => _eliminarMunicipio(context),
         ),
         childrenPadding: const EdgeInsets.only(left: 16),
         // Idem _DeptoTile: mantener el StreamBuilder de comunidades
@@ -330,14 +358,14 @@ class _MunicipioTileState extends State<_MunicipioTile> {
                         dense: true,
                         leading: const Icon(Icons.place, size: 18),
                         title: Text(c['nombre'] as String),
-                        trailing: IconButton(
-                          icon: const Icon(Icons.history, size: 18),
-                          tooltip: 'Historial',
-                          onPressed: () => _showHistorialGeo(
+                        trailing: _GeoRowMenu(
+                          onEditar: () => _editarComunidad(context, c),
+                          onHistorial: () => _showHistorialGeo(
                               context,
                               'comunidades',
                               c['id'] as String,
                               'Historial de la comunidad'),
+                          onEliminar: () => _eliminarComunidad(context, c),
                         ),
                       )),
                   ListTile(
@@ -353,6 +381,64 @@ class _MunicipioTileState extends State<_MunicipioTile> {
         ],
       ),
     );
+  }
+
+  Future<void> _editarMunicipio(BuildContext context) async {
+    final nombre = await _promptNombre(context, 'Editar municipio',
+        inicial: widget.municipio['nombre'] as String?);
+    if (nombre == null) return;
+    try {
+      await ps.db.execute('UPDATE municipios SET nombre = ? WHERE id = ?',
+          [nombre, widget.municipio['id']]);
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('Error: $e')));
+      }
+    }
+  }
+
+  Future<void> _editarComunidad(
+      BuildContext context, Map<String, dynamic> c) async {
+    final nombre = await _promptNombre(context, 'Editar comunidad',
+        inicial: c['nombre'] as String?);
+    if (nombre == null) return;
+    try {
+      await ps.db.execute('UPDATE comunidades SET nombre = ? WHERE id = ?',
+          [nombre, c['id']]);
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('Error: $e')));
+      }
+    }
+  }
+
+  Future<void> _eliminarMunicipio(BuildContext context) async {
+    if (!await _confirmarGeo(context, 'el municipio')) return;
+    final err = await _borrarGeoSiLibre(
+      tabla: 'municipios',
+      id: widget.municipio['id'] as String,
+      tablaHijaOClientes: 'comunidades',
+      fkColumna: 'municipio_id',
+    );
+    if (context.mounted && err != null) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(err)));
+    }
+  }
+
+  Future<void> _eliminarComunidad(
+      BuildContext context, Map<String, dynamic> c) async {
+    if (!await _confirmarGeo(context, 'la comunidad')) return;
+    final err = await _borrarGeoSiLibre(
+      tabla: 'comunidades',
+      id: c['id'] as String,
+      tablaHijaOClientes: 'clientes',
+      fkColumna: 'comunidad_id',
+    );
+    if (context.mounted && err != null) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(err)));
+    }
   }
 
   Future<void> _crearComunidad(BuildContext context, String municipioId) async {
@@ -374,7 +460,75 @@ class _MunicipioTileState extends State<_MunicipioTile> {
   }
 }
 
-Future<String?> _promptNombre(BuildContext context, String titulo) {
+/// Menú de acciones por fila geo (Editar / Historial). Mismo patrón que el de
+/// la pantalla de Red.
+class _GeoRowMenu extends StatelessWidget {
+  const _GeoRowMenu({
+    required this.onEditar,
+    required this.onHistorial,
+    required this.onEliminar,
+  });
+  final VoidCallback onEditar;
+  final VoidCallback onHistorial;
+  final VoidCallback onEliminar;
+
+  @override
+  Widget build(BuildContext context) {
+    return PopupMenuButton<String>(
+      tooltip: 'Acciones',
+      onSelected: (v) => switch (v) {
+        'editar' => onEditar(),
+        'eliminar' => onEliminar(),
+        _ => onHistorial(),
+      },
+      itemBuilder: (_) => const [
+        PopupMenuItem(value: 'editar', child: Text('Editar')),
+        PopupMenuItem(value: 'historial', child: Text('Historial')),
+        PopupMenuItem(value: 'eliminar', child: Text('Eliminar')),
+      ],
+    );
+  }
+}
+
+/// Helper compartido: borra una fila geo solo si NO está en uso (FK). Devuelve
+/// un mensaje de error para mostrar, o null si borró OK.
+Future<String?> _borrarGeoSiLibre({
+  required String tabla,
+  required String id,
+  required String tablaHijaOClientes,
+  required String fkColumna,
+}) async {
+  final usos = await ps.db.getAll(
+    'SELECT COUNT(*) AS n FROM $tablaHijaOClientes WHERE $fkColumna = ?',
+    [id],
+  );
+  final n = (usos.first['n'] as int?) ?? 0;
+  if (n > 0) return 'No se puede eliminar: está en uso ($n).';
+  await ps.db.execute('DELETE FROM $tabla WHERE id = ?', [id]);
+  return null;
+}
+
+Future<bool> _confirmarGeo(BuildContext context, String que) async {
+  final ok = await showDialog<bool>(
+    context: context,
+    builder: (ctx) => AlertDialog(
+      title: const Text('Eliminar'),
+      content: Text('¿Eliminar $que? No se puede deshacer.'),
+      actions: [
+        TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancelar')),
+        FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Eliminar')),
+      ],
+    ),
+  );
+  return ok ?? false;
+}
+
+Future<String?> _promptNombre(BuildContext context, String titulo,
+    {String? inicial}) {
   // El controller vive sólo mientras el dialog está montado. Antes
   // lo creábamos acá pero nunca lo disponíamos — quedaba retenido por
   // la closure del builder con listeners apuntando a Elements ya
@@ -394,7 +548,7 @@ Future<String?> _promptNombre(BuildContext context, String titulo) {
   // por el sidebar cascadea: lifecycle inactive (framework.dart:4735) →
   // Duplicate GlobalKey → `_elements.contains` (framework.dart:2168) →
   // red screen. Diagnosticado vía /super/logs (sprint 0035).
-  final ctrl = TextEditingController();
+  final ctrl = TextEditingController(text: inicial ?? '');
   return showDialog<String?>(
     context: context,
     builder: (dialogContext) => AlertDialog(
