@@ -158,6 +158,38 @@ consistentes → auditoría.
 
 > Más reciente arriba. Formato por ítem: error → fix → expectativa.
 
+### 2026-06-07 — Fase 2 (Inventario): gating + catálogo + ubicaciones + ledger
+
+Módulo OPCIONAL gateado por `tenant_modulos` ('inventario', es_base=false → OFF
+por defecto; super_admin lo habilita en `/super/tenants/:id`). Por slices auditados.
+Migraciones **0099** (catálogo: inv_categorias/proveedores/productos + `id` en
+tenant_modulos para sync), **0100** (inv_ubicaciones), **0101** (inv_seriales +
+inv_movimientos ledger append-only). schema **v20**. Commits `cf32f3d`/`d690c13`/
+`5e55f47`/`cf98aa4`.
+
+**Comportamiento esperado**
+- **Gating**: el menú/ruta `/admin/inventario` aparece solo si el módulo está ON
+  para el tenant (o el impersonado). `modulosHabilitadosProvider` lee
+  `tenant_modulos` (synced, filtrado por `tenantIdProvider`, observa `dbEpochProvider`).
+  El router rebota `/admin/inventario`→`/admin` si OFF. No lo bypassa el super_admin.
+- **Inventario** = pestañas Existencias | Productos | Ubicaciones | Proveedores.
+  CRUD + historial en cada catálogo (mismo patrón red/geo). Producto:
+  serializado (serial único) vs granel (unidad/decimales).
+- **Stock derivado del ledger** (NO se materializa): `Σ(cantidad destino) −
+  Σ(cantidad origen)` por producto. **Ingreso** (recepción): serializado→seriales
+  uno por línea (unicidad validada), granel→cantidad; crea seriales + movimientos
+  'ingreso' **atómicos (writeTransaction)**. `costo_unitario` se guarda; el promedio
+  ponderado NO se recalcula aún (backlog).
+- Append-only en `inv_movimientos` (RLS solo read+insert). Inventario solo lo ve
+  admin; cobrador NO sincroniza inventario (Fase 2 admin-facing; técnico = Fase 3).
+
+**Fixes de audit aplicados**: gating no observaba dbEpoch (stale tras user-switch)
++ filtro por tenant (colisión bajo impersonación) + router gate; ingreso atómico.
+**Pendiente** (ver HANDOFF, spec detallada): 2C-2 (asignar equipo a cliente +
+egreso/ajuste/transferencia/baja + guardas de borrado) · 2D (equipos en ficha cliente).
+
+---
+
 ### 2026-06-07 — Fase 1.1: fixes red + filtro por nodo + editar/eliminar red·geo
 
 Post-testing de Rubén (super_admin impersonando). Commits `a93ab98` (fix puerto),

@@ -75,9 +75,39 @@ ni trigger de proyección. Fase 2 es admin-facing; custodia por técnico = Fase 
   migración 0101 (inv_seriales + inv_movimientos append-only); pestaña Existencias
   (stock derivado = Σdestino−Σorigen); Ingreso (serializado/granel, **atómico vía
   writeTransaction**). schema **v20**. `costo_promedio` NO se auto-recalcula aún.
-- ⏳ **2C-2**: asignar equipo serializado a cliente (estado→instalado) + egreso/
-  ajuste/transferencia/baja + guardas de borrado de producto/ubicación.
-- ⏳ **2D**: equipos instalados en pantalla de cliente/contrato.
+- ⏳ **2C-2 (PRÓXIMO — spec detallada para continuar sin re-derivar):**
+  Archivo principal: `lib/features/admin/inventario/inventario_screen.dart`
+  (patrones ya establecidos ahí: `_InvRowMenu`, `_showHistorialInv`, `_snack`,
+  `_confirmar`, `writeTransaction`, `tenantIdProvider`, `cobradorActualProvider.id`).
+  **NO requiere migración nueva** (las tablas/columnas de 0101 ya cubren todo);
+  por ende **no** bumpear schema ni tocar sync salvo que se agregue una tabla.
+  1. **Asignar equipo a cliente** (acción sobre un serial `en_stock`):
+     diálogo elegir cliente (+ contrato opcional del cliente) → en `writeTransaction`:
+     `UPDATE inv_seriales SET estado='instalado', cliente_id=?, contrato_id=?,
+     ubicacion_id=NULL` + `INSERT inv_movimientos(tipo='asignacion', serial_id,
+     producto_id, cantidad=1, ubicacion_origen_id=<ubic previa del serial>,
+     cliente_id, contrato_id, hecho_por, ocurrido_en)`. La ubic_origen resta del
+     stock (Σorigen) → el equipo sale de existencias. Inverso = **devolución**
+     (estado→'retirado'/'en_stock', cliente_id NULL, mov tipo='devolucion' con destino).
+  2. **Egreso / Baja** (granel o serial): mov con solo `ubicacion_origen_id` (−).
+     Baja de serial: estado→'baja'/'danado'. **Ajuste**: mov con destino(+) u
+     origen(−) según signo + `motivo` obligatorio. **Transferencia**: mov con
+     origen + destino (entre ubicaciones).
+  3. **Guardas de borrado** (ahora SÍ hay dependientes): en `_ProductosTab._eliminar`
+     bloquear si `inv_seriales` o `inv_movimientos` referencian el producto
+     (patrón `_borrarRedSiLibre`); en `_UbicacionesTab._eliminar` bloquear si hay
+     movimientos/seriales en esa ubicación. (Hoy esos deletes son hard sin guarda
+     — comentado en el código "agregar guarda en 2C".)
+  4. Listar movimientos por producto/serial (historial de existencias) — opcional.
+  5. Registrar labels de campo nuevos en `audit_changelog.dart` si hace falta
+     (estado de serial, tipo de movimiento ya están en kAuditEntidadLabel).
+  Auditar el slice (foco: signo del stock en asignacion/egreso/transferencia, y
+  atomicidad serial+movimiento en writeTransaction). Decisión de stock derivado:
+  `Σ(cantidad WHERE destino) − Σ(cantidad WHERE origen)` por producto (ya impl.).
+- ⏳ **2D**: equipos instalados en ficha del cliente/contrato. En
+  `cliente_detail_screen.dart` agregar sección "Equipos instalados" =
+  `SELECT s.serial, p.nombre FROM inv_seriales s JOIN inv_productos p ON p.id=s.producto_id
+  WHERE s.cliente_id=? AND s.estado='instalado'`. Solo si módulo inventario activo.
 
 > ⚠️ Deploy Fase 2 (al final, todo junto): correr `0099` + `0100` (+ las de 2C) por
 > Dashboard, redeploy sync rules, restart (schema v19+). Para ver Inventario el
