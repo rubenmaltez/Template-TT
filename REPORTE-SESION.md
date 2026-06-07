@@ -158,6 +158,53 @@ consistentes → auditoría.
 
 > Más reciente arriba. Formato por ítem: error → fix → expectativa.
 
+### 2026-06-07 (cont. 7) — Fase 3 slice 3C: materiales (engancha inventario)
+
+Slice 3C aprobado (FASE3-PLAN.md D1 + decisiones de Rubén: 3C completo, trazabilidad
+vía ticket_materiales). Migración **0106**, schema **v22→v23**. Auditado con **4 agentes**
+(trigger/inventario/dinero · cross-módulo · sync/RLS · Dart/UI): dinero **hermético**,
+**1 ALTA corregida**, resto BAJA.
+
+**Comportamiento esperado:**
+- En el detalle de un ticket (admin o técnico), si el tenant tiene el módulo **inventario**
+  encendido, aparece la sección **Materiales**. "Agregar" elige: la ubicación-origen (la
+  **custodia del técnico** `tipo='tecnico'` automática, o cualquier ubicación para el admin)
+  y un equipo **serializado** (de stock en esa ubicación) o **granel** (producto con stock +
+  cantidad).
+- Al registrar, se inserta `ticket_materiales` (+ evento `'material'` en la bitácora). El
+  **descuento de stock es server-side**: un trigger inserta el `inv_movimientos 'consumo'`
+  (descuenta del origen) y, si es serial, lo marca **'instalado'** en el cliente del ticket.
+  Offline el técnico registra ya; el stock se descuenta al sincronizar ("server gana").
+- El equipo instalado vía ticket aparece en **"Equipos instalados"** del cliente (2D) y, al
+  cancelar el contrato o desactivar el cliente, en el ofrecimiento de **devolver/retirar**.
+- El consumo se ve en: la **bitácora del ticket**, el **cuna-a-tumba del serial**
+  (HistorialSerialWidget une `ticket_materiales`). NO se descuenta dos veces ni toca dinero.
+
+**Errores → fixes:**
+- **Aislamiento multi-tenant (ALTA, `65fc29d`)**: el trigger SECURITY DEFINER (que saltea
+  RLS) validaba sólo el tenant del ticket, no el de producto/ubicación/serial → una fila
+  podía referenciar recursos de otro tenant. Fix = validar la co-tenencia de los 3 FK con
+  RAISE EXCEPTION. **Expectativa**: imposible crear un material que cruce tenants.
+- **Equipos de ticket fantasma al cancelar contrato (cross-módulo, `f349f1f`)**: el consumo
+  instala el serial con `cliente_id` pero sin `contrato_id` (el ticket no tiene contrato);
+  `equipos_en_baja` filtraba sólo por `contrato_id` → no los ofrecía al cancelar el contrato
+  (sí al desactivar el cliente). Fix = el barrido de cancelación de contrato ahora incluye
+  los equipos del MISMO cliente sin contrato. **Expectativa**: ningún equipo instalado vía
+  ticket queda fantasma; el admin lo ve y decide (ofrecimiento no bloqueante).
+- **Botón "Registrar" de granel sin validar cantidad (BAJA, `65fc29d`)**: quedaba habilitado
+  con cantidad vacía/0 y hacía no-op silencioso. Fix = se habilita sólo con cantidad >0 +
+  listener que reacciona al tipear.
+
+**Accepted/v2 (documentado):** granel offline puede doble-descontar (tolerancia negativa,
+por diseño) · serial instalado en ticket-sin-cliente (outage) queda sin cliente (v2) · el
+consumo-install no aparece en el change-log del **cliente** (es nieto vía ticket → regla de
+profundidad; sí aparece en el del serial + el ticket).
+
+Commits: `4677cdf` (datos) · `81282e7` (UI) · `65fc29d` (fixes audit) · `f349f1f` (cross-módulo).
+Archivos: `0106_ticket_materiales.sql` (nuevo) · `ticket_materiales_widget.dart` (nuevo) ·
+`ticket_detail_screen.dart` · `historial_cambios_widget.dart` · `equipos_en_baja.dart` ·
+`audit_changelog.dart` · `schema.dart` · `db.dart` · `sync-rules.yaml`.
+
 ### 2026-06-07 (cont. 6) — Fase 3 slice 3B: rol técnico (shell móvil + resolución)
 
 Slice 3B aprobado (FASE3-PLAN.md D3) — el rol `tecnico` ya es asignable y operable.

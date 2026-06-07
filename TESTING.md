@@ -77,6 +77,16 @@ CLAUDE.md):
   → al volver la red, sincroniza y el admin ve `resuelto` y puede **cerrar**. *Si falla:*
   el técnico NO debe poder entrar a `/admin`, `/super`, ni ver dinero (intentá por URL →
   rebota a `/tecnico`).
+- **Materiales del ticket (3C, requiere módulos tickets + inventario):** primero, como admin,
+  creá una ubicación de Inventario `tipo='técnico'` con el `cobrador_id` del técnico y
+  transferíle stock (un serial + algo de granel). Como técnico (o admin), en el detalle del
+  ticket → **Materiales › Agregar** → elegí serial o granel + cantidad → Registrar.
+  *Ver:* aparece en la lista de Materiales + un evento "material" en la bitácora; al
+  sincronizar, en Inventario el **stock baja** y el serial queda **'instalado'** en el
+  cliente del ticket (visible en "Equipos instalados" del cliente y en el historial del
+  serial). Probá **offline**: registrar un material sin red → al volver, el stock se
+  descuenta. *Si falla:* el botón Registrar de granel debe exigir cantidad >0; un técnico
+  sin custodia ve el aviso "no tenés una custodia asignada".
 - **⟨agregar acá los features nuevos a medida que se entregan⟩**
 
 ---

@@ -137,18 +137,22 @@ Rol de campo para el módulo **tickets** (OFF por defecto; lo enciende el super_
 Shell propio `TecnicoShell` (bottom-nav **Mis tickets · Mapa · Perfil**), offline-first.
 **Mis tickets**: sólo sus tickets asignados (el bucket `por_tecnico_tickets` los acota),
 filtro activos/cerrados en SQL, badges estado/SLA. **Detalle** (`/tecnico/tickets/:id`):
-avanzar/pausar/resolver (`kEstadosDestinoTecnico`), comentar, adjuntar fotos; NO reasigna
-ni cierra/cancela (admin). **Mapa**: sólo clientes de sus tickets, sin datos de cobranza.
+avanzar/pausar/resolver (`kEstadosDestinoTecnico`), comentar, adjuntar fotos, **registrar
+materiales de su custodia** (3C — descuenta inventario server-side, instala el serial en el
+cliente); NO reasigna ni cierra/cancela (admin). **Mapa**: sólo clientes de sus tickets, sin datos de cobranza.
 **Perfil**: impresora/sync/caché-mapa/cambiar-pass/cerrar-sesión (sin prefijo/historial/
 fotos del cobrador). **Contención**: el router lo mantiene en `/tecnico/*` (no toca
 dinero/admin/super) + el sync NO le baja contratos/cuotas/pagos (doble defensa). Auditado
 3 agentes, 0 ALTA/MEDIA. `admin_tickets` DIFERIDO (no asignable aún). SIN migración (schema v22).
 
-### Tickets admin (`/admin/tickets`) — ✅ Fase 3A (módulo opcional, soloAdmin)
+### Tickets admin (`/admin/tickets`) — ✅ Fase 3A+3C (módulo opcional, soloAdmin)
 Lista (filtro de estado en SQL), tipos de ticket (CRUD + SLA por tipo), crear+asignar,
 detalle (transiciones validadas server-side + reasignar + comentar + bitácora append-only
 + adjuntos). Correlativo `T-00001`. SLA derivado en Dart con pausa exacta (trigger 0105).
-Migraciones 0103-0105. admin_cobranza NO entra (intencional).
+**3C: materiales** — sección en el detalle (si el módulo inventario está on) para registrar
+equipos/insumos consumidos (serial de stock o granel); un trigger server-side (0106)
+descuenta el inventario e instala el serial en el cliente del ticket. Migraciones 0103-0106
+(schema v23). admin_cobranza NO entra (intencional).
 
 ### Reportes (`/admin/reportes`) — ✅ completo
 8 PDF (cobros, mora, por cobrador, estado de clientes, fiscal, eficiencia, inactivos,

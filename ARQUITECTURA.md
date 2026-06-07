@@ -281,14 +281,19 @@ datos sin leer todo el código.
   acotadas a avanzar/pausar/resolver, sin reasignar). Reusa `MapaScreen`+`PerfilScreen`.
   Router lo **contiene** en `/tecnico/*` (no toca dinero/admin/super).
 - **Interconexiones**: `cliente_id` → **clientes** · `puerto_id` → **red** (soft) ·
-  (3C) `ticket_materiales` → **inventario** (trigger de descuento de stock `consumo`) ·
-  (3D) `incidente_id` → **incidentes** (outages). Eventos de la bitácora se renderizan
-  en la timeline del ticket; el audit_log genérico cubre las 4 tablas.
-- **Sync (buckets)**: admin/impersonado bajan las 4 tablas (`todo_tenant_admin`/
+  **`ticket_materiales` → inventario (3C, HECHO)**: registrar un material dispara un
+  trigger SECURITY DEFINER (0106) que inserta `inv_movimientos 'consumo'` (descuenta del
+  origen) y marca el serial `'instalado'` en el cliente del ticket → el equipo aparece en
+  "Equipos instalados" del cliente y en `equipos_en_baja`. El técnico consume de su
+  custodia (`inv_ubicaciones tipo='tecnico'`). · (3D) `incidente_id` → **incidentes**
+  (outages). Eventos de la bitácora en la timeline del ticket; el consumo se surfacea en el
+  cuna-a-tumba del serial (via `ticket_materiales`). El audit_log genérico cubre las 5 tablas.
+- **Sync (buckets)**: admin/impersonado bajan las 5 tablas de ticket (`todo_tenant_admin`/
   `impersonated_tenant`). El **técnico** baja sólo lo suyo: `por_tecnico` (ticket_tipos +
-  cobradores del tenant), `por_tecnico_tickets` (dinámico: sus tickets+bitácora+adjuntos),
-  `por_tecnico_clientes` (dinámico: **sólo `clientes`** de sus tickets — CERO dinero).
-  `admin_cobranza` NO baja tickets (intencional).
+  cobradores + catálogo inv), `por_tecnico_tickets` (dinámico: sus tickets + bitácora +
+  adjuntos + **materiales**), `por_tecnico_clientes` (dinámico: **sólo `clientes`** de sus
+  tickets — CERO dinero), **`por_tecnico_inventario`** (dinámico: su custodia `tipo='tecnico'`
+  — ubicación + seriales + ledger de esa ubicación). `admin_cobranza` NO baja tickets (intencional).
 
 ---
 
