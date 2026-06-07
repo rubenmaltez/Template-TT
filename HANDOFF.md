@@ -85,9 +85,15 @@ Rubén testeó (super_admin impersonando) y reportó bugs/pedidos. Estado:
 - (Opcional) mostrar nodo en `/admin/mapa` como capa, badge libre/ocupado del puerto.
 - Fases 2/3 (Inventario / Tickets) — ver PLAN.
 
-**⚠️ Foot-gun latente (backlog):** `connector.dart:68-86` traga errores de upload
-no-retryables → una fila podría quedar local-only sin persistir (hoy no se dispara
-porque RLS permite los INSERT). Documentar/endurecer a futuro.
+**⚠️ Backlog (no bloqueante):**
+- `connector.dart:68-86` traga errores de upload no-retryables → fila podría quedar
+  local-only (hoy no se dispara). Documentar/endurecer.
+- **R1 — borrar puerto bajo multi-admin offline**: la guarda cuenta clientes en
+  SQLite local y `clientes.puerto_id` es `ON DELETE SET NULL` → si una asignación
+  hecha por otro admin no sincronizó, borrar el puerto nulea ese vínculo en server
+  en silencio (recableable, no se pierde el cliente). No pasa en single-admin.
+  **Hardening si se decide:** cambiar la FK a `ON DELETE RESTRICT` (migración nueva,
+  alinea con la guarda + uniforme con geo) o mover el borrado a RPC server-side.
 
 ## Fase 1 — CÓDIGO COMPLETO, falta DEPLOY + TESTING de Rubén
 

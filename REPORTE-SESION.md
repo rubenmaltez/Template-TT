@@ -158,6 +158,42 @@ consistentes → auditoría.
 
 > Más reciente arriba. Formato por ítem: error → fix → expectativa.
 
+### 2026-06-07 — Fase 1.1: fixes red + filtro por nodo + editar/eliminar red·geo
+
+Post-testing de Rubén (super_admin impersonando). Commits `a93ab98` (fix puerto),
+`3ac3597` (banner), `c2ea65d` (map-picker+notas nodo), `9115a7f` (red editable+
+historial), `cb76bab` (geo historial), `c211a38` (filtro nodo), `c03dd8b`
+(editar/eliminar). Auditado por agentes con rastreo de data-flow (la ronda
+estática previa dejó pasar el bug del puerto).
+
+**Bug del puerto (error → fix → exp)**
+- *Error:* el `RedPicker` al elegir Hub dejaba `_puertosStream` en `Stream.empty()`
+  en vez de `_watchPuertos(id)` → el dropdown de Puerto nunca poblaba en selección
+  fresca → `clientes.puerto_id` se guardaba null. (Bug introducido al "cachear"
+  streams; afectaba a TODOS los roles, no era impersonación.)
+- *Fix:* `_puertosStream = id==null ? Stream.empty() : _watchPuertos(id)` (espejo
+  del patrón Nodo→Hub). *Exp:* elegir Nodo→Hub→Puerto puebla y persiste; el detalle
+  del cliente muestra "Red: Nodo → Hub → Puerto".
+
+**Comportamiento esperado — red/geo (lifecycle completo)**
+- `/admin/red`: menú por fila **Editar / Historial / Eliminar** en nodo/hub/puerto.
+  Nodo con tipo + lat/lng (selección por mapa, reusa `MapaPickerScreen`) + notas;
+  hub/puerto con notas. Geografía: mismo menú (antes solo crear+historial).
+- **Eliminar = borrado duro con guarda de "en uso"**: no borra si tiene hijas o
+  clientes asignados (avisa). Puerto se chequea a mano (su FK es ON DELETE SET NULL).
+  Consistente geo↔red, sin soft-delete (evita "valor asignado que desaparece").
+- **Historial universal**: nodo/hub/puerto y depto/municipio/comunidad graban en
+  `audit_log` (triggers de 0097/0098) y tienen su 🕐/menú de Historial en la UI.
+- **Filtro por Nodo** en lista de clientes (chip) y mapa (dropdown), junto a los
+  filtros existentes. Cliente conecta a un Puerto → su nodo se deriva por la cadena.
+- **Banner de impersonación**: aparece UNA sola vez (gateado por `!enAdminShell`).
+
+**Riesgo conocido (backlog, no bloqueante):** R1 — borrar puerto bajo multi-admin
+offline puede nulear `puerto_id` de un cliente en server si la asignación no
+sincronizó (SET NULL; recableable). Single-admin no afectado. Ver HANDOFF.
+
+---
+
 ### 2026-06-07 — Fase 1: geografía per-tenant + topología de red (Nodo→Hub→Puerto)
 
 Branch `claude/inventory-tickets-technician-role` (sale de `7bc16aa`; backup
