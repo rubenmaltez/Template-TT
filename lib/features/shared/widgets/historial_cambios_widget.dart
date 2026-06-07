@@ -580,6 +580,125 @@ class _HistorialCuotaWidgetState extends ConsumerState<HistorialCuotaWidget> {
 }
 
 // ---------------------------------------------------------------------------
+// Timeline del EQUIPO serializado (Agregador): une los cambios del propio
+// serial (alta, cambios de estado/cliente) con los de SUS movimientos del
+// ledger (inv_movimientos con serial_id = ?) — el rastro "cuna a tumba"
+// (ingreso → asignación → devolución/baja) que el plan describe. El movimiento
+// es nieto-conceptual del serial pero se incluye porque es la hoja del ledger
+// que da el detalle (ubicación de devolución, proveedor, motivo) que el UPDATE
+// del serial no captura. Solo admin/admin_cobranza/super sincronizan audit_log
+// e inv_movimientos.
+// ---------------------------------------------------------------------------
+class HistorialSerialWidget extends ConsumerStatefulWidget {
+  const HistorialSerialWidget({super.key, required this.serialId});
+  final String serialId;
+
+  @override
+  ConsumerState<HistorialSerialWidget> createState() =>
+      _HistorialSerialWidgetState();
+}
+
+class _HistorialSerialWidgetState extends ConsumerState<HistorialSerialWidget> {
+  late Stream<List<Map<String, dynamic>>> _stream;
+
+  @override
+  void initState() {
+    super.initState();
+    _stream = _buildStream();
+  }
+
+  @override
+  void didUpdateWidget(HistorialSerialWidget old) {
+    super.didUpdateWidget(old);
+    if (old.serialId != widget.serialId) {
+      setState(() => _stream = _buildStream());
+    }
+  }
+
+  Stream<List<Map<String, dynamic>>> _buildStream() {
+    return ps.db.watch(
+      '''
+      SELECT a.id, a.tabla, a.accion, a.campo,
+             a.valor_anterior, a.valor_nuevo,
+             a.user_id, a.user_rol, a.created_at, a.ocurrido_en,
+             c.nombre AS user_nombre
+        FROM audit_log a
+   LEFT JOIN cobradores c ON c.id = a.user_id
+       WHERE (a.tabla = 'inv_seriales' AND a.registro_id = ?)
+          OR (a.tabla = 'inv_movimientos' AND a.registro_id IN (
+                SELECT id FROM inv_movimientos WHERE serial_id = ?))
+       ORDER BY COALESCE(a.ocurrido_en, a.created_at) DESC
+      ''',
+      parameters: [widget.serialId, widget.serialId],
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final cfg = ref.watch(appSettingsProvider).auditCamposVisibles;
+    final lookups = ref.watch(auditLookupsProvider).valueOrNull;
+
+    return StreamBuilder(
+      stream: _stream,
+      builder: (context, snap) {
+        if (snap.hasError) {
+          return Padding(
+            padding: const EdgeInsets.all(24),
+            child: Center(
+              child: Text('Error al cargar el historial',
+                  style: TextStyle(color: scheme.error)),
+            ),
+          );
+        }
+        if (!snap.hasData) {
+          return const Padding(
+            padding: EdgeInsets.all(24),
+            child: Center(child: CircularProgressIndicator()),
+          );
+        }
+        final rows = snap.data!;
+        final eventos = <_EventoVisual>[];
+        for (final r in rows) {
+          final tabla = r['tabla'] as String?;
+          final accion = auditDetectarAccion(r);
+          final cambios = auditExtraerCambios(
+            r,
+            camposVisibles: cfg[tabla],
+            lookups: lookups,
+          );
+          if (accion == 'update' && cambios.isEmpty) continue;
+          eventos.add(_EventoVisual(
+            row: r,
+            accion: accion,
+            tabla: tabla,
+            cambios: cambios,
+          ));
+        }
+
+        if (eventos.isEmpty) {
+          return Padding(
+            padding: const EdgeInsets.all(24),
+            child: Center(
+              child: Text('Sin movimientos registrados',
+                  style: TextStyle(color: scheme.outline)),
+            ),
+          );
+        }
+
+        return ListView.separated(
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          itemCount: eventos.length,
+          separatorBuilder: (_, __) => const Divider(height: 1),
+          itemBuilder: (context, i) => _CambioTile(evento: eventos[i]),
+        );
+      },
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Timeline unificada de un CLIENTE: mezcla los cambios del propio cliente con
 // los de sus hijas DIRECTAS — visitas, fotos y contratos. Profundidad = UN
 // nivel: NO baja a cuotas/pagos (nietas/bisnietas), que viven en el log de su
@@ -635,7 +754,7 @@ class _HistorialClienteWidgetState
         FROM audit_log a
    LEFT JOIN cobradores c ON c.id = a.user_id
        WHERE (a.tabla = 'clientes' AND a.registro_id = ?)
-          OR (a.tabla IN ('visitas', 'fotos_cliente', 'contratos')
+          OR (a.tabla IN ('visitas', 'fotos_cliente', 'contratos', 'inv_seriales')
               AND json_extract(
                     COALESCE(a.valor_nuevo, a.valor_anterior),
                     '\$.cliente_id'

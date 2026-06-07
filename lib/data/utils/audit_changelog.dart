@@ -105,7 +105,7 @@ const Map<String, Set<String>> kAuditCamposVisiblesDefault = {
     'nombre', 'codigo', 'es_serializado', 'unidad', 'maneja_decimal', 'activo',
   },
   'inv_ubicaciones': {'nombre', 'tipo', 'activa'},
-  'inv_seriales': {'serial', 'mac', 'estado', 'notas'},
+  'inv_seriales': {'serial', 'mac', 'estado', 'cliente_id', 'notas'},
   'inv_movimientos': {'tipo', 'cantidad', 'motivo', 'notas', 'numero_factura'},
 };
 
@@ -223,7 +223,7 @@ const Map<String, List<String>> kAuditCamposCatalogo = {
     'nombre', 'codigo', 'es_serializado', 'unidad', 'maneja_decimal', 'activo',
   ],
   'inv_ubicaciones': ['nombre', 'tipo', 'activa'],
-  'inv_seriales': ['serial', 'mac', 'estado', 'notas'],
+  'inv_seriales': ['serial', 'mac', 'estado', 'cliente_id', 'notas'],
   'inv_movimientos': ['tipo', 'cantidad', 'motivo', 'notas', 'numero_factura'],
 };
 

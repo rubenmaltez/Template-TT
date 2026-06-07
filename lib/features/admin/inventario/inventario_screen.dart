@@ -1478,8 +1478,7 @@ class _EquiposTabState extends ConsumerState<_EquiposTab> {
                   } else if (v == 'baja') {
                     _darDeBaja(context, s);
                   } else {
-                    _showHistorialInv(context, 'inv_seriales',
-                        s['id'] as String, 'Historial del equipo');
+                    _showHistorialSerial(context, s['id'] as String);
                   }
                 },
                 itemBuilder: (_) => [
@@ -2546,6 +2545,36 @@ void _showHistorialInv(
                   Text(titulo, style: Theme.of(context).textTheme.titleMedium),
             ),
             HistorialCambiosWidget(tabla: tabla, registroId: id),
+          ],
+        ),
+      ),
+    ),
+  );
+}
+
+/// Historial AGREGADOR del equipo: el serial + sus movimientos del ledger
+/// (rastro cuna a tumba). Usa HistorialSerialWidget, no el Simple.
+void _showHistorialSerial(BuildContext context, String serialId) {
+  showModalBottomSheet<void>(
+    context: context,
+    isScrollControlled: true,
+    showDragHandle: true,
+    builder: (_) => DraggableScrollableSheet(
+      expand: false,
+      initialChildSize: 0.6,
+      maxChildSize: 0.9,
+      builder: (_, scrollController) => SingleChildScrollView(
+        controller: scrollController,
+        padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 8),
+              child: Text('Historial del equipo',
+                  style: Theme.of(context).textTheme.titleMedium),
+            ),
+            HistorialSerialWidget(serialId: serialId),
           ],
         ),
       ),

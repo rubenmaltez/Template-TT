@@ -8,6 +8,7 @@ import 'package:url_launcher/url_launcher_string.dart';
 import '../../data/models/pago.dart';
 import '../../data/providers/cobrador_provider.dart';
 import '../../data/providers/contrato_providers.dart';
+import '../../data/providers/modulos_provider.dart';
 import '../../data/repositories/pagos_repo.dart';
 import '../../data/repositories/settings_repo.dart';
 import '../../data/utils/formatters.dart';
@@ -123,6 +124,13 @@ class _ContratoDetailScreenState extends ConsumerState<ContratoDetailScreen> {
     final settings = ref.watch(appSettingsProvider);
     final multiCuotaEnabled = settings.pagoAdelantadoPermitido;
     final diasGracia = settings.diasGracia;
+    // Equipos: solo admin con el módulo inventario activo (las inv_ no
+    // sincronizan al cobrador).
+    final inventarioOn = ref
+            .watch(modulosHabilitadosProvider)
+            .valueOrNull
+            ?.contains('inventario') ??
+        false;
 
     return Scaffold(
       appBar: AppBar(
@@ -199,6 +207,10 @@ class _ContratoDetailScreenState extends ConsumerState<ContratoDetailScreen> {
                     contratoId: widget.contratoId,
                     esAdmin: esAdmin,
                   ),
+                  if (inventarioOn && esAdmin) ...[
+                    const SizedBox(height: 24),
+                    _EquiposContratoSection(contratoId: widget.contratoId),
+                  ],
                 ],
               ),
                 ),
@@ -281,6 +293,99 @@ class _ContratoDetailScreenState extends ConsumerState<ContratoDetailScreen> {
 }
 
 // ---------------------------------------------------------------------------
-// Header del contrato
+// Equipos de inventario instalados bajo este contrato (gateado por módulo+admin)
 // ---------------------------------------------------------------------------
+class _EquiposContratoSection extends StatefulWidget {
+  const _EquiposContratoSection({required this.contratoId});
+  final String contratoId;
+
+  @override
+  State<_EquiposContratoSection> createState() =>
+      _EquiposContratoSectionState();
+}
+
+class _EquiposContratoSectionState extends State<_EquiposContratoSection> {
+  late final Stream<List<Map<String, dynamic>>> _stream;
+
+  @override
+  void initState() {
+    super.initState();
+    _stream = ps.db.watch(
+      '''
+      SELECT s.id, s.serial, s.mac, p.nombre AS producto
+        FROM inv_seriales s
+        JOIN inv_productos p ON p.id = s.producto_id
+       WHERE s.contrato_id = ? AND s.estado = 'instalado'
+       ORDER BY p.nombre, s.serial
+      ''',
+      parameters: [widget.contratoId],
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Card(
+      child: StreamBuilder<List<Map<String, dynamic>>>(
+        stream: _stream,
+        initialData: const [],
+        builder: (context, snap) {
+          if (snap.hasError) {
+            return Padding(
+              padding: const EdgeInsets.all(16),
+              child: Text('Error: ${snap.error}'),
+            );
+          }
+          final rows = snap.data!;
+          if (rows.isEmpty) {
+            return Padding(
+              padding: const EdgeInsets.all(16),
+              child: Row(
+                children: [
+                  Icon(Icons.router, size: 18, color: scheme.outline),
+                  const SizedBox(width: 8),
+                  Text('Sin equipos instalados',
+                      style: TextStyle(color: scheme.outline)),
+                ],
+              ),
+            );
+          }
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+                child: Row(
+                  children: [
+                    Icon(Icons.router, size: 20, color: scheme.primary),
+                    const SizedBox(width: 8),
+                    Text('Equipos instalados',
+                        style: Theme.of(context).textTheme.titleMedium),
+                    const SizedBox(width: 8),
+                    Text('(${rows.length})',
+                        style: TextStyle(color: scheme.outline, fontSize: 13)),
+                  ],
+                ),
+              ),
+              ...rows.map((r) {
+                final mac = r['mac'] as String?;
+                return ListTile(
+                  dense: true,
+                  leading:
+                      Icon(Icons.qr_code_2, color: scheme.outline, size: 22),
+                  title: Text(r['serial'] as String),
+                  subtitle: Text([
+                    r['producto'] as String? ?? '',
+                    if (mac != null && mac.isNotEmpty) 'MAC $mac',
+                  ].join(' · ')),
+                );
+              }),
+              const SizedBox(height: 8),
+            ],
+          );
+        },
+      ),
+    );
+  }
+}
 
