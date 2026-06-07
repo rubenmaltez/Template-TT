@@ -104,6 +104,7 @@ const Map<String, Set<String>> kAuditCamposVisiblesDefault = {
   'inv_productos': {
     'nombre', 'codigo', 'es_serializado', 'unidad', 'maneja_decimal', 'activo',
   },
+  'inv_ubicaciones': {'nombre', 'tipo', 'activa'},
 };
 
 // ---------------------------------------------------------------------------
@@ -219,6 +220,7 @@ const Map<String, List<String>> kAuditCamposCatalogo = {
   'inv_productos': [
     'nombre', 'codigo', 'es_serializado', 'unidad', 'maneja_decimal', 'activo',
   ],
+  'inv_ubicaciones': ['nombre', 'tipo', 'activa'],
 };
 
 // Label humano por entidad (para los títulos de las secciones del panel).
@@ -241,6 +243,7 @@ const Map<String, String> kAuditEntidadLabel = {
   'inv_categorias': 'Categorías de inventario',
   'inv_proveedores': 'Proveedores',
   'inv_productos': 'Productos',
+  'inv_ubicaciones': 'Ubicaciones',
 };
 
 // Columnas computadas / auto que se omiten en cualquier snapshot, además del

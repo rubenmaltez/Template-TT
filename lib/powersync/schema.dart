@@ -131,6 +131,17 @@ const schema = Schema([
         [IndexedColumn('tenant_id'), IndexedColumn('categoria_id')]),
   ]),
 
+  Table('inv_ubicaciones', [
+    Column.text('tenant_id'),
+    Column.text('nombre'),
+    Column.text('tipo'),
+    Column.text('cobrador_id'),
+    Column.integer('activa'),
+    Column.text('created_at'),
+  ], indexes: [
+    Index('by_tenant', [IndexedColumn('tenant_id')]),
+  ]),
+
   // ── Catálogo del tenant ───────────────────────────────────────────────────
   Table('planes', [
     Column.text('tenant_id'),

@@ -108,6 +108,7 @@ bucket_definitions:
       - SELECT * FROM inv_categorias    WHERE tenant_id = bucket.tenant_id
       - SELECT * FROM inv_proveedores   WHERE tenant_id = bucket.tenant_id
       - SELECT * FROM inv_productos      WHERE tenant_id = bucket.tenant_id
+      - SELECT * FROM inv_ubicaciones   WHERE tenant_id = bucket.tenant_id
 
   # ── Vista global para admin_cobranza (mismo dataset que admin) ─────────
   # admin_cobranza ve todo pero sus permisos de escritura los limita RLS.
@@ -135,6 +136,7 @@ bucket_definitions:
       - SELECT * FROM inv_categorias    WHERE tenant_id = bucket.tenant_id
       - SELECT * FROM inv_proveedores   WHERE tenant_id = bucket.tenant_id
       - SELECT * FROM inv_productos      WHERE tenant_id = bucket.tenant_id
+      - SELECT * FROM inv_ubicaciones   WHERE tenant_id = bucket.tenant_id
 
   # ── Super admin: su propia fila para que la app reconozca el rol ──────
   # El super_admin vive en el tenant 'System' (00000000-...). No tiene
@@ -202,3 +204,4 @@ bucket_definitions:
       - SELECT * FROM inv_categorias     WHERE tenant_id = bucket.tenant_id
       - SELECT * FROM inv_proveedores    WHERE tenant_id = bucket.tenant_id
       - SELECT * FROM inv_productos       WHERE tenant_id = bucket.tenant_id
+      - SELECT * FROM inv_ubicaciones    WHERE tenant_id = bucket.tenant_id
