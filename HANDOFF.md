@@ -7,6 +7,40 @@
 
 ---
 
+## Fase 3 — Tickets (EN CURSO, slice 3A)
+
+Propuesta aprobada en `FASE3-PLAN.md` (decisiones: D1 trigger server-side de
+descuento de stock · D2 trigger de transición de estado · D3 shell propio del
+técnico · D4 correlativo `T-00001` · D5 3A completo).
+
+**3A capa 1 — HECHA** (commits `a62a8fb`, `04a5999`):
+- **Migración 0103** (server-side, idempotente, transaccional): roles `tecnico`+
+  `admin_tickets` (CHECK + `set_cobrador_rol`) · módulo `tickets` (es_base=false) ·
+  tablas `ticket_tipos`/`tickets`/`ticket_eventos`(append-only)/`ticket_adjuntos`
+  con RLS, super_admin_all, audit triggers · helpers `is_admin_or_tickets`/
+  `is_ticket_staff` · trigger de validación de transición de estado.
+- **Cadena de integridad**: sync-rules (4 tablas en `todo_tenant_admin` +
+  `impersonated_tenant`) · schema.dart (4 tablas) · `_schemaVersion` **20→21** ·
+  audit_changelog (4 entidades + value-labels de estado/evento) · modelo
+  `Cobrador.esTecnico/esAdminTickets`.
+
+**3A capa 2-3 — PENDIENTE (próximo):**
+- `Ticket` model (Dart) + `ticket_sla.dart` (SLA derivado: created_at +
+  tipo.sla_horas − tiempo en `en_espera`, con `-6h` Nicaragua; patrón `cuota_estado`).
+- Pantalla **ticket_tipos CRUD** (admin, patrón planes/inventario).
+- Pantalla **tickets**: lista + crear (correlativo cliente = MAX+1 por tenant) +
+  detalle (timeline desde `ticket_eventos` + cambio de estado + SLA + adjuntos).
+  Al crear/cambiar estado/comentar → INSERT en `ticket_eventos` (la bitácora).
+- **Gating**: ruta `/admin/tickets` con `moduloKey:'tickets'` (router) + ítem de
+  menú en AdminShell (mismo patrón que inventario) + rutas a las pantallas.
+- **Adjuntos**: bucket Storage `ticket-adjuntos` (+ policies) + upload (patrón
+  `foto_comprobante`/`fotos_cliente`).
+- Cerrar 3A con audit de 3 agentes + checklist de testing.
+
+> ⚠️ Deploy Fase 3 (al final del slice): correr `0103` por Dashboard + redeploy
+> sync rules + restart (**schema v21**). El super_admin enciende 'tickets' del
+> tenant en `/super/tenants/:id`. Buckets de `admin_tickets`/`tecnico` = slice 3B.
+
 ## Estado actual
 
 - **AUDIT INTEGRAL DE FASE 2 — HECHO** (7 expertos paralelos: inventario, red/geo,
