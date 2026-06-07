@@ -440,10 +440,24 @@ class _ExistenciasTabState extends ConsumerState<_ExistenciasTab> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      floatingActionButton: FloatingActionButton.extended(
-        icon: const Icon(Icons.add_box),
-        label: const Text('Ingreso'),
-        onPressed: () => _ingreso(context),
+      floatingActionButton: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          FloatingActionButton.small(
+            heroTag: 'inv_mov',
+            tooltip: 'Egreso / Ajuste / Transferencia',
+            onPressed: () => _movimiento(context),
+            child: const Icon(Icons.swap_horiz),
+          ),
+          const SizedBox(height: 12),
+          FloatingActionButton.extended(
+            heroTag: 'inv_ingreso',
+            icon: const Icon(Icons.add_box),
+            label: const Text('Ingreso'),
+            onPressed: () => _ingreso(context),
+          ),
+        ],
       ),
       body: StreamBuilder<List<Map<String, dynamic>>>(
         stream: _stock,
@@ -554,6 +568,53 @@ class _ExistenciasTabState extends ConsumerState<_ExistenciasTab> {
       _snack(context, 'Error: $e');
     }
   }
+
+  // Egreso / ajuste / transferencia de productos a GRANEL (los serializados se
+  // mueven por equipo en la pestaña Equipos). Un solo movimiento en el ledger.
+  Future<void> _movimiento(BuildContext context) async {
+    final tenantId = ref.read(tenantIdProvider);
+    if (tenantId == null) return;
+    final hechoPor = ref.read(cobradorActualProvider).valueOrNull?.id;
+    final res = await showDialog<_MovimientoData>(
+      context: context,
+      builder: (_) => const _MovimientoDialog(),
+    );
+    if (res == null) return;
+    final now = DateTime.now().toIso8601String();
+
+    // Mapear el tipo al par origen/destino que entiende la fórmula de stock.
+    String? origen;
+    String? destino;
+    if (res.tipo == 'egreso') {
+      origen = res.ubicacionOrigenId;
+    } else if (res.tipo == 'transferencia') {
+      origen = res.ubicacionOrigenId;
+      destino = res.ubicacionDestinoId;
+    } else {
+      // ajuste: sumar → entra (destino +); restar → sale (origen −).
+      if (res.sumar) {
+        destino = res.ubicacionId;
+      } else {
+        origen = res.ubicacionId;
+      }
+    }
+
+    try {
+      await ps.db.execute(
+        '''INSERT INTO inv_movimientos
+           (id, tenant_id, tipo, producto_id, cantidad, ubicacion_origen_id,
+            ubicacion_destino_id, motivo, hecho_por, ocurrido_en, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+        [
+          const Uuid().v4(), tenantId, res.tipo, res.productoId, res.cantidad,
+          origen, destino, res.motivo, hechoPor, now, now,
+        ],
+      );
+      _snack(context, 'Movimiento registrado');
+    } catch (e) {
+      _snack(context, 'Error: $e');
+    }
+  }
 }
 
 class _IngresoData {
@@ -575,6 +636,259 @@ class _IngresoData {
   final double? costoUnitario;
   final double cantidad;
   final List<String> seriales;
+}
+
+class _MovimientoData {
+  const _MovimientoData({
+    required this.tipo,
+    required this.productoId,
+    required this.cantidad,
+    this.ubicacionOrigenId,
+    this.ubicacionDestinoId,
+    this.ubicacionId,
+    this.sumar = false,
+    this.motivo,
+  });
+  final String tipo; // 'egreso' | 'ajuste' | 'transferencia'
+  final String productoId;
+  final double cantidad;
+  final String? ubicacionOrigenId; // egreso, transferencia
+  final String? ubicacionDestinoId; // transferencia
+  final String? ubicacionId; // ajuste
+  final bool sumar; // ajuste: true=suma (+), false=resta (−)
+  final String? motivo;
+}
+
+/// Movimiento de granel: egreso (−), ajuste (±) o transferencia (origen→destino).
+class _MovimientoDialog extends StatefulWidget {
+  const _MovimientoDialog();
+  @override
+  State<_MovimientoDialog> createState() => _MovimientoDialogState();
+}
+
+class _MovimientoDialogState extends State<_MovimientoDialog> {
+  String _tipo = 'egreso';
+  String? _productoId;
+  String? _origenId;
+  String? _destinoId;
+  String? _ajusteUbiId;
+  bool _sumar = false; // por defecto restar (corrección a la baja)
+  final _cantidad = TextEditingController(text: '1');
+  final _motivo = TextEditingController();
+
+  late final Stream<List<Map<String, dynamic>>> _productos;
+  late final Stream<List<Map<String, dynamic>>> _ubicaciones;
+
+  static const _tipos = {
+    'egreso': 'Egreso (salida)',
+    'ajuste': 'Ajuste (corrección)',
+    'transferencia': 'Transferencia',
+  };
+
+  @override
+  void initState() {
+    super.initState();
+    // Solo granel: los serializados se mueven por equipo (asignar/baja/transferir).
+    _productos = ps.db.watch(
+        'SELECT id, nombre FROM inv_productos WHERE activo = 1 AND es_serializado = 0 ORDER BY nombre');
+    _ubicaciones = ps.db.watch(
+        'SELECT id, nombre FROM inv_ubicaciones WHERE activa = 1 ORDER BY nombre');
+  }
+
+  @override
+  void dispose() {
+    _cantidad.dispose();
+    _motivo.dispose();
+    super.dispose();
+  }
+
+  Widget _ubiDropdown(
+      String label, String? value, ValueChanged<String?> onChanged) {
+    return StreamBuilder<List<Map<String, dynamic>>>(
+      stream: _ubicaciones,
+      initialData: const [],
+      builder: (context, snap) {
+        final rows = snap.data!;
+        final exists = value == null || rows.any((r) => r['id'] == value);
+        return DropdownButtonFormField<String?>(
+          value: exists ? value : null,
+          decoration: InputDecoration(labelText: label),
+          isExpanded: true,
+          onChanged: onChanged,
+          items: rows
+              .map((r) => DropdownMenuItem(
+                    value: r['id'] as String,
+                    child: Text(r['nombre'] as String),
+                  ))
+              .toList(),
+        );
+      },
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Movimiento de stock'),
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            DropdownButtonFormField<String>(
+              value: _tipo,
+              decoration: const InputDecoration(labelText: 'Tipo'),
+              isExpanded: true,
+              onChanged: (v) => setState(() => _tipo = v ?? 'egreso'),
+              items: _tipos.entries
+                  .map((e) =>
+                      DropdownMenuItem(value: e.key, child: Text(e.value)))
+                  .toList(),
+            ),
+            const SizedBox(height: 12),
+            StreamBuilder<List<Map<String, dynamic>>>(
+              stream: _productos,
+              initialData: const [],
+              builder: (context, snap) {
+                final rows = snap.data!;
+                final exists = _productoId == null ||
+                    rows.any((r) => r['id'] == _productoId);
+                return DropdownButtonFormField<String?>(
+                  value: exists ? _productoId : null,
+                  decoration:
+                      const InputDecoration(labelText: 'Producto (granel)'),
+                  isExpanded: true,
+                  onChanged: (v) => setState(() => _productoId = v),
+                  items: rows
+                      .map((r) => DropdownMenuItem(
+                            value: r['id'] as String,
+                            child: Text(r['nombre'] as String),
+                          ))
+                      .toList(),
+                );
+              },
+            ),
+            const SizedBox(height: 12),
+            if (_tipo == 'egreso')
+              _ubiDropdown('Ubicación origen', _origenId,
+                  (v) => setState(() => _origenId = v)),
+            if (_tipo == 'transferencia') ...[
+              _ubiDropdown('Ubicación origen', _origenId,
+                  (v) => setState(() => _origenId = v)),
+              const SizedBox(height: 12),
+              _ubiDropdown('Ubicación destino', _destinoId,
+                  (v) => setState(() => _destinoId = v)),
+            ],
+            if (_tipo == 'ajuste') ...[
+              _ubiDropdown('Ubicación', _ajusteUbiId,
+                  (v) => setState(() => _ajusteUbiId = v)),
+              const SizedBox(height: 12),
+              DropdownButtonFormField<bool>(
+                value: _sumar,
+                decoration: const InputDecoration(labelText: 'Operación'),
+                onChanged: (v) => setState(() => _sumar = v ?? false),
+                items: const [
+                  DropdownMenuItem(value: false, child: Text('Restar (−)')),
+                  DropdownMenuItem(value: true, child: Text('Sumar (+)')),
+                ],
+              ),
+            ],
+            const SizedBox(height: 12),
+            TextField(
+              controller: _cantidad,
+              keyboardType:
+                  const TextInputType.numberWithOptions(decimal: true),
+              decoration: const InputDecoration(labelText: 'Cantidad'),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _motivo,
+              textCapitalization: TextCapitalization.sentences,
+              decoration: InputDecoration(
+                labelText: _tipo == 'ajuste'
+                    ? 'Motivo (obligatorio)'
+                    : 'Motivo (opcional)',
+              ),
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancelar')),
+        FilledButton(onPressed: _submit, child: const Text('Registrar')),
+      ],
+    );
+  }
+
+  void _submit() {
+    if (_productoId == null) {
+      _snack(context, 'Elegí un producto.');
+      return;
+    }
+    final cant = double.tryParse(_cantidad.text.trim()) ?? 0;
+    if (cant <= 0) {
+      _snack(context, 'Cantidad inválida.');
+      return;
+    }
+    final motivo = _motivo.text.trim();
+    if (_tipo == 'egreso') {
+      if (_origenId == null) {
+        _snack(context, 'Elegí la ubicación origen.');
+        return;
+      }
+      Navigator.pop(
+        context,
+        _MovimientoData(
+          tipo: 'egreso',
+          productoId: _productoId!,
+          cantidad: cant,
+          ubicacionOrigenId: _origenId,
+          motivo: motivo.isEmpty ? null : motivo,
+        ),
+      );
+    } else if (_tipo == 'transferencia') {
+      if (_origenId == null || _destinoId == null) {
+        _snack(context, 'Elegí origen y destino.');
+        return;
+      }
+      if (_origenId == _destinoId) {
+        _snack(context, 'Origen y destino deben ser distintos.');
+        return;
+      }
+      Navigator.pop(
+        context,
+        _MovimientoData(
+          tipo: 'transferencia',
+          productoId: _productoId!,
+          cantidad: cant,
+          ubicacionOrigenId: _origenId,
+          ubicacionDestinoId: _destinoId,
+          motivo: motivo.isEmpty ? null : motivo,
+        ),
+      );
+    } else {
+      if (_ajusteUbiId == null) {
+        _snack(context, 'Elegí la ubicación.');
+        return;
+      }
+      if (motivo.isEmpty) {
+        _snack(context, 'El ajuste requiere un motivo.');
+        return;
+      }
+      Navigator.pop(
+        context,
+        _MovimientoData(
+          tipo: 'ajuste',
+          productoId: _productoId!,
+          cantidad: cant,
+          ubicacionId: _ajusteUbiId,
+          sumar: _sumar,
+          motivo: motivo,
+        ),
+      );
+    }
+  }
 }
 
 class _IngresoDialog extends StatefulWidget {
