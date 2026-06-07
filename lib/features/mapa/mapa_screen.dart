@@ -144,10 +144,12 @@ class _MapaScreenState extends ConsumerState<MapaScreen> {
   Widget build(BuildContext context) {
     final diasGracia = ref.watch(appSettingsProvider).diasGracia;
 
-    // Vista admin: el cobrador puro ve solo sus clientes → no necesita los
-    // filtros por cobrador/zona. Los mostramos solo si NO es cobrador.
+    // Vista admin: los roles de campo (cobrador, técnico) ven solo SUS clientes
+    // → no necesitan los filtros por cobrador/zona. Los mostramos solo para los
+    // roles con vista de todo el tenant (admin/admin_cobranza/super_admin).
     final cobrador = ref.watch(cobradorActualProvider).valueOrNull;
-    final esAdminView = cobrador != null && !cobrador.esCobrador;
+    final esAdminView =
+        cobrador != null && !cobrador.esCobrador && !cobrador.esTecnico;
 
     // Recrea el stream si diasGracia cambió (o en el primer build).
     // Patrón setState explícito para que StreamBuilder reciba la nueva

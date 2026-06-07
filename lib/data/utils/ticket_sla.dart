@@ -122,6 +122,18 @@ const Map<String, List<String>> kTransicionesTicket = {
 List<String> transicionesDesde(String estado) =>
     kTransicionesTicket[estado] ?? const [];
 
+/// Estados a los que un TÉCNICO puede mover un ticket desde el campo (subconjunto
+/// de [kTransicionesTicket]). El admin hace el resto: cerrar, cancelar, reabrir y
+/// reasignar. "Server gana": el trigger 0103 igual valida la transición base, y
+/// la RLS (`is_ticket_staff`) permite el UPDATE — esto sólo acota lo que la UI del
+/// técnico OFRECE, para que el flujo de campo sea simple (avanzar / pausar / resolver).
+const kEstadosDestinoTecnico = {'en_progreso', 'en_espera', 'resuelto'};
+
+/// Transiciones que la UI del técnico ofrece desde [estado]: las válidas filtradas
+/// a [kEstadosDestinoTecnico].
+List<String> transicionesTecnico(String estado) =>
+    transicionesDesde(estado).where(kEstadosDestinoTecnico.contains).toList();
+
 // ── Prioridad ──────────────────────────────────────────────────────────────
 const kTicketPrioridades = ['baja', 'media', 'alta', 'urgente'];
 

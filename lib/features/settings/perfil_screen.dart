@@ -17,7 +17,12 @@ import '../shared/widgets/app_version_label.dart';
 import '../shared/widgets/empty_state.dart';
 
 class PerfilScreen extends ConsumerWidget {
-  const PerfilScreen({super.key});
+  const PerfilScreen({super.key, this.tecnicoMode = false});
+
+  /// Vista del técnico (Fase 3B): oculta lo específico del cobrador (prefijo de
+  /// recibo, historial de cobros, fotos de comprobantes pendientes). Mantiene
+  /// sync, impresora, caché de mapa, cambiar contraseña y cerrar sesión.
+  final bool tecnicoMode;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -63,26 +68,33 @@ class PerfilScreen extends ConsumerWidget {
         _InfoCard([
           if (email != null) (null, 'Email', email),
           (Icons.phone, 'Teléfono', cobrador.telefono ?? '—'),
-          (Icons.receipt, 'Prefijo recibo', cobrador.prefijoRecibo ?? 'No asignado'),
+          // El prefijo de recibo sólo aplica al cobrador.
+          if (!tecnicoMode)
+            (Icons.receipt, 'Prefijo recibo', cobrador.prefijoRecibo ?? 'No asignado'),
         ]),
         const SizedBox(height: 12),
-        Card(
-          child: ListTile(
-            leading: const Icon(Icons.history),
-            title: const Text('Historial de cobros'),
-            subtitle: const Text('Tus cobros anteriores'),
-            trailing: const Icon(Icons.chevron_right),
-            onTap: () => context.push('/historial'),
+        if (!tecnicoMode) ...[
+          Card(
+            child: ListTile(
+              leading: const Icon(Icons.history),
+              title: const Text('Historial de cobros'),
+              subtitle: const Text('Tus cobros anteriores'),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () => context.push('/historial'),
+            ),
           ),
-        ),
-        const SizedBox(height: 12),
+          const SizedBox(height: 12),
+        ],
         const _SyncCard(),
         if (!kIsWeb) ...[
           const SizedBox(height: 12),
           const _ImpresoraCard(),
         ],
-        const SizedBox(height: 12),
-        const _FotosPendientesCard(),
+        // Las fotos de comprobantes son del flujo de cobro (sólo cobrador).
+        if (!tecnicoMode) ...[
+          const SizedBox(height: 12),
+          const _FotosPendientesCard(),
+        ],
         if (!kIsWeb) ...[
           const SizedBox(height: 12),
           const _MapaCacheCard(),
@@ -115,6 +127,7 @@ class PerfilScreen extends ConsumerWidget {
         'admin' => 'Administrador',
         'admin_cobranza' => 'Admin de cobranza',
         'cobrador' => 'Cobrador',
+        'tecnico' => 'Técnico',
         _ => rol,
       };
 }

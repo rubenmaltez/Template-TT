@@ -12,9 +12,18 @@ import 'ticket_adjuntos_widget.dart';
 /// Detalle de un ticket: header (estado/SLA/tipo/cliente/asignado), acciones de
 /// transición de estado (válidas según el estado actual; el server re-valida),
 /// reasignar, comentar, y la bitácora (`ticket_eventos`).
+///
+/// `tecnicoMode`: vista del técnico en campo (Fase 3B). Acota lo que se OFRECE —
+/// sólo avanzar/pausar/resolver ([kEstadosDestinoTecnico]) y SIN reasignar. El
+/// admin (modo normal) tiene todas las transiciones + reasignar.
 class TicketDetailScreen extends ConsumerStatefulWidget {
-  const TicketDetailScreen({super.key, required this.ticketId});
+  const TicketDetailScreen({
+    super.key,
+    required this.ticketId,
+    this.tecnicoMode = false,
+  });
   final String ticketId;
+  final bool tecnicoMode;
   @override
   ConsumerState<TicketDetailScreen> createState() => _TicketDetailScreenState();
 }
@@ -138,7 +147,10 @@ class _TicketDetailScreenState extends ConsumerState<TicketDetailScreen> {
 
   Widget _acciones(BuildContext context, Map<String, dynamic> t) {
     final estado = t['estado'] as String? ?? 'abierto';
-    final transiciones = transicionesDesde(estado);
+    // El técnico sólo avanza/pausa/resuelve; el admin tiene todas las transiciones.
+    final transiciones = widget.tecnicoMode
+        ? transicionesTecnico(estado)
+        : transicionesDesde(estado);
     return Wrap(
       spacing: 8,
       runSpacing: 8,
@@ -147,8 +159,8 @@ class _TicketDetailScreenState extends ConsumerState<TicketDetailScreen> {
               onPressed: () => _cambiarEstado(t, to),
               child: Text(estadoTicketLabel(to)),
             )),
-        // Reasignar no tiene sentido en estados terminales (cerrado/cancelado).
-        if (estado != 'cerrado' && estado != 'cancelado')
+        // Reasignar: sólo el admin (no el técnico) y no en estados terminales.
+        if (!widget.tecnicoMode && estado != 'cerrado' && estado != 'cancelado')
           TextButton.icon(
             icon: const Icon(Icons.engineering, size: 18),
             label: const Text('Reasignar'),

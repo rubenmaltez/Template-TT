@@ -82,6 +82,54 @@ bucket_definitions:
       - SELECT * FROM visitas
         WHERE tenant_id = bucket.tenant_id AND cobrador_id = bucket.cobrador_id
 
+  # ── Técnico (Fase 3, módulo tickets) — móvil-first, baja SÓLO lo suyo ───
+  # El técnico NO baja todo el inventario ni todos los clientes — sólo sus
+  # tickets asignados + su contexto. Planes/settings/geografía/red/tenant_modulos
+  # los hereda de `catalogo_tenant` (su parameters NO filtra por rol → todo
+  # miembro del tenant los baja). Igual que el cobrador, es offline-first.
+  #
+  # Catálogo de tickets + cobradores del tenant (para nombres de autores en la
+  # bitácora). Parametrizado SÓLO por tenant_id (gateado a rol='tecnico'); incluye
+  # su propia fila de cobradores → la app reconoce su rol.
+  por_tecnico:
+    parameters: |
+      SELECT tenant_id
+      FROM cobradores
+      WHERE id = request.user_id() AND rol = 'tecnico'
+    data:
+      - SELECT * FROM ticket_tipos WHERE tenant_id = bucket.tenant_id
+      - SELECT id, tenant_id, nombre, telefono, rol, prefijo_recibo, activo
+        FROM cobradores
+        WHERE tenant_id = bucket.tenant_id
+
+  # Sus tickets asignados + bitácora + adjuntos. Bucket DINÁMICO: una instancia
+  # por ticket asignado (el parameters selecciona los ids del propio técnico).
+  # Cada query de `data:` usa AMBOS parámetros (ticket_id + tenant_id).
+  por_tecnico_tickets:
+    parameters: |
+      SELECT id AS ticket_id, tenant_id
+      FROM tickets
+      WHERE asignado_a = request.user_id()
+    data:
+      - SELECT * FROM tickets
+        WHERE id = bucket.ticket_id AND tenant_id = bucket.tenant_id
+      - SELECT * FROM ticket_eventos
+        WHERE ticket_id = bucket.ticket_id AND tenant_id = bucket.tenant_id
+      - SELECT * FROM ticket_adjuntos
+        WHERE ticket_id = bucket.ticket_id AND tenant_id = bucket.tenant_id
+
+  # Clientes de sus tickets asignados (para el detalle + el mapa). Bucket
+  # DINÁMICO: una instancia por cliente_id distinto. SÓLO clientes — NADA de
+  # contratos/cuotas/pagos (el técnico no ve dinero).
+  por_tecnico_clientes:
+    parameters: |
+      SELECT cliente_id, tenant_id
+      FROM tickets
+      WHERE asignado_a = request.user_id() AND cliente_id IS NOT NULL
+    data:
+      - SELECT * FROM clientes
+        WHERE id = bucket.cliente_id AND tenant_id = bucket.tenant_id
+
   # ── Vista global para admin (panel web con sync opcional) ──────────────
   todo_tenant_admin:
     parameters: |

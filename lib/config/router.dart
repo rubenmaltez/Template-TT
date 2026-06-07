@@ -54,6 +54,8 @@ import '../features/mapa/mapa_screen.dart';
 import '../features/recibo/recibo_screen.dart';
 import '../features/settings/perfil_screen.dart';
 import '../features/shell/app_shell.dart';
+import '../features/tecnico/mis_tickets_screen.dart';
+import '../features/tecnico/tecnico_shell.dart';
 import '../powersync/db.dart' as ps;
 
 /// Stream del rol del usuario actual desde la tabla cobradores local.
@@ -237,6 +239,18 @@ final routerProvider = Provider<GoRouter>((ref) {
         if (rol == 'admin' || rol == 'admin_cobranza') return '/admin';
       }
 
+      // Técnico (Fase 3B): vive en su shell móvil-first `/tecnico/*`. No entra a
+      // /admin, /super ni al shell del cobrador. RLS + sync ya lo cubren a nivel
+      // de datos (sólo baja sus tickets/clientes); esto evita además ver chrome
+      // ajeno y cubre la landing `/` → `/tecnico`. Se whitelistea la pantalla
+      // compartida de impresora (Scaffold propio con back).
+      const tecnicoSharedRoutes = ['/perfil/impresora'];
+      if (rol == 'tecnico' &&
+          !loc.startsWith('/tecnico') &&
+          !tecnicoSharedRoutes.contains(loc)) {
+        return '/tecnico';
+      }
+
       // Defensa en profundidad: el cobrador puro no entra a /admin/* por URL
       // directa (su shell vive en `/`). RLS + sync ya lo cubren a nivel de datos
       // (no baja inv_/audit_log, los writes se rechazan), esto evita además ver
@@ -333,6 +347,21 @@ final routerProvider = Provider<GoRouter>((ref) {
           GoRoute(path: '/clientes',  pageBuilder: (_, s) => _fadePage(s, _titled('Clientes', const ClientesListScreen()))),
           GoRoute(path: '/mapa',      pageBuilder: (_, s) => _fadePage(s, _titled('Mapa', const MapaScreen()))),
           GoRoute(path: '/perfil',    pageBuilder: (_, s) => _fadePage(s, _titled('Mi perfil', const PerfilScreen()))),
+        ],
+      ),
+
+      // ── Técnico (Fase 3B): ShellRoute móvil-first con bottom-nav ───────
+      //    (Mis tickets · Mapa · Perfil). El detalle del ticket se pushea
+      //    fuera del shell (`/tecnico/tickets/:id`) con su propio back.
+      ShellRoute(
+        builder: (_, __, child) => TecnicoShell(child: child),
+        routes: [
+          GoRoute(path: '/tecnico',
+              pageBuilder: (_, s) => _fadePage(s, _titled('Mis tickets', const MisTicketsScreen()))),
+          GoRoute(path: '/tecnico/mapa',
+              pageBuilder: (_, s) => _fadePage(s, _titled('Mapa', const MapaScreen()))),
+          GoRoute(path: '/tecnico/perfil',
+              pageBuilder: (_, s) => _fadePage(s, _titled('Mi perfil', const PerfilScreen(tecnicoMode: true)))),
         ],
       ),
 
@@ -486,6 +515,20 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/perfil/impresora',
         builder: (_, __) => const ImpresoraSetupScreen(),
+      ),
+
+      // Detalle del ticket para el técnico (push fuera del shell, con back y
+      // Scaffold propio). Reusa TicketDetailScreen en `tecnicoMode` (acota las
+      // transiciones a avanzar/pausar/resolver y oculta reasignar).
+      GoRoute(
+        path: '/tecnico/tickets/:id',
+        builder: (_, s) => Scaffold(
+          appBar: AppBar(title: const Text('Ticket')),
+          body: TicketDetailScreen(
+            ticketId: s.pathParameters['id']!,
+            tecnicoMode: true,
+          ),
+        ),
       ),
     ],
   );

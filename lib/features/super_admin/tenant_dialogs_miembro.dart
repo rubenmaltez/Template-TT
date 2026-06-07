@@ -664,12 +664,17 @@ class _CambiarRolDialogState extends State<CambiarRolDialog> {
     );
   }
 
-  static const _roles = ['admin', 'admin_cobranza', 'cobrador'];
+  // `tecnico` (Fase 3, módulo tickets): móvil-first con shell propio. Sólo se
+  // ofrece si el tenant tiene el módulo tickets — el super_admin lo enciende
+  // antes en /super/tenants/:id. `admin_tickets` aún NO se expone (su shell
+  // acotado en AdminShell es un slice propio).
+  static const _roles = ['admin', 'admin_cobranza', 'cobrador', 'tecnico'];
 
   static String _label(String r) => switch (r) {
         'admin' => 'Administrador',
         'admin_cobranza' => 'Admin de cobranza',
         'cobrador' => 'Cobrador',
+        'tecnico' => 'Técnico',
         _ => r,
       };
 
@@ -680,6 +685,8 @@ class _CambiarRolDialogState extends State<CambiarRolDialog> {
           'Clientes, contratos, cuotas y pagos. Sin acceso a config.',
         'cobrador' =>
           'Sólo sus clientes asignados. Cobra y emite recibos.',
+        'tecnico' =>
+          'Campo: sus tickets asignados. Resuelve, comenta y adjunta fotos.',
         _ => '',
       };
 }
