@@ -6,6 +6,7 @@ import 'package:uuid/uuid.dart';
 import '../../../data/providers/cobrador_provider.dart';
 import '../../../powersync/db.dart' as ps;
 import '../../shared/widgets/empty_state.dart';
+import '../../shared/widgets/historial_cambios_widget.dart';
 import '../../shared/widgets/mapa_picker_screen.dart';
 
 /// Datos capturados por `_NodoDialog` (crear/editar nodo).
@@ -157,6 +158,11 @@ class _NodoTileState extends State<_NodoTile> {
       child: ExpansionTile(
       leading: const Icon(Icons.hub),
       title: Text(widget.nodo['nombre'] as String),
+      trailing: _RedRowMenu(
+        onEditar: () => _editarNodo(context),
+        onHistorial: () => _showHistorialRed(context, 'red_nodos',
+            widget.nodo['id'] as String, 'Historial del nodo'),
+      ),
       childrenPadding: const EdgeInsets.only(left: 16),
       maintainState: true,
       children: [
@@ -184,6 +190,25 @@ class _NodoTileState extends State<_NodoTile> {
       ],
       ),
     );
+  }
+
+  Future<void> _editarNodo(BuildContext context) async {
+    final res = await showDialog<_NodoData?>(
+      context: context,
+      builder: (_) => _NodoDialog(inicial: widget.nodo),
+    );
+    if (res == null) return;
+    try {
+      await ps.db.execute(
+        'UPDATE red_nodos SET nombre = ?, tipo = ?, notas = ?, lat = ?, lng = ? WHERE id = ?',
+        [res.nombre, res.tipo, res.notas, res.lat, res.lng, widget.nodo['id']],
+      );
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('Error: $e')));
+      }
+    }
   }
 
   Future<void> _crearHub(BuildContext context, String nodoId) async {
@@ -241,6 +266,11 @@ class _HubTileState extends State<_HubTile> {
       child: ExpansionTile(
         leading: const Icon(Icons.router),
         title: Text(widget.hub['nombre'] as String),
+        trailing: _RedRowMenu(
+          onEditar: () => _editarHub(context),
+          onHistorial: () => _showHistorialRed(context, 'red_hubs',
+              widget.hub['id'] as String, 'Historial del hub'),
+        ),
         childrenPadding: const EdgeInsets.only(left: 16),
         maintainState: true,
         children: [
@@ -255,6 +285,14 @@ class _HubTileState extends State<_HubTile> {
                         dense: true,
                         leading: const Icon(Icons.settings_input_hdmi, size: 18),
                         title: Text(p['nombre'] as String),
+                        trailing: _RedRowMenu(
+                          onEditar: () => _editarPuerto(context, p),
+                          onHistorial: () => _showHistorialRed(
+                              context,
+                              'red_puertos',
+                              p['id'] as String,
+                              'Historial del puerto'),
+                        ),
                       )),
                   ListTile(
                     dense: true,
@@ -269,6 +307,41 @@ class _HubTileState extends State<_HubTile> {
         ],
       ),
     );
+  }
+
+  Future<void> _editarHub(BuildContext context) async {
+    final res = await promptNombreNotasRed(context, 'Editar hub',
+        inicial: widget.hub);
+    if (res == null) return;
+    try {
+      await ps.db.execute(
+        'UPDATE red_hubs SET nombre = ?, notas = ? WHERE id = ?',
+        [res.nombre, res.notas, widget.hub['id']],
+      );
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('Error: $e')));
+      }
+    }
+  }
+
+  Future<void> _editarPuerto(
+      BuildContext context, Map<String, dynamic> puerto) async {
+    final res = await promptNombreNotasRed(context, 'Editar puerto',
+        inicial: puerto);
+    if (res == null) return;
+    try {
+      await ps.db.execute(
+        'UPDATE red_puertos SET nombre = ?, notas = ? WHERE id = ?',
+        [res.nombre, res.notas, puerto['id']],
+      );
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('Error: $e')));
+      }
+    }
   }
 
   Future<void> _crearPuerto(BuildContext context, String hubId) async {
@@ -289,11 +362,72 @@ class _HubTileState extends State<_HubTile> {
   }
 }
 
-/// Diálogo para Hub/Puerto: nombre + notas (opcional).
+/// Menú de acciones por fila de red (Editar / Historial), reusado en los 3
+/// niveles. Como `trailing` del ExpansionTile/ListTile.
+class _RedRowMenu extends StatelessWidget {
+  const _RedRowMenu({required this.onEditar, required this.onHistorial});
+  final VoidCallback onEditar;
+  final VoidCallback onHistorial;
+
+  @override
+  Widget build(BuildContext context) {
+    return PopupMenuButton<String>(
+      tooltip: 'Acciones',
+      onSelected: (v) {
+        if (v == 'editar') onEditar();
+        if (v == 'historial') onHistorial();
+      },
+      itemBuilder: (_) => const [
+        PopupMenuItem(value: 'editar', child: Text('Editar')),
+        PopupMenuItem(value: 'historial', child: Text('Historial')),
+      ],
+    );
+  }
+}
+
+/// Abre el historial de cambios (audit log) de una fila de red, mismo patrón
+/// que planes/cliente. `tabla` ∈ red_nodos/red_hubs/red_puertos.
+void _showHistorialRed(
+    BuildContext context, String tabla, String id, String titulo) {
+  showModalBottomSheet<void>(
+    context: context,
+    isScrollControlled: true,
+    showDragHandle: true,
+    builder: (_) => DraggableScrollableSheet(
+      expand: false,
+      initialChildSize: 0.6,
+      maxChildSize: 0.9,
+      builder: (context, scrollCtrl) => Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: Row(
+              children: [
+                const Icon(Icons.history),
+                const SizedBox(width: 8),
+                Text(titulo, style: Theme.of(context).textTheme.titleMedium),
+              ],
+            ),
+          ),
+          const Divider(),
+          Expanded(
+            child: SingleChildScrollView(
+              controller: scrollCtrl,
+              child: HistorialCambiosWidget(tabla: tabla, registroId: id),
+            ),
+          ),
+        ],
+      ),
+    ),
+  );
+}
+
+/// Diálogo para Hub/Puerto: nombre + notas (opcional). `inicial` (fila) para editar.
 Future<({String nombre, String? notas})?> promptNombreNotasRed(
-    BuildContext context, String titulo) async {
-  final nombreCtrl = TextEditingController();
-  final notasCtrl = TextEditingController();
+    BuildContext context, String titulo,
+    {Map<String, dynamic>? inicial}) async {
+  final nombreCtrl = TextEditingController(text: inicial?['nombre'] as String? ?? '');
+  final notasCtrl = TextEditingController(text: inicial?['notas'] as String? ?? '');
   final ok = await showDialog<bool>(
     context: context,
     builder: (ctx) => AlertDialog(
