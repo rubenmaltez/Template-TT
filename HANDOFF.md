@@ -24,22 +24,28 @@ técnico · D4 correlativo `T-00001` · D5 3A completo).
   audit_changelog (4 entidades + value-labels de estado/evento) · modelo
   `Cobrador.esTecnico/esAdminTickets`.
 
-**3A capa 2-3 — PENDIENTE (próximo):**
-- `Ticket` model (Dart) + `ticket_sla.dart` (SLA derivado: created_at +
-  tipo.sla_horas − tiempo en `en_espera`, con `-6h` Nicaragua; patrón `cuota_estado`).
-- Pantalla **ticket_tipos CRUD** (admin, patrón planes/inventario).
-- Pantalla **tickets**: lista + crear (correlativo cliente = MAX+1 por tenant) +
-  detalle (timeline desde `ticket_eventos` + cambio de estado + SLA + adjuntos).
-  Al crear/cambiar estado/comentar → INSERT en `ticket_eventos` (la bitácora).
-- **Gating**: ruta `/admin/tickets` con `moduloKey:'tickets'` (router) + ítem de
-  menú en AdminShell (mismo patrón que inventario) + rutas a las pantallas.
-- **Adjuntos**: bucket Storage `ticket-adjuntos` (+ policies) + upload (patrón
-  `foto_comprobante`/`fotos_cliente`).
-- Cerrar 3A con audit de 3 agentes + checklist de testing.
+**3A capa 2-3 — HECHA** (commits `dd0ac10`, `5067bd9`):
+- `ticket_sla.dart`: SLA derivado (created_at + sla_horas, pausa en_espera) +
+  código `T-00001` + transiciones válidas (espejan el trigger) + labels/colores.
+- **ticket_tipos CRUD** (`ticket_tipos_screen`) con SLA + guarda de borrado.
+- **tickets**: lista (filtro por grupo + badges estado/SLA), crear
+  (`ticket_form`, correlativo MAX+1, evento 'creado'), detalle
+  (`ticket_detail`: header + SLA + transiciones con re-validación + reasignar +
+  comentar + bitácora `ticket_eventos`).
+- **Gating**: `/admin/tickets` + 4 rutas + `soloAdmin` + gate de módulo + ítem
+  de menú (`moduloKey:'tickets'`).
+- **Adjuntos**: migración **0104** (bucket `ticket-adjuntos` + policies) +
+  `TicketAdjuntosWidget` (galería + evento 'adjunto') en el detalle.
+- ⏳ Corriendo audit de 3A (3 agentes); fixes + testing al cerrar.
 
-> ⚠️ Deploy Fase 3 (al final del slice): correr `0103` por Dashboard + redeploy
-> sync rules + restart (**schema v21**). El super_admin enciende 'tickets' del
-> tenant en `/super/tenants/:id`. Buckets de `admin_tickets`/`tecnico` = slice 3B.
+**3A — DECISIÓN pendiente para 3B/futuro:** la pausa exacta del SLA (sumar todos
+los tramos en `en_espera`) hoy es aproximada (pausa solo si está en espera AHORA);
+refinamiento de v2. Buckets de `admin_tickets`/`tecnico` = 3B.
+
+> ⚠️ Deploy Fase 3 (al final del slice): correr `0103` + **`0104`** por Dashboard +
+> redeploy sync rules (tablas nuevas) + restart (**schema v21**). El super_admin
+> enciende 'tickets' del tenant en `/super/tenants/:id`. `0104` (Storage) depende
+> de `0103` — correr en orden.
 
 ## Estado actual
 

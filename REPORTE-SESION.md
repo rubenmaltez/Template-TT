@@ -158,6 +158,34 @@ consistentes → auditoría.
 
 > Más reciente arriba. Formato por ítem: error → fix → expectativa.
 
+### 2026-06-07 (cont. 4) — Fase 3 slice 3A: fundación de Tickets (código completo)
+
+Propuesta aprobada (`FASE3-PLAN.md`); 3A implementado completo (migraciones
+0103-0104 + UI). Módulo `tickets` opcional (OFF por defecto). **Comportamiento
+esperado:**
+- **Roles:** `tecnico` (móvil-first, shell propio en 3B) y `admin_tickets` (admin
+  acotado). El super_admin los asigna con `set_cobrador_rol`.
+- **Tipos de ticket:** catálogo per-tenant con SLA por tipo. Borrar un tipo en uso
+  está bloqueado (FK RESTRICT + guarda client-side).
+- **Crear ticket:** tipo + título + cliente (opcional, con búsqueda) + prioridad +
+  asignar técnico. Código legible `T-00001` (correlativo MAX+1 por tenant). Al crear
+  se registra el evento `creado` en la bitácora; si se asigna, también `asignado`.
+- **Estados:** `abierto → asignado → en_progreso → en_espera → resuelto → cerrado`
+  (+ reabierto/cancelado). El detalle ofrece SOLO las transiciones válidas; el
+  trigger server-side (0103) las re-valida ("server gana"); la UI re-valida el
+  estado dentro de la tx para no pisar cambios de otra pestaña.
+- **SLA derivado** (en plazo / por vencer / vencido / en espera / cerrado), por tipo,
+  con badge en lista y detalle. Pausa si está en espera (pausa exacta = v2).
+- **Bitácora** (`ticket_eventos`, append-only): creado/asignado/cambio de estado/
+  comentario/adjunto, con autor + fecha, en timeline cronológica.
+- **Adjuntos:** fotos a Storage (`ticket-adjuntos`), galería en el detalle, registra
+  evento `adjunto`. Requiere conexión.
+- **Gating:** módulo OFF → menú oculto + /admin/tickets rebota; admin_cobranza no entra.
+
+**Cadena de integridad:** schema.dart (4 tablas) + sync-rules (admin/impersonado) +
+`_schemaVersion` 20→21 + audit_changelog (4 entidades + value-labels). Auditándose
+con 3 agentes; fixes al cerrar el slice.
+
 ### 2026-06-07 (cont. 3) — Audit integral de Fase 2 + corrección de TODOS los findings
 
 Audit exhaustivo con **7 expertos en paralelo** (uno por módulo + cross-módulo),
