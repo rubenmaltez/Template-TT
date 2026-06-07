@@ -36,6 +36,7 @@ class _ClientesAdminScreenState extends ConsumerState<ClientesAdminScreen> {
   String _query = '';
   String? _cobradorFilter; // null = todos
   String? _comunidadFilter;
+  String? _nodoFilter; // null = todos (topología de red)
   bool _soloMora = false;
   bool _soloSinCobrador = false;
   _FiltroEstado _filtroEstado = _FiltroEstado.activos;
@@ -151,6 +152,11 @@ class _ClientesAdminScreenState extends ConsumerState<ClientesAdminScreen> {
             _comunidadFilter = v;
             _resetPagination();
           }),
+          nodoActual: _nodoFilter,
+          onNodo: (v) => setState(() {
+            _nodoFilter = v;
+            _resetPagination();
+          }),
           onSoloMora: (v) => setState(() {
             _soloMora = v;
             _resetPagination();
@@ -176,6 +182,7 @@ class _ClientesAdminScreenState extends ConsumerState<ClientesAdminScreen> {
             query: _query,
             cobradorFilter: _cobradorFilter,
             comunidadFilter: _comunidadFilter,
+            nodoFilter: _nodoFilter,
             soloMora: _soloMora,
             soloSinCobrador: _soloSinCobrador,
             filtroEstado: _filtroEstado,
@@ -253,6 +260,8 @@ class _Filtros extends StatelessWidget {
     required this.soloSinCobrador,
     required this.onCobrador,
     required this.onComunidad,
+    required this.nodoActual,
+    required this.onNodo,
     required this.onSoloMora,
     required this.onSoloSinCobrador,
     required this.filtroEstado,
@@ -261,11 +270,13 @@ class _Filtros extends StatelessWidget {
 
   final String? cobradorActual;
   final String? comunidadActual;
+  final String? nodoActual;
   final bool soloMora;
   final bool soloSinCobrador;
   final _FiltroEstado filtroEstado;
   final ValueChanged<String?> onCobrador;
   final ValueChanged<String?> onComunidad;
+  final ValueChanged<String?> onNodo;
   final ValueChanged<bool> onSoloMora;
   final ValueChanged<bool> onSoloSinCobrador;
   final ValueChanged<_FiltroEstado> onFiltroEstado;
@@ -280,6 +291,8 @@ class _Filtros extends StatelessWidget {
           _CobradorChip(seleccionado: cobradorActual, onChanged: onCobrador),
           const SizedBox(width: 8),
           _ComunidadChip(seleccionada: comunidadActual, onChanged: onComunidad),
+          const SizedBox(width: 8),
+          _NodoChip(seleccionado: nodoActual, onChanged: onNodo),
           const SizedBox(width: 8),
           FilterChip(
             label: const Text('Sin cobrador'),
@@ -452,6 +465,74 @@ class _ComunidadChipState extends State<_ComunidadChip> {
   }
 }
 
+class _NodoChip extends StatefulWidget {
+  const _NodoChip({required this.seleccionado, required this.onChanged});
+  final String? seleccionado;
+  final ValueChanged<String?> onChanged;
+
+  @override
+  State<_NodoChip> createState() => _NodoChipState();
+}
+
+class _NodoChipState extends State<_NodoChip> {
+  late final Stream<List<Map<String, dynamic>>> _nodosStream;
+
+  @override
+  void initState() {
+    super.initState();
+    _nodosStream = ps.db.watch(
+      "SELECT id, nombre FROM red_nodos WHERE activo = 1 ORDER BY nombre",
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder<List<Map<String, dynamic>>>(
+      stream: _nodosStream,
+      initialData: const [],
+      builder: (context, snap) {
+        if (snap.hasError) {
+          return Chip(label: Text('Error: ${snap.error}'));
+        }
+        final rows = snap.data!;
+        String label = 'Nodo';
+        if (widget.seleccionado != null) {
+          final sel = rows.where((r) => r['id'] == widget.seleccionado);
+          if (sel.isNotEmpty) label = sel.first['nombre'] as String;
+        }
+        return ActionChip(
+          avatar: const Icon(Icons.hub, size: 18),
+          label: Text(label),
+          onPressed: () async {
+            final picked = await showModalBottomSheet<String?>(
+              context: context,
+              showDragHandle: true,
+              builder: (ctx) => SafeArea(
+                child: ListView(
+                  shrinkWrap: true,
+                  children: [
+                    ListTile(
+                      leading: const Icon(Icons.clear_all),
+                      title: const Text('Todos los nodos'),
+                      onTap: () => Navigator.pop(ctx, null),
+                    ),
+                    const Divider(height: 1),
+                    ...rows.map((r) => ListTile(
+                          title: Text(r['nombre'] as String),
+                          onTap: () => Navigator.pop(ctx, r['id'] as String),
+                        )),
+                  ],
+                ),
+              ),
+            );
+            widget.onChanged(picked);
+          },
+        );
+      },
+    );
+  }
+}
+
 class _BulkBar extends StatelessWidget {
   const _BulkBar({
     required this.cantidad,
@@ -494,6 +575,7 @@ class _Lista extends StatefulWidget {
     required this.query,
     required this.cobradorFilter,
     required this.comunidadFilter,
+    required this.nodoFilter,
     required this.soloMora,
     required this.soloSinCobrador,
     required this.filtroEstado,
@@ -508,6 +590,7 @@ class _Lista extends StatefulWidget {
   final String query;
   final String? cobradorFilter;
   final String? comunidadFilter;
+  final String? nodoFilter;
   final bool soloMora;
   final bool soloSinCobrador;
   final _FiltroEstado filtroEstado;
@@ -540,6 +623,7 @@ class _ListaState extends State<_Lista> {
     if (old.query != widget.query ||
         old.cobradorFilter != widget.cobradorFilter ||
         old.comunidadFilter != widget.comunidadFilter ||
+        old.nodoFilter != widget.nodoFilter ||
         old.soloMora != widget.soloMora ||
         old.soloSinCobrador != widget.soloSinCobrador ||
         old.filtroEstado != widget.filtroEstado ||
@@ -579,6 +663,13 @@ class _ListaState extends State<_Lista> {
     if (widget.comunidadFilter != null) {
       where.add('c.comunidad_id = ?');
       params.add(widget.comunidadFilter);
+    }
+    if (widget.nodoFilter != null) {
+      // Cliente conectado a un puerto que cuelga del nodo elegido
+      // (puerto → hub → nodo). Subquery escalar, válido en SQLite.
+      where.add('c.puerto_id IN (SELECT p.id FROM red_puertos p '
+          'JOIN red_hubs h ON h.id = p.hub_id WHERE h.nodo_id = ?)');
+      params.add(widget.nodoFilter);
     }
     if (widget.soloSinCobrador) {
       where.add('c.cobrador_id IS NULL');

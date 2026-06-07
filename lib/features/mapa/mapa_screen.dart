@@ -55,6 +55,7 @@ class _MapaScreenState extends ConsumerState<MapaScreen> {
   // tiene sentido filtrar por cobrador/zona). null = todos / todas.
   String? _cobradorId;
   String? _comunidadId;
+  String? _nodoId;
   // Toggle de capa: false = calle (OSM), true = satélite (Esri).
   bool _satelite = false;
   // Cliente enfocado por la búsqueda: cuando != null, el mapa muestra SOLO su
@@ -94,11 +95,12 @@ class _MapaScreenState extends ConsumerState<MapaScreen> {
       ps.db.watch(
         '''
         SELECT c.id, c.nombre, c.latitud, c.longitud,
-               c.cobrador_id, c.comunidad_id,
+               c.cobrador_id, c.comunidad_id, c.puerto_id,
                c.cedula, c.telefono, c.codigo,
                (SELECT GROUP_CONCAT(ct.codigo, ' ')
                   FROM contratos ct WHERE ct.cliente_id = c.id) AS contrato_codigos,
                co.nombre AS comunidad,
+               n.id AS nodo_id, n.nombre AS nodo,
                cob.nombre AS cobrador_nombre,
                COALESCE(SUM(CASE WHEN cu.estado IN ('pendiente','parcial') THEN 1 ELSE 0 END), 0) AS pendientes,
                COALESCE(SUM(CASE WHEN cu.estado IN ('pendiente','parcial')
@@ -114,13 +116,17 @@ class _MapaScreenState extends ConsumerState<MapaScreen> {
           FROM clientes c
      LEFT JOIN cuotas cu ON cu.cliente_id = c.id
      LEFT JOIN comunidades co ON co.id = c.comunidad_id
+     LEFT JOIN red_puertos p ON p.id = c.puerto_id
+     LEFT JOIN red_hubs h ON h.id = p.hub_id
+     LEFT JOIN red_nodos n ON n.id = h.nodo_id
      LEFT JOIN cobradores cob ON cob.id = c.cobrador_id
          WHERE c.activo = 1
            AND c.latitud IS NOT NULL
            AND c.longitud IS NOT NULL
          GROUP BY c.id, c.nombre, c.latitud, c.longitud,
-                  c.cobrador_id, c.comunidad_id,
-                  c.cedula, c.telefono, c.codigo, co.nombre, cob.nombre
+                  c.cobrador_id, c.comunidad_id, c.puerto_id,
+                  c.cedula, c.telefono, c.codigo, co.nombre,
+                  n.id, n.nombre, cob.nombre
         ''',
         // diasGracia x2: vencidas + en_gracia, en orden de aparición.
         parameters: [diasGracia, diasGracia],
@@ -191,11 +197,17 @@ class _MapaScreenState extends ConsumerState<MapaScreen> {
           idKey: 'comunidad_id',
           labelKey: 'comunidad',
         ) : const <({String id, String label})>[];
+        final nodoOpciones = esAdminView ? _opcionesDistinct(
+          rows,
+          idKey: 'nodo_id',
+          labelKey: 'nodo',
+        ) : const <({String id, String label})>[];
 
         // El cobrador puro no ve los dropdowns; sus filtros quedan null para
         // que nunca recorten su set de clientes.
         final cobradorId = esAdminView ? _cobradorId : null;
         final comunidadId = esAdminView ? _comunidadId : null;
+        final nodoId = esAdminView ? _nodoId : null;
 
         // Si hay un cliente buscado, el mapa muestra SOLO su pin (ignora los
         // chips y dropdowns: el usuario lo eligió explícitamente). Si ese id
@@ -227,7 +239,8 @@ class _MapaScreenState extends ConsumerState<MapaScreen> {
                     cobradorId == null || r['cobrador_id'] == cobradorId;
                 final pasaComunidad =
                     comunidadId == null || r['comunidad_id'] == comunidadId;
-                return pasaEstado && pasaCobrador && pasaComunidad;
+                final pasaNodo = nodoId == null || r['nodo_id'] == nodoId;
+                return pasaEstado && pasaCobrador && pasaComunidad && pasaNodo;
               }).toList();
 
         return Stack(
@@ -286,12 +299,16 @@ class _MapaScreenState extends ConsumerState<MapaScreen> {
                             _FiltrosAdmin(
                               cobradorId: cobradorId,
                               comunidadId: comunidadId,
+                              nodoId: nodoId,
                               cobradorOpciones: cobradorOpciones,
                               comunidadOpciones: comunidadOpciones,
+                              nodoOpciones: nodoOpciones,
                               onCobradorChanged: (v) =>
                                   setState(() => _cobradorId = v),
                               onComunidadChanged: (v) =>
                                   setState(() => _comunidadId = v),
+                              onNodoChanged: (v) =>
+                                  setState(() => _nodoId = v),
                             ),
                           ],
                         ],
@@ -558,18 +575,24 @@ class _FiltrosAdmin extends StatelessWidget {
   const _FiltrosAdmin({
     required this.cobradorId,
     required this.comunidadId,
+    required this.nodoId,
     required this.cobradorOpciones,
     required this.comunidadOpciones,
+    required this.nodoOpciones,
     required this.onCobradorChanged,
     required this.onComunidadChanged,
+    required this.onNodoChanged,
   });
 
   final String? cobradorId;
   final String? comunidadId;
+  final String? nodoId;
   final List<({String id, String label})> cobradorOpciones;
   final List<({String id, String label})> comunidadOpciones;
+  final List<({String id, String label})> nodoOpciones;
   final ValueChanged<String?> onCobradorChanged;
   final ValueChanged<String?> onComunidadChanged;
+  final ValueChanged<String?> onNodoChanged;
 
   @override
   Widget build(BuildContext context) {
@@ -592,6 +615,14 @@ class _FiltrosAdmin extends StatelessWidget {
           value: comunidadId,
           opciones: comunidadOpciones,
           onChanged: onComunidadChanged,
+        ),
+        DropdownFiltro(
+          icon: Icons.hub_outlined,
+          hint: 'Nodo',
+          todosLabel: 'Todos',
+          value: nodoId,
+          opciones: nodoOpciones,
+          onChanged: onNodoChanged,
         ),
       ],
     );
