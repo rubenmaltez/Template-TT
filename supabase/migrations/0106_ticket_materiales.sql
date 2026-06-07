@@ -79,12 +79,29 @@ DECLARE
   v_cliente uuid;
   v_existe  boolean := false;
 BEGIN
-  -- Defensa (SECURITY DEFINER saltea RLS): el ticket debe ser del mismo tenant.
+  -- Defensa cross-tenant (SECURITY DEFINER saltea RLS → validamos a mano que TODO
+  -- FK pertenezca a NEW.tenant_id; la FK sola sólo garantiza existencia, no co-
+  -- tenencia, y NEW.tenant_id está anclado por la RLS WITH CHECK al tenant real
+  -- del que escribe). Sin esto, una fila podría referenciar recursos de otro tenant.
   SELECT cliente_id, true INTO v_cliente, v_existe
     FROM public.tickets
    WHERE id = NEW.ticket_id AND tenant_id = NEW.tenant_id;
   IF NOT COALESCE(v_existe, false) THEN
-    RAISE EXCEPTION 'Ticket % no existe en el tenant %', NEW.ticket_id, NEW.tenant_id;
+    RAISE EXCEPTION 'Ticket % no pertenece al tenant %', NEW.ticket_id, NEW.tenant_id;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM public.inv_productos
+                  WHERE id = NEW.producto_id AND tenant_id = NEW.tenant_id) THEN
+    RAISE EXCEPTION 'Producto % no pertenece al tenant %', NEW.producto_id, NEW.tenant_id;
+  END IF;
+  IF NEW.ubicacion_origen_id IS NOT NULL AND NOT EXISTS (
+        SELECT 1 FROM public.inv_ubicaciones
+         WHERE id = NEW.ubicacion_origen_id AND tenant_id = NEW.tenant_id) THEN
+    RAISE EXCEPTION 'Ubicación % no pertenece al tenant %', NEW.ubicacion_origen_id, NEW.tenant_id;
+  END IF;
+  IF NEW.serial_id IS NOT NULL AND NOT EXISTS (
+        SELECT 1 FROM public.inv_seriales
+         WHERE id = NEW.serial_id AND tenant_id = NEW.tenant_id) THEN
+    RAISE EXCEPTION 'Serial % no pertenece al tenant %', NEW.serial_id, NEW.tenant_id;
   END IF;
 
   -- 1. Movimiento de consumo (descuenta del origen = custodia/ubicación).

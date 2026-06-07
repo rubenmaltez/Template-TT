@@ -242,6 +242,8 @@ class _AgregarMaterialSheetState extends State<_AgregarMaterialSheet> {
   void initState() {
     super.initState();
     _ubicacionId = widget.ubicaciones.first['id'] as String;
+    // Rebuild al tipear la cantidad → el botón "Registrar" se habilita/deshabilita.
+    _cantidadCtrl.addListener(() => setState(() {}));
     _recargar();
   }
 
@@ -327,7 +329,10 @@ class _AgregarMaterialSheetState extends State<_AgregarMaterialSheet> {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    final puedeConfirmar = _serial ? _serialSel != null : _granelSel != null;
+    final cantNum = double.tryParse(_cantidadCtrl.text.replaceAll(',', '.'));
+    final puedeConfirmar = _serial
+        ? _serialSel != null
+        : (_granelSel != null && cantNum != null && cantNum > 0);
     return SafeArea(
       child: Padding(
         padding: EdgeInsets.fromLTRB(
