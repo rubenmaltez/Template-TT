@@ -68,14 +68,16 @@ ni trigger de proyección. Fase 2 es admin-facing; custodia por técnico = Fase 
   sync); `tenant_modulos` synced + `modulosHabilitadosProvider` + `_MenuItem.moduloKey`
   (no lo bypassa el super_admin); `InventarioScreen` = catálogo Productos (CRUD +
   categoría inline + serializado/granel + historial). schema **v18**.
-- ⏳ **2B**: ubicaciones (central + técnico-ready) + proveedores UI + recepciones (ingreso).
-- ⏳ **2C**: `inv_movimientos` (ledger) + stock derivado + egreso/ajuste/transferencia
-  + asignar equipo a cliente. `inv_seriales` (equipos serializados).
+- ✅ **2B (ubicaciones + proveedores)** commit `d690c13`, **en auditoría**: migración
+  0100 (inv_ubicaciones); InventarioScreen en pestañas (Productos|Ubicaciones|
+  Proveedores), CRUD+historial en cada una. schema **v19**.
+- ⏳ **2C**: `inv_movimientos` (ledger) + `inv_seriales` + `inv_recepciones` + stock
+  derivado + ingreso/egreso/ajuste/transferencia + asignar equipo a cliente.
 - ⏳ **2D**: equipos instalados en pantalla de cliente/contrato.
 
-> ⚠️ Deploy 2A (cuando se testee): correr `0099_inventario_catalogo.sql` + redeploy
-> sync rules (tenant_modulos + inv) + restart (bump v18). Para ver Inventario:
-> super_admin habilita el módulo 'inventario' del tenant en `/super/tenants/:id`.
+> ⚠️ Deploy Fase 2 (al final, todo junto): correr `0099` + `0100` (+ las de 2C) por
+> Dashboard, redeploy sync rules, restart (schema v19+). Para ver Inventario el
+> super_admin habilita 'inventario' del tenant en `/super/tenants/:id`.
 
 ## Fase 1.1 — Fixes + features de red post-testing de Rubén (HECHO)
 
