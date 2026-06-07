@@ -9,13 +9,25 @@
 
 ## Estado actual
 
-- **Branch de trabajo:** `claude/stoic-tesla-cGkJ6`
-- **Último commit:** `c2a8edf` — Router: transición deslizamiento con cobertura opaca (sin overlap)
+- **Branch de trabajo:** `claude/inventory-tickets-technician-role` (NUEVO).
+- **Branch BACKUP (no tocar):** `claude/stoic-tesla-cGkJ6` — congelado en `7bc16aa`,
+  respaldo completo por si hay que volver atrás.
+- **Salió de:** `7bc16aa` (todo el trabajo previo está incluido).
 - **Schema PowerSync:** `_schemaVersion = 16` (`lib/powersync/db.dart`). Sin cambios de DB pendientes.
 - **Plataformas target:** Android + Windows (web degrada sin romper, NO es target).
 - **App version:** v0.9.0 (ver `RELEASE.md`).
 
-## Última sesión (2026-06-06 cont.) — qué se hizo
+## Objetivo de este branch
+
+Features nuevos (a definir el detalle con Rubén antes de implementar):
+1. **Inventario** — módulo de inventario (existe el feature flag `tenant_modulos` "Inventario opcional"; ⟨definir alcance⟩).
+2. **Tickets** — sistema de tickets/órdenes de trabajo ⟨definir alcance⟩.
+3. **Rol técnico** — nuevo rol "técnico" (además de cobrador/admin/admin_cobranza/super_admin) ⟨definir permisos y vistas⟩.
+
+> ⚠️ Tocan DB/roles/RLS → seguir el checklist de integridad de CLAUDE.md y la Fase 2
+> (proponer + esperar aprobación) ANTES de implementar.
+
+## Sesión anterior (2026-06-06 cont.) — qué se hizo
 
 Lote UX/reportes, **sin migraciones**, auditado (3 agentes, 0 bloqueantes):
 1. **Reportes con detalle USD** (cobros/por cobrador/fiscal): columnas Moneda /
