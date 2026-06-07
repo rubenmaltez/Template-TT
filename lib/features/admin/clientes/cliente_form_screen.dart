@@ -16,6 +16,7 @@ import '../../../powersync/db.dart' as ps;
 import '../../shared/widgets/confirm_discard_dialog.dart';
 import '../../shared/widgets/phone_text_field.dart';
 import 'widgets/geo_picker.dart';
+import 'widgets/red_picker.dart';
 
 class ClienteFormScreen extends ConsumerStatefulWidget {
   const ClienteFormScreen({super.key, this.clienteId});
@@ -41,6 +42,7 @@ class _ClienteFormScreenState extends ConsumerState<ClienteFormScreen> {
   final _lng = TextEditingController();
 
   String? _comunidadId;
+  String? _puertoId;
   String? _cobradorId;
   bool _activo = true;
   bool _cargando = true;
@@ -82,6 +84,7 @@ class _ClienteFormScreenState extends ConsumerState<ClienteFormScreen> {
     _lat.text = r['latitud']?.toString() ?? '';
     _lng.text = r['longitud']?.toString() ?? '';
     _comunidadId = r['comunidad_id'] as String?;
+    _puertoId = r['puerto_id'] as String?;
     _cobradorId = r['cobrador_id'] as String?;
     _activo = (r['activo'] as int? ?? 1) == 1;
     _fotoPath = r['foto_path'] as String?;
@@ -201,13 +204,13 @@ class _ClienteFormScreenState extends ConsumerState<ClienteFormScreen> {
         await ps.db.execute(
           '''
           INSERT INTO clientes (
-            id, tenant_id, cobrador_id, comunidad_id, codigo, nombre, cedula,
-            telefono, direccion, direccion_referencia, latitud, longitud,
+            id, tenant_id, cobrador_id, comunidad_id, puerto_id, codigo, nombre,
+            cedula, telefono, direccion, direccion_referencia, latitud, longitud,
             foto_path, activo, created_at, updated_at, ocurrido_en
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
           ''',
           [
-            id, tenantId, _cobradorId, _comunidadId,
+            id, tenantId, _cobradorId, _comunidadId, _puertoId,
             _codigo.text.trim().isEmpty ? null : _codigo.text.trim().toUpperCase(),
             _nombre.text.trim(),
             _cedula.text.trim().isEmpty ? null : _cedula.text.trim(),
@@ -223,14 +226,14 @@ class _ClienteFormScreenState extends ConsumerState<ClienteFormScreen> {
         await ps.db.execute(
           '''
           UPDATE clientes
-             SET cobrador_id = ?, comunidad_id = ?, codigo = ?, nombre = ?,
-                 cedula = ?, telefono = ?, direccion = ?,
+             SET cobrador_id = ?, comunidad_id = ?, puerto_id = ?, codigo = ?,
+                 nombre = ?, cedula = ?, telefono = ?, direccion = ?,
                  direccion_referencia = ?, latitud = ?, longitud = ?,
                  foto_path = ?, activo = ?, updated_at = ?, ocurrido_en = ?
            WHERE id = ?
           ''',
           [
-            _cobradorId, _comunidadId,
+            _cobradorId, _comunidadId, _puertoId,
             _codigo.text.trim().isEmpty ? null : _codigo.text.trim().toUpperCase(),
             _nombre.text.trim(),
             _cedula.text.trim().isEmpty ? null : _cedula.text.trim(),
@@ -432,6 +435,14 @@ class _ClienteFormScreenState extends ConsumerState<ClienteFormScreen> {
                 comunidadId: _comunidadId,
                 onChanged: (id) => setState(() {
                   _comunidadId = id;
+                  _dirty = true;
+                }),
+              ),
+              const SizedBox(height: 16),
+              RedPicker(
+                puertoId: _puertoId,
+                onChanged: (id) => setState(() {
+                  _puertoId = id;
                   _dirty = true;
                 }),
               ),

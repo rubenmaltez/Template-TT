@@ -271,6 +271,7 @@ const _adminMenu = [
     _MenuItem(Icons.wifi, 'Planes', '/admin/planes', adminOnly: true),
     _MenuItem(Icons.location_city, 'Geografía', '/admin/geografia',
         adminOnly: true),
+    _MenuItem(Icons.hub, 'Red', '/admin/red', adminOnly: true),
     // Auditoría: oculta para el admin por defecto. El super_admin la ve
     // siempre; el admin sólo si el super habilita el toggle por tenant
     // (cobranza.audit_visible_admin, migración 0089).
