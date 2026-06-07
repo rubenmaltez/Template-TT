@@ -35,7 +35,14 @@ class _RedAdminScreenState extends ConsumerState<RedAdminScreen> {
   @override
   void initState() {
     super.initState();
-    _nodos = ps.db.watch('SELECT * FROM red_nodos ORDER BY nombre');
+    // Filtro explícito por tenant (F1): la SQLite del super_admin puede tener
+    // red de System + del tenant impersonado; sin el WHERE el SELECT daría la
+    // UNIÓN. Mismo guard que modulosHabilitadosProvider.
+    final tenantId = ref.read(tenantIdProvider);
+    _nodos = ps.db.watch(
+      'SELECT * FROM red_nodos WHERE tenant_id = ? ORDER BY nombre',
+      parameters: [tenantId],
+    );
   }
 
   @override

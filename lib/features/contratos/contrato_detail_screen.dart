@@ -12,6 +12,7 @@ import '../../data/repositories/pagos_repo.dart';
 import '../../data/repositories/settings_repo.dart';
 import '../../data/utils/formatters.dart';
 import '../../powersync/db.dart' as ps;
+import '../admin/inventario/equipos_en_baja.dart';
 import '../shared/widgets/empty_state.dart';
 import '../shared/widgets/foto_comprobante_view.dart';
 import '../shared/widgets/impersonation_banner.dart';
@@ -91,6 +92,12 @@ class _ContratoDetailScreenState extends ConsumerState<ContratoDetailScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Estado cambiado a $nuevoEstado')),
         );
+      }
+      // Al cancelar el contrato, ofrecer gestionar sus equipos instalados para
+      // que no queden "fantasma" (hallazgo del audit de lifecycle).
+      if (nuevoEstado == 'cancelado' && mounted) {
+        await ofrecerGestionEquiposEnBaja(context, ref,
+            contratoId: widget.contratoId, entidad: 'contrato');
       }
     } catch (e) {
       if (mounted) {

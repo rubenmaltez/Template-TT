@@ -71,8 +71,14 @@ class _GeografiaAdminScreenState extends ConsumerState<GeografiaAdminScreen> {
   @override
   void initState() {
     super.initState();
-    _departamentos =
-        ps.db.watch('SELECT * FROM departamentos ORDER BY nombre');
+    // Filtro explícito por tenant (F1): la geo es per-tenant; la SQLite del
+    // super_admin puede tener deptos de System + del tenant impersonado → sin el
+    // WHERE el SELECT daría la UNIÓN. Mismo guard que modulosHabilitadosProvider.
+    final tenantId = ref.read(tenantIdProvider);
+    _departamentos = ps.db.watch(
+      'SELECT * FROM departamentos WHERE tenant_id = ? ORDER BY nombre',
+      parameters: [tenantId],
+    );
   }
 
   @override

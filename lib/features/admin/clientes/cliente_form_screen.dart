@@ -14,6 +14,7 @@ import '../../../powersync/db.dart' as ps;
 import '../../shared/widgets/confirm_discard_dialog.dart';
 import '../../shared/widgets/mapa_picker_screen.dart';
 import '../../shared/widgets/phone_text_field.dart';
+import '../inventario/equipos_en_baja.dart';
 import 'widgets/geo_picker.dart';
 import 'widgets/red_picker.dart';
 
@@ -44,6 +45,7 @@ class _ClienteFormScreenState extends ConsumerState<ClienteFormScreen> {
   String? _puertoId;
   String? _cobradorId;
   bool _activo = true;
+  bool _activoOriginal = true; // para detectar la transición activo→inactivo
   bool _cargando = true;
   bool _guardando = false;
   String? _error;
@@ -86,6 +88,7 @@ class _ClienteFormScreenState extends ConsumerState<ClienteFormScreen> {
     _puertoId = r['puerto_id'] as String?;
     _cobradorId = r['cobrador_id'] as String?;
     _activo = (r['activo'] as int? ?? 1) == 1;
+    _activoOriginal = _activo;
     _fotoPath = r['foto_path'] as String?;
     _codigo.text = r['codigo'] as String? ?? '';
     // Si ya tiene código asignado queda read-only para admin/cobrador; el
@@ -257,6 +260,13 @@ class _ClienteFormScreenState extends ConsumerState<ClienteFormScreen> {
         // hay cambios sin persistir. Sin esto, el guardado dispara la
         // confirmación que el user esperaría solo en cancelación.
         _dirty = false;
+        // Si se DESACTIVÓ el cliente (transición activo→inactivo), ofrecer
+        // gestionar sus equipos instalados antes de salir (audit de lifecycle).
+        if (widget.clienteId != null && _activoOriginal && !_activo) {
+          await ofrecerGestionEquiposEnBaja(context, ref,
+              clienteId: widget.clienteId!, entidad: 'cliente');
+        }
+        if (!context.mounted) return;
         // pop si vinimos vía push (caso normal); fallback go al listado
         // si fue deep-link directo a la edición.
         if (context.canPop()) {
