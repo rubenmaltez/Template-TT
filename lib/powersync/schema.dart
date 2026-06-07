@@ -186,6 +186,68 @@ const schema = Schema([
     Index('by_serial', [IndexedColumn('serial_id')]),
   ]),
 
+  // ── Tickets (módulo opcional, Fase 3) ─────────────────────────────────────
+  Table('ticket_tipos', [
+    Column.text('tenant_id'),
+    Column.text('nombre'),
+    Column.text('descripcion'),
+    Column.integer('sla_horas'),
+    Column.text('color'),
+    Column.integer('orden'),
+    Column.integer('activo'),
+    Column.text('created_at'),
+  ], indexes: [
+    Index('by_tenant', [IndexedColumn('tenant_id')]),
+  ]),
+
+  Table('tickets', [
+    Column.text('tenant_id'),
+    Column.integer('correlativo'),
+    Column.text('tipo_id'),
+    Column.text('cliente_id'),
+    Column.text('puerto_id'),
+    Column.text('incidente_id'),
+    Column.text('titulo'),
+    Column.text('descripcion'),
+    Column.text('estado'),
+    Column.text('prioridad'),
+    Column.text('asignado_a'),
+    Column.text('creado_por'),
+    Column.text('resuelto_en'),
+    Column.text('cerrado_en'),
+    Column.text('created_at'),
+    Column.text('ocurrido_en'),
+  ], indexes: [
+    Index('by_tenant', [IndexedColumn('tenant_id'), IndexedColumn('estado')]),
+    Index('by_cliente', [IndexedColumn('cliente_id')]),
+    Index('by_asignado', [IndexedColumn('asignado_a')]),
+  ]),
+
+  Table('ticket_eventos', [
+    Column.text('tenant_id'),
+    Column.text('ticket_id'),
+    Column.text('tipo_evento'),
+    Column.text('estado_anterior'),
+    Column.text('estado_nuevo'),
+    Column.text('comentario'),
+    Column.text('hecho_por'),
+    Column.text('ocurrido_en'),
+    Column.text('created_at'),
+  ], indexes: [
+    Index('by_ticket', [IndexedColumn('ticket_id')]),
+  ]),
+
+  Table('ticket_adjuntos', [
+    Column.text('tenant_id'),
+    Column.text('ticket_id'),
+    Column.text('storage_path'),
+    Column.text('descripcion'),
+    Column.text('subido_por'),
+    Column.text('created_at'),
+  ], indexes: [
+    Index('by_ticket', [IndexedColumn('ticket_id')]),
+  ]),
+
   // ── Catálogo del tenant ───────────────────────────────────────────────────
   Table('planes', [
     Column.text('tenant_id'),

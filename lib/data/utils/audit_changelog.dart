@@ -107,6 +107,14 @@ const Map<String, Set<String>> kAuditCamposVisiblesDefault = {
   'inv_ubicaciones': {'nombre', 'tipo', 'activa'},
   'inv_seriales': {'serial', 'mac', 'estado', 'cliente_id', 'notas'},
   'inv_movimientos': {'tipo', 'cantidad', 'motivo', 'notas', 'numero_factura'},
+  // Tickets (módulo opcional, Fase 3).
+  'ticket_tipos': {'nombre', 'descripcion', 'sla_horas', 'activo'},
+  // FK (tipo_id/asignado_a) fuera: el lookup no las resuelve → mostrarían UUID;
+  // el timeline de ticket_eventos narra tipo/asignación legible. cliente_id sí
+  // se resuelve (está en _kClavesFk).
+  'tickets': {'titulo', 'descripcion', 'estado', 'prioridad', 'cliente_id'},
+  'ticket_eventos': {'tipo_evento', 'comentario', 'estado_nuevo'},
+  'ticket_adjuntos': {'descripcion'},
 };
 
 // ---------------------------------------------------------------------------
@@ -225,6 +233,10 @@ const Map<String, List<String>> kAuditCamposCatalogo = {
   'inv_ubicaciones': ['nombre', 'tipo', 'activa'],
   'inv_seriales': ['serial', 'mac', 'estado', 'cliente_id', 'notas'],
   'inv_movimientos': ['tipo', 'cantidad', 'motivo', 'notas', 'numero_factura'],
+  'ticket_tipos': ['nombre', 'descripcion', 'sla_horas', 'activo'],
+  'tickets': ['titulo', 'descripcion', 'estado', 'prioridad', 'cliente_id'],
+  'ticket_eventos': ['tipo_evento', 'comentario', 'estado_nuevo'],
+  'ticket_adjuntos': ['descripcion'],
 };
 
 // Label humano por entidad (para los títulos de las secciones del panel).
@@ -250,6 +262,10 @@ const Map<String, String> kAuditEntidadLabel = {
   'inv_ubicaciones': 'Ubicaciones',
   'inv_seriales': 'Equipos serializados',
   'inv_movimientos': 'Movimientos de inventario',
+  'ticket_tipos': 'Tipos de ticket',
+  'tickets': 'Tickets',
+  'ticket_eventos': 'Eventos de ticket',
+  'ticket_adjuntos': 'Adjuntos de ticket',
 };
 
 // Columnas computadas / auto que se omiten en cualquier snapshot, además del
@@ -488,6 +504,18 @@ String _fmtField(String key, dynamic v, {String? tabla, AuditLookups? lookups}) 
   if (tabla == 'inv_seriales' && key == 'estado' && v is String && v.isNotEmpty) {
     return _estadoSerialLabel(v);
   }
+  // Tickets: estado del ticket y tipo de evento de la bitácora.
+  if (tabla == 'tickets' && key == 'estado' && v is String && v.isNotEmpty) {
+    return _estadoTicketLabel(v);
+  }
+  if ((key == 'estado_anterior' || key == 'estado_nuevo') &&
+      v is String && v.isNotEmpty) {
+    return _estadoTicketLabel(v);
+  }
+  if (tabla == 'ticket_eventos' && key == 'tipo_evento' &&
+      v is String && v.isNotEmpty) {
+    return _tipoEventoTicketLabel(v);
+  }
   // Enums: mostrar el label humano que usa el resto de la app, no el slug.
   if (key == 'metodo' && v is String && v.isNotEmpty) {
     return MetodoPago.fromString(v).label;
@@ -556,6 +584,31 @@ String _estadoSerialLabel(String e) => switch (e) {
       'retirado' => 'Retirado',
       'baja' => 'Baja',
       _ => e,
+    };
+
+String _estadoTicketLabel(String e) => switch (e) {
+      'abierto' => 'Abierto',
+      'asignado' => 'Asignado',
+      'en_progreso' => 'En progreso',
+      'en_espera' => 'En espera',
+      'resuelto' => 'Resuelto',
+      'cerrado' => 'Cerrado',
+      'reabierto' => 'Reabierto',
+      'cancelado' => 'Cancelado',
+      _ => e,
+    };
+
+String _tipoEventoTicketLabel(String t) => switch (t) {
+      'creado' => 'Creado',
+      'asignado' => 'Asignado',
+      'cambio_estado' => 'Cambio de estado',
+      'comentario' => 'Comentario',
+      'material' => 'Material',
+      'adjunto' => 'Adjunto',
+      'reabierto' => 'Reabierto',
+      'cerrado' => 'Cerrado',
+      'cancelado' => 'Cancelado',
+      _ => t,
     };
 
 String _fmt(dynamic v) {
@@ -637,6 +690,17 @@ String auditFieldLabel(String raw) {
     'duracion_meses': 'Duración (meses)',
     'tipo': 'Tipo',
     'resultado': 'Resultado',
+    // Tickets (Fase 3).
+    'titulo': 'Título',
+    'prioridad': 'Prioridad',
+    'tipo_evento': 'Evento',
+    'sla_horas': 'SLA (horas)',
+    'asignado_a': 'Asignado a',
+    'tipo_id': 'Tipo de ticket',
+    'estado_anterior': 'Estado anterior',
+    'estado_nuevo': 'Estado nuevo',
+    'comentario': 'Comentario',
+    'correlativo': 'N° de ticket',
   };
   return labels[raw] ??
       raw

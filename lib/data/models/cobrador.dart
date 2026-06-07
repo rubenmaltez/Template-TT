@@ -23,6 +23,10 @@ class Cobrador {
   bool get esAdmin => rol == 'admin';
   bool get esAdminCobranza => rol == 'admin_cobranza';
   bool get esCobrador => rol == 'cobrador';
+  // Roles de Fase 3 (tickets). `tecnico` es móvil-first (shell propio);
+  // `admin_tickets` es un admin acotado a tickets/inventario.
+  bool get esTecnico => rol == 'tecnico';
+  bool get esAdminTickets => rol == 'admin_tickets';
 
   /// True para roles con acceso a opciones restringidas del panel admin
   /// (cobradores, settings, geografía, planes, auditoría).
