@@ -175,11 +175,15 @@ class _ProductosTabState extends ConsumerState<_ProductosTab> {
       return;
     }
     if (!await _confirmar(context, '"${p['nombre']}"')) return;
-    try {
-      await ps.db.execute('DELETE FROM inv_productos WHERE id = ?', [id]);
-    } catch (e) {
-      _snack(context, 'Error: $e');
-    }
+    final err = await _borrarSiLibre(
+      tabla: 'inv_productos',
+      id: id,
+      countSql: 'SELECT (SELECT COUNT(*) FROM inv_seriales WHERE producto_id = ?)'
+          ' + (SELECT COUNT(*) FROM inv_movimientos WHERE producto_id = ?) AS n',
+      countParams: [id, id],
+    );
+    if (!context.mounted) return;
+    if (err != null) _snack(context, err);
   }
 }
 
@@ -303,11 +307,17 @@ class _UbicacionesTabState extends ConsumerState<_UbicacionesTab> {
       return;
     }
     if (!await _confirmar(context, '"${u['nombre']}"')) return;
-    try {
-      await ps.db.execute('DELETE FROM inv_ubicaciones WHERE id = ?', [id]);
-    } catch (e) {
-      _snack(context, 'Error: $e');
-    }
+    final err = await _borrarSiLibre(
+      tabla: 'inv_ubicaciones',
+      id: id,
+      countSql:
+          'SELECT (SELECT COUNT(*) FROM inv_seriales WHERE ubicacion_id = ?)'
+          ' + (SELECT COUNT(*) FROM inv_movimientos'
+          ' WHERE ubicacion_origen_id = ? OR ubicacion_destino_id = ?) AS n',
+      countParams: [id, id, id],
+    );
+    if (!context.mounted) return;
+    if (err != null) _snack(context, err);
   }
 }
 
@@ -422,11 +432,14 @@ class _ProveedoresTabState extends ConsumerState<_ProveedoresTab> {
       return;
     }
     if (!await _confirmar(context, '"${p['nombre']}"')) return;
-    try {
-      await ps.db.execute('DELETE FROM inv_proveedores WHERE id = ?', [id]);
-    } catch (e) {
-      _snack(context, 'Error: $e');
-    }
+    final err = await _borrarSiLibre(
+      tabla: 'inv_proveedores',
+      id: id,
+      countSql: 'SELECT COUNT(*) AS n FROM inv_movimientos WHERE proveedor_id = ?',
+      countParams: [id],
+    );
+    if (!context.mounted) return;
+    if (err != null) _snack(context, err);
   }
 }
 
@@ -1980,6 +1993,32 @@ void _snack(BuildContext context, String msg) {
 Future<int> _contar(String sql, List<Object?> params) async {
   final rows = await ps.db.getAll(sql, params);
   return (rows.first['n'] as int?) ?? 0;
+}
+
+/// Borra `id` de `tabla` re-chequeando la guarda de uso (`countSql` → `n`)
+/// DENTRO de la transacción: cierra el TOCTOU entre el pre-check de la UI y el
+/// DELETE (otro device podría haber insertado un dependiente en el medio).
+/// Devuelve mensaje de error o null si borró OK.
+Future<String?> _borrarSiLibre({
+  required String tabla,
+  required String id,
+  required String countSql,
+  required List<Object?> countParams,
+}) async {
+  try {
+    await ps.db.writeTransaction((tx) async {
+      final rows = await tx.getAll(countSql, countParams);
+      if (((rows.first['n'] as int?) ?? 0) > 0) {
+        throw const _InvError('Quedó en uso; no se eliminó.');
+      }
+      await tx.execute('DELETE FROM $tabla WHERE id = ?', [id]);
+    });
+    return null;
+  } on _InvError catch (e) {
+    return e.message;
+  } catch (e) {
+    return 'Error: $e';
+  }
 }
 
 Future<bool> _confirmar(BuildContext context, String que) async {

@@ -67,17 +67,22 @@ class SupabaseConnector extends PowerSyncBackendConnector {
           }
         } on PostgrestException catch (e) {
           if (_isNonRetryable(e)) {
-            debugPrint(
-              '[CRUD] Non-retryable error on ${op.table}/${op.id}: '
-              '${e.code} ${e.message}',
-            );
+            // El write local fue RECHAZADO por el server (constraint/RLS/
+            // trigger). No es retryable: lo saltamos para no trabar la cola.
+            // OJO: el dato local queda DIVERGENTE del server (que no lo aceptó).
+            // Lo surfaceamos a la UI (uploadErrors) y lo persistimos en
+            // error_logs con el TIPO de op + código para diagnóstico; un próximo
+            // write sobre la misma fila lo reconcilia o el admin lo corrige.
+            final detalle = '${op.op.name.toUpperCase()} ${op.table}/${op.id}'
+                ' — ${e.code ?? '?'} ${e.message}';
+            debugPrint('[CRUD] Non-retryable rejected: $detalle');
             _uploadErrors.add(CrudUploadError(
               table: op.table,
               id: op.id,
               message: e.message,
             ));
             unawaited(ErrorLogService.instance.record(
-              error: 'CRUD rejected: ${op.table}/${op.id} — ${e.message}',
+              error: 'CRUD rejected (local diverge): $detalle',
               stack: StackTrace.current,
               type: ErrorLogType.zone,
             ));
