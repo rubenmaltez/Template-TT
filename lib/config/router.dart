@@ -21,6 +21,10 @@ import '../features/admin/pagos/pagos_admin_screen.dart';
 import '../features/admin/planes/planes_admin_screen.dart';
 import '../features/admin/reportes/reportes_admin_screen.dart';
 import '../features/admin/settings/audit_campos_screen.dart';
+import '../features/admin/tickets/ticket_detail_screen.dart';
+import '../features/admin/tickets/ticket_form_screen.dart';
+import '../features/admin/tickets/ticket_tipos_screen.dart';
+import '../features/admin/tickets/tickets_list_screen.dart';
 import '../features/admin/settings/settings_admin_screen.dart';
 import '../features/admin/shell/admin_shell.dart';
 import '../data/providers/cobrador_provider.dart';
@@ -261,6 +265,7 @@ final routerProvider = Provider<GoRouter>((ref) {
         '/admin/geografia',
         '/admin/red',
         '/admin/inventario',
+        '/admin/tickets',
         '/admin/settings',
         '/admin/planes',
         '/admin/pagos',
@@ -277,6 +282,12 @@ final routerProvider = Provider<GoRouter>((ref) {
       if (loc == '/admin/inventario' || loc.startsWith('/admin/inventario/')) {
         final modulos = ref.read(modulosHabilitadosProvider).valueOrNull;
         if (modulos != null && !modulos.contains('inventario')) return '/admin';
+      }
+
+      // Módulo opcional Tickets (Fase 3): mismo gate que inventario.
+      if (loc == '/admin/tickets' || loc.startsWith('/admin/tickets/')) {
+        final modulos = ref.read(modulosHabilitadosProvider).valueOrNull;
+        if (modulos != null && !modulos.contains('tickets')) return '/admin';
       }
 
       // Panel /super/* sólo para super_admin. Cualquier otro rol que
@@ -378,6 +389,16 @@ final routerProvider = Provider<GoRouter>((ref) {
               pageBuilder: (_, s) => _fadePage(s, _titled('Topología de red', const RedAdminScreen()))),
           GoRoute(path: '/admin/inventario',
               pageBuilder: (_, s) => _fadePage(s, _titled('Inventario', const InventarioScreen()))),
+          // Tickets (módulo opcional, Fase 3). Específicas antes que /:id.
+          GoRoute(path: '/admin/tickets',
+              pageBuilder: (_, s) => _fadePage(s, _titled('Tickets', const TicketsListScreen()))),
+          GoRoute(path: '/admin/tickets/tipos',
+              pageBuilder: (_, s) => _fadePage(s, _titled('Tipos de ticket', const TicketTiposScreen()))),
+          GoRoute(path: '/admin/tickets/nuevo',
+              pageBuilder: (_, s) => _fadePage(s, _titled('Nuevo ticket', const TicketFormScreen()))),
+          GoRoute(path: '/admin/tickets/:id',
+              pageBuilder: (_, s) => _fadePage(s, _titled('Ticket',
+                  TicketDetailScreen(ticketId: s.pathParameters['id']!)))),
           GoRoute(path: '/admin/settings',
               pageBuilder: (_, s) => _fadePage(s, _titled('Configuración', const SettingsAdminScreen()))),
           GoRoute(path: '/admin/settings/historial-campos',
