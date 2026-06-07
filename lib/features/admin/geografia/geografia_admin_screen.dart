@@ -5,6 +5,44 @@ import 'package:uuid/uuid.dart';
 import '../../../data/providers/cobrador_provider.dart';
 import '../../../powersync/db.dart' as ps;
 import '../../shared/widgets/empty_state.dart';
+import '../../shared/widgets/historial_cambios_widget.dart';
+
+/// Abre el historial (audit log) de una fila de geografía. `tabla` ∈
+/// departamentos/municipios/comunidades (per-tenant + auditables desde 0097).
+void _showHistorialGeo(
+    BuildContext context, String tabla, String id, String titulo) {
+  showModalBottomSheet<void>(
+    context: context,
+    isScrollControlled: true,
+    showDragHandle: true,
+    builder: (_) => DraggableScrollableSheet(
+      expand: false,
+      initialChildSize: 0.6,
+      maxChildSize: 0.9,
+      builder: (context, scrollCtrl) => Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: Row(
+              children: [
+                const Icon(Icons.history),
+                const SizedBox(width: 8),
+                Text(titulo, style: Theme.of(context).textTheme.titleMedium),
+              ],
+            ),
+          ),
+          const Divider(),
+          Expanded(
+            child: SingleChildScrollView(
+              controller: scrollCtrl,
+              child: HistorialCambiosWidget(tabla: tabla, registroId: id),
+            ),
+          ),
+        ],
+      ),
+    ),
+  );
+}
 
 /// CRUD del catálogo geográfico (departamento → municipio → comunidad).
 /// Usa ExpansionTile anidado: tocar un departamento revela sus municipios,
@@ -168,6 +206,12 @@ class _DeptoTileState extends State<_DeptoTile> {
         leading: const Icon(Icons.map),
         title: Text(depto['nombre'] as String),
         subtitle: depto['codigo'] != null ? Text(depto['codigo'] as String) : null,
+        trailing: IconButton(
+          icon: const Icon(Icons.history),
+          tooltip: 'Historial',
+          onPressed: () => _showHistorialGeo(context, 'departamentos',
+              depto['id'] as String, 'Historial del departamento'),
+        ),
         // maintainState: true para que el StreamBuilder interno NO se
         // desmonte al colapsar el tile. Sin esto, al re-expandir el
         // StreamBuilder se remontaba e intentaba `.listen()` otra vez
@@ -264,6 +308,12 @@ class _MunicipioTileState extends State<_MunicipioTile> {
       child: ExpansionTile(
         leading: const Icon(Icons.location_city),
         title: Text(municipio['nombre'] as String),
+        trailing: IconButton(
+          icon: const Icon(Icons.history),
+          tooltip: 'Historial',
+          onPressed: () => _showHistorialGeo(context, 'municipios',
+              municipio['id'] as String, 'Historial del municipio'),
+        ),
         childrenPadding: const EdgeInsets.only(left: 16),
         // Idem _DeptoTile: mantener el StreamBuilder de comunidades
         // montado para evitar el re-listen al re-expandir.
@@ -280,6 +330,15 @@ class _MunicipioTileState extends State<_MunicipioTile> {
                         dense: true,
                         leading: const Icon(Icons.place, size: 18),
                         title: Text(c['nombre'] as String),
+                        trailing: IconButton(
+                          icon: const Icon(Icons.history, size: 18),
+                          tooltip: 'Historial',
+                          onPressed: () => _showHistorialGeo(
+                              context,
+                              'comunidades',
+                              c['id'] as String,
+                              'Historial de la comunidad'),
+                        ),
                       )),
                   ListTile(
                     dense: true,
