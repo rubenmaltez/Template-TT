@@ -87,14 +87,17 @@ class _RedAdminScreenState extends ConsumerState<RedAdminScreen> {
   }
 
   Future<void> _crearNodo(BuildContext context) async {
-    final nombre = await promptNombreRed(context, 'Nuevo nodo');
-    if (nombre == null) return;
+    final res = await showDialog<({String nombre, String? tipo, double? lat, double? lng})?>(
+      context: context,
+      builder: (_) => const _NodoDialog(),
+    );
+    if (res == null) return;
     final tenantId = ref.read(tenantIdProvider);
     if (tenantId == null) return; // sin tenant resuelto no se puede crear
     try {
       await ps.db.execute(
-        'INSERT INTO red_nodos (id, tenant_id, nombre, activo, created_at) VALUES (?, ?, ?, 1, ?)',
-        [const Uuid().v4(), tenantId, nombre, DateTime.now().toIso8601String()],
+        'INSERT INTO red_nodos (id, tenant_id, nombre, tipo, lat, lng, activo, created_at) VALUES (?, ?, ?, ?, ?, ?, 1, ?)',
+        [const Uuid().v4(), tenantId, res.nombre, res.tipo, res.lat, res.lng, DateTime.now().toIso8601String()],
       );
     } catch (e) {
       if (context.mounted) {
@@ -173,13 +176,13 @@ class _NodoTileState extends State<_NodoTile> {
   }
 
   Future<void> _crearHub(BuildContext context, String nodoId) async {
-    final nombre = await promptNombreRed(context, 'Nuevo hub');
-    if (nombre == null) return;
+    final res = await promptNombreNotasRed(context, 'Nuevo hub');
+    if (res == null) return;
     final tenantId = widget.nodo['tenant_id'];
     try {
       await ps.db.execute(
-        'INSERT INTO red_hubs (id, tenant_id, nodo_id, nombre, activo, created_at) VALUES (?, ?, ?, ?, 1, ?)',
-        [const Uuid().v4(), tenantId, nodoId, nombre, DateTime.now().toIso8601String()],
+        'INSERT INTO red_hubs (id, tenant_id, nodo_id, nombre, notas, activo, created_at) VALUES (?, ?, ?, ?, ?, 1, ?)',
+        [const Uuid().v4(), tenantId, nodoId, res.nombre, res.notas, DateTime.now().toIso8601String()],
       );
     } catch (e) {
       if (context.mounted) {
@@ -258,13 +261,13 @@ class _HubTileState extends State<_HubTile> {
   }
 
   Future<void> _crearPuerto(BuildContext context, String hubId) async {
-    final nombre = await promptNombreRed(context, 'Nuevo puerto');
-    if (nombre == null) return;
+    final res = await promptNombreNotasRed(context, 'Nuevo puerto');
+    if (res == null) return;
     final tenantId = widget.hub['tenant_id'];
     try {
       await ps.db.execute(
-        'INSERT INTO red_puertos (id, tenant_id, hub_id, nombre, activo, created_at) VALUES (?, ?, ?, ?, 1, ?)',
-        [const Uuid().v4(), tenantId, hubId, nombre, DateTime.now().toIso8601String()],
+        'INSERT INTO red_puertos (id, tenant_id, hub_id, nombre, notas, activo, created_at) VALUES (?, ?, ?, ?, ?, 1, ?)',
+        [const Uuid().v4(), tenantId, hubId, res.nombre, res.notas, DateTime.now().toIso8601String()],
       );
     } catch (e) {
       if (context.mounted) {
@@ -275,32 +278,146 @@ class _HubTileState extends State<_HubTile> {
   }
 }
 
-/// Diálogo simple para pedir un nombre (compartido por los 3 niveles).
-Future<String?> promptNombreRed(BuildContext context, String titulo) async {
-  final ctrl = TextEditingController();
-  final res = await showDialog<String?>(
+/// Diálogo para Hub/Puerto: nombre + notas (opcional).
+Future<({String nombre, String? notas})?> promptNombreNotasRed(
+    BuildContext context, String titulo) async {
+  final nombreCtrl = TextEditingController();
+  final notasCtrl = TextEditingController();
+  final ok = await showDialog<bool>(
     context: context,
     builder: (ctx) => AlertDialog(
       title: Text(titulo),
-      content: TextField(
-        controller: ctrl,
-        autofocus: true,
-        textCapitalization: TextCapitalization.words,
-        decoration: const InputDecoration(labelText: 'Nombre'),
-        onSubmitted: (v) => Navigator.pop(ctx, v),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          TextField(
+            controller: nombreCtrl,
+            autofocus: true,
+            textCapitalization: TextCapitalization.words,
+            decoration: const InputDecoration(labelText: 'Nombre'),
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: notasCtrl,
+            textCapitalization: TextCapitalization.sentences,
+            decoration: const InputDecoration(
+                labelText: 'Notas (opcional)',
+                hintText: 'Ej. detrás de la pulpería de Doña Rosa'),
+          ),
+        ],
       ),
       actions: [
         TextButton(
-          onPressed: () => Navigator.pop(ctx, null),
+          onPressed: () => Navigator.pop(ctx, false),
           child: const Text('Cancelar'),
         ),
         FilledButton(
-          onPressed: () => Navigator.pop(ctx, ctrl.text),
+          onPressed: () => Navigator.pop(ctx, true),
           child: const Text('Guardar'),
         ),
       ],
     ),
-  ).whenComplete(ctrl.dispose);
-  final nombre = res?.trim();
-  return (nombre == null || nombre.isEmpty) ? null : nombre;
+  );
+  final nombre = nombreCtrl.text.trim();
+  final notas = notasCtrl.text.trim();
+  nombreCtrl.dispose();
+  notasCtrl.dispose();
+  if (ok != true || nombre.isEmpty) return null;
+  return (nombre: nombre, notas: notas.isEmpty ? null : notas);
+}
+
+/// Diálogo de Nodo: nombre + tipo (fibra/wireless/híbrido) + lat/lng (opcionales).
+class _NodoDialog extends StatefulWidget {
+  const _NodoDialog();
+
+  @override
+  State<_NodoDialog> createState() => _NodoDialogState();
+}
+
+class _NodoDialogState extends State<_NodoDialog> {
+  final _nombre = TextEditingController();
+  final _lat = TextEditingController();
+  final _lng = TextEditingController();
+  String? _tipo;
+
+  @override
+  void dispose() {
+    _nombre.dispose();
+    _lat.dispose();
+    _lng.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Nuevo nodo'),
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: _nombre,
+              autofocus: true,
+              textCapitalization: TextCapitalization.words,
+              decoration: const InputDecoration(labelText: 'Nombre'),
+            ),
+            const SizedBox(height: 12),
+            DropdownButtonFormField<String?>(
+              value: _tipo,
+              decoration: const InputDecoration(labelText: 'Tipo (opcional)'),
+              onChanged: (v) => setState(() => _tipo = v),
+              items: const [
+                DropdownMenuItem(value: null, child: Text('—')),
+                DropdownMenuItem(value: 'fibra', child: Text('Fibra')),
+                DropdownMenuItem(value: 'wireless', child: Text('Wireless')),
+                DropdownMenuItem(value: 'hibrido', child: Text('Híbrido')),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: _lat,
+                    keyboardType: const TextInputType.numberWithOptions(
+                        decimal: true, signed: true),
+                    decoration: const InputDecoration(labelText: 'Latitud'),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: TextField(
+                    controller: _lng,
+                    keyboardType: const TextInputType.numberWithOptions(
+                        decimal: true, signed: true),
+                    decoration: const InputDecoration(labelText: 'Longitud'),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Cancelar'),
+        ),
+        FilledButton(
+          onPressed: () {
+            final nombre = _nombre.text.trim();
+            if (nombre.isEmpty) return;
+            Navigator.pop(context, (
+              nombre: nombre,
+              tipo: _tipo,
+              lat: double.tryParse(_lat.text.trim()),
+              lng: double.tryParse(_lng.text.trim()),
+            ));
+          },
+          child: const Text('Guardar'),
+        ),
+      ],
+    );
+  }
 }

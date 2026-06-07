@@ -13,6 +13,11 @@ CREATE TABLE public.red_nodos (
   tenant_id uuid NOT NULL REFERENCES public.tenants(id) ON DELETE CASCADE,
   nombre text NOT NULL,
   codigo text,
+  -- Tipo de nodo (ISP nica suele ser mixto). Da contexto a los incidentes.
+  tipo text CHECK (tipo IS NULL OR tipo IN ('fibra','wireless','hibrido')),
+  -- Ubicación física del nodo (torre/OLT) para el futuro mapa de outages.
+  lat double precision,
+  lng double precision,
   notas text,
   activo boolean NOT NULL DEFAULT true,
   created_at timestamptz NOT NULL DEFAULT now(),
@@ -25,6 +30,7 @@ CREATE TABLE public.red_hubs (
   nodo_id uuid NOT NULL REFERENCES public.red_nodos(id) ON DELETE RESTRICT,
   nombre text NOT NULL,
   codigo text,
+  notas text,
   activo boolean NOT NULL DEFAULT true,
   created_at timestamptz NOT NULL DEFAULT now(),
   UNIQUE (tenant_id, nodo_id, nombre)
@@ -36,6 +42,7 @@ CREATE TABLE public.red_puertos (
   hub_id uuid NOT NULL REFERENCES public.red_hubs(id) ON DELETE RESTRICT,
   nombre text NOT NULL,
   codigo text,
+  notas text,
   activo boolean NOT NULL DEFAULT true,
   created_at timestamptz NOT NULL DEFAULT now(),
   UNIQUE (tenant_id, hub_id, nombre)

@@ -95,9 +95,9 @@ const Map<String, Set<String>> kAuditCamposVisiblesDefault = {
   'departamentos': {'nombre', 'codigo'},
   'municipios': {'nombre', 'departamento_id'},
   'comunidades': {'nombre', 'municipio_id'},
-  'red_nodos': {'nombre', 'codigo', 'notas', 'activo'},
-  'red_hubs': {'nombre', 'codigo', 'nodo_id', 'activo'},
-  'red_puertos': {'nombre', 'codigo', 'hub_id', 'activo'},
+  'red_nodos': {'nombre', 'codigo', 'tipo', 'notas', 'activo'},
+  'red_hubs': {'nombre', 'codigo', 'nodo_id', 'notas', 'activo'},
+  'red_puertos': {'nombre', 'codigo', 'hub_id', 'notas', 'activo'},
 };
 
 // ---------------------------------------------------------------------------
@@ -205,9 +205,9 @@ const Map<String, List<String>> kAuditCamposCatalogo = {
   'departamentos': ['nombre', 'codigo'],
   'municipios': ['nombre', 'departamento_id'],
   'comunidades': ['nombre', 'municipio_id'],
-  'red_nodos': ['nombre', 'codigo', 'notas', 'activo'],
-  'red_hubs': ['nombre', 'codigo', 'nodo_id', 'activo'],
-  'red_puertos': ['nombre', 'codigo', 'hub_id', 'activo'],
+  'red_nodos': ['nombre', 'codigo', 'tipo', 'notas', 'activo'],
+  'red_hubs': ['nombre', 'codigo', 'nodo_id', 'notas', 'activo'],
+  'red_puertos': ['nombre', 'codigo', 'hub_id', 'notas', 'activo'],
 };
 
 // Label humano por entidad (para los títulos de las secciones del panel).

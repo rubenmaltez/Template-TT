@@ -49,6 +49,9 @@ const schema = Schema([
     Column.text('tenant_id'),
     Column.text('nombre'),
     Column.text('codigo'),
+    Column.text('tipo'),
+    Column.real('lat'),
+    Column.real('lng'),
     Column.text('notas'),
     Column.integer('activo'),
     Column.text('created_at'),
@@ -61,6 +64,7 @@ const schema = Schema([
     Column.text('nodo_id'),
     Column.text('nombre'),
     Column.text('codigo'),
+    Column.text('notas'),
     Column.integer('activo'),
     Column.text('created_at'),
   ], indexes: [
@@ -72,6 +76,7 @@ const schema = Schema([
     Column.text('hub_id'),
     Column.text('nombre'),
     Column.text('codigo'),
+    Column.text('notas'),
     Column.integer('activo'),
     Column.text('created_at'),
   ], indexes: [
