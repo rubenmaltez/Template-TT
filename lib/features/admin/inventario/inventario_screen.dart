@@ -485,58 +485,60 @@ class _ExistenciasTabState extends ConsumerState<_ExistenciasTab> {
     );
     if (res == null) return;
     final now = DateTime.now().toIso8601String();
-    try {
-      if (res.esSerializado) {
-        // Validar que ningún serial ya exista en el tenant (UNIQUE).
-        for (final s in res.seriales) {
-          final dup = await ps.db.getAll(
-            'SELECT 1 FROM inv_seriales WHERE tenant_id = ? AND serial = ? LIMIT 1',
-            [tenantId, s],
-          );
-          if (dup.isNotEmpty) {
-            _snack(context, 'El serial "$s" ya existe.');
-            return;
-          }
-        }
-        for (final s in res.seriales) {
-          final serialId = const Uuid().v4();
-          await ps.db.execute(
-            '''INSERT INTO inv_seriales
-               (id, tenant_id, producto_id, serial, estado, ubicacion_id,
-                costo_ingreso, created_at)
-               VALUES (?, ?, ?, ?, 'en_stock', ?, ?, ?)''',
-            [serialId, tenantId, res.productoId, s, res.ubicacionDestinoId,
-              res.costoUnitario, now],
-          );
-          await _movIngreso(tenantId, res, productoSerialId: serialId,
-              cantidad: 1, hechoPor: hechoPor, now: now);
-        }
-      } else {
-        await _movIngreso(tenantId, res, productoSerialId: null,
-            cantidad: res.cantidad, hechoPor: hechoPor, now: now);
-      }
-    } catch (e) {
-      _snack(context, 'Error: $e');
-    }
-  }
 
-  Future<void> _movIngreso(String tenantId, _IngresoData res,
-      {required String? productoSerialId,
-      required double cantidad,
-      required String? hechoPor,
-      required String now}) {
-    return ps.db.execute(
-      '''INSERT INTO inv_movimientos
+    // Pre-check de unicidad de seriales (local). El UNIQUE(tenant,serial) del
+    // server es la red dura si otro device creó el mismo serial sin sincronizar.
+    if (res.esSerializado) {
+      for (final s in res.seriales) {
+        final dup = await ps.db.getAll(
+          'SELECT 1 FROM inv_seriales WHERE tenant_id = ? AND serial = ? LIMIT 1',
+          [tenantId, s],
+        );
+        if (dup.isNotEmpty) {
+          _snack(context, 'El serial "$s" ya existe.');
+          return;
+        }
+      }
+    }
+
+    const movSql = '''INSERT INTO inv_movimientos
          (id, tenant_id, tipo, producto_id, serial_id, cantidad,
           ubicacion_destino_id, proveedor_id, numero_factura, costo_unitario,
           hecho_por, ocurrido_en, created_at)
-         VALUES (?, ?, 'ingreso', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
-      [
-        const Uuid().v4(), tenantId, res.productoId, productoSerialId, cantidad,
-        res.ubicacionDestinoId, res.proveedorId, res.numeroFactura,
-        res.costoUnitario, hechoPor, now, now,
-      ],
-    );
+         VALUES (?, ?, 'ingreso', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''';
+
+    try {
+      // Atómico: cada serial + su movimiento (y todo el lote) viven o caen
+      // juntos (patrón writeTransaction del repo, igual que el cobro).
+      await ps.db.writeTransaction((tx) async {
+        if (res.esSerializado) {
+          for (final s in res.seriales) {
+            final serialId = const Uuid().v4();
+            await tx.execute(
+              '''INSERT INTO inv_seriales
+                 (id, tenant_id, producto_id, serial, estado, ubicacion_id,
+                  costo_ingreso, created_at)
+                 VALUES (?, ?, ?, ?, 'en_stock', ?, ?, ?)''',
+              [serialId, tenantId, res.productoId, s, res.ubicacionDestinoId,
+                res.costoUnitario, now],
+            );
+            await tx.execute(movSql, [
+              const Uuid().v4(), tenantId, res.productoId, serialId, 1,
+              res.ubicacionDestinoId, res.proveedorId, res.numeroFactura,
+              res.costoUnitario, hechoPor, now, now,
+            ]);
+          }
+        } else {
+          await tx.execute(movSql, [
+            const Uuid().v4(), tenantId, res.productoId, null, res.cantidad,
+            res.ubicacionDestinoId, res.proveedorId, res.numeroFactura,
+            res.costoUnitario, hechoPor, now, now,
+          ]);
+        }
+      });
+    } catch (e) {
+      _snack(context, 'Error: $e');
+    }
   }
 }
 

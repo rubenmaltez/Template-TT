@@ -71,10 +71,10 @@ ni trigger de proyección. Fase 2 es admin-facing; custodia por técnico = Fase 
 - ✅ **2B (ubicaciones + proveedores)** commit `d690c13`, **en auditoría**: migración
   0100 (inv_ubicaciones); InventarioScreen en pestañas (Productos|Ubicaciones|
   Proveedores), CRUD+historial en cada una. schema **v19**.
-- ✅ **2C-1 (ledger + ingreso + existencias)** commit `5e55f47`, **en auditoría**:
+- ✅ **2C-1 (ledger + ingreso + existencias)** commits `5e55f47`+fix, **auditado**:
   migración 0101 (inv_seriales + inv_movimientos append-only); pestaña Existencias
-  (stock derivado = Σdestino−Σorigen); Ingreso (serializado/granel). schema **v20**.
-  Nota: `costo_promedio` NO se auto-recalcula aún (se guarda costo_unitario).
+  (stock derivado = Σdestino−Σorigen); Ingreso (serializado/granel, **atómico vía
+  writeTransaction**). schema **v20**. `costo_promedio` NO se auto-recalcula aún.
 - ⏳ **2C-2**: asignar equipo serializado a cliente (estado→instalado) + egreso/
   ajuste/transferencia/baja + guardas de borrado de producto/ubicación.
 - ⏳ **2D**: equipos instalados en pantalla de cliente/contrato.
@@ -121,6 +121,13 @@ Rubén testeó (super_admin impersonando) y reportó bugs/pedidos. Estado:
   en silencio (recableable, no se pierde el cliente). No pasa en single-admin.
   **Hardening si se decide:** cambiar la FK a `ON DELETE RESTRICT` (migración nueva,
   alinea con la guarda + uniforme con geo) o mover el borrado a RPC server-side.
+- **R2 — unicidad de serial bajo multi-admin offline (inv)**: el pre-check de
+  `inv_seriales.serial` lee SQLite local; si otro device creó el serial sin
+  sincronizar, el INSERT choca el UNIQUE server (23505). Ya NO es silencioso (el
+  connector surfacea el error CRUD en SnackBar). Bajo en single-admin. Hardening
+  futuro: RPC server-side de ingreso, o aceptar el surfaceo actual.
+- **costo_promedio**: hoy se guarda `costo_unitario` por movimiento/serial pero NO
+  se recalcula el promedio ponderado del producto. Agregar cuando se quiera valuación.
 
 ## Fase 1 — CÓDIGO COMPLETO, falta DEPLOY + TESTING de Rubén
 
