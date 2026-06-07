@@ -9,14 +9,13 @@
 
 ## Estado actual
 
-- **Branch de trabajo (sesión 2026-06-07):** `claude/nifty-cori-KF2PZ`, tip `d380c82`
-  (salió de `6e2b03a`, el mismo punto que `claude/inventory-tickets-technician-role`).
-  ⚠️ **Las dos branches DIVERGIERON**: todo el 2C-2/2D de esta sesión está SOLO en
-  `nifty-cori-KF2PZ` (6 commits por encima). `inventory-tickets-technician-role` quedó
-  en `6e2b03a`. Reconciliar (merge/ff) cuando Rubén lo decida — no se tocó esa branch.
-- **Branch BACKUP (no tocar):** `claude/stoic-tesla-cGkJ6` — congelado en `7bc16aa`.
-- **Schema PowerSync:** `_schemaVersion = 20` (`lib/powersync/db.dart`). 2C-2/2D NO
-  agregaron tablas → sin bump nuevo, sin redeploy de sync rules.
+- **Branch ÚNICA de trabajo:** `claude/new-features-inventory-tickets-and-technicians`
+  (tip `c89954e`). Contiene TODO: 2C-2/2D + el vaciado de backlog pre-Fase 3. Es la
+  branch viva — desarrollar acá. Las branches viejas (`nifty-cori-KF2PZ`,
+  `inventory-tickets-technician-role`) se ELIMINARON (estaban contenidas en esta, nada
+  se perdió). `stoic-tesla-cGkJ6` no existe en el repo.
+- **Schema PowerSync:** `_schemaVersion = 20` (`lib/powersync/db.dart`). Todo el trabajo
+  de inventario reusa las migraciones 0099-0101 → sin bump nuevo, sin redeploy de sync rules.
 - **Plataformas target:** Android + Windows (web degrada sin romper, NO es target).
 - **App version:** v0.9.0 (ver `RELEASE.md`).
 
@@ -98,12 +97,20 @@ ni trigger de proyección. Fase 2 es admin-facing; custodia por técnico = Fase 
 - ✅ **2D (equipos instalados en la ficha del cliente) — HECHO** (`df266ab`):
   `cliente_detail_screen.dart` sección "Equipos instalados" (serial/producto/MAC),
   gateada por módulo inventario + rol admin/admin_cobranza (las inv_ no sincronizan al cobrador).
-- ⏳ **Backlog 2C/2D (documentado, NO bloquea):** stock por UBICACIÓN (hoy es global por
-  producto → se puede "egresar de la ubicación equivocada" sin error, M2 del audit) ·
-  ciclo del equipo dañado-en-casa-del-cliente (hoy "dañado" limpia el vínculo y sale de
-  la ficha; el historial lo preserva — Rubén OK con esto) · `costo_promedio` ponderado ·
-  value-labels de tipos de movimiento en el change-log (hoy muestran el valor crudo) ·
-  TOCTOU advisory en guardas de borrado (server con FK respalda).
+- ✅ **Backlog 2C/2D — VACIADO antes de Fase 3** (sesión 2026-06-07 cont., auditado 3 agentes, 0 Alta/Media salvo el fix abajo):
+  - **stock por UBICACIÓN** (M2): tap en un producto → desglose por ubicación;
+    el origen de egreso/transferencia se restringe a ubicaciones con stock y avisa
+    si la cantidad supera lo disponible (`bcc78c8`, `bbdb4d3`, `c89954e`).
+  - **`costo_promedio` ponderado**: el ingreso recalcula el promedio móvil; Existencias
+    muestra costo/valor (`bcc78c8`).
+  - **value-labels** de tipos de movimiento / estados de serial en el change-log (`44d70e6`).
+  - **TOCTOU** de guardas de borrado: re-chequeo dentro del `writeTransaction` (`527ac9e`).
+  - **connector.dart**: log del CRUD rechazado con tipo de op + divergencia (`527ac9e`).
+  - **Decisiones cerradas (no son código):** equipo dañado-en-casa-del-cliente → se
+    mantiene como está (sale de la ficha, el historial lo preserva — decisión de Rubén).
+    **R2** (unicidad de serial multi-admin offline) → ACEPTADO: el `UNIQUE` server +
+    el surfaceo del connector son suficientes (single-admin en prod). **R1** (FK del
+    puerto de red) → se pliega a la Fase 3 (que reworkea la red para tickets).
 
 > ⚠️ Deploy Fase 2 (al final, todo junto): correr `0099` + `0100` + `0101` por
 > Dashboard, redeploy sync rules, restart (**schema v20**). 2C-2/2D NO agregaron
@@ -139,22 +146,17 @@ Rubén testeó (super_admin impersonando) y reportó bugs/pedidos. Estado:
 - (Opcional) mostrar nodo en `/admin/mapa` como capa, badge libre/ocupado del puerto.
 - Fases 2/3 (Inventario / Tickets) — ver PLAN.
 
-**⚠️ Backlog (no bloqueante):**
-- `connector.dart:68-86` traga errores de upload no-retryables → fila podría quedar
-  local-only (hoy no se dispara). Documentar/endurecer.
-- **R1 — borrar puerto bajo multi-admin offline**: la guarda cuenta clientes en
-  SQLite local y `clientes.puerto_id` es `ON DELETE SET NULL` → si una asignación
-  hecha por otro admin no sincronizó, borrar el puerto nulea ese vínculo en server
-  en silencio (recableable, no se pierde el cliente). No pasa en single-admin.
-  **Hardening si se decide:** cambiar la FK a `ON DELETE RESTRICT` (migración nueva,
-  alinea con la guarda + uniforme con geo) o mover el borrado a RPC server-side.
-- **R2 — unicidad de serial bajo multi-admin offline (inv)**: el pre-check de
-  `inv_seriales.serial` lee SQLite local; si otro device creó el serial sin
-  sincronizar, el INSERT choca el UNIQUE server (23505). Ya NO es silencioso (el
-  connector surfacea el error CRUD en SnackBar). Bajo en single-admin. Hardening
-  futuro: RPC server-side de ingreso, o aceptar el surfaceo actual.
-- **costo_promedio**: hoy se guarda `costo_unitario` por movimiento/serial pero NO
-  se recalcula el promedio ponderado del producto. Agregar cuando se quiera valuación.
+**⚠️ Backlog — estado tras el vaciado pre-Fase 3 (2026-06-07 cont.):**
+- ✅ `connector.dart` errores no-retryables: ENDURECIDO (`527ac9e`) — el log ahora
+  lleva tipo de op + código + marca de divergencia local-server para diagnóstico.
+- ⏭️ **R1 — borrar puerto bajo multi-admin offline** (FK `ON DELETE SET NULL`): se
+  **pliega a la Fase 3** (que reworkea la red para tickets; ahí se evalúa pasar la FK
+  a `RESTRICT` o mover el borrado a RPC). No es single-admin issue. NO standalone backlog.
+- ✅ **R2 — unicidad de serial multi-admin offline**: ACEPTADO como está. El `UNIQUE`
+  (tenant,serial) del server + el surfaceo del connector (ya no silencioso) son
+  suficientes para single-admin (la realidad de prod). Cerrado por decisión.
+- ✅ **costo_promedio**: RESUELTO (`bcc78c8`) — el ingreso recalcula el promedio
+  ponderado móvil del producto; Existencias muestra costo/valor.
 
 ## Fase 1 — CÓDIGO COMPLETO, falta DEPLOY + TESTING de Rubén
 

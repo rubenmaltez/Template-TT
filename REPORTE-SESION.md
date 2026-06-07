@@ -158,6 +158,38 @@ consistentes → auditoría.
 
 > Más reciente arriba. Formato por ítem: error → fix → expectativa.
 
+### 2026-06-07 (cont. 2) — Vaciado del backlog de inventario + branch única (pre-Fase 3)
+
+Branch ÚNICA `claude/new-features-inventory-tickets-and-technicians` (tip `c89954e`):
+reconcilia todo el trabajo y reemplaza a las branches viejas (`nifty-cori-KF2PZ` e
+`inventory-tickets-technician-role`, eliminadas — estaban contenidas, nada se perdió).
+**Sin migraciones, schema sigue v20.** Auditado por 3 agentes (Code/QA/DB): 0 Alta, 1 Media
+(corregida). El objetivo fue **no dejar backlog de inventario antes de empezar Fase 3**.
+
+**Comportamiento esperado (lo nuevo):**
+- **Stock por ubicación:** el stock de un producto se puede ver desglosado por ubicación
+  (tap en Existencias). En egreso/transferencia, el ORIGEN solo ofrece ubicaciones con
+  stock (con la cantidad al lado); sacar más de lo disponible pide confirmación.
+- **Costo promedio ponderado:** cada ingreso con costo recalcula `inv_productos.costo_promedio`
+  como promedio móvil `(stock·avg + cant·costo)/(stock+cant)`; Existencias muestra costo y valor.
+- **Change-log de inventario:** los tipos de movimiento y estados de serial se muestran con
+  label humano (Asignación, En stock, Dañado…), no el valor crudo.
+
+**Fixes/decisiones de la sesión:**
+- **`44d70e6` value-labels**: el change-log mostraba `asignacion`/`en_stock`/`danado` crudos.
+  Fix: `_fmtField` recibe la tabla y traduce `inv_movimientos.tipo` e `inv_seriales.estado`;
+  `_labelFor` con íconos/labels propios para ambas tablas.
+- **`527ac9e` TOCTOU + connector**: las guardas de borrado tenían una ventana entre el
+  pre-check y el DELETE. Fix: `_borrarSiLibre` re-chequea DENTRO del `writeTransaction`.
+  `connector.dart` loguea el CRUD rechazado con tipo de op + divergencia.
+- **`bcc78c8` costo + stock por ubicación**: ver comportamiento esperado.
+- **`bbdb4d3` M2 origen por stock** + **`c89954e` overselling**: el origen de egreso/transf
+  se restringe a ubicaciones con stock; si la cantidad supera lo disponible en esa ubicación,
+  aviso suave antes de registrar (el modelo permite negativo, pero no en silencio).
+- **Decisiones cerradas (no código):** equipo dañado → se mantiene fuera de la ficha (historial
+  lo preserva). **R2** (serial offline) → aceptado (UNIQUE server + surfaceo). **R1** (FK puerto)
+  → se pliega a Fase 3 (rework de red para tickets).
+
 ### 2026-06-07 (cont.) — Inventario 2C-2 (ciclo de movimientos) + 2D (equipos en ficha)
 
 Branch `claude/nifty-cori-KF2PZ` (tip `d380c82`, salió de `6e2b03a`). **Sin migraciones**
