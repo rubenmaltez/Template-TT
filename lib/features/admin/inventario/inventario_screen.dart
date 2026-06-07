@@ -161,11 +161,22 @@ class _ProductosTabState extends ConsumerState<_ProductosTab> {
   }
 
   Future<void> _eliminar(BuildContext context, Map<String, dynamic> p) async {
+    final id = p['id'] as String;
+    // Guarda de "en uso": no borrar si tiene equipos serializados o movimientos
+    // (el ledger es append-only; borrar el producto huerfanizaría su historial).
+    final enSeriales = await _contar(
+        'SELECT COUNT(*) AS n FROM inv_seriales WHERE producto_id = ?', [id]);
+    final enMovs = await _contar(
+        'SELECT COUNT(*) AS n FROM inv_movimientos WHERE producto_id = ?', [id]);
+    if (!context.mounted) return;
+    if (enSeriales + enMovs > 0) {
+      _snack(context,
+          'No se puede eliminar "${p['nombre']}": tiene equipos o movimientos asociados (${enSeriales + enMovs}).');
+      return;
+    }
     if (!await _confirmar(context, '"${p['nombre']}"')) return;
-    // En 2B el producto no tiene movimientos/seriales aún (llegan en 2C). Ahí
-    // se agrega la guarda de "en uso" como en red/geo.
     try {
-      await ps.db.execute('DELETE FROM inv_productos WHERE id = ?', [p['id']]);
+      await ps.db.execute('DELETE FROM inv_productos WHERE id = ?', [id]);
     } catch (e) {
       _snack(context, 'Error: $e');
     }
@@ -277,10 +288,23 @@ class _UbicacionesTabState extends ConsumerState<_UbicacionesTab> {
   }
 
   Future<void> _eliminar(BuildContext context, Map<String, dynamic> u) async {
+    final id = u['id'] as String;
+    // Guarda de "en uso": no borrar si hay equipos o movimientos en esta
+    // ubicación (su FK es ON DELETE SET NULL → borrar nulearía la referencia).
+    final enSeriales = await _contar(
+        'SELECT COUNT(*) AS n FROM inv_seriales WHERE ubicacion_id = ?', [id]);
+    final enMovs = await _contar(
+        'SELECT COUNT(*) AS n FROM inv_movimientos WHERE ubicacion_origen_id = ? OR ubicacion_destino_id = ?',
+        [id, id]);
+    if (!context.mounted) return;
+    if (enSeriales + enMovs > 0) {
+      _snack(context,
+          'No se puede eliminar "${u['nombre']}": tiene equipos o movimientos asociados (${enSeriales + enMovs}).');
+      return;
+    }
     if (!await _confirmar(context, '"${u['nombre']}"')) return;
-    // En 2C habrá movimientos referenciando ubicaciones → agregar guarda ahí.
     try {
-      await ps.db.execute('DELETE FROM inv_ubicaciones WHERE id = ?', [u['id']]);
+      await ps.db.execute('DELETE FROM inv_ubicaciones WHERE id = ?', [id]);
     } catch (e) {
       _snack(context, 'Error: $e');
     }
@@ -1889,6 +1913,13 @@ void _snack(BuildContext context, String msg) {
   if (context.mounted) {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
   }
+}
+
+/// Cuenta filas (para guardas de "en uso" antes de un borrado). El SELECT debe
+/// proyectar `COUNT(*) AS n`.
+Future<int> _contar(String sql, List<Object?> params) async {
+  final rows = await ps.db.getAll(sql, params);
+  return (rows.first['n'] as int?) ?? 0;
 }
 
 Future<bool> _confirmar(BuildContext context, String que) async {
