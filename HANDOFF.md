@@ -70,15 +70,20 @@ Rubén testeó (super_admin impersonando) y reportó bugs/pedidos. Estado:
   puerto (UPDATE + `HistorialCambiosWidget`).
 - ✅ **Geografía: historial** (`cb76bab`): 🕐 por depto/municipio/comunidad.
 
-**PENDIENTE (próximo, bien especificado por los agentes):**
-- **Filtro por Nodo** en lista de clientes (`clientes_admin_screen`: clonar
-  `_ComunidadChip` → `_NodoChip` + subquery `c.puerto_id IN (SELECT p.id FROM
-  red_puertos p JOIN red_hubs h ... WHERE h.nodo_id=?)`) y en **mapa**
-  (`mapa_screen`: traer `c.puerto_id`+nodo vía LEFT JOINs, `DropdownFiltro` Nodo).
-- **Eliminar (soft, activo=0)** nodo/hub/puerto + geo → requiere filtrar `activo=1`
-  en red_admin/red_picker/geografia (varias queries) → su propio pase con audit.
-- **Geo: editar** (parametrizar `_promptNombre`) para consistencia con red.
-- (Opcional) mostrar nodo en `/admin/mapa`, badge libre/ocupado del puerto.
+**HECHO (en auditoría):**
+- ✅ **Filtro por Nodo** en lista de clientes (`c211a38`: `_NodoChip` + subquery
+  `c.puerto_id IN (red_puertos del nodo via hub)`) y en **mapa** (LEFT JOINs
+  puerto→hub→nodo + dropdown "Nodo" + `pasaNodo`).
+- ✅ **Editar + Eliminar** geo y **Eliminar** red (`c03dd8b`): menú por fila
+  Editar/Historial/Eliminar. Eliminar = **borrado duro con guarda de "en uso"**
+  (no borra si tiene hijas/clientes; puerto se chequea a mano porque su FK es
+  ON DELETE SET NULL). Geo editar reusa `_promptNombre(inicial:)`. Decidí NO
+  soft-delete: el guard evita el caso "valor asignado que desaparece" sin migración.
+- Corriendo auditoría del lote (foco: lógica de las guardas + binding de params).
+
+**PENDIENTE (opcional / próximo):**
+- (Opcional) mostrar nodo en `/admin/mapa` como capa, badge libre/ocupado del puerto.
+- Fases 2/3 (Inventario / Tickets) — ver PLAN.
 
 **⚠️ Foot-gun latente (backlog):** `connector.dart:68-86` traga errores de upload
 no-retryables → una fila podría quedar local-only sin persistir (hoy no se dispara
