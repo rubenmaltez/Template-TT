@@ -145,6 +145,24 @@ class _ProductosTabState extends ConsumerState<_ProductosTab> {
           ],
         );
       } else {
+        // Guarda: no cambiar el TIPO (serializado↔granel) de un producto que ya
+        // tiene seriales o movimientos → dejaría seriales huérfanos y el stock
+        // (que se deriva distinto por tipo) incoherente.
+        final cambiaTipo = res.esSerializado !=
+            ((existente['es_serializado'] as int? ?? 0) == 1);
+        if (cambiaTipo) {
+          final enUso = await _contar(
+            'SELECT (SELECT COUNT(*) FROM inv_seriales WHERE producto_id = ?)'
+            ' + (SELECT COUNT(*) FROM inv_movimientos WHERE producto_id = ?) AS n',
+            [existente['id'], existente['id']],
+          );
+          if (!context.mounted) return;
+          if (enUso > 0) {
+            _snack(context,
+                'No se puede cambiar serializado/granel: el producto ya tiene movimientos o equipos.');
+            return;
+          }
+        }
         await ps.db.execute(
           '''UPDATE inv_productos
                 SET categoria_id = ?, codigo = ?, nombre = ?, es_serializado = ?,
@@ -1602,6 +1620,12 @@ class _EquiposTabState extends ConsumerState<_EquiposTab> {
         if (cur['estado'] == 'baja') {
           throw const _InvError('El equipo está dado de baja definitiva.');
         }
+        // A1: re-validar el estado EXACTO que mostraba el menú (no solo "no
+        // terminal") → evita un movimiento fantasma en el ledger si el equipo
+        // cambió a otro estado intermedio en otra pestaña/device.
+        if (cur['estado'] != s['estado']) {
+          throw const _InvError('El equipo cambió de estado; recargá la lista.');
+        }
         await tx.execute(
           "UPDATE inv_seriales SET estado = 'en_stock', cliente_id = NULL, "
           "contrato_id = NULL, ubicacion_id = ? WHERE id = ?",
@@ -1690,6 +1714,10 @@ class _EquiposTabState extends ConsumerState<_EquiposTab> {
         if (cur == null) throw const _InvError('Equipo no encontrado.');
         if (cur['estado'] == 'baja') {
           throw const _InvError('El equipo ya está dado de baja.');
+        }
+        // A1: re-validar el estado EXACTO que mostraba el menú dentro de la tx.
+        if (cur['estado'] != s['estado']) {
+          throw const _InvError('El equipo cambió de estado; recargá la lista.');
         }
         final estabaEnStock = cur['estado'] == 'en_stock';
         await tx.execute(
