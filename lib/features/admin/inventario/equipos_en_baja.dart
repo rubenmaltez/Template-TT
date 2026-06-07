@@ -11,8 +11,9 @@ import '../../../powersync/db.dart' as ps;
 /// retirarlos, para que no queden "fantasma" instalados en una entidad inactiva
 /// (hallazgo ALTA del audit de lifecycle cross-módulo).
 ///
-/// Filtra por `contratoId` (más específico) o por `clienteId`. No hace nada si
-/// el módulo inventario está off o si no hay equipos instalados.
+/// Filtra por `contratoId` (los de ese contrato + los del cliente sin contrato,
+/// p.ej. instalados vía ticket en 3C) o por `clienteId` (todos los del cliente).
+/// No hace nada si el módulo inventario está off o si no hay equipos instalados.
 Future<void> ofrecerGestionEquiposEnBaja(
   BuildContext context,
   WidgetRef ref, {
@@ -26,19 +27,37 @@ Future<void> ofrecerGestionEquiposEnBaja(
   if (tenantId == null) return;
   final hechoPor = ref.read(cobradorActualProvider).valueOrNull?.id;
 
-  final filtro = contratoId != null ? 'contrato_id' : 'cliente_id';
-  final param = contratoId ?? clienteId;
-  if (param == null) return;
+  // Filtro de los equipos instalados a gestionar:
+  //  · Cancelar CONTRATO → los de ese contrato MÁS los del mismo cliente SIN
+  //    contrato (instalados vía ticket: el consumo de 3C setea cliente_id pero
+  //    NO contrato_id, así que de otro modo quedarían fantasma al cancelar).
+  //  · Desactivar CLIENTE → todos los del cliente (ya incluye los sin contrato).
+  // Es un OFRECIMIENTO no bloqueante (el admin confirma), así que sumar los
+  // sin-contrato es seguro; en un cliente multi-contrato el admin decide.
+  final String where;
+  final List<Object?> params;
+  if (contratoId != null) {
+    final cli = await ps.db.getOptional(
+        'SELECT cliente_id FROM contratos WHERE id = ?', [contratoId]);
+    final clienteDelContrato = cli?['cliente_id'] as String?;
+    where = '(s.contrato_id = ? OR (s.cliente_id = ? AND s.contrato_id IS NULL))';
+    params = [contratoId, clienteDelContrato];
+  } else if (clienteId != null) {
+    where = 's.cliente_id = ?';
+    params = [clienteId];
+  } else {
+    return;
+  }
 
   final equipos = await ps.db.getAll(
     '''
     SELECT s.id, s.serial, s.producto_id, p.nombre AS producto
       FROM inv_seriales s
       JOIN inv_productos p ON p.id = s.producto_id
-     WHERE s.$filtro = ? AND s.estado = 'instalado'
+     WHERE $where AND s.estado = 'instalado'
      ORDER BY p.nombre, s.serial
     ''',
-    [param],
+    params,
   );
   if (equipos.isEmpty || !context.mounted) return;
 
