@@ -507,6 +507,7 @@ class _CuotasListState extends State<_CuotasList> {
       SELECT cu.id, cu.monto, cu.monto_pagado, cu.fecha_vencimiento,
              cu.periodo, cu.estado, cu.contrato_id,
              cu.descripcion, cu.tipo_cargo_manual,
+             COALESCE(cu.cargos_neto, 0) AS cargos_neto,
              c.id AS cliente_id, c.nombre AS cliente_nombre,
              co.nombre AS comunidad,
              p.nombre AS plan_nombre, ct.dia_pago
@@ -834,8 +835,13 @@ class _CuotaCompactRow extends StatelessWidget {
     final scheme = Theme.of(context).colorScheme;
     final vence = DateTime.parse(row['fecha_vencimiento'] as String);
     final periodo = DateTime.parse(row['periodo'] as String);
-    final saldo = (row['monto'] as num).toDouble() -
+    // Saldo canónico (regla #10): incluye cargos_neto (reconexión suma, descuento
+    // resta). Sin esto, la lista "Por cobrar" mostraba un saldo distinto al de la
+    // pantalla de cobro, el recibo y la tab "Por cliente".
+    final saldoRaw = (row['monto'] as num).toDouble() +
+        (row['cargos_neto'] as num? ?? 0).toDouble() -
         (row['monto_pagado'] as num? ?? 0).toDouble();
+    final saldo = saldoRaw < 0 ? 0.0 : saldoRaw;
     final diasFromVence =
         DateTime(DateTime.now().year, DateTime.now().month, DateTime.now().day)
             .difference(DateTime(vence.year, vence.month, vence.day))

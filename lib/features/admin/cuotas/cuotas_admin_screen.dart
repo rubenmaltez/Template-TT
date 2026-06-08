@@ -1007,24 +1007,46 @@ class _CuotaCard extends ConsumerWidget {
     try {
       // Hora REAL del dispositivo (UTC) para el change log — offline-first.
       final ocurridoEn = DateTime.now().toUtc().toIso8601String();
-      await ps.db.execute(
-        '''
-        UPDATE cuotas
-           SET estado = 'anulada',
-               anulada_en = ?,
-               anulada_por = ?,
-               motivo_anulacion = ?,
-               ocurrido_en = ?
-         WHERE id = ?
-        ''',
-        [
-          DateTime.now().toIso8601String(),
-          me.id,
-          motivo.trim(),
-          ocurridoEn,
-          row['id'],
-        ],
-      );
+      final ahoraLocal = DateTime.now().toIso8601String();
+      final cuotaId = row['id'];
+      await ps.db.writeTransaction((tx) async {
+        // 1. La cuota pasa a anulada.
+        await tx.execute(
+          '''
+          UPDATE cuotas
+             SET estado = 'anulada',
+                 anulada_en = ?,
+                 anulada_por = ?,
+                 motivo_anulacion = ?,
+                 ocurrido_en = ?
+           WHERE id = ?
+          ''',
+          [ahoraLocal, me.id, motivo.trim(), ocurridoEn, cuotaId],
+        );
+        // 2. Espejo LOCAL de la cascada server `cuotas_anular_pagos_asociados_trg`
+        //    (0023): al anular la cuota, sus pagos y recibos NO anulados se anulan.
+        //    Sin este mirror, offline el pago de una cuota PARCIAL seguía contando
+        //    como recaudado hasta el sync (recaudado inflado en contrato/dashboard).
+        //    Para una cuota pendiente (sin pagos) los UPDATEs son no-op.
+        await tx.execute(
+          '''
+          UPDATE pagos
+             SET anulado = 1, anulado_en = ?, anulado_por = ?,
+                 motivo_anulacion = ?, ocurrido_en = ?
+           WHERE cuota_id = ? AND anulado = 0
+          ''',
+          [ahoraLocal, me.id, 'Cuota anulada', ocurridoEn, cuotaId],
+        );
+        await tx.execute(
+          '''
+          UPDATE recibos
+             SET anulado = 1, anulado_en = ?, anulado_por = ?, ocurrido_en = ?
+           WHERE pago_id IN (SELECT id FROM pagos WHERE cuota_id = ?)
+             AND anulado = 0
+          ''',
+          [ahoraLocal, me.id, ocurridoEn, cuotaId],
+        );
+      });
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Cuota anulada')),
@@ -1063,8 +1085,9 @@ class _AnularCuotaDialogState extends State<_AnularCuotaDialog> {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text('Esta acción se registra en auditoría. '
-              'Los pagos ya aplicados a esta cuota no se modifican.'),
+          const Text('Esta acción se registra en auditoría. Los pagos y recibos '
+              'ya aplicados a esta cuota se anularán y dejarán de contar como '
+              'recaudado. Para conservar el pago, no anules la cuota.'),
           const SizedBox(height: 16),
           TextField(
             controller: _ctrl,
