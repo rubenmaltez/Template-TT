@@ -625,18 +625,19 @@ class _DescargarPdfMenu extends ConsumerWidget {
       } else if (tipo == 'clientes') {
         final rows = await ps.db.getAll('''
           SELECT c.nombre, co.nombre AS comunidad,
-                 COALESCE(SUM(CASE WHEN cu.estado IN ('pendiente','parcial') THEN 1 ELSE 0 END), 0)
-                   AS pendientes,
-                 COALESCE(SUM(CASE WHEN cu.estado IN ('pendiente','parcial')
-                   THEN cu.monto + COALESCE(cu.cargos_neto, 0) - cu.monto_pagado
-                   ELSE 0 END), 0) AS saldo,
-                 MAX(p.fecha_pago) AS ultimo_pago
+                 (SELECT COUNT(*) FROM cuotas cu
+                   WHERE cu.cliente_id = c.id
+                     AND cu.estado IN ('pendiente','parcial')) AS pendientes,
+                 COALESCE((SELECT SUM(cu.monto + COALESCE(cu.cargos_neto, 0) - cu.monto_pagado)
+                    FROM cuotas cu
+                   WHERE cu.cliente_id = c.id
+                     AND cu.estado IN ('pendiente','parcial')), 0) AS saldo,
+                 (SELECT MAX(p.fecha_pago) FROM pagos p
+                    JOIN cuotas cu2 ON cu2.id = p.cuota_id
+                   WHERE cu2.cliente_id = c.id AND p.anulado = 0) AS ultimo_pago
             FROM clientes c
        LEFT JOIN comunidades co ON co.id = c.comunidad_id
-       LEFT JOIN cuotas cu ON cu.cliente_id = c.id
-       LEFT JOIN pagos p ON p.cuota_id = cu.id AND p.anulado = 0
            WHERE c.activo = 1
-           GROUP BY c.id, c.nombre, co.nombre
            ORDER BY saldo DESC
         ''');
 
@@ -1051,18 +1052,19 @@ class _DescargarPdfMenu extends ConsumerWidget {
       case 'clientes':
         final rows = await ps.db.getAll('''
           SELECT c.nombre, co.nombre AS comunidad,
-                 COALESCE(SUM(CASE WHEN cu.estado IN ('pendiente','parcial') THEN 1 ELSE 0 END), 0)
-                   AS pendientes,
-                 COALESCE(SUM(CASE WHEN cu.estado IN ('pendiente','parcial')
-                   THEN cu.monto + COALESCE(cu.cargos_neto, 0) - cu.monto_pagado
-                   ELSE 0 END), 0) AS saldo,
-                 MAX(p.fecha_pago) AS ultimo_pago
+                 (SELECT COUNT(*) FROM cuotas cu
+                   WHERE cu.cliente_id = c.id
+                     AND cu.estado IN ('pendiente','parcial')) AS pendientes,
+                 COALESCE((SELECT SUM(cu.monto + COALESCE(cu.cargos_neto, 0) - cu.monto_pagado)
+                    FROM cuotas cu
+                   WHERE cu.cliente_id = c.id
+                     AND cu.estado IN ('pendiente','parcial')), 0) AS saldo,
+                 (SELECT MAX(p.fecha_pago) FROM pagos p
+                    JOIN cuotas cu2 ON cu2.id = p.cuota_id
+                   WHERE cu2.cliente_id = c.id AND p.anulado = 0) AS ultimo_pago
             FROM clientes c
        LEFT JOIN comunidades co ON co.id = c.comunidad_id
-       LEFT JOIN cuotas cu ON cu.cliente_id = c.id
-       LEFT JOIN pagos p ON p.cuota_id = cu.id AND p.anulado = 0
            WHERE c.activo = 1
-           GROUP BY c.id, c.nombre, co.nombre
            ORDER BY saldo DESC
         ''');
         return (
