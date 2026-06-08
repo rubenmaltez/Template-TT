@@ -442,6 +442,11 @@ class _MapaScreenState extends ConsumerState<MapaScreen> {
     final enGracia = (r['en_gracia'] as int? ?? 0);
     final pendientes = (r['pendientes'] as int? ?? 0);
     final contratos = (r['contratos_activos'] as int? ?? 0);
+    // El técnico no ve la cobranza ni "Ver cliente": su SQLite no tiene cuotas
+    // (los chips darían 0/"Al día" engañoso) y /clientes/:id lo rebota a /tecnico
+    // (botón muerto) — B8 del audit.
+    final esTecnico =
+        ref.read(cobradorActualProvider).valueOrNull?.esTecnico ?? false;
     const ambar = Color(0xFFB45309);
     showModalBottomSheet(
       context: context,
@@ -455,9 +460,10 @@ class _MapaScreenState extends ConsumerState<MapaScreen> {
             children: [
               Text(r['nombre'] as String,
                   style: Theme.of(context).textTheme.titleMedium),
-              const SizedBox(height: 12),
-              Wrap(
-                spacing: 8,
+              if (!esTecnico) const SizedBox(height: 12),
+              if (!esTecnico)
+                Wrap(
+                  spacing: 8,
                 runSpacing: 4,
                 children: [
                   if (contratos >= 2)
@@ -485,9 +491,10 @@ class _MapaScreenState extends ConsumerState<MapaScreen> {
                         avatar: Icon(Icons.check, size: 16)),
                 ],
               ),
-              const SizedBox(height: 16),
-              FilledButton.icon(
-                icon: const Icon(Icons.person),
+              if (!esTecnico) const SizedBox(height: 16),
+              if (!esTecnico)
+                FilledButton.icon(
+                  icon: const Icon(Icons.person),
                 label: const Text('Ver cliente'),
                 onPressed: () {
                   Navigator.pop(context);
