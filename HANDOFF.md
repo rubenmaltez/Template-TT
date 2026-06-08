@@ -7,6 +7,32 @@
 
 ---
 
+## 2026-06-08 — Cancelar contrato = saldo a 0 (+ RLS + B2/A3) ✅ código, falta DEPLOY
+
+Bug HIGH: cancelar un contrato **no** dejaba de cobrar sus cuotas (cobrador las veía, mora
+las contaba, saldo mal). Arreglado + auditado (3 agentes, 2 ALTA corregidas). Commits
+`c9e5667` → `d6b94b0` → `a2aa04a`.
+
+- **Cancelar** (`contrato_detail_screen.dart`): anula pendientes (sin pago) + liquida las
+  parciales con un **descuento de cancelación** (`cargos_extra` 'descuento_monto') que las deja
+  `pagada` — **preserva la plata real cobrada** (decisión "Opción A"). Espejo LOCAL de
+  cargos_neto/estado (saldo 0 al instante, también offline).
+- **Resumen** del contrato cancelado → "Total recaudado" / Pendiente 0.
+- **B2 (terminal):** cancelado NO se reactiva (dropdown desaparece). **A3:** no se cancela
+  impersonando (opción oculta + guard). **Gap cerrado:** el switch activo/cancelado del *form*
+  de edición (cancelaba sin liquidar + reactivaba) se quitó — el estado se gestiona SOLO desde
+  el dropdown del detalle.
+- **2 migraciones server-side puras** (sin bump de schema, sin redeploy de sync rules):
+  `0111_cuotas_cobrador_no_desanular` (RLS: el cobrador no des-anula cuotas — el ítem que pidió
+  Rubén) + `0112_mora_resolver_al_anular` (resuelve la mora también al anular).
+
+> ⚠️ **Deploy pendiente (Rubén):** correr `0111` y `0112` por Dashboard (en orden) → rebuild de
+> la app (código Dart) → correr `supabase/tests/invariantes_dinero.sql` (toca dinero, debe dar
+> 0 violaciones). **NO** hay bump de schema ni redeploy de sync rules. Detalle + pasos de
+> testing en `REPORTE-SESION.md` (entrada 2026-06-08).
+
+---
+
 ## Fase 3 — Tickets (3A+3B+3C+3D+3E COMPLETOS y auditados ✅)
 
 Propuesta aprobada en `FASE3-PLAN.md` (decisiones: D1 trigger server-side de

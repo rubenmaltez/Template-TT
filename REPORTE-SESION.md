@@ -158,6 +158,58 @@ consistentes → auditoría.
 
 > Más reciente arriba. Formato por ítem: error → fix → expectativa.
 
+### 2026-06-08 — Cancelar contrato = dejar de cobrar sus cuotas (saldo a 0) + RLS + B2/A3
+
+Bug (HIGH): **cancelar un contrato NO dejaba de cobrar sus cuotas** — el cobrador las
+seguía viendo en "por cobrar", la mora las seguía contando y el saldo quedaba mal. Fix
+con decisiones de Rubén: **Opción A** (preservar la plata real), **mecanismo descuento**,
+**A3** (bloqueo total de cancelación impersonando) y **B2** (cancelación terminal).
+Commits `c9e5667` → `d6b94b0` → `a2aa04a`. Auditado (3 agentes; 2 ALTA convergentes
+corregidas).
+
+- **Cancelar contrato (`contrato_detail_screen.dart` `_cancelarYLiquidarCuotas`):** al pasar
+  a `cancelado`, en una transacción atómica: (1) el contrato pasa a cancelado; (2) las cuotas
+  **pendientes** (sin pago) → `anulada` (la cascada `cuotas_anular_pagos_asociados_trg` es
+  no-op, no tienen pagos); (3) las **parciales** (con pago) → se liquidan con un `cargos_extra`
+  **'descuento_monto'** por el saldo restante, **+ espejo LOCAL** de `cargos_neto`/`estado`
+  (mismo patrón que `pagos_repo`) → la cuota queda `pagada` al instante (también offline). El
+  pago YA cobrado se **PRESERVA** como recaudado (invariante #4). **NO se anula la parcial**
+  (anularla revertiría su pago vía la cascada = borraría plata real).
+  **Expectativa:** tras cancelar, las cuotas del contrato desaparecen de todas las superficies
+  por-cobrar/mora (filtran `estado IN ('pendiente','parcial')`), el recaudado real no cambia,
+  y el resumen del contrato muestra **"Total recaudado" / Pendiente 0** (no `total−recaudado`).
+- **Resumen del contrato (`contrato_detail_header.dart` `_ContratoResumen`):** un contrato
+  cancelado muestra solo lo recaudado (Pendiente 0). Antes mostraría `total−recaudado` (falso
+  para un contrato terminado antes de término).
+- **RLS — `0111_cuotas_cobrador_no_desanular.sql`:** el trigger `cuotas_check_cobrador_update`
+  (0022) bloqueaba poner `estado='anulada'` pero NO el camino inverso. Ahora también bloquea
+  que un cobrador cambie una cuota **DE** `anulada` a otro estado (revivirla). Server-side puro.
+  **Expectativa:** el cobrador no puede des-anular cuotas vía su policy; solo el admin.
+- **Mora — `0112_mora_resolver_al_anular.sql`:** `resolver_notificacion_al_pagar` (0008)
+  resolvía la notificación de mora solo al `pagada`. Ahora también al `anulada` → cancelar un
+  contrato en mora limpia su mora (panel admin + badge cobrador). **Offline:** la resolución es
+  server-side → el badge tarda en limpiarse hasta el sync (la cuota local sí desaparece ya).
+- **A3 (impersonación):** cancelar un contrato se **bloquea** mientras el super_admin
+  impersona (opción oculta del menú + guard en `_cambiarEstado`). Liquidar parciales generaría
+  un `cargos_extra` atribuido a la fila System del super_admin (mismo criterio que cobro/cargo/
+  visita). **Expectativa:** impersonando no se cancela; mensaje "hacelo desde la cuenta del
+  admin del tenant".
+- **B2 (terminal):** un contrato `cancelado` **no se reactiva** — el dropdown de estado
+  desaparece cuando ya está cancelado. Para reanudar servicio se crea un contrato nuevo.
+- **Gap cerrado (`contrato_form_screen.dart`):** el form de edición tenía un switch
+  "activo/cancelado" que cancelaba **sin** liquidar cuotas (el bug viejo) y permitía reactivar
+  (rompía B2). Se quitó; el UPDATE del form ya no escribe `estado`. De paso arregla que editar
+  un contrato `completado` lo pasaba a `cancelado`. **El estado del contrato se gestiona ahora
+  SOLO desde el dropdown del detalle.**
+- **Audit (3 agentes) — 2 ALTA corregidas:** (1) faltaba el espejo local → offline la parcial
+  quedaba `parcial` con saldo>0 (corregido); (2) cancelar impersonando metía un cargo
+  cross-tenant (corregido vía A3). + reentrancy guard anti doble-tap.
+- **Deploy:** correr `0111` y `0112` (en orden) por Dashboard. **Sin** bump de schema ni
+  redeploy de sync rules (server-side puro). Rebuild de la app por el código Dart. Correr
+  `invariantes_dinero.sql` post-deploy (toca dinero).
+- **Backlog (BAJA):** `aplicado_en`/`anulada_en` usan hora local (no UTC) — consistente con
+  `aplicar_cargo`/`_anular`; normalizar junto si algún día se ataca.
+
 ### 2026-06-07 (cont. 13) — Reportes: listado de clientes en Excel (padrón) + bug de dinero descubierto
 
 Pedido de Rubén: exportar la lista de clientes (activos **e** inactivos) con su info, en

@@ -38,7 +38,7 @@
 | Dimensión | Estado | Resumen |
 |---|---|---|
 | **Backend / DB** | 🟢 SÓLIDO | 87 migraciones secuenciales sin gaps, schema↔Postgres↔sync coherentes (17 tablas), RLS multi-tenant completa + super_admin bypass, triggers (audit/dinero/coherencia/inmutabilidad) correctos, timezone server 0087. 0 CRITICAL/HIGH, 4 LOW. |
-| **Dinero / contabilidad** | 🟢 SÓLIDO | Matemática del vuelto verificada a mano (NIO/USD, single/multi, arqueo USD). recaudado/total-fijo/trigger-mirror/anular/correlativo correctos. 10/10 invariantes. **F1 (saldo sin cargos_neto en /admin/cuotas) corregido.** |
+| **Dinero / contabilidad** | 🟢 SÓLIDO | Matemática del vuelto verificada a mano (NIO/USD, single/multi, arqueo USD). recaudado/total-fijo/trigger-mirror/anular/correlativo correctos. 10/10 invariantes. **F1 (saldo sin cargos_neto en /admin/cuotas) corregido.** **2026-06-08: cancelar contrato liquida sus cuotas (anula pendientes + descuenta saldo de parciales → saldo 0, preservando la plata real); cancelación terminal; bloqueada impersonando.** |
 | **Frontend correctness** | 🟢 LIMPIO | 0 SQL incompatible con SQLite, 0 `date('now')` pelados (norma TZ 100% en 30+ queries), 0 rutas rotas, 0 stream-lifecycle latentes, guards de rol coherentes. 1 archivo dead code. |
 | **Seguridad multi-tenant** | 🟢 SAFE | Aislamiento RLS sólido; super-only enforced server-side (0085/0086); impersonación con defensa en capas (guards cliente + `validar_tenant_coherente` server); 6 edge functions robustas. 5 LOW (hardening), S4 corregido. |
 | **QA funcional** | 🟢 AMPLIA | Todos los roles/módulos/tabs mapeados y funcionales con data real. ~5 features son flag/stub (documentadas). Reportes (8 PDF + 8 CSV + arqueo) completos. |
