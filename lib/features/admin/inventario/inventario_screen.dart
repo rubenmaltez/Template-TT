@@ -19,13 +19,14 @@ class InventarioScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return DefaultTabController(
-      length: 5,
+      length: 6,
       child: Column(
         children: const [
           TabBar(isScrollable: true, tabs: [
             Tab(text: 'Existencias'),
             Tab(text: 'Equipos'),
             Tab(text: 'Productos'),
+            Tab(text: 'Categorías'),
             Tab(text: 'Ubicaciones'),
             Tab(text: 'Proveedores'),
           ]),
@@ -34,6 +35,7 @@ class InventarioScreen extends StatelessWidget {
               _ExistenciasTab(),
               _EquiposTab(),
               _ProductosTab(),
+              _CategoriasTab(),
               _UbicacionesTab(),
               _ProveedoresTab(),
             ]),
@@ -457,6 +459,156 @@ class _ProveedoresTabState extends ConsumerState<_ProveedoresTab> {
       tabla: 'inv_proveedores',
       id: id,
       countSql: 'SELECT COUNT(*) AS n FROM inv_movimientos WHERE proveedor_id = ?',
+      countParams: [id],
+    );
+    if (!context.mounted) return;
+    if (err != null) _snack(context, err);
+  }
+}
+
+// ===========================================================================
+// CATEGORÍAS (M8/B6: antes solo se creaban inline; ahora se editan/borran y
+// tienen historial, como el resto de los sub-catálogos)
+// ===========================================================================
+class _CategoriasTab extends ConsumerStatefulWidget {
+  const _CategoriasTab();
+  @override
+  ConsumerState<_CategoriasTab> createState() => _CategoriasTabState();
+}
+
+class _CategoriasTabState extends ConsumerState<_CategoriasTab> {
+  late final Stream<List<Map<String, dynamic>>> _categorias;
+
+  @override
+  void initState() {
+    super.initState();
+    _categorias = ps.db.watch(
+        'SELECT * FROM inv_categorias WHERE activo = 1 ORDER BY nombre');
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      floatingActionButton: FloatingActionButton.extended(
+        icon: const Icon(Icons.add),
+        label: const Text('Categoría'),
+        onPressed: () => _crear(context),
+      ),
+      body: StreamBuilder<List<Map<String, dynamic>>>(
+        stream: _categorias,
+        initialData: const [],
+        builder: (context, snap) {
+          if (snap.hasError) return Center(child: Text('Error: ${snap.error}'));
+          final rows = snap.data!;
+          if (rows.isEmpty) {
+            return EmptyState(
+              icon: Icons.category_outlined,
+              titulo: 'Sin categorías',
+              accion: FilledButton.icon(
+                icon: const Icon(Icons.add),
+                label: const Text('Agregar primera'),
+                onPressed: () => _crear(context),
+              ),
+            );
+          }
+          return ListView.separated(
+            padding: const EdgeInsets.fromLTRB(8, 8, 8, 88),
+            itemCount: rows.length,
+            separatorBuilder: (_, __) => const Divider(height: 1),
+            itemBuilder: (_, i) {
+              final c = rows[i];
+              return ListTile(
+                leading: Icon(Icons.category,
+                    color: Theme.of(context).colorScheme.outline),
+                title: Text(c['nombre'] as String),
+                trailing: _InvRowMenu(
+                  onEditar: () => _crear(context, existente: c),
+                  onHistorial: () => _showHistorialInv(context,
+                      'inv_categorias', c['id'] as String,
+                      'Historial de la categoría'),
+                  onEliminar: () => _eliminar(context, c),
+                ),
+              );
+            },
+          );
+        },
+      ),
+    );
+  }
+
+  Future<void> _crear(BuildContext context,
+      {Map<String, dynamic>? existente}) async {
+    final tenantId = ref.read(tenantIdProvider);
+    if (tenantId == null) return;
+    final ctrl =
+        TextEditingController(text: existente?['nombre'] as String? ?? '');
+    final nombre = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title:
+            Text(existente == null ? 'Nueva categoría' : 'Editar categoría'),
+        content: TextField(
+          controller: ctrl,
+          autofocus: true,
+          textCapitalization: TextCapitalization.words,
+          decoration: const InputDecoration(labelText: 'Nombre'),
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Cancelar')),
+          FilledButton(
+              onPressed: () => Navigator.pop(ctx, ctrl.text.trim()),
+              child: Text(existente == null ? 'Crear' : 'Guardar')),
+        ],
+      ),
+    ).whenComplete(ctrl.dispose);
+    if (nombre == null || nombre.isEmpty || !context.mounted) return;
+    // Pre-check de duplicado (B6): el UNIQUE(tenant, nombre) vive en Postgres,
+    // no en el SQLite local. Excluye la propia fila al editar.
+    final dup = await ps.db.getOptional(
+      'SELECT id FROM inv_categorias WHERE tenant_id = ? AND lower(nombre) = lower(?) AND id != ? LIMIT 1',
+      [tenantId, nombre, existente?['id'] ?? ''],
+    );
+    if (!context.mounted) return;
+    if (dup != null) {
+      _snack(context, 'Ya existe una categoría "$nombre".');
+      return;
+    }
+    try {
+      if (existente == null) {
+        await ps.db.execute(
+          'INSERT INTO inv_categorias (id, tenant_id, nombre, orden, activo, created_at) VALUES (?, ?, ?, 0, 1, ?)',
+          [const Uuid().v4(), tenantId, nombre,
+            DateTime.now().toIso8601String()],
+        );
+      } else {
+        await ps.db.execute(
+          'UPDATE inv_categorias SET nombre = ? WHERE id = ?',
+          [nombre, existente['id']],
+        );
+      }
+    } catch (e) {
+      if (context.mounted) _snack(context, 'Error: $e');
+    }
+  }
+
+  Future<void> _eliminar(BuildContext context, Map<String, dynamic> c) async {
+    final id = c['id'] as String;
+    // Guarda de "en uso": no borrar una categoría con productos asociados.
+    final enUso = await _contar(
+        'SELECT COUNT(*) AS n FROM inv_productos WHERE categoria_id = ?', [id]);
+    if (!context.mounted) return;
+    if (enUso > 0) {
+      _snack(context,
+          'No se puede eliminar "${c['nombre']}": tiene productos asociados ($enUso).');
+      return;
+    }
+    if (!await _confirmar(context, '"${c['nombre']}"')) return;
+    final err = await _borrarSiLibre(
+      tabla: 'inv_categorias',
+      id: id,
+      countSql: 'SELECT COUNT(*) AS n FROM inv_productos WHERE categoria_id = ?',
       countParams: [id],
     );
     if (!context.mounted) return;
@@ -2115,6 +2267,19 @@ class _ProductoDialogState extends State<_ProductoDialog> {
       ),
     ).whenComplete(ctrl.dispose);
     if (nombre == null || nombre.isEmpty) return;
+    // Pre-check local de duplicado (B6): el UNIQUE(tenant, nombre) vive en
+    // Postgres, no en el SQLite local — sin esto una categoría duplicada se crea
+    // local, el server la rechaza al sincronizar y desaparece sin aviso (con el
+    // producto apuntando a una categoría huérfana). Si ya existe (case-insensitive)
+    // la seleccionamos en vez de duplicar.
+    final dup = await ps.db.getOptional(
+      'SELECT id FROM inv_categorias WHERE tenant_id = ? AND lower(nombre) = lower(?) LIMIT 1',
+      [widget.tenantId, nombre],
+    );
+    if (dup != null) {
+      if (mounted) setState(() => _categoriaId = dup['id'] as String);
+      return;
+    }
     final id = const Uuid().v4();
     try {
       await ps.db.execute(
