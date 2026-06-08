@@ -8,6 +8,7 @@ import '../../../data/providers/crud_error_provider.dart';
 import '../../../data/providers/impersonation_provider.dart';
 import '../../../data/providers/modulos_provider.dart';
 import '../../../data/providers/sync_status_provider.dart';
+import '../../../data/providers/tickets_alerta_provider.dart';
 import '../../../data/repositories/settings_repo.dart';
 import '../../shared/widgets/app_version_label.dart';
 import '../../shared/widgets/impersonation_banner.dart';
@@ -428,6 +429,19 @@ Set<String> _pantallasOn(AppSettings settings) => <String>{
       if (settings.auditVisibleAdmin) 'cobranza.audit_visible_admin',
     };
 
+/// Leading del item de menú: el ícono, con un Badge de "en riesgo" SÓLO en el
+/// item de Tickets (vencidos + por vencer del tenant). Reusa el provider de 3E
+/// que también alimenta el badge del técnico — acá queda scopeado al tenant (la
+/// DB local del admin tiene todos los tickets activos del tenant). El conteo se
+/// watchea en el build del rail/drawer y se pasa acá (no se watchea inline).
+Widget _menuLeading(_MenuItem item, int ticketsEnRiesgo) {
+  final icon = Icon(item.icon);
+  if (item.path == '/admin/tickets' && ticketsEnRiesgo > 0) {
+    return Badge(label: Text('$ticketsEnRiesgo'), child: icon);
+  }
+  return icon;
+}
+
 class _AdminRail extends ConsumerWidget {
   const _AdminRail({required this.currentPath});
   final String currentPath;
@@ -442,6 +456,8 @@ class _AdminRail extends ConsumerWidget {
     final settings = ref.watch(appSettingsProvider);
     final pantallasOn = _pantallasOn(settings);
     final modulosOn = ref.watch(modulosHabilitadosProvider).valueOrNull ?? {};
+    final ticketsEnRiesgo =
+        ref.watch(ticketsEnRiesgoCountProvider).valueOrNull ?? 0;
     final items = _adminMenu
         .where((m) => _menuVisible(m,
             esSuperAdmin: esSuperAdmin,
@@ -475,7 +491,7 @@ class _AdminRail extends ConsumerWidget {
                   }
                   final selected = i == selectedIndex;
                   return ListTile(
-                    leading: Icon(item.icon),
+                    leading: _menuLeading(item, ticketsEnRiesgo),
                     title: Text(item.label),
                     selected: selected,
                     selectedTileColor:
@@ -526,6 +542,8 @@ class _AdminDrawer extends ConsumerWidget {
     final settings = ref.watch(appSettingsProvider);
     final pantallasOn = _pantallasOn(settings);
     final modulosOn = ref.watch(modulosHabilitadosProvider).valueOrNull ?? {};
+    final ticketsEnRiesgo =
+        ref.watch(ticketsEnRiesgoCountProvider).valueOrNull ?? 0;
     final items = _adminMenu
         .where((m) => _menuVisible(m,
             esSuperAdmin: esSuperAdmin,
@@ -550,7 +568,7 @@ class _AdminDrawer extends ConsumerWidget {
                         item: item, currentPath: currentPath);
                   }
                   return ListTile(
-                    leading: Icon(item.icon),
+                    leading: _menuLeading(item, ticketsEnRiesgo),
                     title: Text(item.label),
                     selected: currentPath == item.path,
                     selectedTileColor:
