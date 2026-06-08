@@ -159,11 +159,15 @@ rojo. Setting `tickets.sla_horas_por_prioridad` (sin migración, ya sincroniza).
 menú admin (derivado, reusa el provider de 3E) + **auto-cierre** opcional de resueltos
 (setting `tickets.auto_cierre_dias`, cron diario `tickets_auto_cierre` de 0109; 0 = OFF;
 evento "Sistema" en la bitácora; reversible). Sin tabla/columna nueva.
+**Calidad de campo (v2, 0110):** **checklists por tipo** (template en
+`ticket_tipos.checklist_template`, snapshot al crear en `tickets.checklist`; el técnico tilda
+en el detalle, progreso X/Y; editar el template no toca tickets viejos) + **firma del cliente**
+(pad propio → PNG, se sube como adjunto "Firma del cliente", reusa adjuntos).
 **3C: materiales** — sección en el detalle (si el módulo inventario está on) para registrar
 equipos/insumos consumidos (serial de stock o granel); un trigger server-side (0106)
 descuenta el inventario e instala el serial en el cliente del ticket. **3D: incidentes**
 (`/admin/incidentes`) — registrar outages con alcance nodo/hub/puerto/general, ver clientes
-afectados derivados de la red, agrupar tickets, resolver. Migraciones 0103-0108 (schema v25).
+afectados derivados de la red, agrupar tickets, resolver. Migraciones 0103-0110 (schema v26).
 admin_cobranza NO entra (intencional).
 
 ### Reportes (`/admin/reportes`) — ✅ completo

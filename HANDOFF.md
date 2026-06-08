@@ -219,12 +219,39 @@ vínculos nuevos). Dos piezas:
 - **NO incluye** (a propósito): SLA math en SQL (la escalación es derivada en cliente),
   push/WhatsApp, auto-subir prioridad, columna `escalado_en`.
 
-> ⚠️ **Deploy Fase 3 + SLA accionable (al final, todo junto)**: correr `0103`→`0104`→`0105`→`0106`(actualizado)→`0107`→
-> `0108`→`0109` (cron de auto-cierre) por Dashboard **en orden** + **redeploy sync rules** (tablas/columnas + buckets
-> **`por_tecnico*`** incl. `por_tecnico_inventario` + `ticket_materiales` + `incidentes`) +
-> restart (**schema v25**). Verificar "Active" en PowerSync. El super_admin enciende
-> 'tickets' (y 'inventario' para materiales) del tenant en `/super/tenants/:id`, crea una
-> ubicación `tipo='tecnico'` con `cobrador_id` del técnico, y la topología de red (nodos/
+**CALIDAD DE CAMPO + INVENTARIO v2 — HECHO + auditado (3 agentes, 0 ALTA/MEDIA)**
+(commits `df1cd3b`→`6a8e824`). Approach SIMPLE (lección de Nodos: cero entidades/
+jerarquías/vínculos nuevos; solo 3 columnas en tablas existentes + 1 paquete).
+- **Migración 0110** (3 columnas): `ticket_tipos.checklist_template` (JSONB),
+  `tickets.checklist` (JSONB), `inv_productos.stock_minimo` (numeric). **schema v26.**
+- **Slice A — Checklists por tipo:** el admin define pasos por tipo (template); al crear el
+  ticket se snapshotea en `tickets.checklist` (`[{texto,hecho}]` — editar el template NO toca
+  tickets viejos); el técnico/admin tilda en el detalle (progreso X/Y). El tick NO spamea el
+  change-log (fuera del allowlist).
+- **Slice B — Firma del cliente:** `SignaturePad` propio (sin dependencias, RepaintBoundary →
+  PNG); se sube como `ticket_adjunto` "Firma del cliente" (reusa bucket/sync/RLS/audit de
+  adjuntos, cero schema). Requiere conexión para subir (igual que las fotos).
+- **Slice C — Stock mínimo:** `inv_productos.stock_minimo` (campo en el form); la tab de
+  Existencias resalta los bajo-mínimo + **badge** en el item "Inventario" del menú
+  (`inventarioStockBajoCountProvider`, derivado del ledger, offline).
+- **Slice D — Código de barras:** `mobile_scanner` (la única dep nueva) — botón "Escanear" en
+  el ingreso de seriales que agrega el código leído como una línea. Gateado a **Android**
+  (Windows/web ocultan el botón → tipeo manual; iOS sacado: no es target + le falta el plist).
+- **Audit (3 agentes, 0 ALTA/MEDIA):** pad de firma/upload/scan limpios; integridad y
+  snapshot sin drift verificados. Fixes (`6a8e824`): scan solo Android + `stock_minimo`
+  trazable en el change-log.
+- ⚠️ **Rubén ANTES de confiar en el build:** correr **`flutter pub get`** (el lockfile no
+  tiene `mobile_scanner` aún) y **`flutter build windows --release`** — esperado: build OK
+  con `mobile_scanner` no-registrado en Windows (como `image_picker`). Si falla → import
+  condicional. En Android, la 1ª vez que se escanea aparece el permiso de cámara.
+
+> ⚠️ **Deploy (al final, todo junto)**: migraciones `0103`→`0104`→`0105`→`0106`(actualizado)→`0107`→
+> `0108`→`0109`(auto-cierre)→`0110`(checklists/stock) por Dashboard **en orden** + **redeploy
+> sync rules** (`SELECT *` ya cubre las columnas nuevas; buckets **`por_tecnico*`** incl.
+> `por_tecnico_inventario` + `ticket_materiales` + `incidentes`) + **`flutter pub get`**
+> (mobile_scanner) + restart (**schema v26**). Verificar "Active" en PowerSync. El super_admin
+> enciende 'tickets' (y 'inventario' para materiales) del tenant en `/super/tenants/:id`, crea
+> una ubicación `tipo='tecnico'` con `cobrador_id` del técnico, y la topología de red (nodos/
 > hubs/puertos) para poder scopear incidentes.
 
 ## Estado actual

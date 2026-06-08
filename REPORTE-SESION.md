@@ -158,6 +158,44 @@ consistentes → auditoría.
 
 > Más reciente arriba. Formato por ítem: error → fix → expectativa.
 
+### 2026-06-07 (cont. 12) — Calidad de campo (checklists + firma) + Inventario v2 (stock mínimo + código de barras)
+
+Dos features v2 aprobadas con la consigna de Rubén de **mantenerlo simple** (lección de
+Nodos). Migración **0110** (3 columnas en tablas existentes, **schema v26**) + 4 slices.
+Commits `df1cd3b`→`6a8e824`. Auditadas por 3 agentes (DB+checklists · firma+barcode ·
+Dart cross-cutting): **0 ALTA/MEDIA**.
+
+- **Checklists por tipo (slice A):** no había forma de estandarizar los pasos del trabajo
+  de campo. Fix = `ticket_tipos.checklist_template` (JSONB, el admin define los pasos) +
+  `tickets.checklist` (JSONB **snapshot al crear**, `[{texto,hecho}]`) + sección de
+  checkboxes en el detalle. **Expectativa:** el técnico tilda los pasos (progreso X/Y),
+  queda registrado; editar el template de un tipo NO altera los tickets ya creados (cada
+  ticket es dueño de su copia → sin drift). El tick no ensucia el change-log (fuera del
+  allowlist).
+- **Firma del cliente (slice B):** no había prueba de servicio. Fix = `SignaturePad` propio
+  (RepaintBoundary + CustomPaint → PNG, **sin dependencias**); se sube como un
+  `ticket_adjunto` con descripción "Firma del cliente" (reusa el bucket/sync/RLS/audit de
+  adjuntos, **cero schema nuevo**). **Expectativa:** al resolver, el técnico captura la firma
+  (dedo en Android, mouse en Windows); se ve en la galería de adjuntos. Requiere conexión
+  para subir (igual que las fotos).
+- **Stock mínimo (slice C):** no había alerta de quiebre de stock. Fix =
+  `inv_productos.stock_minimo` (campo en el form) + la tab de Existencias resalta en rojo los
+  bajo-mínimo + **badge** en el item "Inventario" del menú (`inventarioStockBajoCountProvider`,
+  derivado del ledger igual que la tab, offline). **Expectativa:** el admin ve el número de
+  productos bajo-mínimo de un vistazo y "mín N" en la lista.
+- **Código de barras (slice D):** los seriales se tipeaban a mano. Fix = `mobile_scanner`
+  (única dep nueva) + botón "Escanear" en el ingreso de seriales que agrega el código leído.
+  Gateado a **Android** (Windows/web ocultan el botón → tipeo manual). **Expectativa:** el
+  serial/MAC del equipo se carga escaneando su código de barras.
+- **Fixes del audit (`6a8e824`):** `_scanSoportado` solo Android (iOS sacado: no es target y
+  le falta el `NSCameraUsageDescription` → habría crasheado al tocar el botón) · `stock_minimo`
+  agregado al allowlist/catálogo/label del change-log (editar el mínimo ahora es trazable).
+- **By-design / pendiente de Rubén:** firma online-only (= fotos) · `mobile_scanner` no tiene
+  impl de Windows → el gating lo oculta, pero **Rubén debe correr `flutter pub get` +
+  `flutter build windows --release`** (el lockfile no se regeneró) para confirmar que el build
+  pasa con el plugin no-registrado (esperado, como `image_picker`). ⚠️ Deploy: sumar `0110` a
+  la corrida de migraciones.
+
 ### 2026-06-07 (cont. 11) — SLA accionable (v2): badge del admin + auto-cierre
 
 Feature v2 sobre tickets, aprobada con la consigna explícita de Rubén de **mantenerlo
