@@ -158,6 +158,37 @@ consistentes → auditoría.
 
 > Más reciente arriba. Formato por ítem: error → fix → expectativa.
 
+### 2026-06-07 (cont. 11) — SLA accionable (v2): badge del admin + auto-cierre
+
+Feature v2 sobre tickets, aprobada con la consigna explícita de Rubén de **mantenerlo
+simple** (la lección de Nodos: una feature "simple" que se complicó por entidades/vínculos
+nuevos). Propuesta formal con la decisión tomada hacia lo mínimo funcional. Commits
+`d785912` (slice 1) + `8b9a099` (slice 2). Auditados SAFE (slice 2 con agente dedicado a
+la migración/cron). **Cero entidades/columnas/vínculos nuevos.**
+
+- **Escalación = visibilidad para el admin (slice 1, derivado, cero migración):** error =
+  el countdown de 3E es informativo, pero el admin no tenía forma de saber *de un vistazo*
+  cuántos tickets están venciendo sin abrir la lista. Fix = badge con la cuenta de
+  vencidos + por vencer en el item "Tickets" del menú admin (rail + drawer), reusando
+  `ticketsEnRiesgoCountProvider` de 3E (en el admin cuenta los del tenant; el conteo se
+  watchea en el build del rail/drawer, no inline). **Expectativa:** el admin ve "3" en
+  Tickets → entra → los rojos saltan a la vista → reasigna. Derivado/offline, sin cron.
+- **Auto-cierre de resueltos (slice 2, server):** error = los tickets `resuelto` se
+  acumulan esperando un cierre manual. Fix = migración **0109**: función
+  `tickets_auto_cierre(p_tenant_id)` (SECURITY DEFINER per-tenant, patrón del cron de mora)
+  que pasa `resuelto→cerrado` los que llevan > N días sin reapertura, con evento de
+  bitácora (autor "Sistema", `hecho_por` NULL) — vía un CTE data-modifying (un evento por
+  ticket cerrado). Cron diario 06:30 UTC. N = setting `tickets.auto_cierre_dias`
+  (**0 = OFF por defecto** → cero sorpresas; el admin lo prende en la pantalla de Tipos).
+  **Expectativa:** un ticket resuelto que nadie reabre en N días se cierra solo, con
+  rastro en la bitácora; es **reversible** (`cerrado→reabierto` sigue válido); el cambio
+  baja por sync (offline → se ve al reconectar). **Sin tabla/columna nueva** → sin bump de
+  schema ni redeploy de sync rules (usa estado/resuelto_en/cerrado_en que ya sincronizan).
+- **Por qué NO se complicó (decisión de diseño):** la escalación quedó **derivada en el
+  cliente** (reusa la math de 3E) → **no hubo que portar el SLA efectivo a SQL** ni seedear
+  el default de prioridad server-side. Sin push/WhatsApp/inbox, sin auto-subir prioridad,
+  sin columna `escalado_en`. ⚠️ Deploy: agregar `0109` a la corrida de migraciones de Fase 3.
+
 ### 2026-06-07 (cont. 10) — Cierre de Fase 3: audit integral + fix del trigger de consumo
 
 Audit integral de cierre de toda la Fase 3 (3A→3E) con 4 agentes paralelos

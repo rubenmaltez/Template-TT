@@ -201,8 +201,26 @@ profundidad bien cableada, state machine CHECK↔trigger↔Dart consistente.
   guard serial-sin-cliente en el trigger (la UI ya lo guarda) · comentarios de versión de
   schema en headers de migración desfasados (cosmético; `db.dart`=v25 es la verdad).
 
-> ⚠️ **Deploy Fase 3 (al final, todo junto)**: correr `0103`→`0104`→`0105`→`0106`(actualizado)→`0107`→
-> `0108` por Dashboard **en orden** + **redeploy sync rules** (tablas/columnas + buckets
+**SLA ACCIONABLE (v2 post-Fase 3) — HECHO + auditado SAFE** (commits `d785912`,
+`8b9a099`). Approach deliberadamente SIMPLE (lección de Nodos: cero entidades/columnas/
+vínculos nuevos). Dos piezas:
+- **Slice 1 — badge "en riesgo" del admin** (derivado, cero migración): el item "Tickets"
+  del menú admin (rail + drawer) muestra la cuenta de vencidos + por vencer del tenant.
+  Reusa `ticketsEnRiesgoCountProvider` de 3E (en el admin cuenta los del tenant, en el
+  técnico los suyos — mismo provider, scopeado por bucket).
+- **Slice 2 — auto-cierre** (migración **0109**): cron diario (`tickets_auto_cierre`,
+  SECURITY DEFINER per-tenant, patrón del cron de mora) cierra los `resuelto` con > N días
+  sin reapertura, con evento de bitácora (autor "Sistema"). N = setting
+  `tickets.auto_cierre_dias` (**0 = OFF, default**; editable en la pantalla de Tipos).
+  Reversible (`cerrado→reabierto`). **Sin tabla/columna nueva → sin bump de schema ni
+  redeploy de sync rules** (usa estado/resuelto_en/cerrado_en que ya sincronizan). Audit
+  SAFE (CTE correcto, triggers conviven con el actor NULL del cron, idempotencia mejor que
+  los crons previos).
+- **NO incluye** (a propósito): SLA math en SQL (la escalación es derivada en cliente),
+  push/WhatsApp, auto-subir prioridad, columna `escalado_en`.
+
+> ⚠️ **Deploy Fase 3 + SLA accionable (al final, todo junto)**: correr `0103`→`0104`→`0105`→`0106`(actualizado)→`0107`→
+> `0108`→`0109` (cron de auto-cierre) por Dashboard **en orden** + **redeploy sync rules** (tablas/columnas + buckets
 > **`por_tecnico*`** incl. `por_tecnico_inventario` + `ticket_materiales` + `incidentes`) +
 > restart (**schema v25**). Verificar "Active" en PowerSync. El super_admin enciende
 > 'tickets' (y 'inventario' para materiales) del tenant en `/super/tenants/:id`, crea una

@@ -155,6 +155,10 @@ detalle (transiciones validadas server-side + reasignar + comentar + bitácora a
 SLA derivado en Dart con pausa exacta (trigger 0105); **3E: SLA EFECTIVO = min(SLA del tipo,
 SLA de la prioridad)**, cuenta regresiva offline (`TicketSlaCountdown`), semáforo verde/ámbar/
 rojo. Setting `tickets.sla_horas_por_prioridad` (sin migración, ya sincroniza).
+**SLA accionable (v2):** badge de "en riesgo" (vencidos + por vencer) en el item Tickets del
+menú admin (derivado, reusa el provider de 3E) + **auto-cierre** opcional de resueltos
+(setting `tickets.auto_cierre_dias`, cron diario `tickets_auto_cierre` de 0109; 0 = OFF;
+evento "Sistema" en la bitácora; reversible). Sin tabla/columna nueva.
 **3C: materiales** — sección en el detalle (si el módulo inventario está on) para registrar
 equipos/insumos consumidos (serial de stock o granel); un trigger server-side (0106)
 descuenta el inventario e instala el serial en el cliente del ticket. **3D: incidentes**
