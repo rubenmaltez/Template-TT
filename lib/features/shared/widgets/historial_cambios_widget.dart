@@ -382,12 +382,20 @@ class _HistorialCuotaWidgetState extends ConsumerState<HistorialCuotaWidget> {
           OR (a.tabla = 'recibos' AND json_extract(
                 COALESCE(a.valor_nuevo, a.valor_anterior), '\$.pago_id'
               ) IN (SELECT id FROM pagos WHERE cuota_id = ?))
+          OR (a.tabla = 'cargos_extra' AND a.registro_id IN (
+                SELECT id FROM cargos_extra WHERE cuota_id = ?
+              ))
        ORDER BY COALESCE(a.ocurrido_en, a.created_at) ASC,
                 CASE a.tabla
                   WHEN 'pagos' THEN 0 WHEN 'recibos' THEN 1 ELSE 2
                 END ASC
       ''',
-      parameters: [widget.cuotaId, widget.cuotaId, widget.cuotaId],
+      parameters: [
+        widget.cuotaId,
+        widget.cuotaId,
+        widget.cuotaId,
+        widget.cuotaId,
+      ],
     );
   }
 

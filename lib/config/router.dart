@@ -278,6 +278,23 @@ final routerProvider = Provider<GoRouter>((ref) {
         if (!auditVisible) return '/admin';
       }
 
+      // Pantallas opcionales Pagos / Notificaciones: el admin sólo accede si el
+      // super_admin habilitó el toggle por tenant (B3 del audit — antes solo se
+      // ocultaban del menú, pero la URL directa entraba igual). El super_admin
+      // (rol != 'admin') las ve siempre; admin_cobranza ya cae en `soloAdmin`.
+      if (rol == 'admin') {
+        final s = ref.read(appSettingsProvider);
+        if ((loc == '/admin/pagos' || loc.startsWith('/admin/pagos/')) &&
+            !s.pantallaPagosHabilitada) {
+          return '/admin';
+        }
+        if ((loc == '/admin/notificaciones' ||
+                loc.startsWith('/admin/notificaciones/')) &&
+            !s.pantallaNotificacionesHabilitada) {
+          return '/admin';
+        }
+      }
+
       // Guard por rol en rutas admin-only: admin_cobranza no accede a
       // Cobradores / Planes / Geografía / Auditoría / Settings ni a las
       // pantallas opcionales Pagos / Notificaciones (alineado con el menú

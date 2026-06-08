@@ -710,7 +710,7 @@ class _TabPorClienteState extends State<_TabPorCliente> {
              COUNT(cu.id) AS cuotas_pend,
              SUM(CASE WHEN date(cu.fecha_vencimiento) < date('now', '-6 hours')
                       THEN 1 ELSE 0 END) AS cuotas_vencidas,
-             COALESCE(SUM(cu.monto + COALESCE(cu.cargos_neto, 0) - cu.monto_pagado), 0) AS saldo_pendiente,
+             COALESCE(SUM(max(cu.monto + COALESCE(cu.cargos_neto, 0) - cu.monto_pagado, 0)), 0) AS saldo_pendiente,
              MIN(cu.fecha_vencimiento) AS vence_mas_vieja
         FROM cuotas cu
         JOIN clientes c ON c.id = cu.cliente_id

@@ -3,6 +3,7 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 
+import '../../../data/utils/audit_changelog.dart';
 import '../../../data/utils/formatters.dart';
 import '../../../powersync/db.dart' as ps;
 import '../../shared/widgets/cargar_mas_button.dart';
@@ -27,12 +28,20 @@ class _AuditAdminScreenState extends State<AuditAdminScreen> {
   bool _loadingMore = false;
   Timer? _loadingMoreTimer;
 
+  // Entidades operativas frecuentes para el filtro por chips. No es TODO el
+  // catálogo del audit_log (que cubre ~25 entidades, incluidas inv_*/tickets):
+  // las menos comunes se ven igual en "Todas". El label legible sale de
+  // kAuditEntidadLabel.
   static const _tablas = [
-    'settings',
     'clientes',
+    'contratos',
+    'cuotas',
     'pagos',
     'recibos',
-    'cuotas',
+    'cargos_extra',
+    'planes',
+    'visitas',
+    'settings',
   ];
 
   @override
@@ -163,7 +172,7 @@ class _AuditAdminScreenState extends State<AuditAdminScreen> {
                 const SizedBox(width: 8),
                 for (final t in _tablas) ...[
                   ChoiceChip(
-                    label: Text(t),
+                    label: Text(kAuditEntidadLabel[t] ?? t),
                     selected: _filtroTabla == t,
                     onSelected: (_) => setState(() {
                       _filtroTabla = t;
