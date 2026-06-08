@@ -53,6 +53,10 @@ dependencies:
   image_picker: ^1.1.2
   permission_handler: ^11.3.1
 
+  # Escaneo de código de barras / QR de seriales (cámara). Solo Android/iOS;
+  # en Windows/web el botón de escanear se oculta (cae a tipeo manual).
+  mobile_scanner: ^5.2.3
+
   # File picker (documentos PDF/Word del contrato)
   file_picker: ^8.1.2
 

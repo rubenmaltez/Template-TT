@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
@@ -5,6 +6,7 @@ import 'package:uuid/uuid.dart';
 import '../../../data/providers/cobrador_provider.dart';
 import '../../../data/utils/formatters.dart';
 import '../../../powersync/db.dart' as ps;
+import '../../shared/widgets/barcode_scanner_screen.dart';
 import '../../shared/widgets/empty_state.dart';
 import '../../shared/widgets/historial_cambios_widget.dart';
 
@@ -1219,6 +1221,22 @@ class _IngresoDialogState extends State<_IngresoDialog> {
         'SELECT id, nombre FROM inv_proveedores WHERE activo = 1 ORDER BY nombre');
   }
 
+  // Escaneo soportado solo en móvil (mobile_scanner no corre en Windows/web → ahí
+  // el botón ni se muestra y el serial se tipea a mano).
+  bool get _scanSoportado =>
+      !kIsWeb &&
+      (defaultTargetPlatform == TargetPlatform.android ||
+          defaultTargetPlatform == TargetPlatform.iOS);
+
+  // Escanea un código y lo agrega como una línea más al campo de seriales.
+  Future<void> _escanearSerial() async {
+    final code = await BarcodeScannerScreen.escanear(context);
+    if (code == null || !mounted) return;
+    final actual = _seriales.text;
+    final sep = actual.isEmpty || actual.endsWith('\n') ? '' : '\n';
+    setState(() => _seriales.text = '$actual$sep$code');
+  }
+
   @override
   void dispose() {
     _factura.dispose();
@@ -1290,14 +1308,25 @@ class _IngresoDialogState extends State<_IngresoDialog> {
             const SizedBox(height: 12),
             // Cantidad (granel) o seriales (serializado).
             if (_productoId != null && _serializado)
-              TextField(
-                controller: _seriales,
-                minLines: 2,
-                maxLines: 5,
-                decoration: const InputDecoration(
-                  labelText: 'Seriales (uno por línea; opcional "serial, MAC")',
-                  hintText: 'SN001, AA:BB:CC:DD:EE:FF\nSN002',
-                ),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  TextField(
+                    controller: _seriales,
+                    minLines: 2,
+                    maxLines: 5,
+                    decoration: const InputDecoration(
+                      labelText: 'Seriales (uno por línea; opcional "serial, MAC")',
+                      hintText: 'SN001, AA:BB:CC:DD:EE:FF\nSN002',
+                    ),
+                  ),
+                  if (_scanSoportado)
+                    TextButton.icon(
+                      icon: const Icon(Icons.qr_code_scanner, size: 18),
+                      label: const Text('Escanear código'),
+                      onPressed: _escanearSerial,
+                    ),
+                ],
               )
             else
               TextField(
