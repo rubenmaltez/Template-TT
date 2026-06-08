@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -178,23 +180,25 @@ class _TicketTiposScreenState extends ConsumerState<TicketTiposScreen> {
       {Map<String, dynamic>? existente}) async {
     final tenantId = ref.read(tenantIdProvider);
     if (tenantId == null) return;
-    final res = await showDialog<({String nombre, String? descripcion, int? sla})>(
+    final res = await showDialog<
+        ({String nombre, String? descripcion, int? sla, List<String> checklist})>(
       context: context,
       builder: (_) => _TipoDialog(existente: existente),
     );
     if (res == null) return;
+    final checklistJson = jsonEncode(res.checklist);
     try {
       if (existente == null) {
         await ps.db.execute(
-          'INSERT INTO ticket_tipos (id, tenant_id, nombre, descripcion, sla_horas, orden, activo, created_at) '
-          'VALUES (?, ?, ?, ?, ?, 0, 1, ?)',
+          'INSERT INTO ticket_tipos (id, tenant_id, nombre, descripcion, sla_horas, checklist_template, orden, activo, created_at) '
+          'VALUES (?, ?, ?, ?, ?, ?, 0, 1, ?)',
           [const Uuid().v4(), tenantId, res.nombre, res.descripcion, res.sla,
-            DateTime.now().toIso8601String()],
+            checklistJson, DateTime.now().toIso8601String()],
         );
       } else {
         await ps.db.execute(
-          'UPDATE ticket_tipos SET nombre = ?, descripcion = ?, sla_horas = ? WHERE id = ?',
-          [res.nombre, res.descripcion, res.sla, existente['id']],
+          'UPDATE ticket_tipos SET nombre = ?, descripcion = ?, sla_horas = ?, checklist_template = ? WHERE id = ?',
+          [res.nombre, res.descripcion, res.sla, checklistJson, existente['id']],
         );
       }
     } catch (e) {
@@ -276,6 +280,8 @@ class _TipoDialogState extends State<_TipoDialog> {
   late final TextEditingController _nombre;
   late final TextEditingController _descripcion;
   late final TextEditingController _sla;
+  // Pasos del checklist (un controller por paso). Editable: agregar/quitar.
+  late final List<TextEditingController> _pasos;
 
   @override
   void initState() {
@@ -286,6 +292,16 @@ class _TipoDialogState extends State<_TipoDialog> {
         TextEditingController(text: e?['descripcion'] as String? ?? '');
     _sla = TextEditingController(
         text: (e?['sla_horas'] as int?)?.toString() ?? '');
+    // checklist_template: JSONB (texto en SQLite) = lista de strings.
+    final raw = e?['checklist_template'];
+    var pasos = const <String>[];
+    if (raw is String && raw.isNotEmpty) {
+      try {
+        final decoded = jsonDecode(raw);
+        if (decoded is List) pasos = decoded.whereType<String>().toList();
+      } catch (_) {}
+    }
+    _pasos = [for (final p in pasos) TextEditingController(text: p)];
   }
 
   @override
@@ -293,6 +309,9 @@ class _TipoDialogState extends State<_TipoDialog> {
     _nombre.dispose();
     _descripcion.dispose();
     _sla.dispose();
+    for (final c in _pasos) {
+      c.dispose();
+    }
     super.dispose();
   }
 
@@ -325,6 +344,52 @@ class _TipoDialogState extends State<_TipoDialog> {
                 hintText: 'Ej. 24',
               ),
             ),
+            const SizedBox(height: 16),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: Text('Checklist (pasos del trabajo)',
+                  style: Theme.of(context).textTheme.labelLarge),
+            ),
+            const Align(
+              alignment: Alignment.centerLeft,
+              child: Text(
+                'Pasos que el técnico tilda al resolver. Se copian al ticket al crearlo.',
+                style: TextStyle(fontSize: 11),
+              ),
+            ),
+            const SizedBox(height: 4),
+            for (int i = 0; i < _pasos.length; i++)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 4),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: _pasos[i],
+                        textCapitalization: TextCapitalization.sentences,
+                        decoration: InputDecoration(
+                          isDense: true,
+                          hintText: 'Paso ${i + 1}',
+                        ),
+                      ),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.remove_circle_outline, size: 20),
+                      onPressed: () =>
+                          setState(() => _pasos.removeAt(i).dispose()),
+                    ),
+                  ],
+                ),
+              ),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: TextButton.icon(
+                icon: const Icon(Icons.add, size: 18),
+                label: const Text('Agregar paso'),
+                onPressed: () =>
+                    setState(() => _pasos.add(TextEditingController())),
+              ),
+            ),
           ],
         ),
       ),
@@ -339,10 +404,15 @@ class _TipoDialogState extends State<_TipoDialog> {
             final slaTxt = _sla.text.trim();
             final sla = slaTxt.isEmpty ? null : int.tryParse(slaTxt);
             final desc = _descripcion.text.trim();
+            final pasos = _pasos
+                .map((c) => c.text.trim())
+                .where((s) => s.isNotEmpty)
+                .toList();
             Navigator.pop(context, (
               nombre: n,
               descripcion: desc.isEmpty ? null : desc,
               sla: sla,
+              checklist: pasos,
             ));
           },
           child: const Text('Guardar'),

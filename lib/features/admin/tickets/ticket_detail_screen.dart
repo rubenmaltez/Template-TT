@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
@@ -92,6 +94,7 @@ class _TicketDetailScreenState extends ConsumerState<TicketDetailScreen> {
                 const SizedBox(height: 8),
                 _acciones(context, t),
                 const SizedBox(height: 16),
+                _checklistSection(context, t),
                 _comentarRow(context, t),
                 const SizedBox(height: 16),
                 TicketAdjuntosWidget(
@@ -227,6 +230,77 @@ class _TicketDetailScreenState extends ConsumerState<TicketDetailScreen> {
         .add(Duration(seconds: segundosPausado))
         .toLocal();
     return '${Fmt.fechaCorta(d)} ${Fmt.hora(d)}';
+  }
+
+  // Checklist del ticket (snapshot del template del tipo). El técnico/admin tilda
+  // los pasos; se guarda como JSONB en tickets.checklist. No renderiza si está vacío.
+  Widget _checklistSection(BuildContext context, Map<String, dynamic> t) {
+    final lista = _parseChecklist(t['checklist']);
+    if (lista.isEmpty) return const SizedBox.shrink();
+    final hechos = lista.where((e) => e['hecho'] == true).length;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 16),
+      child: Card(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text('Checklist',
+                        style: Theme.of(context).textTheme.titleMedium),
+                  ),
+                  Text('$hechos/${lista.length}',
+                      style: TextStyle(
+                          color: Theme.of(context).colorScheme.outline)),
+                ],
+              ),
+            ),
+            for (int i = 0; i < lista.length; i++)
+              CheckboxListTile(
+                dense: true,
+                value: lista[i]['hecho'] == true,
+                controlAffinity: ListTileControlAffinity.leading,
+                title: Text('${lista[i]['texto'] ?? ''}'),
+                onChanged: (v) => _toggleChecklist(t, lista, i, v ?? false),
+              ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+  }
+
+  List<Map<String, dynamic>> _parseChecklist(Object? raw) {
+    if (raw is! String || raw.isEmpty) return const [];
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is List) {
+        return [
+          for (final e in decoded)
+            if (e is Map) Map<String, dynamic>.from(e)
+        ];
+      }
+    } catch (_) {}
+    return const [];
+  }
+
+  Future<void> _toggleChecklist(Map<String, dynamic> t,
+      List<Map<String, dynamic>> lista, int index, bool hecho) async {
+    if (index < 0 || index >= lista.length) return;
+    final nueva = [for (final e in lista) Map<String, dynamic>.from(e)];
+    nueva[index]['hecho'] = hecho;
+    final ocurrido = DateTime.now().toUtc().toIso8601String();
+    try {
+      await ps.db.execute(
+        'UPDATE tickets SET checklist = ?, ocurrido_en = ? WHERE id = ?',
+        [jsonEncode(nueva), ocurrido, t['id']],
+      );
+    } catch (e) {
+      _snack('Error: $e');
+    }
   }
 
   Widget _acciones(BuildContext context, Map<String, dynamic> t) {

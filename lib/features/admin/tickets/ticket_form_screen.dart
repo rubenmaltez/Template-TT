@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -229,6 +231,24 @@ class _TicketFormScreenState extends ConsumerState<TicketFormScreen> {
       puertoId = c?['puerto_id'] as String?;
     }
 
+    // Snapshot del checklist del tipo (template → [{texto, hecho:false}]). El
+    // snapshot vive en el ticket: editar el template después NO toca este ticket.
+    var checklistJson = '[]';
+    final tipoRow = await ps.db.getOptional(
+        'SELECT checklist_template FROM ticket_tipos WHERE id = ?', [_tipoId]);
+    final tmplRaw = tipoRow?['checklist_template'];
+    if (tmplRaw is String && tmplRaw.isNotEmpty) {
+      try {
+        final decoded = jsonDecode(tmplRaw);
+        if (decoded is List) {
+          checklistJson = jsonEncode([
+            for (final p in decoded.whereType<String>())
+              {'texto': p, 'hecho': false}
+          ]);
+        }
+      } catch (_) {}
+    }
+
     final maxRow = await ps.db.getAll(
         'SELECT COALESCE(MAX(correlativo), 0) + 1 AS n FROM tickets WHERE tenant_id = ?',
         [tenantId]);
@@ -244,13 +264,13 @@ class _TicketFormScreenState extends ConsumerState<TicketFormScreen> {
           '''INSERT INTO tickets
              (id, tenant_id, correlativo, tipo_id, cliente_id, puerto_id,
               incidente_id, titulo, descripcion, estado, prioridad, asignado_a,
-              creado_por, created_at, ocurrido_en)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+              creado_por, created_at, ocurrido_en, checklist)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
           [
             id, tenantId, correlativo, _tipoId, _clienteId, puertoId,
             _incidenteId, _titulo.text.trim(),
             _descripcion.text.trim().isEmpty ? null : _descripcion.text.trim(),
-            estado, _prioridad, _asignadoA, hechoPor, now, ocurrido,
+            estado, _prioridad, _asignadoA, hechoPor, now, ocurrido, checklistJson,
           ],
         );
         await _evento(tx, id, tenantId, 'creado', null, estado, hechoPor,
