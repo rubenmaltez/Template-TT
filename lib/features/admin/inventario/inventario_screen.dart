@@ -1221,12 +1221,11 @@ class _IngresoDialogState extends State<_IngresoDialog> {
         'SELECT id, nombre FROM inv_proveedores WHERE activo = 1 ORDER BY nombre');
   }
 
-  // Escaneo soportado solo en móvil (mobile_scanner no corre en Windows/web → ahí
-  // el botón ni se muestra y el serial se tipea a mano).
+  // Escaneo soportado solo en Android (target real). iOS NO es target y además le
+  // falta el NSCameraUsageDescription → crashearía; Windows/web no tienen
+  // mobile_scanner. En el resto el botón ni se muestra y el serial se tipea a mano.
   bool get _scanSoportado =>
-      !kIsWeb &&
-      (defaultTargetPlatform == TargetPlatform.android ||
-          defaultTargetPlatform == TargetPlatform.iOS);
+      !kIsWeb && defaultTargetPlatform == TargetPlatform.android;
 
   // Escanea un código y lo agrega como una línea más al campo de seriales.
   Future<void> _escanearSerial() async {

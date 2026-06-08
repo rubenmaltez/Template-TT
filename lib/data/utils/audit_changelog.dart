@@ -103,6 +103,7 @@ const Map<String, Set<String>> kAuditCamposVisiblesDefault = {
   'inv_proveedores': {'nombre', 'telefono', 'notas', 'activo'},
   'inv_productos': {
     'nombre', 'codigo', 'es_serializado', 'unidad', 'maneja_decimal', 'activo',
+    'stock_minimo',
   },
   'inv_ubicaciones': {'nombre', 'tipo', 'activa'},
   'inv_seriales': {'serial', 'mac', 'estado', 'cliente_id', 'notas'},
@@ -234,6 +235,7 @@ const Map<String, List<String>> kAuditCamposCatalogo = {
   'inv_proveedores': ['nombre', 'telefono', 'notas', 'activo'],
   'inv_productos': [
     'nombre', 'codigo', 'es_serializado', 'unidad', 'maneja_decimal', 'activo',
+    'stock_minimo',
   ],
   'inv_ubicaciones': ['nombre', 'tipo', 'activa'],
   'inv_seriales': ['serial', 'mac', 'estado', 'cliente_id', 'notas'],
@@ -690,6 +692,7 @@ String auditFieldLabel(String raw) {
     'referencia': 'Referencia',
     'notas': 'Notas',
     'descripcion': 'Descripción',
+    'stock_minimo': 'Stock mínimo',
     'numero_completo': 'Número recibo',
     'grupo_cobro': 'Cobro agrupado',
     'cargos_neto': 'Cargos neto',
