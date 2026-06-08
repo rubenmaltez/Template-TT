@@ -404,9 +404,6 @@ final routerProvider = Provider<GoRouter>((ref) {
           GoRoute(path: '/admin/contratos/:id',
               pageBuilder: (_, s) => _fadePage(s, ContratoDetailScreen(
                   contratoId: s.pathParameters['id']!))),
-          GoRoute(path: '/admin/contratos/:id/editar',
-              pageBuilder: (_, s) => _fadePage(s, _titled('Editar contrato',
-                  ContratoFormScreen(contratoId: s.pathParameters['id'])))),
           GoRoute(path: '/admin/planes',
               pageBuilder: (_, s) => _fadePage(s, _titled('Planes', const PlanesAdminScreen()))),
           GoRoute(path: '/admin/notificaciones',

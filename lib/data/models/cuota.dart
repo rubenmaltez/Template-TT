@@ -20,32 +20,6 @@ enum CuotaEstado {
       };
 }
 
-/// Estado VISUAL derivado: vencida/en_gracia se computa con la fecha actual
-/// y los días de gracia configurados en settings — no se almacena en BD.
-enum CuotaEstadoVisual {
-  pendiente,
-  parcial,
-  enGracia,
-  vencida,
-  pagada,
-  anulada;
-
-  String get label => switch (this) {
-        CuotaEstadoVisual.pendiente => 'Al día',
-        CuotaEstadoVisual.parcial => 'Pago parcial',
-        CuotaEstadoVisual.enGracia => 'En gracia',
-        CuotaEstadoVisual.vencida => 'Vencida',
-        CuotaEstadoVisual.pagada => 'Pagada',
-        CuotaEstadoVisual.anulada => 'Anulada',
-      };
-
-  bool get esCobrable =>
-      this == CuotaEstadoVisual.pendiente ||
-      this == CuotaEstadoVisual.parcial ||
-      this == CuotaEstadoVisual.enGracia ||
-      this == CuotaEstadoVisual.vencida;
-}
-
 class Cuota {
   const Cuota({
     required this.id,
@@ -85,25 +59,6 @@ class Cuota {
 
   /// Saldo pendiente considerando cargos extra.
   double get saldo => (totalACobrar - montoPagado).clamp(0, double.infinity);
-
-  CuotaEstadoVisual estadoVisual(int diasGracia, [DateTime? hoy]) {
-    if (estado == CuotaEstado.pagada) return CuotaEstadoVisual.pagada;
-    if (estado == CuotaEstado.anulada) return CuotaEstadoVisual.anulada;
-
-    final ref = hoy ?? DateTime.now();
-    final vence = DateTime(
-        fechaVencimiento.year, fechaVencimiento.month, fechaVencimiento.day);
-    final hoyD = DateTime(ref.year, ref.month, ref.day);
-    final diff = hoyD.difference(vence).inDays;
-
-    if (diff <= 0) {
-      return estado == CuotaEstado.parcial
-          ? CuotaEstadoVisual.parcial
-          : CuotaEstadoVisual.pendiente;
-    }
-    if (diff <= diasGracia) return CuotaEstadoVisual.enGracia;
-    return CuotaEstadoVisual.vencida;
-  }
 
   @override
   bool operator ==(Object other) =>

@@ -45,18 +45,3 @@ class EmptyState extends StatelessWidget {
     );
   }
 }
-
-/// Pantalla placeholder para features pendientes.
-class PendingScreen extends StatelessWidget {
-  const PendingScreen({super.key, required this.titulo});
-  final String titulo;
-
-  @override
-  Widget build(BuildContext context) {
-    return EmptyState(
-      icon: Icons.construction,
-      titulo: titulo,
-      descripcion: 'Pendiente de implementar',
-    );
-  }
-}

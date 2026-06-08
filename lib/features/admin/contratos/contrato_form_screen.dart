@@ -17,8 +17,10 @@ import '../../shared/widgets/confirm_discard_dialog.dart';
 enum _Duracion { unAno, dosAnos, indefinido }
 
 class ContratoFormScreen extends ConsumerStatefulWidget {
-  const ContratoFormScreen({super.key, this.contratoId, this.clienteId});
-  final String? contratoId;
+  // Solo ALTA de contrato. La edición se quitó (M5/M6 del audit): cambiar un
+  // contrato existente se hace cancelándolo y creando uno nuevo (B2 terminal),
+  // así nunca divergen el contrato y sus cuotas ya generadas.
+  const ContratoFormScreen({super.key, this.clienteId});
   final String? clienteId;
 
   @override
@@ -45,8 +47,7 @@ class _ContratoFormScreenState extends ConsumerState<ContratoFormScreen> {
   bool _codigoYaAsignado = false;
   Timer? _dupDebounce; // chequeo de código duplicado en vivo (como cliente).
   _Duracion _duracion = _Duracion.unAno;
-  bool _activo = true;
-  bool _cargando = true;
+  bool _cargando = false;
   bool _guardando = false;
   String? _error;
 
@@ -60,48 +61,10 @@ class _ContratoFormScreenState extends ConsumerState<ContratoFormScreen> {
   String? _docExt;
   String? _docNombre;
 
-  bool get _esEdicion => widget.contratoId != null;
-
   @override
   void initState() {
     super.initState();
     _clienteId = widget.clienteId;
-    _cargar();
-  }
-
-  Future<void> _cargar() async {
-    if (!_esEdicion) {
-      setState(() => _cargando = false);
-      return;
-    }
-    final rows = await ps.db
-        .getAll('SELECT * FROM contratos WHERE id = ?', [widget.contratoId]);
-    if (rows.isEmpty) {
-      setState(() => _cargando = false);
-      return;
-    }
-    final r = rows.first;
-    _clienteId = r['cliente_id'] as String;
-    _planId = r['plan_id'] as String;
-    _fechaInicio = DateTime.parse(r['fecha_inicio'] as String);
-    _costoCtrl.text = (r['costo_instalacion'] as num?)?.toString() ?? '';
-    _notasCtrl.text = (r['notas'] as String?) ?? '';
-    _codigoCtrl.text = (r['codigo'] as String?) ?? '';
-    _codigoYaAsignado = _codigoCtrl.text.trim().isNotEmpty;
-    _activo = (r['estado'] as String? ?? 'activo') == 'activo';
-    if (r['fecha_fin'] != null) {
-      final fin = DateTime.parse(r['fecha_fin'] as String);
-      final meses = (fin.year - _fechaInicio.year) * 12 +
-          (fin.month - _fechaInicio.month);
-      _duracion = meses == 12
-          ? _Duracion.unAno
-          : meses == 24
-              ? _Duracion.dosAnos
-              : _Duracion.indefinido;
-    } else {
-      _duracion = _Duracion.indefinido;
-    }
-    setState(() => _cargando = false);
   }
 
   @override
@@ -226,9 +189,9 @@ class _ContratoFormScreenState extends ConsumerState<ContratoFormScreen> {
       final rows = await ps.db.getAll(
         'SELECT c.nombre AS n FROM contratos ct '
         'JOIN clientes c ON c.id = ct.cliente_id '
-        'WHERE ct.tenant_id = ? AND upper(ct.codigo) = upper(?) AND ct.id != ? '
+        'WHERE ct.tenant_id = ? AND upper(ct.codigo) = upper(?) '
         'LIMIT 1',
-        [tenantId, codigo, widget.contratoId ?? ''],
+        [tenantId, codigo],
       );
       _codigoDupInfo = rows.isEmpty ? null : rows.first['n'] as String?;
       return _codigoDupInfo != null;
@@ -250,40 +213,34 @@ class _ContratoFormScreenState extends ConsumerState<ContratoFormScreen> {
     // Guard: el trigger contratos_check_cliente_con_cobrador en Postgres
     // requiere que el cliente tenga cobrador asignado. Validamos acá
     // para dar feedback claro en vez de una CRUD rejection silenciosa.
-    if (!_esEdicion) {
-      final clienteRows = await ps.db.getAll(
-        'SELECT cobrador_id FROM clientes WHERE id = ?',
-        [_clienteId],
-      );
-      if (clienteRows.isNotEmpty && clienteRows.first['cobrador_id'] == null) {
-        setState(() => _error =
-            'El cliente no tiene cobrador asignado. '
-            'Asigná uno desde Clientes → Editar antes de crear el contrato.');
-        return;
-      }
+    final clienteRows = await ps.db.getAll(
+      'SELECT cobrador_id FROM clientes WHERE id = ?',
+      [_clienteId],
+    );
+    if (clienteRows.isNotEmpty && clienteRows.first['cobrador_id'] == null) {
+      setState(() => _error =
+          'El cliente no tiene cobrador asignado. '
+          'Asigná uno desde Clientes → Editar antes de crear el contrato.');
+      return;
     }
     // Guard: el índice único contratos_unique_activo_por_cliente_plan
     // (migración 0023/0054) prohíbe dos contratos ACTIVOS del mismo
-    // cliente+plan. Sin este pre-chequeo, el INSERT/UPDATE local pasa pero
-    // PowerSync lo rechaza al sincronizar con un error técnico en inglés.
-    // Validamos acá solo si el contrato quedaría activo. Excluimos el
-    // propio contrato en edición (id != ?).
-    if (!_esEdicion || _activo) {
-      final dup = await ps.db.getAll(
-        '''
-        SELECT id FROM contratos
-         WHERE cliente_id = ? AND plan_id = ? AND estado = 'activo'
-           AND id != ?
-         LIMIT 1
-        ''',
-        [_clienteId, _planId, widget.contratoId ?? ''],
-      );
-      if (dup.isNotEmpty) {
-        setState(() => _error =
-            'Este cliente ya tiene un contrato activo con ese plan. '
-            'Cancelá el contrato anterior o elegí otro plan.');
-        return;
-      }
+    // cliente+plan. Sin este pre-chequeo, el INSERT local pasa pero PowerSync
+    // lo rechaza al sincronizar con un error técnico en inglés. El contrato
+    // nuevo siempre nace activo, así que el chequeo siempre corre.
+    final dup = await ps.db.getAll(
+      '''
+      SELECT id FROM contratos
+       WHERE cliente_id = ? AND plan_id = ? AND estado = 'activo'
+       LIMIT 1
+      ''',
+      [_clienteId, _planId],
+    );
+    if (dup.isNotEmpty) {
+      setState(() => _error =
+          'Este cliente ya tiene un contrato activo con ese plan. '
+          'Cancelá el contrato anterior o elegí otro plan.');
+      return;
     }
     final tenantId = ref.read(tenantIdProvider);
     if (tenantId == null) {
@@ -327,100 +284,71 @@ class _ContratoFormScreenState extends ConsumerState<ContratoFormScreen> {
           _notasCtrl.text.trim().isEmpty ? null : _notasCtrl.text.trim();
       // Hora REAL del dispositivo (UTC) para el change log — offline-first.
       final ocurridoEn = DateTime.now().toUtc().toIso8601String();
-      if (_esEdicion) {
-        await ps.db.execute(
-          '''
-          UPDATE contratos
-             SET plan_id = ?, dia_pago = ?,
-                 fecha_inicio = ?, fecha_fin = ?, duracion_meses = ?,
-                 fecha_primer_cobro = ?, costo_instalacion = ?, notas = ?,
-                 codigo = ?, ocurrido_en = ?
-           WHERE id = ?
-          ''',
-          [
-            _planId,
-            diaPago,
-            _fechaInicio.toIso8601String().substring(0, 10),
-            fechaFin?.toIso8601String().substring(0, 10),
-            duracionMeses,
-            fechaPrimerCobroStr,
-            costoInstalacion,
-            notas,
-            _codigoCtrl.text.trim().isEmpty
-                ? null
-                : _codigoCtrl.text.trim().toUpperCase(),
-            ocurridoEn,
-            widget.contratoId,
-          ],
-        );
-      } else {
-        // Denormalizamos cobrador_id desde clientes en el INSERT local.
-        // Postgres tiene trigger que lo llenaría server-side, pero ese
-        // trigger no corre en SQLite local — sin esto, el contrato local
-        // queda con cobrador_id NULL hasta sync, lo que lo hace invisible
-        // al bucket por_cobrador.
-        final clienteRow = await ps.db.getOptional(
-          'SELECT cobrador_id FROM clientes WHERE id = ?',
-          [_clienteId],
-        );
-        final cobradorId = clienteRow?['cobrador_id'] as String?;
+      // Denormalizamos cobrador_id desde clientes en el INSERT local.
+      // Postgres tiene trigger que lo llenaría server-side, pero ese
+      // trigger no corre en SQLite local — sin esto, el contrato local
+      // queda con cobrador_id NULL hasta sync, lo que lo hace invisible
+      // al bucket por_cobrador.
+      final clienteRow = await ps.db.getOptional(
+        'SELECT cobrador_id FROM clientes WHERE id = ?',
+        [_clienteId],
+      );
+      final cobradorId = clienteRow?['cobrador_id'] as String?;
 
-        // Guard: si no podemos determinar el cobrador (cliente no
-        // sincronizado, o sin cobrador asignado), bloqueamos. Sin esto
-        // el contrato se crea invisible al cobrador hasta el sync server.
-        if (cobradorId == null) {
-          setState(() {
-            _error = clienteRow == null
-                ? 'No se pudo cargar el cliente. Verificá que esté sincronizado.'
-                : 'El cliente no tiene cobrador asignado. Asignale uno antes de crear el contrato.';
-            _guardando = false;
-          });
-          return;
-        }
+      // Guard: si no podemos determinar el cobrador (cliente no
+      // sincronizado, o sin cobrador asignado), bloqueamos. Sin esto
+      // el contrato se crea invisible al cobrador hasta el sync server.
+      if (cobradorId == null) {
+        setState(() {
+          _error = clienteRow == null
+              ? 'No se pudo cargar el cliente. Verificá que esté sincronizado.'
+              : 'El cliente no tiene cobrador asignado. Asignale uno antes de crear el contrato.';
+          _guardando = false;
+        });
+        return;
+      }
 
-        final nuevoId = const Uuid().v4();
-        await ps.db.execute(
-          '''
-          INSERT INTO contratos (
-            id, tenant_id, cliente_id, codigo, cobrador_id, plan_id, dia_pago,
-            fecha_inicio, fecha_fin, duracion_meses, fecha_primer_cobro,
-            costo_instalacion, notas, estado, created_at, ocurrido_en
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'activo', ?, ?)
-          ''',
-          [
-            nuevoId,
-            tenantId,
-            _clienteId,
-            _codigoCtrl.text.trim().isEmpty
-                ? null
-                : _codigoCtrl.text.trim().toUpperCase(),
-            cobradorId,
-            _planId,
-            diaPago,
-            _fechaInicio.toIso8601String().substring(0, 10),
-            fechaFin?.toIso8601String().substring(0, 10),
-            duracionMeses,
-            fechaPrimerCobroStr,
-            costoInstalacion,
-            notas,
-            DateTime.now().toIso8601String(),
-            ocurridoEn,
-          ],
-        );
+      final nuevoId = const Uuid().v4();
+      await ps.db.execute(
+        '''
+        INSERT INTO contratos (
+          id, tenant_id, cliente_id, codigo, cobrador_id, plan_id, dia_pago,
+          fecha_inicio, fecha_fin, duracion_meses, fecha_primer_cobro,
+          costo_instalacion, notas, estado, created_at, ocurrido_en
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'activo', ?, ?)
+        ''',
+        [
+          nuevoId,
+          tenantId,
+          _clienteId,
+          _codigoCtrl.text.trim().isEmpty
+              ? null
+              : _codigoCtrl.text.trim().toUpperCase(),
+          cobradorId,
+          _planId,
+          diaPago,
+          _fechaInicio.toIso8601String().substring(0, 10),
+          fechaFin?.toIso8601String().substring(0, 10),
+          duracionMeses,
+          fechaPrimerCobroStr,
+          costoInstalacion,
+          notas,
+          DateTime.now().toIso8601String(),
+          ocurridoEn,
+        ],
+      );
 
-        // Documento opcional: subir best-effort si se adjuntó. Requiere
-        // conexión (Storage); si falla o estamos offline, el contrato ya
-        // quedó creado y el doc se puede subir luego desde el detalle.
-        if (_docBytes != null) {
-          await _subirDocumento(nuevoId, tenantId, ocurridoEn);
-        }
+      // Documento opcional: subir best-effort si se adjuntó. Requiere
+      // conexión (Storage); si falla o estamos offline, el contrato ya
+      // quedó creado y el doc se puede subir luego desde el detalle.
+      if (_docBytes != null) {
+        await _subirDocumento(nuevoId, tenantId, ocurridoEn);
       }
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(_esEdicion
-                ? 'Cambios guardados. Cuotas futuras se ajustaron automáticamente.'
-                : 'Contrato creado. Cuotas generadas automáticamente.'),
+            content:
+                Text('Contrato creado. Cuotas generadas automáticamente.'),
           ),
         );
         // _dirty=false pre-pop para que PopScope no intercepte con
@@ -542,7 +470,7 @@ class _ContratoFormScreenState extends ConsumerState<ContratoFormScreen> {
                   const SizedBox(height: 12),
                   _ClienteSelector(
                     clienteId: _clienteId,
-                    enabled: !_esEdicion,
+                    enabled: true,
                     // Form.onChanged solo dispara para FormFields; los
                     // selectors custom acá deben marcar dirty a mano.
                     onChanged: (id) => setState(() {
@@ -651,9 +579,8 @@ class _ContratoFormScreenState extends ConsumerState<ContratoFormScreen> {
               ),
             ),
           ),
-          // Documento del contrato: solo en alta. En edición el detalle del
-          // contrato ya tiene su propia sección (ver/reemplazar/eliminar).
-          if (!_esEdicion) ...[
+          // Documento del contrato (opcional al crear).
+          ...[
             const SizedBox(height: 16),
             Card(
               child: Padding(
@@ -736,9 +663,7 @@ class _ContratoFormScreenState extends ConsumerState<ContratoFormScreen> {
                           child: CircularProgressIndicator(strokeWidth: 2),
                         )
                       : const Icon(Icons.check),
-                  label: Text(_guardando
-                      ? 'Guardando...'
-                      : (_esEdicion ? 'Guardar cambios' : 'Crear contrato')),
+                  label: Text(_guardando ? 'Guardando...' : 'Crear contrato'),
                   onPressed: _guardando ? null : _guardar,
                 ),
               ),
