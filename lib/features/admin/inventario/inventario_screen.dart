@@ -136,12 +136,12 @@ class _ProductosTabState extends ConsumerState<_ProductosTab> {
         await ps.db.execute(
           '''INSERT INTO inv_productos
              (id, tenant_id, categoria_id, codigo, nombre, es_serializado,
-              unidad, maneja_decimal, costo_promedio, activo, created_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, 1, ?)''',
+              unidad, maneja_decimal, stock_minimo, costo_promedio, activo, created_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 1, ?)''',
           [
             const Uuid().v4(), tenantId, res.categoriaId, res.codigo, res.nombre,
             res.esSerializado ? 1 : 0, res.unidad, res.manejaDecimal ? 1 : 0,
-            DateTime.now().toIso8601String(),
+            res.stockMinimo, DateTime.now().toIso8601String(),
           ],
         );
       } else {
@@ -166,11 +166,11 @@ class _ProductosTabState extends ConsumerState<_ProductosTab> {
         await ps.db.execute(
           '''UPDATE inv_productos
                 SET categoria_id = ?, codigo = ?, nombre = ?, es_serializado = ?,
-                    unidad = ?, maneja_decimal = ?
+                    unidad = ?, maneja_decimal = ?, stock_minimo = ?
               WHERE id = ?''',
           [
             res.categoriaId, res.codigo, res.nombre, res.esSerializado ? 1 : 0,
-            res.unidad, res.manejaDecimal ? 1 : 0, existente['id'],
+            res.unidad, res.manejaDecimal ? 1 : 0, res.stockMinimo, existente['id'],
           ],
         );
       }
@@ -486,6 +486,7 @@ class _ExistenciasTabState extends ConsumerState<_ExistenciasTab> {
     //    Las transferencias internas netean a 0.
     _stock = ps.db.watch('''
       SELECT p.id, p.nombre, p.unidad, p.es_serializado, p.costo_promedio,
+             p.stock_minimo,
              CASE WHEN p.es_serializado = 1 THEN
                COALESCE((
                  SELECT COUNT(*) FROM inv_seriales s
@@ -546,9 +547,11 @@ class _ExistenciasTabState extends ConsumerState<_ExistenciasTab> {
             itemBuilder: (_, i) {
               final r = rows[i];
               final stock = (r['stock'] as num?) ?? 0;
+              final stockMin = (r['stock_minimo'] as num?) ?? 0;
               final serial = (r['es_serializado'] as int? ?? 0) == 1;
               final unidad = serial ? 'u' : (r['unidad'] as String? ?? 'u');
-              final bajo = stock <= 0;
+              // Bajo = sin stock, o por debajo del mínimo configurado (>0).
+              final bajo = stock <= 0 || (stockMin > 0 && stock < stockMin);
               final costo = (r['costo_promedio'] as num?) ?? 0;
               final valor = stock > 0 ? stock * costo : 0;
               return ListTile(
@@ -565,14 +568,26 @@ class _ExistenciasTabState extends ConsumerState<_ExistenciasTab> {
                       )
                     : null,
                 onTap: () => _verStockPorUbicacion(context, r),
-                trailing: Text(
-                  '${_fmtCant(stock)} $unidad',
-                  style: TextStyle(
-                    fontWeight: FontWeight.w600,
-                    color: bajo
-                        ? Theme.of(context).colorScheme.error
-                        : null,
-                  ),
+                trailing: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Text(
+                      '${_fmtCant(stock)} $unidad',
+                      style: TextStyle(
+                        fontWeight: FontWeight.w600,
+                        color: bajo
+                            ? Theme.of(context).colorScheme.error
+                            : null,
+                      ),
+                    ),
+                    if (stockMin > 0)
+                      Text('mín ${_fmtCant(stockMin)}',
+                          style: TextStyle(
+                              fontSize: 11,
+                              color: Theme.of(context).colorScheme.outline)),
+                  ],
                 ),
               );
             },
@@ -1993,6 +2008,7 @@ class _ProductoData {
     required this.esSerializado,
     required this.unidad,
     required this.manejaDecimal,
+    required this.stockMinimo,
   });
   final String nombre;
   final String? categoriaId;
@@ -2000,6 +2016,7 @@ class _ProductoData {
   final bool esSerializado;
   final String unidad;
   final bool manejaDecimal;
+  final num stockMinimo; // 0 = sin alerta
 }
 
 class _ProductoDialog extends StatefulWidget {
@@ -2013,6 +2030,7 @@ class _ProductoDialog extends StatefulWidget {
 class _ProductoDialogState extends State<_ProductoDialog> {
   late final TextEditingController _nombre;
   late final TextEditingController _codigo;
+  late final TextEditingController _stockMin;
   String? _categoriaId;
   bool _serializado = false;
   String _unidad = 'unidad';
@@ -2027,6 +2045,9 @@ class _ProductoDialogState extends State<_ProductoDialog> {
     final e = widget.existente;
     _nombre = TextEditingController(text: e?['nombre'] as String? ?? '');
     _codigo = TextEditingController(text: e?['codigo'] as String? ?? '');
+    final sMin = (e?['stock_minimo'] as num?) ?? 0;
+    _stockMin =
+        TextEditingController(text: sMin > 0 ? _fmtCant(sMin) : '');
     _categoriaId = e?['categoria_id'] as String?;
     _serializado = (e?['es_serializado'] as int? ?? 0) == 1;
     _unidad = e?['unidad'] as String? ?? 'unidad';
@@ -2039,6 +2060,7 @@ class _ProductoDialogState extends State<_ProductoDialog> {
   void dispose() {
     _nombre.dispose();
     _codigo.dispose();
+    _stockMin.dispose();
     super.dispose();
   }
 
@@ -2140,6 +2162,15 @@ class _ProductoDialogState extends State<_ProductoDialog> {
               value: _serializado,
               onChanged: (v) => setState(() => _serializado = v),
             ),
+            const SizedBox(height: 4),
+            TextField(
+              controller: _stockMin,
+              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              decoration: const InputDecoration(
+                labelText: 'Stock mínimo (alerta)',
+                hintText: '0 = sin alerta',
+              ),
+            ),
             if (!_serializado) ...[
               DropdownButtonFormField<String>(
                 value: _unidad,
@@ -2168,6 +2199,8 @@ class _ProductoDialogState extends State<_ProductoDialog> {
           onPressed: () {
             final nombre = _nombre.text.trim();
             if (nombre.isEmpty) return;
+            final sMin =
+                num.tryParse(_stockMin.text.trim().replaceAll(',', '.')) ?? 0;
             Navigator.pop(
               context,
               _ProductoData(
@@ -2177,6 +2210,7 @@ class _ProductoDialogState extends State<_ProductoDialog> {
                 esSerializado: _serializado,
                 unidad: _serializado ? 'unidad' : _unidad,
                 manejaDecimal: _serializado ? false : _manejaDecimal,
+                stockMinimo: sMin < 0 ? 0 : sMin,
               ),
             );
           },
