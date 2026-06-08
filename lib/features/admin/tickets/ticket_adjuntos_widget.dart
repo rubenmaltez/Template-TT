@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
@@ -6,6 +8,7 @@ import 'package:uuid/uuid.dart';
 
 import '../../../data/providers/cobrador_provider.dart';
 import '../../../powersync/db.dart' as ps;
+import '../../shared/widgets/signature_pad.dart';
 
 const _maxAdjuntos = 10;
 const _bucket = 'ticket-adjuntos';
@@ -49,11 +52,25 @@ class _TicketAdjuntosWidgetState extends ConsumerState<TicketAdjuntosWidget> {
       maxWidth: 1920, maxHeight: 1920, imageQuality: 80,
     );
     if (picked == null || !mounted) return;
+    final bytes = await picked.readAsBytes();
+    final ext = picked.name.split('.').last.toLowerCase();
+    final mime = ext == 'jpg' ? 'image/jpeg' : 'image/$ext';
+    await _subir(bytes, ext, mime);
+  }
+
+  // Firma del cliente: pad propio → PNG → mismo upload que un adjunto, con
+  // descripción "Firma del cliente". Requiere conexión (Storage), igual que fotos.
+  Future<void> _capturarFirma() async {
+    if (_uploading) return;
+    final bytes = await SignaturePad.capturar(context);
+    if (bytes == null || !mounted) return;
+    await _subir(bytes, 'png', 'image/png', descripcion: 'Firma del cliente');
+  }
+
+  Future<void> _subir(Uint8List bytes, String ext, String mime,
+      {String? descripcion}) async {
     setState(() => _uploading = true);
     try {
-      final bytes = await picked.readAsBytes();
-      final ext = picked.name.split('.').last.toLowerCase();
-      final mime = ext == 'jpg' ? 'image/jpeg' : 'image/$ext';
       final path =
           '${widget.tenantId}/${widget.ticketId}/${DateTime.now().millisecondsSinceEpoch}.$ext';
       await Supabase.instance.client.storage
@@ -65,18 +82,20 @@ class _TicketAdjuntosWidgetState extends ConsumerState<TicketAdjuntosWidget> {
       final ocurrido = DateTime.now().toUtc().toIso8601String();
       await ps.db.writeTransaction((tx) async {
         await tx.execute(
-          'INSERT INTO ticket_adjuntos (id, tenant_id, ticket_id, storage_path, subido_por, created_at) '
-          'VALUES (?, ?, ?, ?, ?, ?)',
-          [const Uuid().v4(), widget.tenantId, widget.ticketId, path, hechoPor, now],
+          'INSERT INTO ticket_adjuntos (id, tenant_id, ticket_id, storage_path, descripcion, subido_por, created_at) '
+          'VALUES (?, ?, ?, ?, ?, ?, ?)',
+          [const Uuid().v4(), widget.tenantId, widget.ticketId, path,
+            descripcion, hechoPor, now],
         );
         await tx.execute(
           '''INSERT INTO ticket_eventos
-             (id, tenant_id, ticket_id, tipo_evento, hecho_por, ocurrido_en, created_at)
-             VALUES (?, ?, ?, 'adjunto', ?, ?, ?)''',
-          [const Uuid().v4(), widget.tenantId, widget.ticketId, hechoPor, ocurrido, now],
+             (id, tenant_id, ticket_id, tipo_evento, comentario, hecho_por, ocurrido_en, created_at)
+             VALUES (?, ?, ?, 'adjunto', ?, ?, ?, ?)''',
+          [const Uuid().v4(), widget.tenantId, widget.ticketId, descripcion,
+            hechoPor, ocurrido, now],
         );
       });
-      if (mounted) _snack('Adjunto subido');
+      if (mounted) _snack(descripcion ?? 'Adjunto subido');
     } catch (e) {
       if (mounted) _snack('Error al subir: $e');
     } finally {
@@ -155,6 +174,12 @@ class _TicketAdjuntosWidgetState extends ConsumerState<TicketAdjuntosWidget> {
                             _delete(f['id'] as String, f['storage_path'] as String),
                       ),
                     if (canAdd) _AddBtn(uploading: _uploading, onTap: _pickAndUpload),
+                    if (canAdd)
+                      _AddBtn(
+                          uploading: _uploading,
+                          onTap: _capturarFirma,
+                          icon: Icons.gesture,
+                          label: 'Firma'),
                   ],
                 );
               },
@@ -262,9 +287,16 @@ class _ThumbState extends State<_Thumb> {
 }
 
 class _AddBtn extends StatelessWidget {
-  const _AddBtn({required this.uploading, required this.onTap});
+  const _AddBtn({
+    required this.uploading,
+    required this.onTap,
+    this.icon = Icons.add_a_photo,
+    this.label = 'Agregar',
+  });
   final bool uploading;
   final VoidCallback onTap;
+  final IconData icon;
+  final String label;
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
@@ -283,9 +315,9 @@ class _AddBtn extends StatelessWidget {
                     width: 22, height: 22,
                     child: CircularProgressIndicator(strokeWidth: 2)))
             : Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-                Icon(Icons.add_a_photo, color: scheme.primary),
+                Icon(icon, color: scheme.primary),
                 const SizedBox(height: 4),
-                Text('Agregar',
+                Text(label,
                     style: TextStyle(fontSize: 11, color: scheme.primary)),
               ]),
       ),
