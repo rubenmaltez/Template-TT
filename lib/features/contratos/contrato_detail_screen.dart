@@ -9,9 +9,11 @@ import 'package:uuid/uuid.dart';
 import '../../data/models/pago.dart';
 import '../../data/providers/cobrador_provider.dart';
 import '../../data/providers/contrato_providers.dart';
+import '../../data/providers/impersonation_provider.dart';
 import '../../data/providers/modulos_provider.dart';
 import '../../data/repositories/pagos_repo.dart';
 import '../../data/repositories/settings_repo.dart';
+import '../../data/utils/cuota_estado.dart';
 import '../../data/utils/formatters.dart';
 import '../../powersync/db.dart' as ps;
 import '../admin/inventario/equipos_en_baja.dart';
@@ -48,6 +50,11 @@ class _ContratoDetailScreenState extends ConsumerState<ContratoDetailScreen> {
   final Set<String> _selected = {};
   _CuotaFiltro _filtro = _CuotaFiltro.todas;
 
+  // Reentrancy guard: evita que un doble-tap del menú de estado dispare dos
+  // cancelaciones concurrentes (cada una insertaría su propio descuento sobre
+  // la misma cuota parcial → doble descuento).
+  bool _procesandoEstado = false;
+
   // --- multi-select helpers ---
 
   void _toggleSelect(String cuotaId, List<String> orderedPendingIds) {
@@ -83,11 +90,14 @@ class _ContratoDetailScreenState extends ConsumerState<ContratoDetailScreen> {
   // --- estado del contrato ---
 
   Future<void> _cambiarEstado(String nuevoEstado) async {
+    if (_procesandoEstado) return;
+    _procesandoEstado = true;
     // Hora REAL del dispositivo (UTC) para el change log — offline-first.
     final ocurridoEn = DateTime.now().toUtc().toIso8601String();
     try {
       if (nuevoEstado == 'cancelado') {
-        await _cancelarYLiquidarCuotas(ocurridoEn);
+        final ok = await _cancelarYLiquidarCuotas(ocurridoEn);
+        if (!ok) return; // abortado (ej. impersonando con cuotas parciales)
       } else {
         await ps.db.execute(
           'UPDATE contratos SET estado = ?, ocurrido_en = ? WHERE id = ?',
@@ -111,6 +121,8 @@ class _ContratoDetailScreenState extends ConsumerState<ContratoDetailScreen> {
           SnackBar(content: Text('Error al cambiar el estado: $e')),
         );
       }
+    } finally {
+      _procesandoEstado = false;
     }
   }
 
@@ -121,15 +133,19 @@ class _ContratoDetailScreenState extends ConsumerState<ContratoDetailScreen> {
   ///     pagos). Desaparecen de toda superficie por-cobrar/mora (filtran
   ///     estado IN ('pendiente','parcial')).
   ///   · Parciales (con pago) → se liquida el saldo restante con un descuento de
-  ///     cancelación (`cargos_extra` 'descuento_monto'). El trigger server-side
-  ///     `recalcular_cuota_desde_pagos` la deja en 'pagada' al sincronizar; el
-  ///     pago YA cobrado se PRESERVA como recaudado. NO se anula la cuota
-  ///     parcial: anularla revertiría su pago vía la cascada (borraría plata
-  ///     real de la caja).
-  /// Atómico con el cambio de estado del contrato. Funciona bajo impersonación:
-  /// el descuento se atribuye al tenant EFECTIVO (`tenantIdProvider`) y al
-  /// cobrador de la cuota, no al tenant System del super_admin.
-  Future<void> _cancelarYLiquidarCuotas(String ocurridoEn) async {
+  ///     cancelación (`cargos_extra` 'descuento_monto'), + espejo LOCAL de
+  ///     cargos_neto/estado (los triggers server-side corren recién al sync;
+  ///     sin el mirror la cuota seguiría 'parcial' con saldo > 0 offline). NO se
+  ///     anula la cuota parcial: anularla revertiría su pago vía la cascada
+  ///     (borraría plata real de la caja). El pago YA cobrado se PRESERVA.
+  /// Atómico con el cambio de estado del contrato.
+  ///
+  /// Devuelve `false` si se aborta. Caso: super_admin impersonando con cuotas
+  /// parciales — liquidarlas inserta un `cargos_extra` (movimiento de dinero)
+  /// que se atribuiría a la fila del super_admin (tenant System); mismo guard
+  /// que cobro/cargo/visita. Anular pendientes + cambiar estado SÍ se permite
+  /// impersonando (es gestión, igual que el anular de /admin/cuotas).
+  Future<bool> _cancelarYLiquidarCuotas(String ocurridoEn) async {
     final me = ref.read(cobradorActualProvider).valueOrNull;
     final tenantId = ref.read(tenantIdProvider);
     if (me == null || tenantId == null) {
@@ -137,17 +153,39 @@ class _ContratoDetailScreenState extends ConsumerState<ContratoDetailScreen> {
     }
     final ahoraLocal = DateTime.now().toIso8601String();
 
-    // Saldo restante de cada cuota parcial (fórmula canónica #10, incluye
-    // cargos_neto). Se lee ANTES de la transacción.
+    // Cuotas parciales del contrato + su saldo restante (fórmula canónica #10,
+    // incluye cargos_neto). Se leen ANTES de la transacción.
     final parciales = await ps.db.getAll(
       '''
-      SELECT id, cobrador_id,
+      SELECT id, cobrador_id, monto, monto_pagado,
+             COALESCE(cargos_neto, 0) AS cargos_neto,
              (monto + COALESCE(cargos_neto, 0) - monto_pagado) AS saldo
         FROM cuotas
        WHERE contrato_id = ? AND estado = 'parcial'
       ''',
       [widget.contratoId],
     );
+
+    // Guard de impersonación: liquidar una parcial inserta un `cargos_extra`
+    // (dinero) que se atribuiría a la fila del super_admin (tenant System).
+    // Igual que cobro/cargo/visita, lo bloqueamos — pero solo si hay parciales
+    // que liquidar (sin parciales, cancelar es pura gestión y se permite).
+    final tieneParcialesACobrar =
+        parciales.any((p) => ((p['saldo'] as num?)?.toDouble() ?? 0) > 0.01);
+    if (tieneParcialesACobrar && ref.read(estaImpersonandoProvider)) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+                'No se puede cancelar un contrato con cobros parciales mientras '
+                'gestionás un tenant como super_admin. Hacelo desde la cuenta '
+                'del admin del tenant.'),
+            duration: Duration(seconds: 5),
+          ),
+        );
+      }
+      return false;
+    }
 
     await ps.db.writeTransaction((tx) async {
       // 1. El contrato pasa a cancelado.
@@ -173,8 +211,7 @@ class _ContratoDetailScreenState extends ConsumerState<ContratoDetailScreen> {
       for (final p in parciales) {
         final saldo = (p['saldo'] as num?)?.toDouble() ?? 0;
         if (saldo <= 0.01) continue;
-        // El cargo viaja en el bucket del cobrador de la cuota (sync), aplicado
-        // por el usuario actual.
+        // El cargo viaja en el bucket del cobrador de la cuota (sync).
         final cobradorCuota = (p['cobrador_id'] as String?) ?? me.id;
         final localId = const Uuid().v4();
         await tx.execute(
@@ -190,8 +227,26 @@ class _ContratoDetailScreenState extends ConsumerState<ContratoDetailScreen> {
             me.id, ahoraLocal, localId, ocurridoEn,
           ],
         );
+        // Espejo LOCAL del trigger server-side (mismo patrón que pagos_repo):
+        // el descuento resta `saldo` del neto → la cuota queda saldada YA, sin
+        // esperar el sync. nuevoNeto = cargos_neto - saldo (= monto_pagado - monto).
+        final montoCuota = (p['monto'] as num?)?.toDouble() ?? 0;
+        final pagado = (p['monto_pagado'] as num?)?.toDouble() ?? 0;
+        final cargosNeto = (p['cargos_neto'] as num?)?.toDouble() ?? 0;
+        final nuevoNeto = cargosNeto - saldo;
+        final nuevoEstado = calcularEstadoCuota(
+          estadoActual: 'parcial',
+          montoCuota: montoCuota,
+          pagadoNuevo: pagado,
+          deltaCargosExtra: nuevoNeto,
+        );
+        await tx.execute(
+          'UPDATE cuotas SET cargos_neto = ?, estado = ?, ocurrido_en = ? WHERE id = ?',
+          [nuevoNeto, nuevoEstado, ocurridoEn, p['id']],
+        );
       }
     });
+    return true;
   }
 
   @override
