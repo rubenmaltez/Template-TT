@@ -914,6 +914,10 @@ hallazgos fueron 4 inconsistencias de presentación Excel↔PDF, todas corregida
   dashboard. *Fix:* `date(p.fecha_pago, '-6 hours')` en todas las queries de
   reportes + `RangoReporte` en hora Nicaragua. *Exp:* el corte por día/mes del
   reporte coincide con el dashboard. No afecta totales.
+  > ⚠️ **Corrección posterior (audit 2026-06-08):** el `-6h` sobre `fecha_pago`
+  > se REVIRTIÓ — `fecha_pago` ya se guarda en hora Nicaragua wall-clock, así que
+  > el código vigente usa `date(fecha_pago)` RAW y solo el LÍMITE del rango lleva
+  > `date('now','-6h')`. NO re-agregar `-6h` a `fecha_pago` (sería doble-shift).
 
 *Archivos:* `map_tile_cache.dart` (nuevo), `descarga_archivo.dart` (nuevo),
 `excel/reporte_excel.dart` (nuevo), `reportes_admin_screen.dart`, los 8

@@ -110,8 +110,8 @@ features experimentales, no abstracciones prematuras.
 - `/admin/geografia` — CRUD jerárquico depto → municipio → comunidad
   (solo admin).
 - `/admin/settings` — config del tenant: empresa, cobranza, pagos, recibos
-  (solo admin).
-- `/admin/onboarding` — wizard inicial (cuando `empresa.nombre` vacío).
+  (solo admin). El onboarding/wizard inicial se ELIMINÓ en v0.6.4 — ya no hay
+  ruta `/admin/onboarding`; la config inicial se hace directo en Ajustes.
 
 **`admin_cobranza`** ve un subconjunto del admin: NO accede a planes,
 cobradores, audit, geografía, settings (guardia explícita en el router).
@@ -477,11 +477,12 @@ de redeployar. Sin redeploy, PowerSync no ve las columnas nuevas.
   en 0099 para que PowerSync sincronice la PK) — gatea los módulos opcionales.
 - `cobradores` (campos selectivos, no `SELECT *`).
 
-**Schema version ACTUAL (fuente de verdad)**: `_schemaVersion = 20` en
-`lib/powersync/db.dart` (cada user tiene su SQLite `sitecsa_{uid}_v20.db`). v17
-agregó geo per-tenant + red; v18-v20 el inventario (catálogo→ubicaciones→ledger).
-Las menciones a "Schema v4/v6/v16" más abajo o arriba son registros históricos,
-NO el valor actual — el real es **20**. Cada bump de schema redeploya sync rules.
+**Schema version ACTUAL (fuente de verdad)**: `_schemaVersion = 26` en
+`lib/powersync/db.dart` (cada user tiene su SQLite `sitecsa_{uid}_v26.db`). v17
+agregó geo per-tenant + red; v18-v20 el inventario (catálogo→ubicaciones→ledger);
+v21-v26 tickets/técnico/incidentes + inventario v2 (stock mínimo, ticket_materiales).
+Las menciones a "Schema v4/v6/v16/v20" más abajo o arriba son registros históricos,
+NO el valor actual — el real es **26**. Cada bump de schema redeploya sync rules.
 Verificar siempre el número en `db.dart`, no confiar en los logs de sprint.
 
 ### Proceso mandatorio de fixes y features (lifecycle)

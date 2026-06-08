@@ -57,7 +57,7 @@ la app está en estado sólido y consistente end-to-end.
 | Migraciones SQL | 87 (0001 → 0087) |
 | Funciones server-side (RPC/triggers) | ~58 |
 | Edge Functions (Deno) | 6 (`_shared/` con passwords/auth_errors/response) |
-| Schema version (PowerSync) | v16 |
+| Schema version (PowerSync) | v26 |
 | Tablas sincronizadas | 17 (operativas + globales) |
 | Storage buckets | comprobantes-pago, fotos-clientes, logos-empresa, contratos-documentos, geografia |
 | Tests automatizados | 8 archivos unit puros + `pagos_repo_test.dart` (14 repo) + `invariantes_dinero.sql` (11 invariantes). CI verde (210 passed). |
@@ -511,7 +511,7 @@ compartido.
 ### 11.3 Audit exhaustivo (4 agentes) — app SÓLIDA
 4 agentes barrieron TODO el codebase (153 Dart, 95 migraciones, 6 edge functions, tests):
 - **SQL/Integridad DB**: 🟢 limpio (0 SQL Postgres-only, `-6h` en todos los `date('now')`,
-  cadena DB↔schema↔sync coherente, `_schemaVersion=16`).
+  cadena DB↔schema↔sync coherente, `_schemaVersion=26`).
 - **Dinero**: 🟢 sólido (10/10 invariantes en código+SQL+tests, recaudado/saldo idénticos
   cross-pantalla, `invariantes_dinero.sql` + 9 tests de `pagos_repo`).
 - **Seguridad/Edge/RLS**: 🟢 limpio (escalación de rol bloqueada por trigger, RLS completa,
@@ -523,8 +523,10 @@ compartido.
 2. Orden de columnas de mora PDF = Excel (Comunidad 2ª).
 3. Labels de método en PDF (cobros/fiscal/por_cobrador) usan `MetodoPago.label`
    ("Transferencia"/"Depósito" completos; faltaba el case `deposito`).
-4. Bucketing `date(p.fecha_pago, '-6 hours')` en reportes + `RangoReporte` en hora
-   Nicaragua → corte por día/mes coincide con el dashboard.
+4. Bucketing `date(fecha_pago)` RAW en reportes (la columna ya es hora Nicaragua
+   wall-clock, NO lleva `-6h`) + el límite del rango con `date('now','-6 hours')`
+   → corte por día/mes coincide con el dashboard. (No agregar `-6h` a `fecha_pago`:
+   sería doble-shift.)
 
 ### 11.4 Pendiente
 - **Testing en Windows + Android** de las 2 features (mapa offline, descarga Excel/PDF)

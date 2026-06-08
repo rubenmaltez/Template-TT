@@ -49,7 +49,7 @@ datos sin leer todo el código.
                 │ ps.db.watch / .execute / .writeTransaction
 ┌───────────────┴──────────────────────────────────────────────────────────┐
 │ PowerSync (SQLite local)  ·  lib/powersync/{db,schema,connector}.dart      │
-│   `ps.db` = PowerSyncDatabase per-user (sitecsa_{uid}_v16.db)              │
+│   `ps.db` = PowerSyncDatabase per-user (sitecsa_{uid}_v26.db)              │
 │   schema.dart declara las tablas locales · connector.dart drena la CRUD    │
 │   queue → Supabase REST                                                     │
 └───────────────▲───────────────────────────────────┬──────────────────────┘
@@ -93,7 +93,7 @@ datos sin leer todo el código.
   el logo de empresa para impresión offline.
 
 ### `lib/powersync/` — la capa de datos local
-- **`db.dart`**: `ps.db` global (se recrea per-user). `_schemaVersion = 16` está
+- **`db.dart`**: `ps.db` global (se recrea per-user). `_schemaVersion = 26` está
   en el nombre del archivo SQLite → bumpearlo fuerza DB fresca para todos.
   `openDatabaseForUser` serializa con un `Completer` lock.
 - **`schema.dart`**: declara cada tabla local y sus columnas/índices. Toda
@@ -414,5 +414,5 @@ datos sin leer todo el código.
 
 ---
 
-_Última actualización del wiring verificada contra: `_schemaVersion = 16`,
+_Última actualización del wiring verificada contra: `_schemaVersion = 26`,
 16 tablas en `schema.dart`, 6 buckets de sync, 6 Edge Functions._
