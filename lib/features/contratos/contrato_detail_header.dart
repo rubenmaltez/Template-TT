@@ -16,11 +16,13 @@ class _ContratoHeader extends StatelessWidget {
     required this.contrato,
     required this.esAdmin,
     required this.contratoId,
+    required this.enImpersonacion,
     this.onEstadoChanged,
   });
   final Map<String, dynamic> contrato;
   final bool esAdmin;
   final String contratoId;
+  final bool enImpersonacion;
   final ValueChanged<String>? onEstadoChanged;
 
   @override
@@ -66,7 +68,10 @@ class _ContratoHeader extends StatelessWidget {
                         ),
                   ),
                 ),
-                if (esAdmin && onEstadoChanged != null)
+                // B2: 'cancelado' es TERMINAL — un contrato cancelado no se
+                // reactiva (servicio terminado; para reanudar se crea uno
+                // nuevo). Por eso si ya está cancelado no se muestra el menú.
+                if (esAdmin && onEstadoChanged != null && estado != 'cancelado')
                   PopupMenuButton<String>(
                     tooltip: 'Cambiar estado',
                     onSelected: onEstadoChanged,
@@ -74,7 +79,9 @@ class _ContratoHeader extends StatelessWidget {
                       if (estado != 'activo')
                         const PopupMenuItem(
                             value: 'activo', child: Text('Activo')),
-                      if (estado != 'cancelado')
+                      // A3: cancelar no se permite impersonando (oculto del
+                      // menú; el guard de `_cambiarEstado` lo refuerza).
+                      if (!enImpersonacion)
                         const PopupMenuItem(
                             value: 'cancelado', child: Text('Cancelado')),
                       if (estado != 'completado')

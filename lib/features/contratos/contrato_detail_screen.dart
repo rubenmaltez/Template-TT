@@ -91,13 +91,28 @@ class _ContratoDetailScreenState extends ConsumerState<ContratoDetailScreen> {
 
   Future<void> _cambiarEstado(String nuevoEstado) async {
     if (_procesandoEstado) return;
+    // A3: cancelar es gestión sensible del admin del tenant. Mientras se
+    // impersona NO se permite (la liquidación de parciales generaría un
+    // movimiento de dinero atribuido a la fila del super_admin / tenant System;
+    // y es una acción que debe ejecutar el admin real del tenant). La opción
+    // 'Cancelado' además se oculta del menú al impersonar — esto es defensa.
+    if (nuevoEstado == 'cancelado' && ref.read(estaImpersonandoProvider)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+              'No se puede cancelar un contrato mientras gestionás un tenant '
+              'como super_admin. Hacelo desde la cuenta del admin del tenant.'),
+          duration: Duration(seconds: 5),
+        ),
+      );
+      return;
+    }
     _procesandoEstado = true;
     // Hora REAL del dispositivo (UTC) para el change log — offline-first.
     final ocurridoEn = DateTime.now().toUtc().toIso8601String();
     try {
       if (nuevoEstado == 'cancelado') {
-        final ok = await _cancelarYLiquidarCuotas(ocurridoEn);
-        if (!ok) return; // abortado (ej. impersonando con cuotas parciales)
+        await _cancelarYLiquidarCuotas(ocurridoEn);
       } else {
         await ps.db.execute(
           'UPDATE contratos SET estado = ?, ocurrido_en = ? WHERE id = ?',
@@ -140,12 +155,10 @@ class _ContratoDetailScreenState extends ConsumerState<ContratoDetailScreen> {
   ///     (borraría plata real de la caja). El pago YA cobrado se PRESERVA.
   /// Atómico con el cambio de estado del contrato.
   ///
-  /// Devuelve `false` si se aborta. Caso: super_admin impersonando con cuotas
-  /// parciales — liquidarlas inserta un `cargos_extra` (movimiento de dinero)
-  /// que se atribuiría a la fila del super_admin (tenant System); mismo guard
-  /// que cobro/cargo/visita. Anular pendientes + cambiar estado SÍ se permite
-  /// impersonando (es gestión, igual que el anular de /admin/cuotas).
-  Future<bool> _cancelarYLiquidarCuotas(String ocurridoEn) async {
+  /// Precondición: NO se llama mientras se impersona (lo bloquea `_cambiarEstado`
+  /// arriba — A3), así que la atribución del descuento es siempre del tenant
+  /// real, no de la fila System del super_admin.
+  Future<void> _cancelarYLiquidarCuotas(String ocurridoEn) async {
     final me = ref.read(cobradorActualProvider).valueOrNull;
     final tenantId = ref.read(tenantIdProvider);
     if (me == null || tenantId == null) {
@@ -165,27 +178,6 @@ class _ContratoDetailScreenState extends ConsumerState<ContratoDetailScreen> {
       ''',
       [widget.contratoId],
     );
-
-    // Guard de impersonación: liquidar una parcial inserta un `cargos_extra`
-    // (dinero) que se atribuiría a la fila del super_admin (tenant System).
-    // Igual que cobro/cargo/visita, lo bloqueamos — pero solo si hay parciales
-    // que liquidar (sin parciales, cancelar es pura gestión y se permite).
-    final tieneParcialesACobrar =
-        parciales.any((p) => ((p['saldo'] as num?)?.toDouble() ?? 0) > 0.01);
-    if (tieneParcialesACobrar && ref.read(estaImpersonandoProvider)) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text(
-                'No se puede cancelar un contrato con cobros parciales mientras '
-                'gestionás un tenant como super_admin. Hacelo desde la cuenta '
-                'del admin del tenant.'),
-            duration: Duration(seconds: 5),
-          ),
-        );
-      }
-      return false;
-    }
 
     await ps.db.writeTransaction((tx) async {
       // 1. El contrato pasa a cancelado.
@@ -246,7 +238,6 @@ class _ContratoDetailScreenState extends ConsumerState<ContratoDetailScreen> {
         );
       }
     });
-    return true;
   }
 
   @override
@@ -271,6 +262,9 @@ class _ContratoDetailScreenState extends ConsumerState<ContratoDetailScreen> {
             .valueOrNull
             ?.contains('inventario') ??
         false;
+    // A3: el super_admin impersonando no cancela contratos (se oculta la opción
+    // del menú; el guard de `_cambiarEstado` lo refuerza).
+    final enImpersonacion = ref.watch(estaImpersonandoProvider);
 
     return Scaffold(
       appBar: AppBar(
@@ -316,6 +310,7 @@ class _ContratoDetailScreenState extends ConsumerState<ContratoDetailScreen> {
                     esAdmin: esAdmin,
                     onEstadoChanged: esAdmin ? _cambiarEstado : null,
                     contratoId: widget.contratoId,
+                    enImpersonacion: enImpersonacion,
                   ),
                   const SizedBox(height: 24),
                   _CuotasSection(

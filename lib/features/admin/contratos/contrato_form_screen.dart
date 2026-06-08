@@ -334,7 +334,7 @@ class _ContratoFormScreenState extends ConsumerState<ContratoFormScreen> {
              SET plan_id = ?, dia_pago = ?,
                  fecha_inicio = ?, fecha_fin = ?, duracion_meses = ?,
                  fecha_primer_cobro = ?, costo_instalacion = ?, notas = ?,
-                 codigo = ?, estado = ?, ocurrido_en = ?
+                 codigo = ?, ocurrido_en = ?
            WHERE id = ?
           ''',
           [
@@ -349,7 +349,6 @@ class _ContratoFormScreenState extends ConsumerState<ContratoFormScreen> {
             _codigoCtrl.text.trim().isEmpty
                 ? null
                 : _codigoCtrl.text.trim().toUpperCase(),
-            _activo ? 'activo' : 'cancelado',
             ocurridoEn,
             widget.contratoId,
           ],
@@ -643,24 +642,11 @@ class _ContratoFormScreenState extends ConsumerState<ContratoFormScreen> {
                       alignLabelWithHint: true,
                     ),
                   ),
-                  if (_esEdicion) ...[
-                    const Divider(),
-                    SwitchListTile(
-                      value: _activo,
-                      onChanged: (v) => setState(() {
-                        _activo = v;
-                        _dirty = true;
-                      }),
-                      title: Text(_activo ? 'Contrato activo' : 'Cancelado'),
-                      subtitle: !_activo
-                          ? const Text(
-                              'No se generarán nuevas cuotas. Las pendientes siguen vivas.',
-                              style: TextStyle(fontSize: 12),
-                            )
-                          : null,
-                      contentPadding: EdgeInsets.zero,
-                    ),
-                  ],
+                  // El estado del contrato (activo / cancelado / completado) se
+                  // gestiona SOLO desde el dropdown del detalle del contrato —
+                  // ahí la cancelación liquida las cuotas (anula pendientes +
+                  // descuenta el saldo de las parciales) y es terminal. El form
+                  // de edición no toca el estado para no saltearse esa lógica.
                 ],
               ),
             ),
