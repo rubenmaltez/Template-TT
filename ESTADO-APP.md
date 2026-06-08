@@ -4,7 +4,11 @@
 > JUNTO con `CLAUDE.md` al abrir una sesión nueva de Claude Code, para
 > continuar exactamente desde acá sin re-descubrir el contexto.
 >
-> **Última actualización**: 2026-06-06 (branch `claude/stoic-tesla-cGkJ6`).
+> **Última actualización**: 2026-06-08. **AUDIT INTEGRAL multi-agente (11 agentes
+> Opus)** → `AUDIT-INTEGRAL-2026-06-08.md`. App SÓLIDA (10/10 invariantes, RLS
+> completa, SQLite/TZ/rutas OK). 1 ALTA + 9 MEDIA + ~25 BAJA, **casi todo fixeado**
+> (16 commits, schema v26, falta deploy de `0111`/`0112`). Backlog real que queda:
+> tests, distribución, filtro/retención de error_logs, edge teóricos (ver §7 del AUDIT).
 > **El estado vivo "dónde quedamos" ahora vive en `HANDOFF.md`** (leer primero).
 > Sesión posterior (2026-06-06 cont.): reportes con detalle USD + impresora del
 > sistema en PC + búsqueda multi-campo del mapa + transición fade secuencial +

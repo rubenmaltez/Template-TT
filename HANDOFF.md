@@ -7,6 +7,35 @@
 
 ---
 
+## 2026-06-08 — AUDIT INTEGRAL multi-agente + fixes ✅ código, falta DEPLOY
+
+Audit exhaustivo de TODA la app (11 agentes Opus) → `AUDIT-INTEGRAL-2026-06-08.md`.
+Veredicto: app sólida (10/10 invariantes de dinero, RLS completa, SQLite/TZ/rutas OK).
+Hallazgos: 1 ALTA + 9 MEDIA + ~25 BAJA. **Casi todo fixeado** (16 commits, `5e0013b`→`a7a2b99`),
+2 agentes de review confirmaron los cambios de dinero/impersonación limpios.
+
+**Fixeado:** A1 (saldo cobrador con cargos_neto) · M1/M2 (anular cuota parcial espeja cascada
++ copy) · M3/M4/B2 (guard de impersonación unificado: pagos/cuotas/settings/estado) · M5/M6
+(edición de contrato eliminada — form create-only) · M7 (test INV11 falso positivo) · M8/B6
+(tab Categorías de inventario con CRUD+historial) · M9 (historial de cambios del ticket) · B1
+(cargos_extra en historial de cuota) · B3 (guard ruta pagos/notif) · B5 (chips de auditoría) ·
+B7 (doc sync admin_cobranza) · B8 (mapa técnico) · B9 (snackbar PDF) · B10 (timestamps UTC) ·
+B11 (badges hora Nicaragua) · B12 (humanizarEdgeError DRY) · dead code · doc-drift (schema v26).
+
+**Backlog REAL que queda** (esfuerzo grande / server-deploy / edge — ver §6 del AUDIT y
+ESTADO-APP): suite de tests · config de distribución (applicationId/deep-links) · filtro de
+fechas + cron de retención en /super/logs (RPC) · lock de reenviar-invitación (edge fn) ·
+edge cases teóricos (cross-tab, autoDispose, lastSyncedAt, PKCE user-switch) · _currentRoute
+GoRouter · FotoComprobante F5 · OfflineBanner primeros-3s.
+
+> ⚠️ **Deploy pendiente:** correr `0111` + `0112` (Dashboard) → rebuild de la app (mucho código
+> Dart nuevo) → `invariantes_dinero.sql` (ya SIN falso positivo por M7). **Tab Categorías** es
+> UI nueva (sin migración). **B7/sync-rules** NO requiere redeploy (solo comentario). Después:
+> **testing completo** (TESTING.md §0.3 + el del audit). Correr `dart format` (algunas
+> indentaciones de collection-if quedaron sin normalizar).
+
+---
+
 ## 2026-06-08 — Cancelar contrato = saldo a 0 (+ RLS + B2/A3) ✅ código, falta DEPLOY
 
 Bug HIGH: cancelar un contrato **no** dejaba de cobrar sus cuotas (cobrador las veía, mora

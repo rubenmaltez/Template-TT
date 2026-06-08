@@ -344,3 +344,44 @@ sujeto a RLS; service_role solo auth.admin.*), co-tenencia validada en los SECUR
 
 **Backlog para vaciar:** _humanizarError, aplicado_en/anulada_en a UTC, cron de retention +
 filtro de fechas, lock de reenviar-invitacion. Edge-cases y tests = esfuerzos mayores aparte.
+
+---
+
+## 7. Fixes APLICADOS (2026-06-08) — commits `5e0013b` → `a7a2b99`
+
+Decisión de Rubén: "fixear todo, no dejar backlog". Aplicado + revisado (3 agentes de review,
+los cambios de dinero/impersonación/strip salieron limpios).
+
+| # | Estado | Commit |
+|---|---|---|
+| **A1** saldo cobrador con cargos_neto | ✅ | 5e0013b |
+| **M1** anular cuota parcial espeja cascada offline | ✅ | 5e0013b |
+| **M2** copy del diálogo de anular cuota | ✅ | 5e0013b |
+| **M7** test INV11 (falso positivo) | ✅ | 5e0013b |
+| **M3** guard impersonación en /admin/pagos + /admin/cuotas | ✅ | 9e41b27 |
+| **M4** settings filtran por tenant efectivo | ✅ | 9e41b27 |
+| **B2** dropdown de estado oculto al impersonar | ✅ | 9e41b27 |
+| **M5/M6** edición de contrato eliminada (create-only) | ✅ borrar dead code | 1aa36de |
+| dead code (PendingScreen, Cuota.estadoVisual) | ✅ | 1aa36de |
+| doc-drift (schema v26, onboarding, -6h) | ✅ | 9702537 |
+| **B1** cargos_extra en historial de cuota | ✅ | 17e5c67 |
+| **B3** guard de ruta pagos/notificaciones | ✅ | 17e5c67 |
+| **B5** chips de auditoría (catálogo + label) | ✅ | 17e5c67 |
+| **B10** timestamps anulado/aplicado_en a UTC | ✅ | 3449ff6 |
+| **B12** humanizarEdgeError DRY | ✅ | 3449ff6 |
+| **B11** badges de mora en hora Nicaragua | ✅ | 30d7540 |
+| **B9** snackbar de éxito al guardar PDF | ✅ | 7b616ff |
+| **B8** mapa del técnico (botón muerto + chips) | ✅ | 9488b3e |
+| **B7** sync admin_cobranza (falso positivo, documentado) | ✅ doc | a97392a |
+| **M9** historial de cambios del ticket | ✅ | a97392a |
+| **M8/B6** gestión de categorías de inventario (CRUD+historial) | ✅ | a7a2b99 |
+
+**Backlog REAL que queda** (esfuerzo grande / requiere server-deploy / edge teórico — NO se
+fixeó en este pase, por decisión de scope):
+- **Tests**: suite de widget/integración/redirects + 4 edge_fn skipped (esfuerzo grande, varias sesiones).
+- **Distribución**: applicationId de producción + deep links (requiere decisiones de Rubén: cert, app id).
+- **/super/logs**: filtro de fechas desde/hasta + cron de retención >90d (requiere cambiar la RPC `list_error_logs` → migración).
+- **reenviar-invitacion**: lock entre delete/create (edge fn; explotable solo con super_admins concurrentes — Rubén es 1).
+- **Edge teóricos no reproducibles**: cross-tab sync, race autoDispose entre tenants, lastSyncedAt semantics, PKCE recovery user-switch, double-connect lock de main.dart.
+- **Menores diferidos**: `_currentRoute` lee Uri.base.path (web-only), FotoComprobante replay en F5 (persistir en SharedPreferences), OfflineBanner indicador primeros-3s, user-agent real (package:web).
+- **Nota**: correr `dart format` — algunas indentaciones de collection-if (mapa del técnico, etc.) quedaron sin normalizar (cosmético, compila).

@@ -158,6 +158,49 @@ consistentes → auditoría.
 
 > Más reciente arriba. Formato por ítem: error → fix → expectativa.
 
+### 2026-06-08 (cont.) — Audit integral multi-agente + fixes (todo el backlog accionable)
+
+Audit exhaustivo de TODA la app con 11 agentes especialistas (Opus) → reporte
+`AUDIT-INTEGRAL-2026-06-08.md`. Veredicto: app sólida (10/10 invariantes de dinero, RLS
+completa, SQLite/TZ/rutas limpios). Hallazgos: 1 ALTA + 9 MEDIA + ~25 BAJA. Rubén pidió
+"fixear todo, no dejar backlog". Aplicado en 16 commits (`5e0013b`→`a7a2b99`) + 3 agentes de
+review confirmaron limpios los cambios de dinero/impersonación/strip. Detalle y estado en §7
+del AUDIT.
+
+- **A1 (ALTA):** la tab "Por cobrar" del cobrador mostraba el saldo SIN `cargos_neto` (mismo
+  bug F1 ya corregido en admin, replicado). *Fix:* sumar cargos_neto al SELECT + fórmula con
+  clamp. *Exp:* el saldo de la lista coincide con el de cobro/recibo/"Por cliente" (regla #10).
+- **M1/M2:** "Anular cuota" sobre una PARCIAL no espejaba la cascada del trigger 0023 (anula
+  pagos+recibos) → offline el recaudado quedaba inflado; y el diálogo decía lo contrario.
+  *Fix:* espejo local de la cascada en una tx + copy honesto. *Exp:* anular una cuota parcial
+  saca su pago del recaudado al instante (también offline).
+- **M3/M4/B2 (impersonación unificada):** /admin/pagos, /admin/cuotas y los reads de `settings`
+  no respetaban la impersonación (el resto del dinero sí). *Fix:* helper `bloqueadoPorImpersonacion`
+  en los write-paths + `settings`/`empresaNombre` filtran por tenant efectivo + el dropdown de
+  estado del contrato se oculta TODO al impersonar. *Exp:* impersonando no se mueve plata ni
+  estado del tenant, y no se mezclan settings de dos tenants.
+- **M5/M6:** la pantalla de edición de contrato era inalcanzable (dead code) y su mensaje de
+  éxito mentía ("cuotas ajustadas"). *Decisión de Rubén:* borrar. `ContratoFormScreen` es
+  create-only; ruta `/admin/contratos/:id/editar` eliminada. *Exp:* para cambiar un contrato se
+  cancela y se crea uno nuevo (consistente con B2 terminal).
+- **M7:** `invariantes_dinero.sql` (INV11) contaba las cuotas manuales con `contrato_id` → daba
+  falso positivo. *Fix:* `AND tipo_cargo_manual IS NULL`. *Exp:* el test de capa-2 ya no marca
+  violaciones con data sana (importante: Rubén lo corre post-deploy).
+- **M8/B6:** categorías de inventario eran create-only sin historial (violaba el contrato de
+  change-log) + duplicado fallaba silencioso al sync. *Fix:* tab "Categorías" con CRUD +
+  historial (patrón Proveedores) + pre-check local de duplicado. *Exp:* se renombran/borran
+  (guard si hay productos) y tienen su 🕐.
+- **M9:** el detalle del ticket mostraba solo la bitácora de dominio (`ticket_eventos`), no el
+  audit_log. *Fix:* botón 🕐 de historial de cambios (oculto para el técnico, que no sincroniza
+  audit_log). *Exp:* las ediciones de campo del ticket quedan accesibles.
+- **B1/B3/B5/B7/B8/B9/B10/B11/B12** + **dead code** (PendingScreen, Cuota.estadoVisual) +
+  **doc-drift** (schema v26 real, onboarding eliminado, -6h en reportes): ver §7 del AUDIT.
+- **Backlog que QUEDA** (esfuerzo grande / server-deploy / edge teórico): tests, distribución,
+  filtro de fechas + retención en /super/logs (RPC), lock de reenviar-invitación, edge cases no
+  reproducibles. Detalle en §7 del AUDIT.
+- **Deploy:** `0111`+`0112` (Dashboard) → rebuild → `invariantes_dinero.sql`. Tab Categorías =
+  UI nueva (sin migración). B7 = solo comentario en sync-rules (sin redeploy). Correr `dart format`.
+
 ### 2026-06-08 — Cancelar contrato = dejar de cobrar sus cuotas (saldo a 0) + RLS + B2/A3
 
 Bug (HIGH): **cancelar un contrato NO dejaba de cobrar sus cuotas** — el cobrador las
