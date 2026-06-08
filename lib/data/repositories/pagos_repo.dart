@@ -409,8 +409,8 @@ class PagosRepo {
     required String anuladoPorId,
     required String motivo,
   }) async {
-    final now = DateTime.now().toIso8601String();
-    // Hora REAL del dispositivo (UTC) para el change log — offline-first.
+    // Hora REAL del dispositivo en UTC — para el change log y los timestamps de
+    // anulación (anulado_en del pago y del recibo), consistente entre sí (B10).
     final ocurridoEn = DateTime.now().toUtc().toIso8601String();
     await _dbOrGlobal.writeTransaction((tx) async {
       // Snapshot del monto antes de marcar anulado, para ajustar cuota local.
@@ -429,7 +429,7 @@ class PagosRepo {
                ocurrido_en = ?
          WHERE id = ?
         ''',
-        [now, anuladoPorId, motivo, ocurridoEn, pagoId],
+        [ocurridoEn, anuladoPorId, motivo, ocurridoEn, pagoId],
       );
 
       await tx.execute(
@@ -438,7 +438,7 @@ class PagosRepo {
            SET anulado = 1, anulado_en = ?, anulado_por = ?, ocurrido_en = ?
          WHERE pago_id = ? AND anulado = 0
         ''',
-        [now, anuladoPorId, ocurridoEn, pagoId],
+        [ocurridoEn, anuladoPorId, ocurridoEn, pagoId],
       );
 
       // Reflejar localmente el recálculo del trigger server, considerando

@@ -269,29 +269,11 @@ class _InvitarDialogState extends ConsumerState<_InvitarDialog> {
       // llega un FunctionException raw, extraemos el campo `error`
       // del toString para no exponer el wrapper técnico.
       if (mounted) {
-        setState(() => _error = _humanizarError(e));
+        setState(() => _error = humanizarEdgeError(e));
       }
     } finally {
       if (mounted) setState(() => _enviando = false);
     }
-  }
-
-  /// Convierte cualquier excepción del flujo en un mensaje user-friendly.
-  /// Cubre tres casos:
-  ///   - `Exception("msg")` lanzado por el helper invokeEdgeFunction → pelamos "Exception: ".
-  ///   - `FunctionException` raw que se escapó (type mismatch en versiones del SDK) →
-  ///     extraemos el campo `error` del toString con regex.
-  ///   - Cualquier otra excepción → toString tal cual.
-  String _humanizarError(Object e) {
-    final raw = e.toString();
-    if (raw.startsWith('FunctionException')) {
-      final match = RegExp(r'error:\s*([^}]+)').firstMatch(raw);
-      if (match != null) {
-        final extracted = match.group(1)?.trim();
-        if (extracted != null && extracted.isNotEmpty) return extracted;
-      }
-    }
-    return raw.replaceFirst('Exception: ', '');
   }
 
   @override

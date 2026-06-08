@@ -134,7 +134,7 @@ class _InvitarAdminDialogState extends ConsumerState<InvitarAdminDialog> {
       // el campo `error` del toString para no exponer el wrapper.
       if (mounted) {
         setState(() {
-          _error = _humanizarError(e);
+          _error = humanizarEdgeError(e);
           _enviando = false;
         });
       }
@@ -147,18 +147,6 @@ class _InvitarAdminDialogState extends ConsumerState<InvitarAdminDialog> {
         setState(() => _enviando = false);
       }
     }
-  }
-
-  String _humanizarError(Object e) {
-    final raw = e.toString();
-    if (raw.startsWith('FunctionException')) {
-      final match = RegExp(r'error:\s*([^}]+)').firstMatch(raw);
-      if (match != null) {
-        final extracted = match.group(1)?.trim();
-        if (extracted != null && extracted.isNotEmpty) return extracted;
-      }
-    }
-    return raw.replaceFirst('Exception: ', '');
   }
 
   @override

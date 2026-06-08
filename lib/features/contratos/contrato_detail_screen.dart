@@ -154,7 +154,7 @@ class _ContratoDetailScreenState extends ConsumerState<ContratoDetailScreen> {
     if (me == null || tenantId == null) {
       throw Exception('No se pudo identificar el usuario o el tenant activo');
     }
-    final ahoraLocal = DateTime.now().toIso8601String();
+    // anulada_en / aplicado_en van en UTC, consistente con ocurrido_en (B10).
 
     // Cuotas parciales del contrato + su saldo restante (fórmula canónica #10,
     // incluye cargos_neto). Se leen ANTES de la transacción.
@@ -187,7 +187,7 @@ class _ContratoDetailScreenState extends ConsumerState<ContratoDetailScreen> {
                ocurrido_en = ?
          WHERE contrato_id = ? AND estado = 'pendiente'
         ''',
-        [ahoraLocal, me.id, ocurridoEn, widget.contratoId],
+        [ocurridoEn, me.id, ocurridoEn, widget.contratoId],
       );
       // 3. Parciales → descuento de cancelación por el saldo restante.
       for (final p in parciales) {
@@ -206,7 +206,7 @@ class _ContratoDetailScreenState extends ConsumerState<ContratoDetailScreen> {
           [
             localId, tenantId, p['id'], cobradorCuota, saldo,
             'Saldo cancelado por baja del contrato',
-            me.id, ahoraLocal, localId, ocurridoEn,
+            me.id, ocurridoEn, localId, ocurridoEn,
           ],
         );
         // Espejo LOCAL del trigger server-side (mismo patrón que pagos_repo):

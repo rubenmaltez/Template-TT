@@ -169,7 +169,7 @@ class _AplicarCargoDialogState extends ConsumerState<AplicarCargoDialog> {
           porcentaje,
           _descripcion.text.trim().isEmpty ? null : _descripcion.text.trim(),
           cobrador.id,
-          DateTime.now().toIso8601String(),
+          ocurridoEn, // aplicado_en en UTC, consistente con ocurrido_en (B10)
           const Uuid().v4(),
           ocurridoEn,
         ],

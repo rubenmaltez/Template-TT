@@ -1012,9 +1012,9 @@ class _CuotaCard extends ConsumerWidget {
     if (me == null) return;
 
     try {
-      // Hora REAL del dispositivo (UTC) para el change log — offline-first.
+      // Hora REAL del dispositivo en UTC — para el change log y los timestamps
+      // de anulación (anulada_en/anulado_en), consistente con ocurrido_en (B10).
       final ocurridoEn = DateTime.now().toUtc().toIso8601String();
-      final ahoraLocal = DateTime.now().toIso8601String();
       final cuotaId = row['id'];
       await ps.db.writeTransaction((tx) async {
         // 1. La cuota pasa a anulada.
@@ -1028,7 +1028,7 @@ class _CuotaCard extends ConsumerWidget {
                  ocurrido_en = ?
            WHERE id = ?
           ''',
-          [ahoraLocal, me.id, motivo.trim(), ocurridoEn, cuotaId],
+          [ocurridoEn, me.id, motivo.trim(), ocurridoEn, cuotaId],
         );
         // 2. Espejo LOCAL de la cascada server `cuotas_anular_pagos_asociados_trg`
         //    (0023): al anular la cuota, sus pagos y recibos NO anulados se anulan.
@@ -1042,7 +1042,7 @@ class _CuotaCard extends ConsumerWidget {
                  motivo_anulacion = ?, ocurrido_en = ?
            WHERE cuota_id = ? AND anulado = 0
           ''',
-          [ahoraLocal, me.id, 'Cuota anulada', ocurridoEn, cuotaId],
+          [ocurridoEn, me.id, 'Cuota anulada', ocurridoEn, cuotaId],
         );
         await tx.execute(
           '''
@@ -1051,7 +1051,7 @@ class _CuotaCard extends ConsumerWidget {
            WHERE pago_id IN (SELECT id FROM pagos WHERE cuota_id = ?)
              AND anulado = 0
           ''',
-          [ahoraLocal, me.id, ocurridoEn, cuotaId],
+          [ocurridoEn, me.id, ocurridoEn, cuotaId],
         );
       });
       if (context.mounted) {

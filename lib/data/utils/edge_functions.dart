@@ -68,3 +68,23 @@ Future<Map<String, dynamic>> invokeEdgeFunction(
     rethrow;
   }
 }
+
+/// Convierte una excepción de una Edge Function en un mensaje legible para
+/// mostrar al usuario. Cubre tres casos:
+///   - `Exception("msg")` lanzado por [invokeEdgeFunction] → pela "Exception: ".
+///   - `FunctionException` raw que se escapó (type mismatch en algunas versiones
+///     del SDK) → extrae el campo `error` del toString con regex.
+///   - Cualquier otra excepción → toString tal cual.
+///
+/// Helper único (B12): antes estaba copy-pasteado en varias pantallas.
+String humanizarEdgeError(Object e) {
+  final raw = e.toString();
+  if (raw.startsWith('FunctionException')) {
+    final match = RegExp(r'error:\s*([^}]+)').firstMatch(raw);
+    if (match != null) {
+      final extracted = match.group(1)?.trim();
+      if (extracted != null && extracted.isNotEmpty) return extracted;
+    }
+  }
+  return raw.replaceFirst('Exception: ', '');
+}
