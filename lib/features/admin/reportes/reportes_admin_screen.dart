@@ -342,11 +342,17 @@ class _ArqueoCajaCard extends ConsumerWidget {
         periodo: rango.periodoLabel,
         rows: rows,
       );
-      await guardarArchivo(
+      final ruta = await guardarArchivo(
         fileName: 'arqueo_${now.year}_${now.month}_${now.day}.pdf',
         bytes: await doc.save(),
         extension: 'pdf',
       );
+      // ruta == null cuando el usuario cancela el diálogo de guardado (B9).
+      if (ruta != null && context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Arqueo guardado')),
+        );
+      }
     } catch (e) {
       if (context.mounted) {
         final msg = e is UnsupportedError
@@ -535,10 +541,10 @@ class _DescargarPdfMenu extends ConsumerWidget {
           rows: rows,
         );
 
-        await guardarArchivo(
+        await guardarPdfConAviso(
+          context,
           fileName: 'cobros_${now.year}_${now.month}.pdf',
           bytes: await doc.save(),
-          extension: 'pdf',
         );
       } else if (tipo == 'mora') {
         final rows = await ps.db.getAll('''
@@ -568,10 +574,10 @@ class _DescargarPdfMenu extends ConsumerWidget {
           periodo: periodoMora,
           rows: rows,
         );
-        await guardarArchivo(
+        await guardarPdfConAviso(
+          context,
           fileName: 'mora_${now.year}_${now.month}_${now.day}.pdf',
           bytes: await doc.save(),
-          extension: 'pdf',
         );
       } else if (tipo == 'por_cobrador') {
         // Selector de cobrador antes de generar.
@@ -617,10 +623,10 @@ class _DescargarPdfMenu extends ConsumerWidget {
           cobradorNombre: seleccionado['nombre'] as String,
           rows: rows,
         );
-        await guardarArchivo(
+        await guardarPdfConAviso(
+          context,
           fileName: 'cobrador_${now.year}_${now.month}.pdf',
           bytes: await doc.save(),
-          extension: 'pdf',
         );
       } else if (tipo == 'clientes') {
         final rows = await ps.db.getAll('''
@@ -648,10 +654,10 @@ class _DescargarPdfMenu extends ConsumerWidget {
           periodo: Fmt.mes(now),
           rows: rows,
         );
-        await guardarArchivo(
+        await guardarPdfConAviso(
+          context,
           fileName: 'clientes_${now.year}_${now.month}.pdf',
           bytes: await doc.save(),
-          extension: 'pdf',
         );
       } else if (tipo == 'fiscal') {
         await _generarFiscal(context, empresaNombre, rango);
@@ -704,10 +710,10 @@ class _DescargarPdfMenu extends ConsumerWidget {
       periodo: rango.periodoLabel,
       rows: rows,
     );
-    await guardarArchivo(
+    await guardarPdfConAviso(
+      context,
       fileName: 'fiscal_${now.year}_${now.month}.pdf',
       bytes: await doc.save(),
-      extension: 'pdf',
     );
   }
 
@@ -745,10 +751,10 @@ class _DescargarPdfMenu extends ConsumerWidget {
       periodo: rango.periodoLabel,
       rows: rows,
     );
-    await guardarArchivo(
+    await guardarPdfConAviso(
+      context,
       fileName: 'eficiencia_${now.year}_${now.month}.pdf',
       bytes: await doc.save(),
-      extension: 'pdf',
     );
   }
 
@@ -784,10 +790,10 @@ class _DescargarPdfMenu extends ConsumerWidget {
       rows: rows,
       mesesInactividad: mesesInactividad,
     );
-    await guardarArchivo(
+    await guardarPdfConAviso(
+      context,
       fileName: 'inactivos_${now.year}_${now.month}.pdf',
       bytes: await doc.save(),
-      extension: 'pdf',
     );
   }
 
@@ -821,10 +827,10 @@ class _DescargarPdfMenu extends ConsumerWidget {
       periodo: rango.periodoLabel,
       rows: rows,
     );
-    await guardarArchivo(
+    await guardarPdfConAviso(
+      context,
       fileName: 'anulaciones_${now.year}_${now.month}.pdf',
       bytes: await doc.save(),
-      extension: 'pdf',
     );
   }
 

@@ -2,7 +2,7 @@ import 'dart:io' show File, Platform;
 import 'dart:typed_data';
 
 import 'package:file_picker/file_picker.dart';
-import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/material.dart'; // incluye kIsWeb (re-export de foundation)
 
 /// Guarda [bytes] en disco ofreciendo el diálogo nativo de guardado, para que
 /// TODOS los exports de reportes (Excel y PDF) se comporten igual:
@@ -49,4 +49,25 @@ Future<String?> guardarArchivo({
     await File(path).writeAsBytes(data, flush: true);
   }
   return path;
+}
+
+/// Guarda un PDF de reporte vía [guardarArchivo] y, si el usuario no canceló,
+/// muestra un SnackBar de confirmación (B9 — antes los PDF no avisaban del
+/// guardado exitoso, solo de los errores; el Excel sí avisaba). Las excepciones
+/// (ej. web `UnsupportedError`) se propagan para que el caller las muestre.
+Future<void> guardarPdfConAviso(
+  BuildContext context, {
+  required String fileName,
+  required List<int> bytes,
+}) async {
+  final ruta = await guardarArchivo(
+    fileName: fileName,
+    bytes: bytes,
+    extension: 'pdf',
+  );
+  if (ruta != null && context.mounted) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Reporte PDF guardado')),
+    );
+  }
 }
