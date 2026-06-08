@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher_string.dart';
+import 'package:uuid/uuid.dart';
 
 import '../../data/models/pago.dart';
 import '../../data/providers/cobrador_provider.dart';
@@ -85,10 +86,14 @@ class _ContratoDetailScreenState extends ConsumerState<ContratoDetailScreen> {
     // Hora REAL del dispositivo (UTC) para el change log — offline-first.
     final ocurridoEn = DateTime.now().toUtc().toIso8601String();
     try {
-      await ps.db.execute(
-        'UPDATE contratos SET estado = ?, ocurrido_en = ? WHERE id = ?',
-        [nuevoEstado, ocurridoEn, widget.contratoId],
-      );
+      if (nuevoEstado == 'cancelado') {
+        await _cancelarYLiquidarCuotas(ocurridoEn);
+      } else {
+        await ps.db.execute(
+          'UPDATE contratos SET estado = ?, ocurrido_en = ? WHERE id = ?',
+          [nuevoEstado, ocurridoEn, widget.contratoId],
+        );
+      }
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Estado cambiado a $nuevoEstado')),
@@ -107,6 +112,86 @@ class _ContratoDetailScreenState extends ConsumerState<ContratoDetailScreen> {
         );
       }
     }
+  }
+
+  /// Cancelar el contrato + dejar de cobrar sus cuotas abiertas, preservando la
+  /// plata REAL ya cobrada (decisión "saldo a 0" con la invariante #4 intacta):
+  ///   · Pendientes (sin pago) → se ANULAN: no hubo servicio, no hay deuda. La
+  ///     cascada `cuotas_anular_pagos_asociados_trg` queda no-op (no tienen
+  ///     pagos). Desaparecen de toda superficie por-cobrar/mora (filtran
+  ///     estado IN ('pendiente','parcial')).
+  ///   · Parciales (con pago) → se liquida el saldo restante con un descuento de
+  ///     cancelación (`cargos_extra` 'descuento_monto'). El trigger server-side
+  ///     `recalcular_cuota_desde_pagos` la deja en 'pagada' al sincronizar; el
+  ///     pago YA cobrado se PRESERVA como recaudado. NO se anula la cuota
+  ///     parcial: anularla revertiría su pago vía la cascada (borraría plata
+  ///     real de la caja).
+  /// Atómico con el cambio de estado del contrato. Funciona bajo impersonación:
+  /// el descuento se atribuye al tenant EFECTIVO (`tenantIdProvider`) y al
+  /// cobrador de la cuota, no al tenant System del super_admin.
+  Future<void> _cancelarYLiquidarCuotas(String ocurridoEn) async {
+    final me = ref.read(cobradorActualProvider).valueOrNull;
+    final tenantId = ref.read(tenantIdProvider);
+    if (me == null || tenantId == null) {
+      throw Exception('No se pudo identificar el usuario o el tenant activo');
+    }
+    final ahoraLocal = DateTime.now().toIso8601String();
+
+    // Saldo restante de cada cuota parcial (fórmula canónica #10, incluye
+    // cargos_neto). Se lee ANTES de la transacción.
+    final parciales = await ps.db.getAll(
+      '''
+      SELECT id, cobrador_id,
+             (monto + COALESCE(cargos_neto, 0) - monto_pagado) AS saldo
+        FROM cuotas
+       WHERE contrato_id = ? AND estado = 'parcial'
+      ''',
+      [widget.contratoId],
+    );
+
+    await ps.db.writeTransaction((tx) async {
+      // 1. El contrato pasa a cancelado.
+      await tx.execute(
+        'UPDATE contratos SET estado = ?, ocurrido_en = ? WHERE id = ?',
+        ['cancelado', ocurridoEn, widget.contratoId],
+      );
+      // 2. Pendientes → anuladas (sin pagos: la cascada es no-op). La constraint
+      //    `cuotas_anulacion_coherencia` exige anulada_en/por/motivo → los seteo.
+      await tx.execute(
+        '''
+        UPDATE cuotas
+           SET estado = 'anulada',
+               anulada_en = ?,
+               anulada_por = ?,
+               motivo_anulacion = 'Contrato cancelado',
+               ocurrido_en = ?
+         WHERE contrato_id = ? AND estado = 'pendiente'
+        ''',
+        [ahoraLocal, me.id, ocurridoEn, widget.contratoId],
+      );
+      // 3. Parciales → descuento de cancelación por el saldo restante.
+      for (final p in parciales) {
+        final saldo = (p['saldo'] as num?)?.toDouble() ?? 0;
+        if (saldo <= 0.01) continue;
+        // El cargo viaja en el bucket del cobrador de la cuota (sync), aplicado
+        // por el usuario actual.
+        final cobradorCuota = (p['cobrador_id'] as String?) ?? me.id;
+        final localId = const Uuid().v4();
+        await tx.execute(
+          '''
+          INSERT INTO cargos_extra (
+            id, tenant_id, cuota_id, cobrador_id, tipo, monto, porcentaje,
+            descripcion, aplicado_por, aplicado_en, client_local_id, ocurrido_en
+          ) VALUES (?, ?, ?, ?, 'descuento_monto', ?, NULL, ?, ?, ?, ?, ?)
+          ''',
+          [
+            localId, tenantId, p['id'], cobradorCuota, saldo,
+            'Saldo cancelado por baja del contrato',
+            me.id, ahoraLocal, localId, ocurridoEn,
+          ],
+        );
+      }
+    });
   }
 
   @override

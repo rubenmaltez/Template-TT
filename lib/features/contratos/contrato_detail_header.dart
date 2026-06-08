@@ -229,6 +229,7 @@ class _ContratoHeader extends StatelessWidget {
               fechaInicio: fechaInicio,
               fechaFin: fechaFin,
               duracionMeses: (contrato['duracion_meses'] as num?)?.toInt(),
+              cancelado: estado == 'cancelado',
             ),
           ],
         ),
@@ -248,12 +249,16 @@ class _ContratoResumen extends ConsumerWidget {
     required this.fechaInicio,
     required this.fechaFin,
     required this.duracionMeses,
+    required this.cancelado,
   });
   final String contratoId;
   final double precioMensual;
   final DateTime fechaInicio;
   final DateTime? fechaFin;
   final int? duracionMeses;
+  // Un contrato cancelado terminó antes de término: no se reporta "pendiente"
+  // (no se sigue debiendo). Se muestra solo lo recaudado, como un indefinido.
+  final bool cancelado;
 
   /// Total contrato = precio_mensual × meses (definido al crear).
   /// Para contratos indefinidos retorna null.
@@ -275,6 +280,9 @@ class _ContratoResumen extends ConsumerWidget {
     final scheme = Theme.of(context).colorScheme;
     final totalContrato = _calcularTotalContrato();
     final esIndefinido = totalContrato == null;
+    // Cancelado o indefinido → solo se reporta lo recaudado (sin "pendiente":
+    // un contrato cancelado terminó antes de término, no se sigue debiendo).
+    final soloRecaudado = cancelado || esIndefinido;
     return ref.watch(contratoRecaudadoProvider(contratoId)).when(
       loading: () => const SizedBox.shrink(),
       error: (_, __) => const SizedBox.shrink(),
@@ -282,8 +290,9 @@ class _ContratoResumen extends ConsumerWidget {
         final recaudado = rows.isEmpty
             ? 0.0
             : ((rows.first['recaudado'] as num?) ?? 0).toDouble();
-        final pendiente =
-            esIndefinido ? 0.0 : (totalContrato - recaudado).clamp(0, double.infinity).toDouble();
+        final pendiente = soloRecaudado
+            ? 0.0
+            : (totalContrato! - recaudado).clamp(0, double.infinity).toDouble();
 
         return Container(
           padding: const EdgeInsets.all(12),
@@ -293,7 +302,7 @@ class _ContratoResumen extends ConsumerWidget {
           ),
           child: Row(
             children: [
-              if (esIndefinido) ...[
+              if (soloRecaudado) ...[
                 Expanded(
                   child: _ResumenItem(
                     label: 'Total recaudado',
@@ -305,7 +314,7 @@ class _ContratoResumen extends ConsumerWidget {
                 Expanded(
                   child: _ResumenItem(
                     label: 'Total contrato',
-                    value: Fmt.cordobas(totalContrato),
+                    value: Fmt.cordobas(totalContrato!),
                     color: scheme.onSurface,
                   ),
                 ),
