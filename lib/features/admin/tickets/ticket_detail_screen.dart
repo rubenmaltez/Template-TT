@@ -366,7 +366,10 @@ class _TicketDetailScreenState extends ConsumerState<TicketDetailScreen> {
                 final ant = e['estado_anterior'] as String?;
                 final nue = e['estado_nuevo'] as String?;
                 final com = e['comentario'] as String?;
-                final autor = e['autor'] as String? ?? '—';
+                // hecho_por NULL = evento del sistema (ej. auto-cierre del cron);
+                // autor null con hecho_por seteado = persona desconocida (sin sync).
+                final autor = e['autor'] as String? ??
+                    (e['hecho_por'] == null ? 'Sistema' : '—');
                 final fecha = DateTime.parse(
                     (e['ocurrido_en'] ?? e['created_at']) as String).toLocal();
                 final detalle = [

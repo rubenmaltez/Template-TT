@@ -284,6 +284,12 @@ class AppSettings {
     return result;
   }
 
+  /// Tickets — días para auto-cerrar un ticket 'resuelto' sin reapertura (setting
+  /// `tickets.auto_cierre_dias`). 0 = desactivado (default). El cron diario (0109)
+  /// lo lee server-side; este getter alimenta el editor en la pantalla de Tipos.
+  int get autoCierreDias =>
+      settingValue<num>(_map, 'tickets.auto_cierre_dias', 0).toInt();
+
   /// Config del CHANGE LOG (Fase C): qué campos se muestran en el historial
   /// de cambios, por entidad. Lee el setting `audit.campos_visibles`, un map
   /// JSONB `{tabla: [campos]}`.

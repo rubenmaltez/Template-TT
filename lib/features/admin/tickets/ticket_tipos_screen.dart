@@ -40,6 +40,8 @@ class _TicketTiposScreenState extends ConsumerState<TicketTiposScreen> {
         children: [
           _slaPrioridadHeader(context),
           const Divider(height: 1),
+          _autoCierreHeader(context),
+          const Divider(height: 1),
           Expanded(child: _buildLista(context, scheme)),
         ],
       ),
@@ -76,6 +78,41 @@ class _TicketTiposScreenState extends ConsumerState<TicketTiposScreen> {
       await ref.read(settingsRepoProvider).upsert(
             tenantId,
             'tickets.sla_horas_por_prioridad',
+            res,
+            categoria: 'tickets',
+          );
+    } catch (e) {
+      if (context.mounted) _snack(context, 'Error: $e');
+    }
+  }
+
+  /// Acceso al editor de auto-cierre (setting per-tenant, 0 = desactivado).
+  Widget _autoCierreHeader(BuildContext context) {
+    final dias = ref.watch(appSettingsProvider).autoCierreDias;
+    return ListTile(
+      leading: const Icon(Icons.task_alt),
+      title: const Text('Auto-cierre de tickets resueltos'),
+      subtitle: Text(dias > 0
+          ? 'Se cierran solos tras $dias día${dias == 1 ? '' : 's'} sin reapertura'
+          : 'Desactivado'),
+      trailing: const Icon(Icons.chevron_right),
+      onTap: () => _editarAutoCierre(context),
+    );
+  }
+
+  Future<void> _editarAutoCierre(BuildContext context) async {
+    final tenantId = ref.read(tenantIdProvider);
+    if (tenantId == null) return;
+    final actual = ref.read(appSettingsProvider).autoCierreDias;
+    final res = await showDialog<int>(
+      context: context,
+      builder: (_) => _AutoCierreDialog(actual: actual),
+    );
+    if (res == null) return;
+    try {
+      await ref.read(settingsRepoProvider).upsert(
+            tenantId,
+            'tickets.auto_cierre_dias',
             res,
             categoria: 'tickets',
           );
@@ -391,6 +428,73 @@ class _SlaPrioridadDialogState extends State<_SlaPrioridadDialog> {
               if (v != null && v > 0) map[p] = v;
             }
             Navigator.pop(context, map);
+          },
+          child: const Text('Guardar'),
+        ),
+      ],
+    );
+  }
+}
+
+/// Editor de auto-cierre (un solo campo: días). 0/vacío = desactivado.
+class _AutoCierreDialog extends StatefulWidget {
+  const _AutoCierreDialog({required this.actual});
+  final int actual;
+  @override
+  State<_AutoCierreDialog> createState() => _AutoCierreDialogState();
+}
+
+class _AutoCierreDialogState extends State<_AutoCierreDialog> {
+  late final TextEditingController _ctrl;
+
+  @override
+  void initState() {
+    super.initState();
+    _ctrl = TextEditingController(
+        text: widget.actual > 0 ? widget.actual.toString() : '');
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Auto-cierre de tickets resueltos'),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Un ticket RESUELTO que nadie reabra se cierra solo tras estos días. '
+            'Dejá vacío o 0 para desactivar. Es reversible: un ticket cerrado se '
+            'puede reabrir.',
+            style: TextStyle(fontSize: 12),
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: _ctrl,
+            keyboardType: TextInputType.number,
+            inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+            decoration: const InputDecoration(
+              labelText: 'Días',
+              suffixText: 'días',
+              isDense: true,
+            ),
+          ),
+        ],
+      ),
+      actions: [
+        TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancelar')),
+        FilledButton(
+          onPressed: () {
+            final v = int.tryParse(_ctrl.text.trim()) ?? 0;
+            Navigator.pop(context, v < 0 ? 0 : v);
           },
           child: const Text('Guardar'),
         ),
