@@ -6,13 +6,24 @@ import 'package:uuid/uuid.dart';
 import '../../powersync/db.dart' as ps;
 import '../models/recibo_layout.dart';
 import '../models/setting.dart';
+import '../providers/cobrador_provider.dart';
 import '../providers/db_epoch_provider.dart';
 
 class SettingsRepo {
   const SettingsRepo();
 
-  Stream<Map<String, Setting>> watchAll() {
-    return ps.db.watch('SELECT * FROM settings ORDER BY categoria, clave').map((rows) {
+  /// [tenantId]: filtra los settings al tenant efectivo. CRÍTICO durante
+  /// impersonación — el SQLite del super_admin tiene settings de DOS tenants
+  /// (System + impersonado) con las MISMAS claves; sin el filtro `map[clave]`
+  /// se quedaba con una fila no determinista (M4 del audit). Para un admin
+  /// normal el SQLite es mono-tenant, así que el filtro es inocuo. Null → sin filtro.
+  Stream<Map<String, Setting>> watchAll({String? tenantId}) {
+    final where = tenantId != null ? 'WHERE tenant_id = ?' : '';
+    final params = tenantId != null ? <Object?>[tenantId] : <Object?>[];
+    return ps.db
+        .watch('SELECT * FROM settings $where ORDER BY categoria, clave',
+            parameters: params)
+        .map((rows) {
       final map = <String, Setting>{};
       for (final r in rows) {
         final s = Setting.fromRow(r);
@@ -101,7 +112,10 @@ final settingsRepoProvider = Provider((_) => const SettingsRepo());
 /// Mapa clave→Setting. Único stream global de settings.
 final settingsMapProvider = StreamProvider<Map<String, Setting>>((ref) {
   ref.watch(dbEpochProvider); // recrea al cambiar de DB (#7)
-  return ref.watch(settingsRepoProvider).watchAll();
+  // Filtra al tenant efectivo (propio o impersonado) para no mezclar settings
+  // de dos tenants en el SQLite del super_admin durante impersonación (M4).
+  final tenantId = ref.watch(tenantIdProvider);
+  return ref.watch(settingsRepoProvider).watchAll(tenantId: tenantId);
 });
 
 /// Helper genérico tipado: lee un setting con default.

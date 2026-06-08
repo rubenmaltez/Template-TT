@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../data/models/pago.dart';
 import '../../../data/providers/cobrador_provider.dart';
+import '../../../data/providers/impersonation_provider.dart';
 import '../../../data/repositories/pagos_repo.dart';
 import '../../../data/repositories/settings_repo.dart';
 import '../../../data/utils/formatters.dart';
@@ -443,6 +444,8 @@ class _PagoCard extends ConsumerWidget {
   }
 
   Future<void> _editar(BuildContext context, WidgetRef ref) async {
+    // No editar pagos del tenant mientras el super_admin impersona (M3).
+    if (bloqueadoPorImpersonacion(context, ref)) return;
     final resultado = await showDialog<_EditarPagoResult?>(
       context: context,
       builder: (_) => _EditarPagoDialog(
@@ -478,6 +481,8 @@ class _PagoCard extends ConsumerWidget {
   }
 
   Future<void> _anular(BuildContext context, WidgetRef ref) async {
+    // No anular pagos del tenant mientras el super_admin impersona (M3).
+    if (bloqueadoPorImpersonacion(context, ref)) return;
     final motivo = await showDialog<String?>(
       context: context,
       builder: (_) => const _AnularDialog(),

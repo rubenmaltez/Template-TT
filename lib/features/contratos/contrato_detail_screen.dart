@@ -91,22 +91,12 @@ class _ContratoDetailScreenState extends ConsumerState<ContratoDetailScreen> {
 
   Future<void> _cambiarEstado(String nuevoEstado) async {
     if (_procesandoEstado) return;
-    // A3: cancelar es gestión sensible del admin del tenant. Mientras se
-    // impersona NO se permite (la liquidación de parciales generaría un
-    // movimiento de dinero atribuido a la fila del super_admin / tenant System;
-    // y es una acción que debe ejecutar el admin real del tenant). La opción
-    // 'Cancelado' además se oculta del menú al impersonar — esto es defensa.
-    if (nuevoEstado == 'cancelado' && ref.read(estaImpersonandoProvider)) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-              'No se puede cancelar un contrato mientras gestionás un tenant '
-              'como super_admin. Hacelo desde la cuenta del admin del tenant.'),
-          duration: Duration(seconds: 5),
-        ),
-      );
-      return;
-    }
+    // A3/B2: cambiar el estado de un contrato es gestión del admin del tenant.
+    // Mientras se impersona NO se permite NINGUNA transición — cancelar liquida
+    // parciales (dinero), y cualquier cambio de estado se auditaría bajo la fila
+    // System del super_admin, no bajo el admin real. El dropdown además se oculta
+    // del header al impersonar (esto es defensa en profundidad).
+    if (bloqueadoPorImpersonacion(context, ref)) return;
     _procesandoEstado = true;
     // Hora REAL del dispositivo (UTC) para el change log — offline-first.
     final ocurridoEn = DateTime.now().toUtc().toIso8601String();

@@ -71,7 +71,12 @@ class _ContratoHeader extends StatelessWidget {
                 // B2: 'cancelado' es TERMINAL — un contrato cancelado no se
                 // reactiva (servicio terminado; para reanudar se crea uno
                 // nuevo). Por eso si ya está cancelado no se muestra el menú.
-                if (esAdmin && onEstadoChanged != null && estado != 'cancelado')
+                // Y al impersonar se oculta TODO el dropdown (ningún cambio de
+                // estado del tenant debe atribuirse al super_admin).
+                if (esAdmin &&
+                    onEstadoChanged != null &&
+                    estado != 'cancelado' &&
+                    !enImpersonacion)
                   PopupMenuButton<String>(
                     tooltip: 'Cambiar estado',
                     onSelected: onEstadoChanged,
@@ -79,11 +84,8 @@ class _ContratoHeader extends StatelessWidget {
                       if (estado != 'activo')
                         const PopupMenuItem(
                             value: 'activo', child: Text('Activo')),
-                      // A3: cancelar no se permite impersonando (oculto del
-                      // menú; el guard de `_cambiarEstado` lo refuerza).
-                      if (!enImpersonacion)
-                        const PopupMenuItem(
-                            value: 'cancelado', child: Text('Cancelado')),
+                      const PopupMenuItem(
+                          value: 'cancelado', child: Text('Cancelado')),
                       if (estado != 'completado')
                         const PopupMenuItem(
                             value: 'completado', child: Text('Completado')),

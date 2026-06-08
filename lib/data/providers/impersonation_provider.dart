@@ -1,3 +1,4 @@
+import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../powersync/db.dart' as ps;
@@ -34,3 +35,22 @@ final impersonatedTenantIdProvider = StreamProvider<String?>((ref) async* {
 final estaImpersonandoProvider = Provider<bool>((ref) {
   return ref.watch(impersonatedTenantIdProvider).valueOrNull != null;
 });
+
+/// Guard de UI para acciones sensibles del tenant (mueven dinero o estado):
+/// si el super_admin está impersonando, muestra un aviso y devuelve `true`
+/// (la acción debe abortar con `return`). Centraliza el patrón que antes se
+/// duplicaba inline en cobro / cargo / anular / cancelar — toda acción sensible
+/// debe quedar atribuida al admin REAL del tenant, no a la fila System del
+/// super_admin. Usar al inicio del handler: `if (bloqueadoPorImpersonacion(...)) return;`.
+bool bloqueadoPorImpersonacion(BuildContext context, WidgetRef ref) {
+  if (!ref.read(estaImpersonandoProvider)) return false;
+  ScaffoldMessenger.of(context).showSnackBar(
+    const SnackBar(
+      content: Text(
+          'Acción no disponible mientras gestionás un tenant como super_admin. '
+          'Hacelo desde la cuenta del admin del tenant.'),
+      duration: Duration(seconds: 4),
+    ),
+  );
+  return true;
+}

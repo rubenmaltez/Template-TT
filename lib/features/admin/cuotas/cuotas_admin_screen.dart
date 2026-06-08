@@ -7,6 +7,7 @@ import 'package:uuid/uuid.dart';
 
 import '../../../data/providers/cobrador_provider.dart';
 import '../../../data/providers/cuotas_filtro_provider.dart';
+import '../../../data/providers/impersonation_provider.dart';
 import '../../../data/repositories/settings_repo.dart';
 import '../../../data/utils/formatters.dart';
 import '../../../powersync/db.dart' as ps;
@@ -249,6 +250,8 @@ class _CuotasAdminScreenState extends ConsumerState<CuotasAdminScreen> {
   }
 
   Future<void> _crearCuotaManual(BuildContext context) async {
+    // No crear cuotas en el tenant mientras el super_admin impersona (M3).
+    if (bloqueadoPorImpersonacion(context, ref)) return;
     final tenantId = ref.read(tenantIdProvider);
     if (tenantId == null) return;
 
@@ -941,7 +944,7 @@ class _CuotaCard extends ConsumerWidget {
                 subtitle: const Text('Modificar el monto de la cuota'),
                 onTap: () async {
                   Navigator.pop(context);
-                  await _editarMonto(context);
+                  await _editarMonto(context, ref);
                 },
               ),
             ListTile(
@@ -959,7 +962,9 @@ class _CuotaCard extends ConsumerWidget {
     );
   }
 
-  Future<void> _editarMonto(BuildContext context) async {
+  Future<void> _editarMonto(BuildContext context, WidgetRef ref) async {
+    // No editar el monto de cuotas del tenant mientras se impersona (M3).
+    if (bloqueadoPorImpersonacion(context, ref)) return;
     final montoActual = (row['monto'] as num).toDouble();
     final nuevoMonto = await showDialog<double?>(
       context: context,
@@ -995,6 +1000,8 @@ class _CuotaCard extends ConsumerWidget {
   }
 
   Future<void> _anular(BuildContext context, WidgetRef ref) async {
+    // No anular cuotas del tenant mientras el super_admin impersona (M3).
+    if (bloqueadoPorImpersonacion(context, ref)) return;
     final motivo = await showDialog<String?>(
       context: context,
       builder: (_) => const _AnularCuotaDialog(),

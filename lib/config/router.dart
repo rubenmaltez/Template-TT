@@ -82,8 +82,15 @@ final _rolUsuarioProvider = StreamProvider<String?>((ref) async* {
 /// cuando el reporte lo lee.
 final empresaNombreProvider = StreamProvider<String?>((ref) async* {
   ref.watch(dbEpochProvider); // recrea al cambiar de DB (#7)
+  // Filtra al tenant efectivo para no leer la empresa del tenant System cuando
+  // el super_admin impersona (M4) — si no, el header/reportes caían a "ISP".
+  final tenantId = ref.watch(tenantIdProvider);
+  final where = tenantId != null
+      ? "WHERE clave = 'empresa.nombre' AND tenant_id = ?"
+      : "WHERE clave = 'empresa.nombre'";
+  final params = tenantId != null ? <Object?>[tenantId] : <Object?>[];
   yield* ps.db
-      .watch("SELECT valor FROM settings WHERE clave = 'empresa.nombre'")
+      .watch("SELECT valor FROM settings $where", parameters: params)
       .map((rows) {
     if (rows.isEmpty) return null;
     final v = rows.first['valor'] as String?;
