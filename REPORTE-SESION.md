@@ -158,6 +158,31 @@ consistentes → auditoría.
 
 > Más reciente arriba. Formato por ítem: error → fix → expectativa.
 
+### 2026-06-07 (cont. 13) — Reportes: listado de clientes en Excel (padrón) + bug de dinero descubierto
+
+Pedido de Rubén: exportar la lista de clientes (activos **e** inactivos) con su info, en
+Excel formateado como los reportes de cobro. Commit `00d0159`. Auditado (1 agente, foco
+en dinero): **padrón SAFE**.
+
+- **Padrón de clientes (feature):** no había un export del roster de clientes (los reportes
+  de clientes existentes son financieros: "Estado de clientes" y "Clientes inactivos"). Fix =
+  nueva opción **"Listado de clientes"** en `/admin/reportes` → Exportar a Excel: TODOS los
+  clientes (activos + inactivos, columna Estado) con Código/Nombre/Cédula/Teléfono/Dirección/
+  Referencia/Comunidad/Cobrador/Plan(es)/Día de pago/Saldo/Fecha de alta. **Una fila por
+  cliente**; plan/día/saldo vía **subqueries correlacionadas** (no multiplican el saldo por
+  contratos ni cuotas). El saldo usa `cuota.monto_pagado` denormalizado (invariante #7), no
+  un JOIN a pagos. Reusa `descargarExcel` (mismo diseño). Cero schema/migración/dependencia.
+  **Expectativa:** el admin baja un .xlsx con el padrón completo, saldo sumable en Excel.
+- **⚠️ BUG DE DINERO PRE-EXISTENTE descubierto (NO arreglado — pendiente de decisión):** el
+  reporte **"Estado de clientes"** (`case 'clientes'`, reportes_admin_screen.dart:1051-1067)
+  hace `LEFT JOIN pagos` (para `MAX(fecha_pago)`) que **fan-outea las cuotas**: una cuota
+  `parcial` con N pagos no-anulados aparece N veces → su saldo y el conteo de pendientes se
+  suman **N veces** → **saldo INFLADO**. Viola el invariante #10 (consistencia cross-pantalla:
+  este reporte no coincide con el padrón nuevo ni con la verdad por-cuota). **Fix sugerido:**
+  computar saldo/pendientes con subqueries correlacionadas (como el padrón) y `ultimo_pago`
+  con un subquery escalar aparte, sacando el JOIN que fan-outea. Correr
+  `invariantes_dinero.sql` después. Decisión de Rubén si lo atacamos.
+
 ### 2026-06-07 (cont. 12) — Calidad de campo (checklists + firma) + Inventario v2 (stock mínimo + código de barras)
 
 Dos features v2 aprobadas con la consigna de Rubén de **mantenerlo simple** (lección de

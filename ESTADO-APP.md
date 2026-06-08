@@ -172,7 +172,8 @@ admin_cobranza NO entra (intencional).
 
 ### Reportes (`/admin/reportes`) — ✅ completo
 8 PDF (cobros, mora, por cobrador, estado de clientes, fiscal, eficiencia, inactivos,
-anulaciones) + **8 Excel `.xlsx` descargables** (los mismos + arqueo; reemplazaron el
+anulaciones) + **9 Excel `.xlsx` descargables** (los mismos + arqueo + **Listado de clientes
+/ padrón**: roster con contacto + plan/día/saldo, activos E inactivos; reemplazaron el
 "copiar CSV al portapapeles" — sesión 2026-06-06) + **arqueo/cierre por cobrador**
 (efectivo por moneda US$/C$, vuelto, electrónico, equivalente a tasa). Guardado con
 diálogo nativo ("Guardar como" en Windows, selector de ubicación en Android) vía
