@@ -840,6 +840,7 @@ class _DescargarPdfMenu extends ConsumerWidget {
           _excelOpcion(ctx, 'cobros', Icons.receipt_long, 'Cobros del mes'),
           _excelOpcion(ctx, 'mora', Icons.warning_amber, 'Mora'),
           _excelOpcion(ctx, 'clientes', Icons.people, 'Estado de clientes'),
+          _excelOpcion(ctx, 'padron', Icons.list_alt, 'Listado de clientes'),
           _excelOpcion(ctx, 'fiscal', Icons.account_balance, 'Fiscal'),
           _excelOpcion(ctx, 'eficiencia', Icons.speed, 'Eficiencia cobradores'),
           _excelOpcion(ctx, 'inactivos', Icons.person_off, 'Clientes inactivos'),
@@ -905,6 +906,7 @@ class _DescargarPdfMenu extends ConsumerWidget {
         'cobros' => 'Cobros',
         'mora' => 'Mora',
         'clientes' => 'Clientes',
+        'padron' => 'Padrón de clientes',
         'fiscal' => 'Fiscal',
         'eficiencia' => 'Eficiencia',
         'inactivos' => 'Inactivos',
@@ -993,6 +995,57 @@ class _DescargarPdfMenu extends ConsumerWidget {
             (r['monto_adeudado'] as num?) ?? 0,
             (r['dias_mora'] as num?) ?? 0,
           ]).toList(),
+        );
+
+      case 'padron':
+        // Padrón / listado de clientes: TODOS (activos + inactivos) con sus
+        // datos + plan(es)/día de pago/saldo. Subqueries correlacionadas para
+        // plan/día/saldo → una fila por cliente sin multiplicar el saldo por la
+        // cantidad de contratos/cuotas. El saldo usa el `monto_pagado`
+        // denormalizado de la cuota (invariante #7), no un JOIN a pagos.
+        final rows = await ps.db.getAll('''
+          SELECT c.codigo, c.nombre, c.cedula, c.telefono, c.direccion,
+                 c.direccion_referencia, c.activo, c.created_at,
+                 co.nombre AS comunidad,
+                 cb.nombre AS cobrador,
+                 (SELECT GROUP_CONCAT(DISTINCT pl.nombre)
+                    FROM contratos ct JOIN planes pl ON pl.id = ct.plan_id
+                   WHERE ct.cliente_id = c.id) AS planes,
+                 (SELECT GROUP_CONCAT(DISTINCT ct.dia_pago)
+                    FROM contratos ct WHERE ct.cliente_id = c.id) AS dias_pago,
+                 COALESCE((SELECT SUM(cu.monto + COALESCE(cu.cargos_neto, 0) - cu.monto_pagado)
+                    FROM cuotas cu
+                   WHERE cu.cliente_id = c.id
+                     AND cu.estado IN ('pendiente','parcial')), 0) AS saldo
+            FROM clientes c
+       LEFT JOIN comunidades co ON co.id = c.comunidad_id
+       LEFT JOIN cobradores cb ON cb.id = c.cobrador_id
+        ORDER BY c.activo DESC, c.nombre
+        ''');
+        return (
+          headers: [
+            'Código', 'Nombre', 'Cédula', 'Teléfono', 'Dirección', 'Referencia',
+            'Comunidad', 'Cobrador', 'Plan(es)', 'Día de pago',
+            'Saldo pendiente (C\$)', 'Estado', 'Fecha de alta',
+          ],
+          filas: rows.map((r) {
+            final created = r['created_at'] as String?;
+            return <Object?>[
+              r['codigo']?.toString() ?? '',
+              r['nombre']?.toString() ?? '',
+              r['cedula']?.toString() ?? '',
+              r['telefono']?.toString() ?? '',
+              r['direccion']?.toString() ?? '',
+              r['direccion_referencia']?.toString() ?? '',
+              r['comunidad']?.toString() ?? '',
+              r['cobrador']?.toString() ?? '',
+              r['planes']?.toString() ?? '',
+              r['dias_pago']?.toString() ?? '',
+              (r['saldo'] as num?)?.toDouble() ?? 0.0,
+              (r['activo'] as int? ?? 1) == 1 ? 'Activo' : 'Inactivo',
+              created == null ? '' : Fmt.fechaNi(created),
+            ];
+          }).toList(),
         );
 
       case 'clientes':
