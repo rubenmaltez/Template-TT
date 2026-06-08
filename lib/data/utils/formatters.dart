@@ -20,6 +20,14 @@ class Fmt {
   static final _hora = DateFormat('HH:mm', 'es_NI');
   static final _fechaHora = DateFormat('dd/MM/yyyy HH:mm', 'es_NI');
 
+  /// "Hoy" en hora de Nicaragua (UTC-6), truncado a día. Para los badges de
+  /// mora/gracia que deben coincidir con los cortes SQL `date('now','-6 hours')`
+  /// aunque el dispositivo no esté en la TZ de Nicaragua (B11).
+  static DateTime hoyNicaragua() {
+    final n = DateTime.now().toUtc().subtract(const Duration(hours: 6));
+    return DateTime(n.year, n.month, n.day);
+  }
+
   static String cordobas(num v) => _nio.format(v);
   static String dolares(num v) => _usd.format(v);
   static String monto(num v, String moneda) =>

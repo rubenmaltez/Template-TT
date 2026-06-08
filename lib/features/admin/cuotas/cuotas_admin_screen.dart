@@ -912,7 +912,10 @@ class _CuotaCard extends ConsumerWidget {
   IconData _icon(String estado, DateTime vence, int dg) {
     if (estado == 'pagada') return Icons.check_circle;
     if (estado == 'anulada') return Icons.block;
-    final diff = DateTime.now().difference(vence).inDays;
+    // Día Nicaragua (B11) para coincidir con el corte SQL del filtro.
+    final diff = Fmt.hoyNicaragua()
+        .difference(DateTime(vence.year, vence.month, vence.day))
+        .inDays;
     if (diff > dg) return Icons.warning;
     if (diff > 0) return Icons.schedule;
     return Icons.event;
@@ -922,7 +925,10 @@ class _CuotaCard extends ConsumerWidget {
       String estado, DateTime vence, int dg, ColorScheme s) {
     if (estado == 'pagada') return (s.tertiary, 'Pagada');
     if (estado == 'anulada') return (s.outline, 'Anulada');
-    final diff = DateTime.now().difference(vence).inDays;
+    // Día Nicaragua (B11) para coincidir con el corte SQL del filtro.
+    final diff = Fmt.hoyNicaragua()
+        .difference(DateTime(vence.year, vence.month, vence.day))
+        .inDays;
     if (diff > dg) return (s.error, 'Vencida hace ${diff - dg} día(s)');
     if (diff > 0) return (Colors.amber.shade700, 'En gracia');
     if (diff == 0) return (s.primary, 'Vence hoy');

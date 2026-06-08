@@ -750,7 +750,10 @@ class _TabPorClienteState extends State<_TabPorCliente> {
             final cuotasVencidas = (r['cuotas_vencidas'] as num).toInt();
             final saldo = (r['saldo_pendiente'] as num).toDouble();
             final vence = DateTime.parse(r['vence_mas_vieja'] as String);
-            final diasMora = DateTime.now().difference(vence).inDays;
+            // Día Nicaragua (B11) truncado, para coincidir con el corte SQL.
+            final diasMora = Fmt.hoyNicaragua()
+                .difference(DateTime(vence.year, vence.month, vence.day))
+                .inDays;
             final enMora = diasMora > 0;
 
             return Card(
@@ -842,10 +845,9 @@ class _CuotaCompactRow extends StatelessWidget {
         (row['cargos_neto'] as num? ?? 0).toDouble() -
         (row['monto_pagado'] as num? ?? 0).toDouble();
     final saldo = saldoRaw < 0 ? 0.0 : saldoRaw;
-    final diasFromVence =
-        DateTime(DateTime.now().year, DateTime.now().month, DateTime.now().day)
-            .difference(DateTime(vence.year, vence.month, vence.day))
-            .inDays;
+    final diasFromVence = Fmt.hoyNicaragua()
+        .difference(DateTime(vence.year, vence.month, vence.day))
+        .inDays;
     final esManual = row['contrato_id'] == null;
 
     final (label, color) = diasFromVence > diasGracia

@@ -362,11 +362,10 @@ class _CuotaRow extends StatelessWidget {
     final periodo = DateTime.parse(row['periodo'] as String);
     final vence = DateTime.parse(row['fecha_vencimiento'] as String);
 
-    final hoy = DateTime.now();
-    final diasFromVence =
-        DateTime(hoy.year, hoy.month, hoy.day)
-            .difference(DateTime(vence.year, vence.month, vence.day))
-            .inDays;
+    // Día Nicaragua (B11) truncado, para coincidir con el corte SQL.
+    final diasFromVence = Fmt.hoyNicaragua()
+        .difference(DateTime(vence.year, vence.month, vence.day))
+        .inDays;
 
     // Color coding segun estado
     final (String label, Color color) = switch (estado) {
