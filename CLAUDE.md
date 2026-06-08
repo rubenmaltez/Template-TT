@@ -972,6 +972,13 @@ Estos viven acá hasta que se ataquen explícitamente. NO re-flag en audits.
   `lastFailureSummary` en SharedPreferences o agregar un badge en el shell con count de fallidas
   recientes. El próximo intento de upload re-emite si la causa persiste, así que en práctica el
   user se entera eventualmente.
+- **`aplicado_en` / `anulada_en` en hora LOCAL, no UTC** (BAJA, descubierto en el fix de
+  cancelación 2026-06-08). Estos `timestamptz` reciben `DateTime.now().toIso8601String()` sin
+  `.toUtc()` en `aplicar_cargo_dialog`, el `_anular` de `cuotas_admin_screen` y el
+  `_cancelarYLiquidarCuotas` de `contrato_detail_screen` — quedan corridos ~6h respecto del
+  `ocurrido_en` (que sí va en UTC). NO afecta dinero/saldo (son campos informativos/audit), solo
+  descalibra el sello temporal. El fix nuevo lo dejó **consistente con el patrón existente** a
+  propósito; normalizar los 3 juntos a `.toUtc()` cuando se ataque.
 - **Resend en sandbox** — limita el flow email a "self-invite del owner". Por eso el modo
   no-email es el default operacional. Cuando Rubén compre dominio, verificarlo en Resend
   y el switch ON del crear-tenant funciona naturalmente.

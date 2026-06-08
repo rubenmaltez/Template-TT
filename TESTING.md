@@ -96,6 +96,25 @@ CLAUDE.md):
   (snapshot); un técnico NO puede entrar a `/admin/incidentes` (rebota) ni ve el incidente
   en su ticket. *Si falla:* el corte general lista TODOS los clientes activos; un corte por
   puerto, sólo los de ese puerto.
+- **Cancelar contrato = saldo a 0 (admin, detalle de contrato):** requiere correr las
+  migraciones `0111` + `0112`. En `/admin/contratos/:id` (o `/contratos/:id`), tocá el badge
+  de estado → **Cancelado**.
+  - *Contrato con cuotas pendientes (sin pagar):* tras cancelar → **desaparecen** de "por
+    cobrar" (lista del cobrador, `/admin/cuotas`, dashboard, mapa); el resumen muestra **"Total
+    recaudado" / Pendiente 0**; en la lista de cuotas del contrato quedan **anuladas** (tachadas).
+  - *Contrato con una cuota PARCIAL (cobrá parte de una cuota primero):* tras cancelar → el
+    pago **sigue contado** en Recaudado (resumen + `/admin/pagos`); la cuota pasa a **pagada**
+    (saldo 0) y desaparece de "por cobrar"; en el **Historial** de la cuota aparece un descuento
+    "Saldo cancelado por baja del contrato". Probá **offline** (modo avión): el saldo da 0 **al
+    instante** (no espera el sync).
+  - *Contrato en mora:* tras cancelar → la **mora se limpia** (panel `/admin/notificaciones` +
+    badge del cobrador), tras el sync.
+  - *B2 terminal:* en un contrato ya **cancelado**, el badge de estado **no** abre dropdown (no
+    se reactiva). En el **form de edición** del contrato **no** hay switch de estado.
+  - *A3 impersonación:* como super_admin impersonando un tenant, el dropdown de estado **no**
+    ofrece "Cancelado"; si llega a dispararse, sale un mensaje de bloqueo.
+  - *Si falla:* correr `supabase/tests/invariantes_dinero.sql` → toda fila `violaciones = 0`. Un
+    saldo ≠ 0 en alguna pantalla para el contrato cancelado, o un recaudado que cambió, es bug.
 - **⟨agregar acá los features nuevos a medida que se entregan⟩**
 
 ---
