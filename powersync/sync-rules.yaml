@@ -217,6 +217,12 @@ bucket_definitions:
 
       - SELECT * FROM audit_log         WHERE tenant_id = bucket.tenant_id
 
+      # Inventario: admin_cobranza NO entra a /admin/inventario (el router lo
+      # bloquea con `soloAdmin`), PERO sí necesita inv_seriales/inv_movimientos
+      # + su catálogo para nombrarlos, porque el historial de EQUIPOS del cliente
+      # (HistorialClienteWidget une los seriales instalados) sí se le muestra al
+      # abrir un cliente. Por eso se sincroniza — es INTENCIONAL, no un leak (la
+      # RLS scopea por tenant). B7 del audit: NO removerlo (rompería esa vista).
       - SELECT * FROM inv_categorias    WHERE tenant_id = bucket.tenant_id
       - SELECT * FROM inv_proveedores   WHERE tenant_id = bucket.tenant_id
       - SELECT * FROM inv_productos      WHERE tenant_id = bucket.tenant_id

@@ -10,6 +10,7 @@ import '../../../data/utils/formatters.dart';
 import '../../../data/utils/ticket_sla.dart';
 import '../../../powersync/db.dart' as ps;
 import '../../shared/widgets/empty_state.dart';
+import '../../shared/widgets/historial_cambios_widget.dart';
 import '../../shared/widgets/ticket_sla_countdown.dart';
 import 'ticket_adjuntos_widget.dart';
 import 'ticket_materiales_widget.dart';
@@ -416,6 +417,44 @@ class _TicketDetailScreenState extends ConsumerState<TicketDetailScreen> {
     );
   }
 
+  void _showHistorialCambios(BuildContext context) {
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (_) => DraggableScrollableSheet(
+        expand: false,
+        initialChildSize: 0.6,
+        maxChildSize: 0.9,
+        builder: (context, scrollCtrl) => Column(
+          children: [
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: Row(
+                children: [
+                  const Icon(Icons.history),
+                  const SizedBox(width: 8),
+                  Text('Historial de cambios del ticket',
+                      style: Theme.of(context).textTheme.titleMedium),
+                ],
+              ),
+            ),
+            const Divider(),
+            Expanded(
+              child: SingleChildScrollView(
+                controller: scrollCtrl,
+                child: HistorialCambiosWidget(
+                  tabla: 'tickets',
+                  registroId: widget.ticketId,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _timeline(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     return StreamBuilder<List<Map<String, dynamic>>>(
@@ -431,9 +470,25 @@ class _TicketDetailScreenState extends ConsumerState<TicketDetailScreen> {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               Padding(
-                padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
-                child: Text('Bitácora',
-                    style: Theme.of(context).textTheme.titleMedium),
+                padding: const EdgeInsets.fromLTRB(16, 8, 8, 0),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text('Bitácora',
+                          style: Theme.of(context).textTheme.titleMedium),
+                    ),
+                    // M9: la bitácora (ticket_eventos) es el log de dominio; este
+                    // botón abre el change-log de campo (audit_log) del ticket.
+                    // El técnico no sincroniza audit_log → el sheet saldría vacío,
+                    // así que solo se lo mostramos a admin/super.
+                    if (!widget.tecnicoMode)
+                      IconButton(
+                        icon: const Icon(Icons.history, size: 20),
+                        tooltip: 'Historial de cambios',
+                        onPressed: () => _showHistorialCambios(context),
+                      ),
+                  ],
+                ),
               ),
               ...rows.map((e) {
                 final tipo = e['tipo_evento'] as String? ?? '';
