@@ -711,7 +711,7 @@ class _NodoDialogState extends State<_NodoDialog> {
               notas: notas.isEmpty ? null : notas,
               lat: double.tryParse(_lat.text.trim()),
               lng: double.tryParse(_lng.text.trim()),
-            ) as _NodoData);
+            ));
           },
           child: const Text('Guardar'),
         ),

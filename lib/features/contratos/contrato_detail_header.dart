@@ -301,7 +301,7 @@ class _ContratoResumen extends ConsumerWidget {
             : ((rows.first['recaudado'] as num?) ?? 0).toDouble();
         final pendiente = soloRecaudado
             ? 0.0
-            : (totalContrato! - recaudado).clamp(0, double.infinity).toDouble();
+            : (totalContrato - recaudado).clamp(0, double.infinity).toDouble();
 
         return Container(
           padding: const EdgeInsets.all(12),
@@ -323,7 +323,7 @@ class _ContratoResumen extends ConsumerWidget {
                 Expanded(
                   child: _ResumenItem(
                     label: 'Total contrato',
-                    value: Fmt.cordobas(totalContrato!),
+                    value: Fmt.cordobas(totalContrato),
                     color: scheme.onSurface,
                   ),
                 ),

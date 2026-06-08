@@ -67,7 +67,6 @@ class _ClienteDetailScreenState extends ConsumerState<ClienteDetailScreen> {
     final clienteAsync = ref.watch(clienteByIdProvider(widget.clienteId));
     final cobrador = ref.watch(cobradorActualProvider).valueOrNull;
     final impersonando = ref.watch(estaImpersonandoProvider);
-    final esAdmin = cobrador?.tieneAccesoAdmin ?? false;
     // admin_cobranza también gestiona clientes/contratos (editar cliente,
     // crear/editar contratos, asignar cobrador) — IGUAL que admin. Lo único
     // que NO puede es Settings/Personal/Planes/Geografía/Auditoría (eso lo

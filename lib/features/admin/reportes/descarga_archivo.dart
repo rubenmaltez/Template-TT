@@ -2,7 +2,8 @@ import 'dart:io' show File, Platform;
 import 'dart:typed_data';
 
 import 'package:file_picker/file_picker.dart';
-import 'package:flutter/material.dart'; // incluye kIsWeb (re-export de foundation)
+import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/material.dart';
 
 /// Guarda [bytes] en disco ofreciendo el diálogo nativo de guardado, para que
 /// TODOS los exports de reportes (Excel y PDF) se comporten igual:
