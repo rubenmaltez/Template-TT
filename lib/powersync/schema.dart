@@ -124,6 +124,7 @@ const schema = Schema([
     Column.text('unidad'),
     Column.integer('maneja_decimal'),
     Column.real('costo_promedio'),
+    Column.real('stock_minimo'),
     Column.integer('activo'),
     Column.text('created_at'),
   ], indexes: [
@@ -195,6 +196,7 @@ const schema = Schema([
     Column.text('color'),
     Column.integer('orden'),
     Column.integer('activo'),
+    Column.text('checklist_template'),
     Column.text('created_at'),
   ], indexes: [
     Index('by_tenant', [IndexedColumn('tenant_id')]),
@@ -217,6 +219,7 @@ const schema = Schema([
     Column.text('cerrado_en'),
     Column.integer('segundos_pausado'),
     Column.text('en_espera_desde'),
+    Column.text('checklist'),
     Column.text('created_at'),
     Column.text('ocurrido_en'),
   ], indexes: [
