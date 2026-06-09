@@ -10,7 +10,7 @@ import '../../powersync/db.dart' as ps;
 import '../shared/widgets/dropdown_filtro.dart';
 import '../shared/widgets/empty_state.dart';
 
-enum _Filtro { todas, mora, gracia, parciales, hoy, proxima }
+enum _Filtro { todas, mora, gracia, parciales, hoy, proxima, verTodo }
 
 /// Pantalla de Cobros. La usa el cobrador (móvil-first, su vista de trabajo)
 /// y el admin en modo monitoreo (`adminMode: true`).
@@ -239,6 +239,12 @@ class _CuotasListScreenState extends ConsumerState<CuotasListScreen>
     if (!mostrarParcial && _filtro == _Filtro.parciales) {
       _filtro = _Filtro.todas;
     }
+    // "Ver todo" (sin límite de rango) es exclusivo del admin. Si el cobrador
+    // quedara con ese filtro (no debería: el chip no se le muestra), vuelve a
+    // 'todas'.
+    if (!widget.adminMode && _filtro == _Filtro.verTodo) {
+      _filtro = _Filtro.todas;
+    }
 
     return Stack(
       children: [
@@ -273,6 +279,7 @@ class _CuotasListScreenState extends ConsumerState<CuotasListScreen>
                   _TabPorCobrar(
                     filtro: _filtro,
                     mostrarParcial: mostrarParcial,
+                    adminMode: widget.adminMode,
                     diasGracia: diasGracia,
                     diasVisibles: diasVisibles,
                     multiSelect: multiCuotaEnabled,
@@ -332,6 +339,7 @@ class _TabPorCobrar extends StatelessWidget {
   const _TabPorCobrar({
     required this.filtro,
     required this.mostrarParcial,
+    required this.adminMode,
     required this.diasGracia,
     required this.diasVisibles,
     required this.multiSelect,
@@ -344,6 +352,7 @@ class _TabPorCobrar extends StatelessWidget {
   });
   final _Filtro filtro;
   final bool mostrarParcial;
+  final bool adminMode;
   final int diasGracia;
   final int diasVisibles;
   final bool multiSelect;
@@ -365,7 +374,8 @@ class _TabPorCobrar extends StatelessWidget {
           child: Row(
             children: [
               for (final f in _Filtro.values)
-                if (mostrarParcial || f != _Filtro.parciales) ...[
+                if ((mostrarParcial || f != _Filtro.parciales) &&
+                    (adminMode || f != _Filtro.verTodo)) ...[
                   FilterChip(
                     label: Text(_label(f)),
                     selected: filtro == f,
@@ -400,6 +410,7 @@ class _TabPorCobrar extends StatelessWidget {
         _Filtro.parciales => 'Parciales',
         _Filtro.hoy => 'Vencen hoy',
         _Filtro.proxima => 'Próximas',
+        _Filtro.verTodo => 'Ver todo',
       };
 }
 
@@ -492,6 +503,9 @@ class _CuotasListState extends State<_CuotasList> {
               "AND date(cu.fecha_vencimiento) <= date('now', '-6 hours', '+${widget.diasVisibles} days')",
           <Object?>[],
         ),
+      // Ver todo (solo admin): TODO lo pendiente, SIN el límite de rango — la
+      // forma del admin de ver las cuotas fuera de rango que el cobrador no ve.
+      _Filtro.verTodo => ("AND cu.estado IN ('pendiente','parcial')", <Object?>[]),
     };
 
     final orderBy = widget.filtro == _Filtro.mora
