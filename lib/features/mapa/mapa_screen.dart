@@ -3,10 +3,13 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:latlong2/latlong.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../data/providers/cobrador_provider.dart';
 import '../../data/repositories/settings_repo.dart';
 import '../../data/services/map_tile_cache.dart';
+import '../../data/utils/formatters.dart';
 import '../../powersync/db.dart' as ps;
 import '../shared/widgets/dropdown_filtro.dart';
 import '../shared/widgets/empty_state.dart';
@@ -97,6 +100,7 @@ class _MapaScreenState extends ConsumerState<MapaScreen> {
         SELECT c.id, c.nombre, c.latitud, c.longitud,
                c.cobrador_id, c.comunidad_id, c.puerto_id,
                c.cedula, c.telefono, c.codigo,
+               c.direccion, c.direccion_referencia,
                (SELECT GROUP_CONCAT(ct.codigo, ' ')
                   FROM contratos ct WHERE ct.cliente_id = c.id) AS contrato_codigos,
                co.nombre AS comunidad,
@@ -125,7 +129,8 @@ class _MapaScreenState extends ConsumerState<MapaScreen> {
            AND c.longitud IS NOT NULL
          GROUP BY c.id, c.nombre, c.latitud, c.longitud,
                   c.cobrador_id, c.comunidad_id, c.puerto_id,
-                  c.cedula, c.telefono, c.codigo, co.nombre,
+                  c.cedula, c.telefono, c.codigo,
+                  c.direccion, c.direccion_referencia, co.nombre,
                   n.id, n.nombre, cob.nombre
         ''',
         // diasGracia x2: vencidas + en_gracia, en orden de aparición.
@@ -437,72 +442,323 @@ class _MapaScreenState extends ConsumerState<MapaScreen> {
     );
   }
 
-  void _mostrarBottomSheet(BuildContext context, Map<String, dynamic> r, Color color) {
-    final vencidas = (r['vencidas'] as int? ?? 0);
-    final enGracia = (r['en_gracia'] as int? ?? 0);
-    final pendientes = (r['pendientes'] as int? ?? 0);
-    final contratos = (r['contratos_activos'] as int? ?? 0);
-    // El técnico no ve la cobranza ni "Ver cliente": su SQLite no tiene cuotas
-    // (los chips darían 0/"Al día" engañoso) y /clientes/:id lo rebota a /tecnico
-    // (botón muerto) — B8 del audit.
+  void _mostrarBottomSheet(
+      BuildContext context, Map<String, dynamic> r, Color color) {
+    // El técnico no ve cobranza ni "Pagar"/"Ver cliente" (su SQLite no tiene
+    // cuotas y /clientes/:id lo rebota) — sí ve contacto + ruta. B8 del audit.
     final esTecnico =
         ref.read(cobradorActualProvider).valueOrNull?.esTecnico ?? false;
-    const ambar = Color(0xFFB45309);
     showModalBottomSheet(
       context: context,
       showDragHandle: true,
+      isScrollControlled: true,
+      builder: (_) => _ClientePinSheet(row: r, esTecnico: esTecnico),
+    );
+  }
+}
+
+/// Cuota pendiente más vieja de un contrato (para el botón "Pagar" del mapa).
+typedef _ContratoCuota = ({
+  String contratoId,
+  String? planNombre,
+  int? diaPago,
+  String cuotaId,
+  String periodo,
+  double saldo,
+});
+
+/// Popup del pin de cliente en el mapa: foto de la casa + contacto + acciones
+/// (llamar, ruta, ver cliente, pagar la cuota más vieja). Acceso rápido de campo.
+class _ClientePinSheet extends ConsumerStatefulWidget {
+  const _ClientePinSheet({required this.row, required this.esTecnico});
+  final Map<String, dynamic> row;
+  final bool esTecnico;
+
+  @override
+  ConsumerState<_ClientePinSheet> createState() => _ClientePinSheetState();
+}
+
+class _ClientePinSheetState extends ConsumerState<_ClientePinSheet> {
+  late final Future<String?> _fotoUrl;
+  late final Future<List<_ContratoCuota>> _contratos;
+
+  String get _clienteId => widget.row['id'] as String;
+
+  @override
+  void initState() {
+    super.initState();
+    _fotoUrl = _cargarFoto();
+    _contratos = widget.esTecnico
+        ? Future.value(const <_ContratoCuota>[])
+        : _cargarContratosConCuota();
+  }
+
+  /// URL firmada de la PRIMERA foto del cliente (la galería que ya existe).
+  Future<String?> _cargarFoto() async {
+    try {
+      final rows = await ps.db.getAll(
+        'SELECT storage_path FROM fotos_cliente WHERE cliente_id = ? '
+        'ORDER BY created_at ASC LIMIT 1',
+        [_clienteId],
+      );
+      if (rows.isEmpty) return null;
+      final path = rows.first['storage_path'] as String;
+      return await Supabase.instance.client.storage
+          .from('fotos-clientes')
+          .createSignedUrl(path, 86400);
+    } catch (_) {
+      return null; // sin foto / sin red: la UI cae a un placeholder
+    }
+  }
+
+  /// Un row por contrato activo que tenga cuota pendiente, con su cuota MÁS
+  /// VIEJA (la que se cobraría). Ordenados por antigüedad del contrato.
+  Future<List<_ContratoCuota>> _cargarContratosConCuota() async {
+    final rows = await ps.db.getAll(
+      '''
+      SELECT ct.id AS contrato_id, p.nombre AS plan_nombre, ct.dia_pago,
+             cu.id AS cuota_id, cu.periodo,
+             (cu.monto + COALESCE(cu.cargos_neto, 0) - cu.monto_pagado) AS saldo
+        FROM contratos ct
+        LEFT JOIN planes p ON p.id = ct.plan_id
+        JOIN cuotas cu ON cu.id = (
+             SELECT cu2.id FROM cuotas cu2
+              WHERE cu2.contrato_id = ct.id
+                AND cu2.estado IN ('pendiente','parcial')
+              ORDER BY cu2.fecha_vencimiento ASC, cu2.periodo ASC
+              LIMIT 1)
+       WHERE ct.cliente_id = ?
+         AND COALESCE(ct.estado, 'activo') = 'activo'
+       ORDER BY ct.fecha_inicio ASC
+      ''',
+      [_clienteId],
+    );
+    return rows
+        .map((r) => (
+              contratoId: r['contrato_id'] as String,
+              planNombre: r['plan_nombre'] as String?,
+              diaPago: (r['dia_pago'] as num?)?.toInt(),
+              cuotaId: r['cuota_id'] as String,
+              periodo: r['periodo'] as String,
+              saldo: ((r['saldo'] as num?) ?? 0).toDouble(),
+            ))
+        .toList();
+  }
+
+  Future<void> _llamar(String tel) async {
+    final uri = Uri(scheme: 'tel', path: tel.replaceAll(RegExp(r'[^0-9+]'), ''));
+    if (await canLaunchUrl(uri)) await launchUrl(uri);
+  }
+
+  Future<void> _ruta() async {
+    final lat = (widget.row['latitud'] as num).toDouble();
+    final lng = (widget.row['longitud'] as num).toDouble();
+    final uri = Uri.parse(
+        'https://www.google.com/maps/dir/?api=1&destination=$lat,$lng');
+    if (await canLaunchUrl(uri)) {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    }
+  }
+
+  void _irACobro(String cuotaId) {
+    Navigator.pop(context); // cierra el sheet
+    context.push('/cobro/$cuotaId');
+  }
+
+  /// Botón "Pagar": 1 contrato → directo a la cuota; 2+ → selector de servicio.
+  Future<void> _pagar(List<_ContratoCuota> contratos) async {
+    if (contratos.length == 1) {
+      _irACobro(contratos.first.cuotaId);
+      return;
+    }
+    final elegido = await showModalBottomSheet<_ContratoCuota>(
+      context: context,
+      showDragHandle: true,
       builder: (_) => SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(r['nombre'] as String,
-                  style: Theme.of(context).textTheme.titleMedium),
-              if (!esTecnico) const SizedBox(height: 12),
-              if (!esTecnico)
-                Wrap(
-                  spacing: 8,
-                runSpacing: 4,
-                children: [
-                  if (contratos >= 2)
-                    Chip(
-                      label: Text('$contratos contratos'),
-                      avatar: Icon(Icons.description_outlined,
-                          size: 16, color: Theme.of(context).colorScheme.primary),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Padding(
+              padding: EdgeInsets.fromLTRB(16, 4, 16, 8),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: Text('¿Qué servicio cobrás?',
+                    style: TextStyle(fontWeight: FontWeight.w600)),
+              ),
+            ),
+            for (final c in contratos)
+              ListTile(
+                leading: const Icon(Icons.wifi),
+                title: Text(c.planNombre ?? 'Servicio'),
+                subtitle: Text(
+                    '${Fmt.mesServicioLabel(DateTime.parse(c.periodo), c.diaPago)} · ${Fmt.cordobas(c.saldo)}'),
+                onTap: () => Navigator.pop(context, c),
+              ),
+          ],
+        ),
+      ),
+    );
+    if (elegido != null && mounted) _irACobro(elegido.cuotaId);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final r = widget.row;
+    final nombre = r['nombre'] as String;
+    final tel = (r['telefono'] as String?)?.trim();
+    final direccion = (r['direccion'] as String?)?.trim();
+    final referencia = (r['direccion_referencia'] as String?)?.trim();
+
+    return SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 0, 16, 20),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            // Foto de la casa (primera de la galería).
+            ClipRRect(
+              borderRadius: BorderRadius.circular(12),
+              child: AspectRatio(
+                aspectRatio: 16 / 9,
+                child: FutureBuilder<String?>(
+                  future: _fotoUrl,
+                  builder: (_, snap) {
+                    if (snap.connectionState != ConnectionState.done) {
+                      return Container(
+                        color: scheme.surfaceContainerHighest,
+                        child: const Center(
+                            child: SizedBox(
+                                width: 22,
+                                height: 22,
+                                child: CircularProgressIndicator(
+                                    strokeWidth: 2))),
+                      );
+                    }
+                    final url = snap.data;
+                    if (url == null) {
+                      return Container(
+                        color: scheme.surfaceContainerHighest,
+                        child: Icon(Icons.home_outlined,
+                            size: 48, color: scheme.outline),
+                      );
+                    }
+                    return Image.network(url, fit: BoxFit.cover,
+                        errorBuilder: (_, __, ___) {
+                      return Container(
+                        color: scheme.surfaceContainerHighest,
+                        child: Icon(Icons.broken_image_outlined,
+                            size: 40, color: scheme.outline),
+                      );
+                    });
+                  },
+                ),
+              ),
+            ),
+            const SizedBox(height: 12),
+            Text(nombre, style: Theme.of(context).textTheme.titleMedium),
+            // Teléfono con botón de llamar.
+            if (tel != null && tel.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(top: 6),
+                child: Row(
+                  children: [
+                    Icon(Icons.phone, size: 16, color: scheme.outline),
+                    const SizedBox(width: 8),
+                    Expanded(child: Text(tel)),
+                    TextButton.icon(
+                      icon: const Icon(Icons.call, size: 18),
+                      label: const Text('Llamar'),
+                      onPressed: () => _llamar(tel),
                     ),
-                  if (vencidas > 0)
-                    Chip(
-                      label: Text('$vencidas vencidas'),
-                      avatar: Icon(Icons.warning,
-                          size: 16, color: Theme.of(context).colorScheme.error),
+                  ],
+                ),
+              ),
+            if (direccion != null && direccion.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(top: 4),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Icon(Icons.location_on_outlined,
+                        size: 16, color: scheme.outline),
+                    const SizedBox(width: 8),
+                    Expanded(child: Text(direccion)),
+                  ],
+                ),
+              ),
+            if (referencia != null && referencia.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(top: 4),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Icon(Icons.signpost_outlined,
+                        size: 16, color: scheme.outline),
+                    const SizedBox(width: 8),
+                    Expanded(
+                        child: Text(referencia,
+                            style: TextStyle(color: scheme.outline))),
+                  ],
+                ),
+              ),
+            const SizedBox(height: 14),
+            // Acciones secundarias: Ruta + Ver cliente.
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton.icon(
+                    icon: const Icon(Icons.directions, size: 18),
+                    label: const Text('Ruta'),
+                    onPressed: _ruta,
+                  ),
+                ),
+                if (!widget.esTecnico) ...[
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      icon: const Icon(Icons.person_outline, size: 18),
+                      label: const Text('Ver cliente'),
+                      onPressed: () {
+                        Navigator.pop(context);
+                        context.push('/clientes/$_clienteId');
+                      },
                     ),
-                  if (enGracia > 0)
-                    Chip(
-                      label: Text('$enGracia en gracia'),
-                      avatar: const Icon(Icons.hourglass_bottom,
-                          size: 16, color: ambar),
-                    ),
-                  if (vencidas == 0 && enGracia == 0 && pendientes > 0)
-                    Chip(label: Text('$pendientes pendientes')),
-                  if (vencidas == 0 && enGracia == 0 && pendientes == 0)
-                    const Chip(label: Text('Al día'),
-                        avatar: Icon(Icons.check, size: 16)),
+                  ),
                 ],
+              ],
+            ),
+            // Botón principal: Pagar la cuota más vieja.
+            if (!widget.esTecnico)
+              Padding(
+                padding: const EdgeInsets.only(top: 8),
+                child: FutureBuilder<List<_ContratoCuota>>(
+                  future: _contratos,
+                  builder: (_, snap) {
+                    if (snap.connectionState != ConnectionState.done) {
+                      return const FilledButton(
+                          onPressed: null, child: Text('Cargando cuotas…'));
+                    }
+                    final cuotas = snap.data ?? const [];
+                    if (cuotas.isEmpty) {
+                      return const FilledButton(
+                          onPressed: null,
+                          child: Text('Sin cuotas pendientes'));
+                    }
+                    final unica = cuotas.length == 1;
+                    final label = unica
+                        ? 'Pagar ${Fmt.mesServicioLabel(DateTime.parse(cuotas.first.periodo), cuotas.first.diaPago)} · ${Fmt.cordobas(cuotas.first.saldo)}'
+                        : 'Pagar cuota (${cuotas.length} servicios)';
+                    return FilledButton.icon(
+                      icon: const Icon(Icons.payments),
+                      label: Text(label),
+                      onPressed: () => _pagar(cuotas),
+                    );
+                  },
+                ),
               ),
-              if (!esTecnico) const SizedBox(height: 16),
-              if (!esTecnico)
-                FilledButton.icon(
-                  icon: const Icon(Icons.person),
-                label: const Text('Ver cliente'),
-                onPressed: () {
-                  Navigator.pop(context);
-                  context.push('/clientes/${r['id']}');
-                },
-              ),
-            ],
-          ),
+          ],
         ),
       ),
     );
