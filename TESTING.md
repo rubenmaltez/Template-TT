@@ -115,6 +115,31 @@ CLAUDE.md):
     ofrece "Cancelado"; si llega a dispararse, sale un mensaje de bloqueo.
   - *Si falla:* correr `supabase/tests/invariantes_dinero.sql` → toda fila `violaciones = 0`. Un
     saldo ≠ 0 en alguna pantalla para el contrato cancelado, o un recaudado que cambió, es bug.
+- **Colores configurables de estados de cuota (admin, Ajustes → Cobranza):** abrir
+  **Ajustes → Cobranza → "Colores de estados de cuota"** → tocar una fila (ej. "En mora") →
+  elegir un color de la paleta. *Ver:* el color cambia **en vivo** en el **mapa** (pin), en la
+  **lista de cobros** (badge), en **cuotas admin**, en el **detalle de contrato** y en la
+  **lista de clientes**; reabrir Ajustes → el swatch quedó con el color elegido. *Si falla:* si
+  no se refleja, fijate que salió el snackbar "Color de X actualizado" (es reactivo, no requiere
+  reiniciar). No hay migración: en un tenant sin la clave aplican los defaults 🔴 mora /
+  🟠 gracia / 🔵 vence-hoy / 🟣 próxima.
+- **Mapa — 6 estados + gate por rango (cobrador vs admin):** abrir el mapa. *Ver (cualquiera):*
+  pines coloreados por la cuota MÁS urgente del cliente — 🔴 mora, 🟠 gracia, 🔵 vence hoy,
+  🟣 próxima (vence dentro de `cobranza.dias_cuotas_visibles`); chips **Pendientes / En mora /
+  En gracia / Vencen hoy / Próximas** con su puntito de color. *Ver (cobrador):* NO aparecen los
+  clientes sin deuda ni los de cuota fuera de rango. *Ver (admin):* aparece además el chip
+  **"Ver todo"** → trae los de fuera de rango (morado atenuado) y sin deuda. *Si falla:* si ves
+  pines verdes o TODOS los clientes por defecto, no recompiló (q + flutter run desde cero).
+- **Lista de cobros — "Próximas" + "Ver todo" (admin):** en "Por cobrar", *ver:* chip
+  **"Próximas"** (vencen después de hoy, dentro del rango) y badges "por vencer" en **morado**.
+  Como admin en **`/admin/cobros`** aparece además **"Ver todo"** → TODO lo pendiente sin el
+  límite de rango (las cuotas lejanas que el cobrador no ve). *Si falla:* el cobrador NO debe ver
+  el chip "Ver todo".
+- **Banner "sin conexión" sin parpadeo:** usar la app con red estable, navegar entre pantallas,
+  cambiar de tenant (super_admin). *Ver:* el banner rojo "Sin conexión" **no parpadea**. Para el
+  real: **modo avión** ~5s → aparece a los ~3s; **sacar modo avión** → desaparece sin flickear.
+  *Si falla:* si parpadea al navegar o al cambiar de DB/tenant, el guard del estado de carga no
+  está activo.
 - **⟨agregar acá los features nuevos a medida que se entregan⟩**
 
 ---
