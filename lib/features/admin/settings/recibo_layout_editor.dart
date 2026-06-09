@@ -42,17 +42,17 @@ class ReciboLayoutEditor extends ConsumerWidget {
   Future<void> _resetLayout(BuildContext context, WidgetRef ref) async {
     final ok = await showDialog<bool>(
       context: context,
-      builder: (_) => AlertDialog(
+      builder: (ctx) => AlertDialog(
         title: const Text('Restaurar layout'),
         content: const Text(
             'Vuelve el recibo al orden y las zonas por defecto (incluye WhatsApp '
             'en el encabezado). ¿Continuar?'),
         actions: [
           TextButton(
-              onPressed: () => Navigator.pop(context, false),
+              onPressed: () => Navigator.pop(ctx, false),
               child: const Text('Cancelar')),
           FilledButton(
-              onPressed: () => Navigator.pop(context, true),
+              onPressed: () => Navigator.pop(ctx, true),
               child: const Text('Restaurar')),
         ],
       ),
