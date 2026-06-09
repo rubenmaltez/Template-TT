@@ -9,6 +9,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../data/providers/cobrador_provider.dart';
 import '../../data/repositories/settings_repo.dart';
 import '../../data/services/map_tile_cache.dart';
+import '../../data/utils/cuota_estado_visual.dart';
 import '../../data/utils/formatters.dart';
 import '../../powersync/db.dart' as ps;
 import '../shared/widgets/dropdown_filtro.dart';
@@ -23,26 +24,28 @@ class MapaScreen extends ConsumerStatefulWidget {
   ConsumerState<MapaScreen> createState() => _MapaScreenState();
 }
 
-/// Estado de cobranza derivado de los counts de cuotas de un cliente.
-/// Es la ÚNICA fuente de verdad de la derivación: la usan tanto el color/
-/// ícono del marcador como el filtro de chips, para que los criterios
-/// coincidan exactamente (precedencia: mora > gracia > pendiente > al día).
-enum _EstadoCliente { mora, gracia, pendiente, alDia }
-
 /// Opción seleccionada en la fila de chips de filtro sobre el mapa.
-/// `todos` muestra todo; el resto matchea contra [_EstadoCliente].
-enum _FiltroEstado { todos, mora, gracia, pendiente, alDia }
+/// `pendientes` = superconjunto cobrable en rango (mora+gracia+hoy+próxima);
+/// `verTodo` (solo admin) suma fuera-de-rango y sin-deuda; el resto matchea
+/// contra un único [CuotaEstadoVisual].
+enum _FiltroEstado { pendientes, mora, gracia, hoy, proxima, verTodo }
 
-/// Deriva el estado de un cliente a partir de su row del stream, con la
-/// MISMA precedencia que usa el color/ícono del marcador.
-_EstadoCliente _estadoDe(Map<String, dynamic> r) {
+/// Deriva el estado VISUAL de un cliente a partir de los counts de cuotas de su
+/// row, con la precedencia mora > gracia > hoy > próxima > fuera de rango > sin
+/// deuda. La usan el color/ícono del marcador y el filtro de chips, para que
+/// nunca diverjan.
+CuotaEstadoVisual _estadoDe(Map<String, dynamic> r) {
   final vencidas = (r['vencidas'] as int? ?? 0);
   final enGracia = (r['en_gracia'] as int? ?? 0);
-  final pendientes = (r['pendientes'] as int? ?? 0);
-  if (vencidas > 0) return _EstadoCliente.mora;
-  if (enGracia > 0) return _EstadoCliente.gracia;
-  if (pendientes > 0) return _EstadoCliente.pendiente;
-  return _EstadoCliente.alDia;
+  final venceHoy = (r['vence_hoy'] as int? ?? 0);
+  final proximas = (r['proximas'] as int? ?? 0);
+  final fueraRango = (r['fuera_rango'] as int? ?? 0);
+  if (vencidas > 0) return CuotaEstadoVisual.mora;
+  if (enGracia > 0) return CuotaEstadoVisual.gracia;
+  if (venceHoy > 0) return CuotaEstadoVisual.hoy;
+  if (proximas > 0) return CuotaEstadoVisual.proxima;
+  if (fueraRango > 0) return CuotaEstadoVisual.fueraDeRango;
+  return CuotaEstadoVisual.sinDeuda;
 }
 
 class _MapaScreenState extends ConsumerState<MapaScreen> {
@@ -51,9 +54,10 @@ class _MapaScreenState extends ConsumerState<MapaScreen> {
   // Se recrea cuando diasGracia cambia.
   late Stream<List<Map<String, dynamic>>> _clientesStream;
   int? _lastDiasGracia;
+  int? _lastDiasVisibles;
 
-  // Estado del filtro de chips (default: todos los marcadores).
-  _FiltroEstado _filtro = _FiltroEstado.todos;
+  // Estado del filtro de chips (default: lo cobrable dentro del rango).
+  _FiltroEstado _filtro = _FiltroEstado.pendientes;
   // Filtros SOLO para admin (el cobrador ve solo sus propios clientes, no
   // tiene sentido filtrar por cobrador/zona). null = todos / todas.
   String? _cobradorId;
@@ -94,7 +98,8 @@ class _MapaScreenState extends ConsumerState<MapaScreen> {
     if (r != null) _seleccionarCliente(r);
   }
 
-  Stream<List<Map<String, dynamic>>> _buildStream(int diasGracia) =>
+  Stream<List<Map<String, dynamic>>> _buildStream(
+          int diasGracia, int diasVisibles) =>
       ps.db.watch(
         '''
         SELECT c.id, c.nombre, c.latitud, c.longitud,
@@ -106,7 +111,6 @@ class _MapaScreenState extends ConsumerState<MapaScreen> {
                co.nombre AS comunidad,
                n.id AS nodo_id, n.nombre AS nodo,
                cob.nombre AS cobrador_nombre,
-               COALESCE(SUM(CASE WHEN cu.estado IN ('pendiente','parcial') THEN 1 ELSE 0 END), 0) AS pendientes,
                COALESCE(SUM(CASE WHEN cu.estado IN ('pendiente','parcial')
                    AND date(cu.fecha_vencimiento, '+' || ? || ' days') < date('now', '-6 hours')
                  THEN 1 ELSE 0 END), 0) AS vencidas,
@@ -114,6 +118,16 @@ class _MapaScreenState extends ConsumerState<MapaScreen> {
                    AND date(cu.fecha_vencimiento) < date('now', '-6 hours')
                    AND date(cu.fecha_vencimiento, '+' || ? || ' days') >= date('now', '-6 hours')
                  THEN 1 ELSE 0 END), 0) AS en_gracia,
+               COALESCE(SUM(CASE WHEN cu.estado IN ('pendiente','parcial')
+                   AND date(cu.fecha_vencimiento) = date('now', '-6 hours')
+                 THEN 1 ELSE 0 END), 0) AS vence_hoy,
+               COALESCE(SUM(CASE WHEN cu.estado IN ('pendiente','parcial')
+                   AND date(cu.fecha_vencimiento) > date('now', '-6 hours')
+                   AND date(cu.fecha_vencimiento) <= date('now', '-6 hours', '+' || ? || ' days')
+                 THEN 1 ELSE 0 END), 0) AS proximas,
+               COALESCE(SUM(CASE WHEN cu.estado IN ('pendiente','parcial')
+                   AND date(cu.fecha_vencimiento) > date('now', '-6 hours', '+' || ? || ' days')
+                 THEN 1 ELSE 0 END), 0) AS fuera_rango,
                (SELECT COUNT(*) FROM contratos ct
                  WHERE ct.cliente_id = c.id
                    AND COALESCE(ct.estado, 'activo') = 'activo') AS contratos_activos
@@ -133,8 +147,9 @@ class _MapaScreenState extends ConsumerState<MapaScreen> {
                   c.direccion, c.direccion_referencia, co.nombre,
                   n.id, n.nombre, cob.nombre
         ''',
-        // diasGracia x2: vencidas + en_gracia, en orden de aparición.
-        parameters: [diasGracia, diasGracia],
+        // Orden de los ?: diasGracia (vencidas), diasGracia (en_gracia),
+        // diasVisibles (proximas), diasVisibles (fuera_rango).
+        parameters: [diasGracia, diasGracia, diasVisibles, diasVisibles],
       );
 
   @override
@@ -147,7 +162,10 @@ class _MapaScreenState extends ConsumerState<MapaScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final diasGracia = ref.watch(appSettingsProvider).diasGracia;
+    final settings = ref.watch(appSettingsProvider);
+    final diasGracia = settings.diasGracia;
+    final diasVisibles = settings.diasCuotasVisibles;
+    final colores = settings.coloresEstados;
 
     // Vista admin: los roles de campo (cobrador, técnico) ven solo SUS clientes
     // → no necesitan los filtros por cobrador/zona. Los mostramos solo para los
@@ -156,18 +174,21 @@ class _MapaScreenState extends ConsumerState<MapaScreen> {
     final esAdminView =
         cobrador != null && !cobrador.esCobrador && !cobrador.esTecnico;
 
-    // Recrea el stream si diasGracia cambió (o en el primer build).
-    // Patrón setState explícito para que StreamBuilder reciba la nueva
-    // referencia de stream de forma predecible (audit HIGH fix).
-    if (_lastDiasGracia != diasGracia) {
+    // "Ver todo" (fuera de rango + sin deuda) es exclusivo del admin. Si un rol
+    // de campo quedara con ese filtro (no debería: el chip no se le muestra), lo
+    // devolvemos al default cobrable.
+    if (!esAdminView && _filtro == _FiltroEstado.verTodo) {
+      _filtro = _FiltroEstado.pendientes;
+    }
+
+    // Recrea el stream si diasGracia o diasVisibles cambiaron (o primer build).
+    // Asignación directa (no setState): ya estamos en build y StreamBuilder
+    // recibe la nueva referencia en este mismo frame (audit HIGH fix). Es el
+    // patrón correcto para providers de Riverpod que cambian entre builds.
+    if (_lastDiasGracia != diasGracia || _lastDiasVisibles != diasVisibles) {
       _lastDiasGracia = diasGracia;
-      // No usamos setState acá porque ya estamos en build y Flutter
-      // no permite setState durante build. La asignación directa es
-      // segura porque StreamBuilder recibe el nuevo stream reference
-      // en este mismo frame de build. Este es el patrón correcto para
-      // providers de Riverpod que cambian entre builds — no hay
-      // didUpdateWidget para Riverpod, solo ref.watch en build.
-      _clientesStream = _buildStream(diasGracia);
+      _lastDiasVisibles = diasVisibles;
+      _clientesStream = _buildStream(diasGracia, diasVisibles);
     }
 
     return StreamBuilder<List<Map<String, dynamic>>>(
@@ -232,16 +253,22 @@ class _MapaScreenState extends ConsumerState<MapaScreen> {
         final visibles = seleccionado != null
             ? [seleccionado]
             : rows.where((r) {
-                final pasaEstado = _filtro == _FiltroEstado.todos ||
-                    switch (_filtro) {
-                      _FiltroEstado.todos => true,
-                      _FiltroEstado.mora => _estadoDe(r) == _EstadoCliente.mora,
-                      _FiltroEstado.gracia =>
-                        _estadoDe(r) == _EstadoCliente.gracia,
-                      _FiltroEstado.pendiente =>
-                        _estadoDe(r) == _EstadoCliente.pendiente,
-                      _FiltroEstado.alDia => _estadoDe(r) == _EstadoCliente.alDia,
-                    };
+                final estado = _estadoDe(r);
+                final pasaEstado = switch (_filtro) {
+                  // Default: todo lo cobrable dentro del rango. Excluye fuera de
+                  // rango y sin deuda (el cobrador nunca los ve).
+                  _FiltroEstado.pendientes =>
+                    estado == CuotaEstadoVisual.mora ||
+                        estado == CuotaEstadoVisual.gracia ||
+                        estado == CuotaEstadoVisual.hoy ||
+                        estado == CuotaEstadoVisual.proxima,
+                  _FiltroEstado.mora => estado == CuotaEstadoVisual.mora,
+                  _FiltroEstado.gracia => estado == CuotaEstadoVisual.gracia,
+                  _FiltroEstado.hoy => estado == CuotaEstadoVisual.hoy,
+                  _FiltroEstado.proxima => estado == CuotaEstadoVisual.proxima,
+                  // Solo admin: incluye fuera de rango y sin deuda.
+                  _FiltroEstado.verTodo => true,
+                };
                 final pasaCobrador =
                     cobradorId == null || r['cobrador_id'] == cobradorId;
                 final pasaComunidad =
@@ -273,8 +300,9 @@ class _MapaScreenState extends ConsumerState<MapaScreen> {
                   tileProvider: MapTileCache.instance.tileProvider(),
                 ),
                 MarkerLayer(
-                  markers:
-                      visibles.map((r) => _markerFor(context, r)).toList(),
+                  markers: visibles
+                      .map((r) => _markerFor(context, r, colores))
+                      .toList(),
                 ),
                 _AttributionBanner(satelite: _satelite),
               ],
@@ -299,6 +327,8 @@ class _MapaScreenState extends ConsumerState<MapaScreen> {
                         children: [
                           _FiltroChips(
                             seleccionado: _filtro,
+                            colores: colores,
+                            esAdmin: esAdminView,
                             onChanged: (f) => setState(() => _filtro = f),
                           ),
                           if (esAdminView) ...[
@@ -387,32 +417,14 @@ class _MapaScreenState extends ConsumerState<MapaScreen> {
     return opciones;
   }
 
-  Marker _markerFor(BuildContext context, Map<String, dynamic> r) {
-    final scheme = Theme.of(context).colorScheme;
+  Marker _markerFor(
+      BuildContext context, Map<String, dynamic> r, ColoresEstados colores) {
     // Reusa la derivación de estado compartida con el filtro de chips, así
-    // color/ícono y filtro nunca divergen.
+    // color/ícono y filtro nunca divergen. El color sale de la paleta
+    // configurable del tenant (settings → cobranza.colores_estados).
     final estado = _estadoDe(r);
-    // En gracia → ámbar (entre el rojo de vencida y el normal de pendiente).
-    final Color color;
-    final IconData icono;
-    switch (estado) {
-      case _EstadoCliente.mora:
-        color = scheme.error;
-        icono = Icons.warning;
-        break;
-      case _EstadoCliente.gracia:
-        color = const Color(0xFFB45309);
-        icono = Icons.hourglass_bottom;
-        break;
-      case _EstadoCliente.pendiente:
-        color = scheme.primary;
-        icono = Icons.payments;
-        break;
-      case _EstadoCliente.alDia:
-        color = scheme.tertiary;
-        icono = Icons.check;
-        break;
-    }
+    final color = colores.color(estado);
+    final icono = _iconoDe(estado);
 
     return Marker(
       point: LatLng(
@@ -422,28 +434,33 @@ class _MapaScreenState extends ConsumerState<MapaScreen> {
       width: 40,
       height: 40,
       child: GestureDetector(
-        onTap: () => _mostrarBottomSheet(context, r, color),
+        onTap: () => _mostrarBottomSheet(context, r),
         child: Container(
           decoration: BoxDecoration(
             color: color,
             shape: BoxShape.circle,
             border: Border.all(color: Colors.white, width: 2),
             boxShadow: const [
-              BoxShadow(color: Colors.black26, blurRadius: 4, offset: Offset(0, 2)),
+              BoxShadow(
+                  color: Colors.black26, blurRadius: 4, offset: Offset(0, 2)),
             ],
           ),
-          child: Icon(
-            icono,
-            color: Colors.white,
-            size: 20,
-          ),
+          child: Icon(icono, color: Colors.white, size: 20),
         ),
       ),
     );
   }
 
-  void _mostrarBottomSheet(
-      BuildContext context, Map<String, dynamic> r, Color color) {
+  IconData _iconoDe(CuotaEstadoVisual estado) => switch (estado) {
+        CuotaEstadoVisual.mora => Icons.warning,
+        CuotaEstadoVisual.gracia => Icons.hourglass_bottom,
+        CuotaEstadoVisual.hoy => Icons.payments,
+        CuotaEstadoVisual.proxima => Icons.schedule,
+        CuotaEstadoVisual.fueraDeRango => Icons.more_time,
+        CuotaEstadoVisual.sinDeuda => Icons.check,
+      };
+
+  void _mostrarBottomSheet(BuildContext context, Map<String, dynamic> r) {
     // El técnico no ve cobranza ni "Pagar"/"Ver cliente" (su SQLite no tiene
     // cuotas y /clientes/:id lo rebota) — sí ve contacto + ruta. B8 del audit.
     final esTecnico =
@@ -797,21 +814,31 @@ class _AttributionBanner extends StatelessWidget {
   }
 }
 
-/// Fila de chips de filtro por estado de cobranza, sobre el mapa.
-/// Los criterios coinciden con [_estadoDe] (misma derivación que el color).
+/// Fila de chips de filtro por estado de cobranza, sobre el mapa. Cada chip de
+/// estado lleva un punto con el color configurado (leyenda viva). "Ver todo"
+/// (que revela fuera-de-rango y sin-deuda) solo aparece para la vista admin.
 class _FiltroChips extends StatelessWidget {
-  const _FiltroChips({required this.seleccionado, required this.onChanged});
+  const _FiltroChips({
+    required this.seleccionado,
+    required this.onChanged,
+    required this.colores,
+    required this.esAdmin,
+  });
 
   final _FiltroEstado seleccionado;
   final ValueChanged<_FiltroEstado> onChanged;
+  final ColoresEstados colores;
+  final bool esAdmin;
 
-  static const _opciones = <(_FiltroEstado, String)>[
-    (_FiltroEstado.todos, 'Todos'),
-    (_FiltroEstado.mora, 'En mora'),
-    (_FiltroEstado.gracia, 'En gracia'),
-    (_FiltroEstado.alDia, 'Al día'),
-    (_FiltroEstado.pendiente, 'Pendientes'),
-  ];
+  // (filtro, label, color del punto). null = sin punto (Pendientes / Ver todo).
+  List<(_FiltroEstado, String, Color?)> _opciones() => [
+        (_FiltroEstado.pendientes, 'Pendientes', null),
+        (_FiltroEstado.mora, 'En mora', colores.mora),
+        (_FiltroEstado.gracia, 'En gracia', colores.gracia),
+        (_FiltroEstado.hoy, 'Vencen hoy', colores.hoy),
+        (_FiltroEstado.proxima, 'Próximas', colores.proxima),
+        if (esAdmin) (_FiltroEstado.verTodo, 'Ver todo', null),
+      ];
 
   @override
   Widget build(BuildContext context) {
@@ -819,9 +846,12 @@ class _FiltroChips extends StatelessWidget {
       spacing: 6,
       runSpacing: 4,
       children: [
-        for (final (estado, label) in _opciones)
+        for (final (estado, label, punto) in _opciones())
           ChoiceChip(
             label: Text(label),
+            avatar: punto == null
+                ? null
+                : CircleAvatar(backgroundColor: punto, radius: 6),
             selected: seleccionado == estado,
             visualDensity: VisualDensity.compact,
             // Fondo opaco para que se lea sobre el tile del mapa.
