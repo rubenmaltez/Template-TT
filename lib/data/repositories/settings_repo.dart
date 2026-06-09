@@ -8,6 +8,7 @@ import '../models/recibo_layout.dart';
 import '../models/setting.dart';
 import '../providers/cobrador_provider.dart';
 import '../providers/db_epoch_provider.dart';
+import '../utils/cuota_estado_visual.dart';
 
 class SettingsRepo {
   const SettingsRepo();
@@ -218,6 +219,25 @@ class AppSettings {
 
   int get diasCuotasVisibles =>
       settingValue<num>(_map, 'cobranza.dias_cuotas_visibles', 30).toInt();
+
+  /// Colores configurables por estado de cuota (setting `cobranza.colores_estados`,
+  /// map JSONB `{mora,gracia,hoy,proxima}` → "#RRGGBB"). Si falta o es inválido,
+  /// cae a [ColoresEstados.defaults]. Fuente única de color para mapa, lista de
+  /// cobros, cuotas admin, detalle de contrato y lista de clientes.
+  ColoresEstados get coloresEstados {
+    final s = _map?['cobranza.colores_estados'];
+    if (s == null) return ColoresEstados.defaults;
+    dynamic raw = s.valor;
+    if (raw is String) {
+      try {
+        raw = jsonDecode(raw);
+      } catch (_) {
+        return ColoresEstados.defaults;
+      }
+    }
+    if (raw is! Map) return ColoresEstados.defaults;
+    return ColoresEstados.fromJson(raw);
+  }
 
   /// Valor del descuento pronto pago. 0 = deshabilitado.
   double get descuentoProntoPago =>
