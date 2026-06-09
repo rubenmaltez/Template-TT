@@ -853,3 +853,131 @@ class _HistorialClienteWidgetState
     );
   }
 }
+
+// ---------------------------------------------------------------------------
+// Timeline unificada de un TICKET (Agregador): los cambios del propio ticket +
+// sus hijas DIRECTAS hoja — adjuntos y materiales consumidos. El link a las
+// hijas se lee del snapshot JSON (`json_extract` de `$.ticket_id`), NO de un
+// `IN (SELECT...)`: un adjunto BORRADO físico (ta_write permite delete) sigue
+// apareciendo en el historial porque su ticket_id vive en el snapshot.
+//
+// `ticket_eventos` se EXCLUYE a propósito: es append-only (sin update/delete)
+// y la bitácora del mismo detalle ya narra cada evento con autor y hora — el
+// change log solo duplicaría "creado" por cada fila. La decisión respeta el
+// modelo (hija hoja → completo) sin meter ruido: el rastro de auditoría de los
+// eventos existe igual en audit_log y es alcanzable desde /admin/audit.
+// Solo admin/admin_cobranza/super sincronizan audit_log (no el técnico).
+// ---------------------------------------------------------------------------
+class HistorialTicketWidget extends ConsumerStatefulWidget {
+  const HistorialTicketWidget({super.key, required this.ticketId});
+  final String ticketId;
+
+  @override
+  ConsumerState<HistorialTicketWidget> createState() =>
+      _HistorialTicketWidgetState();
+}
+
+class _HistorialTicketWidgetState extends ConsumerState<HistorialTicketWidget> {
+  late Stream<List<Map<String, dynamic>>> _stream;
+
+  @override
+  void initState() {
+    super.initState();
+    _stream = _buildStream();
+  }
+
+  @override
+  void didUpdateWidget(HistorialTicketWidget old) {
+    super.didUpdateWidget(old);
+    if (old.ticketId != widget.ticketId) {
+      setState(() => _stream = _buildStream());
+    }
+  }
+
+  Stream<List<Map<String, dynamic>>> _buildStream() {
+    // El ticket (por registro_id) + adjuntos/materiales por el ticket_id del
+    // snapshot. Sin LIMIT: vida completa. Orden DESC = lo más reciente primero.
+    return ps.db.watch(
+      '''
+      SELECT a.id, a.tabla, a.accion, a.campo,
+             a.valor_anterior, a.valor_nuevo,
+             a.user_id, a.user_rol, a.created_at, a.ocurrido_en,
+             c.nombre AS user_nombre
+        FROM audit_log a
+   LEFT JOIN cobradores c ON c.id = a.user_id
+       WHERE (a.tabla = 'tickets' AND a.registro_id = ?)
+          OR (a.tabla IN ('ticket_adjuntos', 'ticket_materiales')
+              AND json_extract(
+                    COALESCE(a.valor_nuevo, a.valor_anterior),
+                    '\$.ticket_id'
+                  ) = ?)
+       ORDER BY COALESCE(a.ocurrido_en, a.created_at) DESC
+      ''',
+      parameters: [widget.ticketId, widget.ticketId],
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final cfg = ref.watch(appSettingsProvider).auditCamposVisibles;
+    final lookups = ref.watch(auditLookupsProvider).valueOrNull;
+
+    return StreamBuilder(
+      stream: _stream,
+      builder: (context, snap) {
+        if (snap.hasError) {
+          return Padding(
+            padding: const EdgeInsets.all(24),
+            child: Center(
+              child: Text('Error al cargar el historial',
+                  style: TextStyle(color: scheme.error)),
+            ),
+          );
+        }
+        if (!snap.hasData) {
+          return const Padding(
+            padding: EdgeInsets.all(24),
+            child: Center(child: CircularProgressIndicator()),
+          );
+        }
+        final rows = snap.data!;
+        final eventos = <_EventoVisual>[];
+        for (final r in rows) {
+          final tabla = r['tabla'] as String?;
+          final accion = auditDetectarAccion(r);
+          final cambios = auditExtraerCambios(
+            r,
+            camposVisibles: cfg[tabla],
+            lookups: lookups,
+          );
+          if (accion == 'update' && cambios.isEmpty) continue;
+          eventos.add(_EventoVisual(
+            row: r,
+            accion: accion,
+            tabla: tabla,
+            cambios: cambios,
+          ));
+        }
+
+        if (eventos.isEmpty) {
+          return Padding(
+            padding: const EdgeInsets.all(24),
+            child: Center(
+              child: Text('Sin cambios registrados',
+                  style: TextStyle(color: scheme.outline)),
+            ),
+          );
+        }
+
+        return ListView.separated(
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          itemCount: eventos.length,
+          separatorBuilder: (_, __) => const Divider(height: 1),
+          itemBuilder: (context, i) => _CambioTile(evento: eventos[i]),
+        );
+      },
+    );
+  }
+}

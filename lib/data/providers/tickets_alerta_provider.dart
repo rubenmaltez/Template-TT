@@ -58,7 +58,7 @@ int _contarEnRiesgo(List<Map<String, dynamic>> rows, Map<String, int> slaMap) {
     final ef = slaHorasEfectivas(t['sla_horas'] as int?, slaMap[prioridad]);
     final sla = ticketSlaEstado(
       estado: estado,
-      createdAt: DateTime.parse(createdRaw),
+      createdAt: parseTicketWallClock(createdRaw),
       slaHoras: ef,
       prioridad: prioridad,
       segundosPausado: (t['segundos_pausado'] as int?) ?? 0,

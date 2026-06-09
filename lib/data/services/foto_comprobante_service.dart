@@ -1,8 +1,10 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:uuid/uuid.dart';
 
@@ -73,10 +75,55 @@ class FotoComprobanteService {
   // desmonta/remonta (navegación entre pantallas) o el provider se
   // re-suscribe, el suscriptor recibe el último resultado inmediatamente
   // en vez de esperar al próximo ciclo de sync.
+  //
+  // R8 follow-up: el último resultado CON fallas se persiste además en
+  // SharedPreferences — un F5/restart ya no lo pierde (el cobrador ve el
+  // aviso de fotos fallidas al reabrir). Un éxito limpio borra la clave.
   UploadResult? _lastResult;
+  static const _kLastResultKey = 'foto_upload_last_result';
+
   Stream<UploadResult> get results async* {
+    if (_lastResult == null) {
+      await _restaurarLastResult();
+    }
     if (_lastResult != null) yield _lastResult!;
     yield* _results.stream;
+  }
+
+  Future<void> _restaurarLastResult() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final raw = prefs.getString(_kLastResultKey);
+      if (raw == null) return;
+      final m = jsonDecode(raw) as Map<String, dynamic>;
+      _lastResult = UploadResult(
+        succeeded: (m['succeeded'] as num?)?.toInt() ?? 0,
+        failed: (m['failed'] as num?)?.toInt() ?? 0,
+        lastErrorMessage: m['lastErrorMessage'] as String?,
+      );
+    } catch (_) {
+      // Prefs corruptas/inaccesibles → seguir sin replay (no es crítico).
+    }
+  }
+
+  Future<void> _persistirLastResult(UploadResult r) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      if (r.failed > 0) {
+        await prefs.setString(
+            _kLastResultKey,
+            jsonEncode({
+              'succeeded': r.succeeded,
+              'failed': r.failed,
+              'lastErrorMessage': r.lastErrorMessage,
+            }));
+      } else {
+        // Corrida limpia → ya no hay falla pendiente que recordar.
+        await prefs.remove(_kLastResultKey);
+      }
+    } catch (_) {
+      // Best-effort: si prefs falla, el replay en memoria sigue funcionando.
+    }
   }
 
   static const _throttleErrores = Duration(minutes: 2);
@@ -206,6 +253,7 @@ class FotoComprobanteService {
       if (_debeEmitir(result)) {
         _lastResult = result;
         _results.add(result);
+        unawaited(_persistirLastResult(result));
       }
     }
     return subidas;

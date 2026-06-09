@@ -124,7 +124,7 @@ class _TicketDetailScreenState extends ConsumerState<TicketDetailScreen> {
     final scheme = Theme.of(context).colorScheme;
     final estado = t['estado'] as String? ?? 'abierto';
     final prioridad = t['prioridad'] as String?;
-    final createdAt = DateTime.parse(t['created_at'] as String);
+    final createdAt = parseTicketWallClock(t['created_at'] as String);
     final pausado = (t['segundos_pausado'] as int?) ?? 0;
     // SLA EFECTIVO = min(SLA del tipo, SLA de la prioridad). El chip muestra la
     // cuenta regresiva viva (tick 1s en el detalle).
@@ -443,10 +443,9 @@ class _TicketDetailScreenState extends ConsumerState<TicketDetailScreen> {
             Expanded(
               child: SingleChildScrollView(
                 controller: scrollCtrl,
-                child: HistorialCambiosWidget(
-                  tabla: 'tickets',
-                  registroId: widget.ticketId,
-                ),
+                // Agregador: ticket + adjuntos + materiales en una timeline
+                // (patrón cuota/cliente). La bitácora narra los eventos aparte.
+                child: HistorialTicketWidget(ticketId: widget.ticketId),
               ),
             ),
           ],

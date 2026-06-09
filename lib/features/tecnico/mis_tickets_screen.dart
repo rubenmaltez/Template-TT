@@ -103,7 +103,8 @@ class _MisTicketsScreenState extends ConsumerState<MisTicketsScreen> {
                   final t = rows[i];
                   final estado = t['estado'] as String? ?? 'abierto';
                   final prioridad = t['prioridad'] as String?;
-                  final createdAt = DateTime.parse(t['created_at'] as String);
+                  final createdAt =
+                      parseTicketWallClock(t['created_at'] as String);
                   final pausado = (t['segundos_pausado'] as int?) ?? 0;
                   final ef =
                       slaHorasEfectivas(t['sla_horas'] as int?, slaMap[prioridad]);

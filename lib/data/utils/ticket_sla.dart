@@ -66,6 +66,23 @@ int? slaHorasEfectivas(int? tipoSla, int? prioridadSla) {
   return vals.isEmpty ? null : vals.reduce((a, b) => a < b ? a : b);
 }
 
+/// Parsea el `created_at` de un ticket interpretando sus COMPONENTES como
+/// wall-clock local del dispositivo (Nicaragua, UTC-6 sin DST), descartando
+/// cualquier flag UTC del string.
+///
+/// POR QUÉ: el cliente escribe `created_at` device-local SIN offset (patrón
+/// `fecha_pago`). Pre-sync el string local es naive ("14:00") y parsea local —
+/// correcto. POST-sync, Postgres (sesión UTC) interpretó ese naive como UTC y
+/// PowerSync lo baja como "14:00Z": el INSTANTE quedó corrido 6h, pero el
+/// WALL-CLOCK ("14:00") se preserva en los componentes. Un `DateTime.parse`
+/// crudo tomaría el instante corrido y el SLA vencería 6h antes; reconstruir
+/// desde componentes como hora local da el instante real en AMBOS formatos.
+DateTime parseTicketWallClock(String iso) {
+  final dt = DateTime.parse(iso);
+  return DateTime(dt.year, dt.month, dt.day, dt.hour, dt.minute, dt.second,
+      dt.millisecond, dt.microsecond);
+}
+
 /// Tiempo restante hasta el vencimiento del SLA. Positivo = falta; negativo =
 /// vencido hace |x|. Devuelve null cuando NO hay cuenta regresiva viva (sin SLA /
 /// en espera / cerrado). `slaHoras` debe ser el EFECTIVO ([slaHorasEfectivas]).
@@ -73,9 +90,8 @@ int? slaHorasEfectivas(int? tipoSla, int? prioridadSla) {
 /// Es matemática pura sobre data local (`DateTime.now()` + la fila del ticket):
 /// TICKEA OFFLINE sin tocar la red. El `segundosPausado` es server-computed; off-
 /// line mid-pausa queda levemente conservador (más urgente, nunca oculta vencido).
-/// `createdAt` se compara como instante absoluto (`Duration.difference`), así que
-/// da bien sea el `created_at` device-local pre-sync o el normalizado post-sync —
-/// asume el offset único de Nicaragua (UTC-6, sin DST), igual que `fecha_pago`.
+/// `createdAt` DEBE venir de [parseTicketWallClock] (ver su doc): un
+/// `DateTime.parse` crudo del valor post-sync corre el deadline ~6h.
 Duration? ticketSlaRestante({
   required String estado,
   required DateTime createdAt,

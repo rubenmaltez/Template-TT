@@ -148,16 +148,78 @@ serve(async (req) => {
     const pagosAnul = pagosAnuladosPor.count ?? 0;
     const recibosAnul = recibosAnuladosPor.count ?? 0;
     const cargosApl = cargosAplicadosPor.count ?? 0;
+
+    // Tablas agregadas DESPUÉS del guard original (visitas, fotos, tickets,
+    // inventario): el delete perdía atribución en silencio (FK SET NULL) o
+    // reventaba con FK violation (visitas.cobrador_id NOT NULL). Conteo
+    // TOLERANTE: 42P01 (relation does not exist — migraciones 0099-0107 sin
+    // correr) cuenta como 0 para no bloquear el delete en una DB sin esos
+    // módulos; cualquier OTRO error sí aborta (defensiveness del guard base).
+    const countOpcional = async (
+      tabla: string,
+      columna: string,
+    ): Promise<number | null> => {
+      const r = await admin.from(tabla)
+        .select("id", { count: "exact", head: true })
+        .eq(columna, body.cobrador_id);
+      if (r.error) {
+        if (r.error.code === "42P01") return 0; // tabla aún no deployada
+        console.error(`eliminar: count ${tabla}.${columna} falló`, r.error);
+        return null; // error real → abortar
+      }
+      return r.count ?? 0;
+    };
+
+    const extras = await Promise.all([
+      countOpcional("visitas", "cobrador_id"),
+      countOpcional("fotos_cliente", "created_by"),
+      countOpcional("tickets", "asignado_a"),
+      countOpcional("tickets", "creado_por"),
+      countOpcional("ticket_eventos", "hecho_por"),
+      countOpcional("ticket_materiales", "hecho_por"),
+      countOpcional("inv_movimientos", "hecho_por"),
+      countOpcional("inv_ubicaciones", "cobrador_id"),
+    ]);
+    if (extras.some((n) => n === null)) {
+      return jsonError("Error contando historial del usuario", 500);
+    }
+    const [
+      visitas,
+      fotos,
+      ticketsAsig,
+      ticketsCre,
+      eventos,
+      materiales,
+      movimientos,
+      ubicaciones,
+    ] = extras as number[];
+    const totalExtras = visitas + fotos + ticketsAsig + ticketsCre +
+      eventos + materiales + movimientos + ubicaciones;
+
     const total = pagos + recibos + cargos + clientes +
-      pagosAnul + recibosAnul + cargosApl;
+      pagosAnul + recibosAnul + cargosApl + totalExtras;
     if (total > 0) {
+      const partesExtras = [
+        visitas > 0 ? `${visitas} visitas` : null,
+        fotos > 0 ? `${fotos} fotos` : null,
+        (ticketsAsig + ticketsCre) > 0
+          ? `${ticketsAsig + ticketsCre} tickets`
+          : null,
+        eventos > 0 ? `${eventos} eventos de ticket` : null,
+        materiales > 0 ? `${materiales} consumos de material` : null,
+        movimientos > 0 ? `${movimientos} movimientos de inventario` : null,
+        ubicaciones > 0 ? `${ubicaciones} ubicaciones de custodia` : null,
+      ].filter((s) => s !== null);
+      const sufijo = partesExtras.length > 0
+        ? `, ${partesExtras.join(", ")}`
+        : "";
       return jsonError(
         "No se puede eliminar: tiene historial operativo " +
           `(${pagos} pagos creados, ${recibos} recibos, ${cargos} cargos, ` +
           `${clientes} clientes asignados, ${pagosAnul} pagos anulados ` +
           `por él, ${recibosAnul} recibos anulados por él, ${cargosApl} ` +
-          "cargos aplicados por él). Usá 'Desactivar' en su lugar para " +
-          "preservar el historial.",
+          `cargos aplicados por él${sufijo}). Usá 'Desactivar' en su lugar ` +
+          "para preservar el historial.",
         409,
       );
     }
