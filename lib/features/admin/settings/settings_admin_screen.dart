@@ -149,6 +149,12 @@ const _hidden = {
   // Feature sin implementar (caja chica del cobrador: tabla + UI
   // pendientes). Se oculta hasta que exista la feature real.
   'caja_chica.habilitada',
+  // Pantalla de notificaciones de mora: el módulo se eliminó (menú + ruta); el
+  // setting quedó huérfano. Se oculta para que no aparezca en "Otros".
+  'cobranza.pantalla_notificaciones',
+  // Colores de estados de cuota: tiene su propia card (picker de paleta) en la
+  // tab Cobranza. La fila JSONB no debe renderizarse como campo genérico.
+  'cobranza.colores_estados',
 };
 
 // Settings que SOLO ve el super_admin. Hoy todos viven en la tab "Avanzado"
@@ -157,6 +163,12 @@ const _hidden = {
 const _superAdminOnly = {
   'cobranza.comprobante_habilitado',
   'cobranza.foto_obligatoria',
+  // Reglas y permisos de cobro sensibles: los gestiona el dueño del SaaS, no el
+  // admin del ISP. Viven en la tab Avanzado.
+  'cobranza.pago_parcial',
+  'cobranza.pago_adelantado',
+  'cobranza.cobrador_anula_cobros',
+  'cobranza.cobrador_edita_cobros',
   // Pantallas admin opcionales: el super_admin las habilita por tenant.
   'cobranza.pantalla_pagos',
   // Visibilidad del panel de Auditoría para el admin (0089): default OFF.
@@ -1065,7 +1077,7 @@ class _SettingTileState extends State<_SettingTile> {
       'cobranza.audit_visible_admin': 'Panel de Auditoría visible al admin',
       'cobranza.pago_parcial': 'Permitir pago parcial',
       'cobranza.pago_adelantado': 'Permitir pago adelantado (multi-cuota)',
-      'cobranza.dias_cuotas_visibles': 'Días de cuotas visibles al cobrador',
+      'cobranza.dias_cuotas_visibles': 'Días de cuotas próximas',
       'pagos.transferencia_habilitada': 'Aceptar transferencias',
       'pagos.deposito_habilitado': 'Aceptar depósitos',
       'pagos.tarjeta_habilitada': 'Aceptar tarjeta',

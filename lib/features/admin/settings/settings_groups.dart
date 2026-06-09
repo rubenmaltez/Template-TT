@@ -74,8 +74,6 @@ const kGruposCobranza = <SettingGroup>[
     entradas: [
       SettingEntry('cobranza.dias_gracia'),
       SettingEntry('cobranza.dias_cuotas_visibles'),
-      SettingEntry('cobranza.pago_parcial'),
-      SettingEntry('cobranza.pago_adelantado'),
     ],
   ),
   SettingGroup(
@@ -83,8 +81,6 @@ const kGruposCobranza = <SettingGroup>[
     icono: Icons.lock_open,
     entradas: [
       SettingEntry('cobranza.cobrador_edita_fecha'),
-      SettingEntry('cobranza.cobrador_anula_cobros'),
-      SettingEntry('cobranza.cobrador_edita_cobros'),
       SettingEntry('audit.visible_admin_cobranza'),
     ],
   ),
@@ -122,6 +118,22 @@ const kGruposPagos = <SettingGroup>[
 /// aparte (es un link a otra pantalla, no un setting) — ver
 /// `_GrupoHistorialLink` en el screen.
 const kGruposAvanzado = <SettingGroup>[
+  SettingGroup(
+    titulo: 'Reglas de cobro avanzadas',
+    icono: Icons.tune,
+    entradas: [
+      SettingEntry('cobranza.pago_parcial'),
+      SettingEntry('cobranza.pago_adelantado'),
+    ],
+  ),
+  SettingGroup(
+    titulo: 'Permisos del cobrador',
+    icono: Icons.lock_person,
+    entradas: [
+      SettingEntry('cobranza.cobrador_anula_cobros'),
+      SettingEntry('cobranza.cobrador_edita_cobros'),
+    ],
+  ),
   SettingGroup(
     titulo: 'Foto de comprobante',
     icono: Icons.photo_camera,
