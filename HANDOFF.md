@@ -7,6 +7,31 @@
 
 ---
 
+## 2026-06-09 (cont.) — Limpieza de settings + recibo (zonas) + "fuera de rango" gris ⚠️ correr 0113
+
+Lote post-testing de Rubén (7 commits `4abbb41`→`567ca45`, pusheados, auditado 2 agentes —
+1 MEDIUM fixed). Branch `claude/new-features-inventory-tickets-and-technicians`.
+
+- **Settings reorg**: `pago_parcial` / `pago_adelantado` / `cobrador_anula_cobros` /
+  `cobrador_edita_cobros` → tab **Avanzado** (solo super) + `_superAdminOnly` + **`editable_por='super_admin'`
+  en DB (0113, era el gap MEDIUM del audit). `pantalla_notificaciones` y `colores_estados` ocultos
+  (`_hidden`). **Depósito** quitado del cobro + settings (enum/`_icon`/reportes intactos para data histórica).
+- **Fix del bug que marcó Rubén**: las cuotas que vencen MÁS ALLÁ del rango ahora salen **GRIS
+  "no disponible"** (antes TODO lo futuro era morado). Se re-agregó `estadoVisualCuota` y se usa en el
+  detalle de contrato + lista de cobros. `fueraDeRango` color: morado-atenuado → gris.
+- **Días de cuotas próximas** (`cobranza.dias_cuotas_visibles`): pasa a setting **primordial seedeado
+  = 5** (era 30, default solo-código). Configurable en Ajustes → Cobranza. Default getter 30→5.
+- **Recibo**: `ReciboBloque` suma `zona` (override del catálogo) → menú **"Mover a zona"** por bloque
+  (encabezado/cuerpo/pie) + botón **"Restaurar layout por defecto"**. **WhatsApp** pasa al **encabezado**
+  por defecto. `fromRaw` ordena por zona efectiva; PDF/Bluetooth usan `zonaEfectiva`.
+
+> ⚠️ **DEPLOY: correr `supabase/migrations/0113_dias_cuotas_proximas_default_5.sql`** por el SQL Editor
+> (es el ÚNICO paso server-side del lote). Pone `dias_cuotas_visibles=5` + `dias_gracia=10` (donde falte)
+> + marca las 4 reglas super-only. **Sin** bump de schema ni redeploy de sync rules. Después: `git pull`
+> + `flutter run`. Detalle/testing en `REPORTE-SESION.md` (2026-06-09 cont.) y `TESTING.md §0.3`.
+
+---
+
 ## 2026-06-09 — Colores configurables de estados de cuota + fix banner offline ✅ SIN deploy server-side
 
 Feature: el admin configura el color de cada estado de cuota (mora / gracia / vence-hoy /

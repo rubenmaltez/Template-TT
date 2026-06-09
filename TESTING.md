@@ -140,6 +140,25 @@ CLAUDE.md):
   real: **modo avión** ~5s → aparece a los ~3s; **sacar modo avión** → desaparece sin flickear.
   *Si falla:* si parpadea al navegar o al cambiar de DB/tenant, el guard del estado de carga no
   está activo.
+- **Settings sensibles solo super (Ajustes, requiere 0113):** como **admin del ISP** (no super), en
+  Ajustes → Cobranza NO deben aparecer "Permitir pago parcial", "Permitir pago adelantado", "Cobrador
+  anula/edita cobros" (se movieron a Avanzado), ni sueltos en "Otros". Como **super_admin**, Ajustes →
+  **Avanzado** muestra "Reglas de cobro avanzadas" + "Permisos del cobrador". *Si falla:* correr 0113
+  (marca `editable_por='super_admin'` → la RLS también los bloquea, no solo la UI).
+- **Días de cuotas próximas configurable (requiere 0113):** Ajustes → Cobranza muestra **"Días de cuotas
+  próximas" = 5**. Subilo a, ej., 15 → en el detalle de contrato/mapa, las cuotas que vencen dentro de 15
+  días pasan a "en rango" (color); las de más allá quedan **grises**. *Si falla:* si no aparece el campo,
+  la fila no se sembró (correr 0113).
+- **Cuotas fuera de rango = gris (detalle de contrato):** abrí un contrato con cuotas futuras lejanas.
+  *Ver:* las dentro de "días de cuotas próximas" → morado/azul/etc.; las **lejanas → GRIS "no disponible"**
+  (antes salían todas en morado). *Si falla:* una cuota a meses en morado = el rango no se aplica.
+- **Depósito quitado:** Ajustes → Pagos ya NO tiene "Aceptar depósitos"; en un cobro los métodos son
+  efectivo / transferencia / tarjeta. *Ver:* los pagos viejos con método "Depósito" siguen en
+  historial/reportes/arqueo (data histórica preservada).
+- **Recibo — zonas + reset (Ajustes → Recibos):** *Ver:* **WhatsApp** en el **Encabezado**; cada bloque
+  tiene un menú **⋮ "Mover a zona"** (Encabezado/Cuerpo/Pie) → moverlo se refleja en la vista previa y en
+  el recibo impreso; el botón **"Restaurar layout por defecto"** vuelve al orden base (con confirmación).
+  *Si falla:* si WhatsApp sigue en el pie, usá "Restaurar layout por defecto" o el menú ⋮.
 - **⟨agregar acá los features nuevos a medida que se entregan⟩**
 
 ---

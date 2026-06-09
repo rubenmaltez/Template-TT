@@ -158,6 +158,43 @@ consistentes → auditoría.
 
 > Más reciente arriba. Formato por ítem: error → fix → expectativa.
 
+### 2026-06-09 (cont.) — Limpieza de settings + recibo (zonas) + "fuera de rango" gris
+
+Lote de ajustes pedidos por Rubén durante el testing del feature de colores. 7 commits
+(`4abbb41`→`567ca45`), branch `claude/new-features-inventory-tickets-and-technicians`,
+auditado (2 agentes; 1 MEDIUM corregido). **Requiere correr la migración 0113.**
+
+- **Settings sensibles → solo super_admin.** *Pedido:* permitir pago parcial, multi-cuota, y que
+  el cobrador anule/edite cobros no debe verlo el admin del ISP, solo el dueño del SaaS. *Fix:* los 4
+  settings (`cobranza.pago_parcial`, `pago_adelantado`, `cobrador_anula_cobros`, `cobrador_edita_cobros`)
+  se movieron de la tab Cobranza a **Avanzado** + `_superAdminOnly` + **`editable_por='super_admin'`** en
+  DB (0113). *Exp:* el admin no los ve ni los puede escribir (UI + RLS); el super los gestiona en Avanzado.
+- **Settings huérfanos ocultos.** *Pedido:* "Pantalla notificaciones" (módulo eliminado) y "Colores
+  estados" (fila JSONB que caía en "Otros") no deben aparecer. *Fix:* ambos a `_hidden`. *Exp:* no se
+  ven; la card de colores sigue funcionando (lee por getter, no por el render genérico).
+- **Depósito quitado.** *Pedido:* depósito = transferencia, dejar solo efectivo/transferencia/tarjeta.
+  *Fix:* removido de "Métodos de pago" + de las 2 listas del cobro. *Exp:* el cobrador no lo ofrece; los
+  pagos históricos con `metodo='deposito'` siguen leyéndose (enum + reportes/arqueo intactos).
+- **BUG: cuotas lejanas en morado.** *Error:* en el detalle de contrato, TODAS las cuotas futuras se
+  pintaban morado ("próxima"), incluso a 456 días — el badge ignoraba el rango. *Fix:* se re-agregó
+  `estadoVisualCuota` y el detalle de contrato + lista de cobros lo usan con `diasVisibles`. *Exp:* las que
+  vencen dentro del rango (5 días) → morado/azul/etc.; **más allá → GRIS "no disponible"** (aún no cobrable).
+  `fueraDeRango` color: morado-atenuado → gris (`sinDeudaColor`).
+- **Días de cuotas próximas primordial = 5.** *Pedido:* que sea un setting configurable, seedeado en 5 en
+  cada tenant (nuevo y existente), `dias_gracia` en 10. *Fix:* migración **0113** (backfill `DO UPDATE` a 5
+  + `dias_gracia=10` donde falte + el trigger de alta normaliza a 5 para tenants nuevos). Getter default
+  30→5. Relabel "Días de cuotas próximas". *Exp:* el cobrador ve solo cuotas que vencen dentro de N días
+  (5 por defecto, configurable); el admin lo ajusta en Ajustes → Cobranza.
+- **Recibo: mover bloques entre zonas + reset + WhatsApp al encabezado.** *Pedido:* el WhatsApp debe ir en
+  el encabezado; los handles deben mover items entre encabezado/cuerpo/pie libremente; un botón de reset.
+  *Fix:* `ReciboBloque` suma `zona` (override del catálogo); menú **⋮ "Mover a zona"** por bloque + botón
+  **"Restaurar layout por defecto"**; WhatsApp default → encabezado; `fromRaw` ordena por zona efectiva
+  (estable) y los renderers PDF/Bluetooth usan `zonaEfectiva`. *Exp:* WhatsApp aparece arriba; cualquier
+  bloque se reubica entre zonas y se refleja en el recibo impreso; el reset vuelve al layout base.
+- **Audit (2 agentes):** *MEDIUM* — los 4 settings movidos tenían `editable_por='admin'` en DB (la RLS no
+  los bloqueaba); 0113 los marca `super_admin`. *BAJA* — getter muerto `depositoHabilitado` removido. Resto
+  limpio (0113 idempotente, recibo zona round-trip estable, switches exhaustivos).
+
 ### 2026-06-09 — Colores configurables de estados de cuota (across-app) + fix banner offline
 
 Rubén pidió: (1) en el mapa y la lista de cobros, un cobrador NO debería ver cuotas fuera del
