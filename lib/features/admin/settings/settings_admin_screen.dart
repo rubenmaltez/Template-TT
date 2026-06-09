@@ -9,6 +9,7 @@ import '../../../data/models/setting.dart';
 import '../../../data/providers/cobrador_provider.dart';
 import '../../../data/providers/logo_empresa_provider.dart';
 import '../../../data/repositories/settings_repo.dart';
+import '../../../data/utils/cuota_estado_visual.dart';
 import '../../shared/widgets/empty_state.dart';
 import 'recibo_layout_editor.dart';
 import 'settings_groups.dart';
@@ -226,6 +227,12 @@ class _CategoriaTab extends ConsumerWidget {
     for (final g in grupos) {
       final tarjeta = _construirGrupo(context, ref, g, visible);
       if (tarjeta != null) cards.add(tarjeta);
+    }
+
+    // Colores de los estados de cuota: card propia (picker de paleta, no es un
+    // setting tipo número/toggle). Solo en la tab Cobranza.
+    if (categoria == 'cobranza') {
+      cards.add(_ColoresEstadosCard(tenantId: tenantId));
     }
 
     // Catch-all "Otros": cualquier setting de ESTA categoría que exista, no
@@ -467,6 +474,132 @@ class _GrupoCard extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+/// Card de la tab Cobranza para configurar el color de cada estado de cuota.
+/// No es un setting tipo número/toggle, así que va en su propia card con un
+/// picker de paleta. Escribe el setting JSONB `cobranza.colores_estados`.
+class _ColoresEstadosCard extends ConsumerWidget {
+  const _ColoresEstadosCard({required this.tenantId});
+
+  final String tenantId;
+
+  Future<void> _editar(BuildContext context, WidgetRef ref,
+      ColoresEstados actual, String estado, String label) async {
+    final elegido = await showDialog<Color>(
+      context: context,
+      builder: (_) => _PaletaColorDialog(titulo: label),
+    );
+    if (elegido == null) return;
+    final nuevo = switch (estado) {
+      'mora' => actual.copyWith(mora: elegido),
+      'gracia' => actual.copyWith(gracia: elegido),
+      'hoy' => actual.copyWith(hoy: elegido),
+      _ => actual.copyWith(proxima: elegido),
+    };
+    await ref.read(settingsRepoProvider).upsert(
+          tenantId,
+          'cobranza.colores_estados',
+          nuevo.toJson(),
+          tipo: 'json',
+          categoria: 'cobranza',
+        );
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Color de "$label" actualizado'),
+          duration: const Duration(seconds: 2),
+        ),
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final scheme = Theme.of(context).colorScheme;
+    final colores = ref.watch(appSettingsProvider).coloresEstados;
+    final filas = <(String, String, Color)>[
+      ('mora', 'En mora', colores.mora),
+      ('gracia', 'En gracia', colores.gracia),
+      ('hoy', 'Vence hoy', colores.hoy),
+      ('proxima', 'Próxima', colores.proxima),
+    ];
+    return _GrupoCard(
+      titulo: 'Colores de estados de cuota',
+      icono: Icons.palette_outlined,
+      subtitulo: 'Se aplican en el mapa y en los badges de cuotas.',
+      children: [
+        for (var i = 0; i < filas.length; i++) ...[
+          if (i > 0) const _SettingDivider(),
+          InkWell(
+            onTap: () =>
+                _editar(context, ref, colores, filas[i].$1, filas[i].$2),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 10),
+              child: Row(
+                children: [
+                  Expanded(child: Text(filas[i].$2)),
+                  Container(
+                    width: 26,
+                    height: 26,
+                    decoration: BoxDecoration(
+                      color: filas[i].$3,
+                      shape: BoxShape.circle,
+                      border: Border.all(color: scheme.outlineVariant),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Icon(Icons.edit, size: 16, color: scheme.outline),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+}
+
+/// Diálogo con la paleta de swatches predefinidos. Devuelve el color elegido
+/// (o null si se cancela). Sin dependencias externas — paleta fija curada.
+class _PaletaColorDialog extends StatelessWidget {
+  const _PaletaColorDialog({required this.titulo});
+
+  final String titulo;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return AlertDialog(
+      title: Text('Color: $titulo'),
+      content: Wrap(
+        spacing: 12,
+        runSpacing: 12,
+        children: [
+          for (final c in kPaletaColoresEstados)
+            InkWell(
+              onTap: () => Navigator.pop(context, c),
+              borderRadius: BorderRadius.circular(22),
+              child: Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                  color: c,
+                  shape: BoxShape.circle,
+                  border: Border.all(color: scheme.outlineVariant),
+                ),
+              ),
+            ),
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Cancelar'),
+        ),
+      ],
     );
   }
 }
