@@ -165,8 +165,6 @@ class AppSettings {
   bool get transferenciaHabilitada =>
       settingValue<bool>(_map, 'pagos.transferencia_habilitada', false) ||
       settingValue<bool>(_map, 'pagos.metodo_transferencia', false);
-  bool get depositoHabilitado =>
-      settingValue<bool>(_map, 'pagos.deposito_habilitado', false);
   // Tarjeta: chequeamos clave original de 0010 y la de 0040 (OR).
   bool get tarjetaHabilitada =>
       settingValue<bool>(_map, 'pagos.tarjeta_habilitada', false) ||
