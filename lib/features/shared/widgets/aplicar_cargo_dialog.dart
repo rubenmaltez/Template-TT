@@ -6,6 +6,7 @@ import 'package:uuid/uuid.dart';
 import '../../../data/providers/cobrador_provider.dart';
 import '../../../data/providers/impersonation_provider.dart';
 import '../../../data/repositories/settings_repo.dart';
+import '../../../data/utils/cuota_estado.dart';
 import '../../../data/utils/formatters.dart';
 import '../../../powersync/db.dart' as ps;
 
@@ -152,28 +153,72 @@ class _AplicarCargoDialogState extends ConsumerState<AplicarCargoDialog> {
 
       // Hora REAL del dispositivo (UTC) para el change log — offline-first.
       final ocurridoEn = DateTime.now().toUtc().toIso8601String();
-      await ps.db.execute(
-        '''
-        INSERT INTO cargos_extra (
-          id, tenant_id, cuota_id, cobrador_id, tipo, monto, porcentaje,
-          descripcion, aplicado_por, aplicado_en, client_local_id, ocurrido_en
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        ''',
-        [
-          const Uuid().v4(),
-          cobrador.tenantId,
-          widget.cuotaId,
-          cobradorCuota,
-          _tipo!.value,
-          monto,
-          porcentaje,
-          _descripcion.text.trim().isEmpty ? null : _descripcion.text.trim(),
-          cobrador.id,
-          ocurridoEn, // aplicado_en en UTC, consistente con ocurrido_en (B10)
-          const Uuid().v4(),
-          ocurridoEn,
-        ],
-      );
+      await ps.db.writeTransaction((tx) async {
+        await tx.execute(
+          '''
+          INSERT INTO cargos_extra (
+            id, tenant_id, cuota_id, cobrador_id, tipo, monto, porcentaje,
+            descripcion, aplicado_por, aplicado_en, client_local_id, ocurrido_en
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          ''',
+          [
+            const Uuid().v4(),
+            cobrador.tenantId,
+            widget.cuotaId,
+            cobradorCuota,
+            _tipo!.value,
+            monto,
+            porcentaje,
+            _descripcion.text.trim().isEmpty ? null : _descripcion.text.trim(),
+            cobrador.id,
+            ocurridoEn, // aplicado_en en UTC, consistente con ocurrido_en (B10)
+            const Uuid().v4(),
+            ocurridoEn,
+          ],
+        );
+
+        // Mirror local del trigger server (cargos_extra_actualizar_neto_trg +
+        // recalcular_cuota_desde_pagos): offline, el saldo/estado de la cuota
+        // debe reflejar el cargo YA, sin esperar al sync. Sin esto el saldo
+        // quedaba stale en cualquier pantalla que lo lea de `cargos_neto`
+        // (lista de cuotas/clientes) hasta el próximo checkpoint.
+        final cuotaInfo = await tx.getAll(
+          'SELECT estado, monto_pagado FROM cuotas WHERE id = ?',
+          [widget.cuotaId],
+        );
+        if (cuotaInfo.isNotEmpty) {
+          final estadoActual =
+              cuotaInfo.first['estado'] as String? ?? 'pendiente';
+          final pagado =
+              (cuotaInfo.first['monto_pagado'] as num?)?.toDouble() ?? 0.0;
+          // `delta` = cargos_neto (reconexion/otro suman, descuento_* restan),
+          // mismo cálculo que PagosRepo._deltaCargosExtra.
+          final deltaRows = await tx.getAll(
+            '''
+            SELECT
+              COALESCE(SUM(CASE WHEN tipo IN ('reconexion','otro')
+                                THEN monto ELSE 0 END), 0) AS sumar,
+              COALESCE(SUM(CASE WHEN tipo IN ('descuento_monto','descuento_porcentaje')
+                                THEN monto ELSE 0 END), 0) AS restar
+              FROM cargos_extra WHERE cuota_id = ?
+            ''',
+            [widget.cuotaId],
+          );
+          final sumar = (deltaRows.first['sumar'] as num).toDouble();
+          final restar = (deltaRows.first['restar'] as num).toDouble();
+          final delta = sumar - restar;
+          final nuevoEstado = calcularEstadoCuota(
+            estadoActual: estadoActual,
+            montoCuota: widget.montoCuota,
+            pagadoNuevo: pagado,
+            deltaCargosExtra: delta,
+          );
+          await tx.execute(
+            'UPDATE cuotas SET cargos_neto = ?, estado = ?, ocurrido_en = ? WHERE id = ?',
+            [delta, nuevoEstado, ocurridoEn, widget.cuotaId],
+          );
+        }
+      });
       if (mounted) Navigator.pop(context, true);
     } catch (e) {
       if (mounted) setState(() => _error = e.toString());

@@ -360,11 +360,13 @@ class _InvitarDialogState extends ConsumerState<_InvitarDialog> {
                     value: 'admin_cobranza', child: Text('Admin de cobranza')),
                 const DropdownMenuItem(
                     value: 'admin', child: Text('Administrador')),
-                if (ticketsOn) ...const [
-                  DropdownMenuItem(
-                      value: 'admin_tickets', child: Text('Admin de tickets')),
-                  DropdownMenuItem(value: 'tecnico', child: Text('Técnico')),
-                ],
+                // `admin_tickets` NO se ofrece: es un rol incompleto (sin shell
+                // ni bucket de sync propios → caería en el shell del cobrador
+                // con data vacía). Alineado con el diálogo del super_admin que
+                // tampoco lo expone. Completarlo es feature pendiente.
+                if (ticketsOn)
+                  const DropdownMenuItem(
+                      value: 'tecnico', child: Text('Técnico')),
               ],
               onChanged: _enviando
                   ? null
@@ -845,12 +847,16 @@ class _EditarCobradorDialogState extends ConsumerState<_EditarCobradorDialog> {
                       child: Text('Admin de cobranza')),
                   const DropdownMenuItem(
                       value: 'cobrador', child: Text('Cobrador')),
-                  if (mostrarTickets) ...const [
-                    DropdownMenuItem(
+                  if (mostrarTickets)
+                    const DropdownMenuItem(
+                        value: 'tecnico', child: Text('Técnico')),
+                  // `admin_tickets` no se ofrece para asignar (rol incompleto,
+                  // ver create dialog). Solo se muestra si el miembro YA lo
+                  // tiene, para no romper el dropdown con un value fuera de items.
+                  if (_rol == 'admin_tickets')
+                    const DropdownMenuItem(
                         value: 'admin_tickets',
-                        child: Text('Admin de tickets')),
-                    DropdownMenuItem(value: 'tecnico', child: Text('Técnico')),
-                  ],
+                        child: Text('Admin de tickets (legacy)')),
                 ],
                 onChanged: _puedeCambiarRol
                     ? (v) => setState(() => _rol = v ?? _rol)

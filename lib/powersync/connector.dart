@@ -103,6 +103,13 @@ class SupabaseConnector extends PowerSyncBackendConnector {
   bool _isNonRetryable(PostgrestException e) {
     final code = e.code;
     if (code == null) return false;
+    // Clase 40 = transaction rollback (40001 serialization_failure,
+    // 40P01 deadlock_detected, 40003 statement_completion_unknown). Son
+    // TRANSITORIOS: reintentar suele resolver. NO clasificar como permanente
+    // o se descartaría silenciosamente un write válido del cobrador (un
+    // cobro/recibo que él ve local pero nunca sube). Va ANTES del check
+    // amplio de '4' de abajo.
+    if (code.startsWith('40')) return false;
     // Postgres error codes: P0001 = raise_exception (triggers),
     // 23xxx = integrity constraint violations, 42xxx = syntax/access.
     // Todos son errores de cliente, no retryables.

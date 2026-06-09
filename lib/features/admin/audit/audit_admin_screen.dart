@@ -75,12 +75,12 @@ class _AuditAdminScreenState extends State<AuditAdminScreen> {
       '''
       SELECT a.id, a.tabla, a.registro_id, a.campo,
              a.valor_anterior, a.valor_nuevo,
-             a.user_id, a.user_rol, a.created_at,
+             a.user_id, a.user_rol, a.created_at, a.ocurrido_en,
              co.nombre AS user_nombre
         FROM audit_log a
    LEFT JOIN cobradores co ON co.id = a.user_id
        $whereSql
-       ORDER BY a.created_at DESC
+       ORDER BY COALESCE(a.ocurrido_en, a.created_at) DESC
        LIMIT ?
       ''',
       parameters: params,
@@ -233,7 +233,11 @@ class _AuditTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    final cuando = DateTime.parse(row['created_at'] as String);
+    // Preferir `ocurrido_en` (device-time real del evento, lo escribe el
+    // cliente offline) sobre `created_at` (hora de sync). Consistente con los
+    // historiales per-entidad y con el ORDER BY de la query.
+    final cuando = DateTime.parse(
+        (row['ocurrido_en'] ?? row['created_at']) as String);
     final tabla = row['tabla'] as String;
     final campo = row['campo'] as String?;
     final usuario = row['user_nombre'] as String? ?? 'Sistema';

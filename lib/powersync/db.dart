@@ -95,15 +95,32 @@ Future<void> openDatabaseForUser(String userId) async {
 }
 
 /// Conecta PowerSync usando la sesión Supabase actual.
+///
+/// Serializa con `_pendingOp` igual que `openDatabaseForUser` y
+/// `disconnectPowerSync`: si hay un open/disconnect en vuelo (caso típico:
+/// signOut global de forzar-password seguido del re-login), `connect` espera
+/// a que termine antes de tocar `db`. Sin esta serialización, un `db.connect`
+/// podía correr contra una instancia que se estaba cerrando/reabriendo y
+/// dejaba a PowerSync sin emitir checkpoint → sync gate colgado (el bug
+/// histórico "stuck post-forzar-password" que solo F5 desbloqueaba).
 Future<void> connectPowerSync() async {
-  // Cancelar suscripción anterior del connector.
-  await _connectorSub?.cancel();
+  if (_pendingOp != null && !_pendingOp!.isCompleted) {
+    await _pendingOp!.future;
+  }
+  final op = Completer<void>();
+  _pendingOp = op;
+  try {
+    // Cancelar suscripción anterior del connector.
+    await _connectorSub?.cancel();
 
-  final connector = SupabaseConnector(Supabase.instance.client);
-  _connectorSub = connector.uploadErrors.listen((error) {
-    uploadErrorsController.add(error);
-  });
-  await db.connect(connector: connector);
+    final connector = SupabaseConnector(Supabase.instance.client);
+    _connectorSub = connector.uploadErrors.listen((error) {
+      uploadErrorsController.add(error);
+    });
+    await db.connect(connector: connector);
+  } finally {
+    op.complete();
+  }
 }
 
 /// Desconecta PowerSync sin borrar datos locales.
