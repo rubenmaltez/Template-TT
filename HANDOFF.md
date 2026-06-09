@@ -7,6 +7,33 @@
 
 ---
 
+## 2026-06-09 — Colores configurables de estados de cuota + fix banner offline ✅ SIN deploy server-side
+
+Feature: el admin configura el color de cada estado de cuota (mora / gracia / vence-hoy /
+proxima) desde **Ajustes → Cobranza → "Colores de estados de cuota"** (picker de paleta), y se
+aplican **across-app**: mapa, lista de cobros, cuotas admin, detalle de contrato y lista de
+clientes. El **mapa pasó de 4 estados a 6**: separó "vence hoy" (azul) de "proxima" (morado,
+dentro de `dias_cuotas_visibles`); "fuera de rango" (morado atenuado) y "sin deuda" ya NO se
+muestran por defecto → el **cobrador queda limitado al rango**, el admin tiene chip **"Ver
+todo"**. La lista de cobros sumó el filtro **"Proximas"** (manteniendo "Vencen hoy" aparte).
+
+Branch `claude/new-features-inventory-tickets-and-technicians`, commits `d648e00`→`5fff9e1`
+(7), pusheados. Auditado (2 agentes: SQLite/regresión + correctness) → **limpio salvo 2 LOW ya
+fixeados** (F1 dead code `estadoVisualCuota`; F2 parcial-vence-hoy en detalle de contrato).
+
+> ✅ **Deploy: NADA server-side.** El color es un setting JSONB nuevo (`cobranza.colores_estados`)
+> en la tabla `settings` que YA sincroniza por `SELECT *` → **sin migración, sin bump de schema,
+> sin redeploy de sync rules**. Los defaults (🔴🟠🔵🟣) aplican si la clave no existe; la 1ª
+> edición la crea (upsert). Solo **rebuild de la app** (`flutter run` desde cero) + testear
+> (pasos en `REPORTE-SESION.md` entrada 2026-06-09).
+
+**Bonus — banner "sin conexión" deja de parpadear** (`offline_banner.dart`): el `ref.listen`
+leía el estado `AsyncLoading` del `syncStatusProvider` (cuando se recrea por cambio de DB /
+invalidación) como 'online' en falso (`null == false`) y cancelaba/ocultaba el banner. Ahora
+ignora el estado de carga (`status == null → return`) + debounce de salida de 700ms.
+
+---
+
 ## 2026-06-08 — AUDIT INTEGRAL multi-agente + fixes ✅ código, falta DEPLOY
 
 Audit exhaustivo de TODA la app (11 agentes Opus) → `AUDIT-INTEGRAL-2026-06-08.md`.

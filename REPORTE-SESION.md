@@ -158,6 +158,49 @@ consistentes → auditoría.
 
 > Más reciente arriba. Formato por ítem: error → fix → expectativa.
 
+### 2026-06-09 — Colores configurables de estados de cuota (across-app) + fix banner offline
+
+Rubén pidió: (1) en el mapa y la lista de cobros, un cobrador NO debería ver cuotas fuera del
+rango configurado (`cobranza.dias_cuotas_visibles`) — solo el admin ve todo; (2) un esquema de
+colores por estado, configurable desde Ajustes, aplicado en TODA la app; (3) que el banner de
+"sin conexión" deje de parpadear. Implementado en 7 commits (`d648e00`→`5fff9e1`), branch
+`claude/new-features-inventory-tickets-and-technicians`, auditado por 2 agentes (limpio salvo
+2 LOW ya fixeados). **Sin deploy server-side** (el color es un setting JSONB en la tabla
+`settings` que ya sincroniza por `SELECT *`).
+
+- **Estados del mapa: de 4 a 6.** *Antes:* mora / gracia / pendiente (todo lo pendiente en
+  azul) / al-día (verde = sin deuda). *Ahora:* mora 🔴 / gracia 🟠 / **vence hoy** 🔵 /
+  **proxima** 🟣 (futura dentro del rango) / **fuera de rango** (🟣 atenuado) / **sin deuda**
+  (oculto). *Exp:* el pin toma el color de la cuota más urgente del cliente (precedencia
+  mora>gracia>hoy>proxima>fuera>sin-deuda); el cobrador ve por defecto solo lo cobrable en
+  rango, el admin tiene chip **"Ver todo"** que revela fuera-de-rango + sin-deuda.
+  Archivos: `mapa_screen.dart` (query +counts vence_hoy/proximas/fuera_rango, `_estadoDe`,
+  `_markerFor`, `_FiltroChips`).
+- **Gate por rango (cobrador).** Mapa y lista de cobros del cobrador se limitan a
+  `dias_cuotas_visibles`; el admin no (`esAdminView`/`adminMode`). Para cobrar una adelantada,
+  el cobrador entra al cliente y la elige. *Exp:* el cobrador no ve cuotas que vencen demasiado
+  en el futuro; el admin sí, vía "Ver todo" en el mapa o `/admin/cuotas`.
+- **Filtro "Proximas" en la lista de cobros** (`cuotas_list_screen.dart`). *Exp:* chip nuevo
+  que muestra las que vencen DESPUÉS de hoy dentro del rango; "Vencen hoy" queda como chip
+  aparte (exclusivo de la fecha de hoy, en azul).
+- **Colores configurables across-app.** Ajustes → Cobranza → "Colores de estados de cuota"
+  (picker de paleta predefinida, sin dependencias nuevas). Setting `cobranza.colores_estados`
+  (JSONB `{mora,gracia,hoy,proxima}` → hex). *Exp:* cambiar un color se refleja EN VIVO en
+  mapa, lista de cobros, cuotas admin, detalle de contrato y lista de clientes. Si la clave no
+  existe, aplican los defaults (🔴🟠🔵🟣); la 1ª edición la crea (upsert). Fuente única de la
+  derivación color↔estado: `lib/data/utils/cuota_estado_visual.dart`.
+- **Banner offline parpadeaba.** *Error:* el `ref.listen` del `syncStatusProvider` leía el
+  estado `AsyncLoading` (cuando el provider se recrea por cambio de DB / invalidación) como
+  'online' en falso (`null?.connected == false` → `null == false` → `false`), cancelando el
+  banner pendiente u ocultándolo → flash de ~1s. *Fix:* ignorar el estado de carga
+  (`status == null → return`) + debounce de salida de 700ms. *Exp:* el banner aparece solo tras
+  ~3s de desconexión REAL y no parpadea en reconexiones transitorias (`offline_banner.dart`).
+- **Audit (2 agentes):** *F1* — `estadoVisualCuota()` quedó sin callers → removida (sin dead
+  code). *F2* — en el detalle de contrato una cuota PARCIAL que vence hoy/futura usaba azul del
+  tema → migrada a `colores.hoy`/`colores.proxima` (consistente con la lista). Los 5 buckets SQL
+  del mapa se verificaron mutuamente excluyentes (bordes incl. `diasVisibles=0`). Sin tocar
+  schema/sync-rules/schema-version.
+
 ### 2026-06-08 (cont.) — Audit integral multi-agente + fixes (todo el backlog accionable)
 
 Audit exhaustivo de TODA la app con 11 agentes especialistas (Opus) → reporte

@@ -4,7 +4,14 @@
 > JUNTO con `CLAUDE.md` al abrir una sesión nueva de Claude Code, para
 > continuar exactamente desde acá sin re-descubrir el contexto.
 >
-> **Última actualización**: 2026-06-08. **AUDIT INTEGRAL multi-agente (11 agentes
+> **Última actualización**: 2026-06-09. **Colores configurables de estados de cuota**
+> (across-app: mapa / lista de cobros / cuotas-admin / detalle-contrato / clientes) + el mapa
+> pasó a **6 estados** con **gate por rango para el cobrador** + filtro **"Proximas"** en
+> cobros + **fix del parpadeo del banner offline**. 7 commits (`d648e00`→`5fff9e1`, branch
+> `new-features-...`), auditado (2 LOW fixeados). **Sin deploy server-side** (setting JSONB
+> `cobranza.colores_estados`). Ver `HANDOFF.md` + `REPORTE-SESION.md` (entrada 2026-06-09).
+>
+> **Snapshot previo**: 2026-06-08. **AUDIT INTEGRAL multi-agente (11 agentes
 > Opus)** → `AUDIT-INTEGRAL-2026-06-08.md`. App SÓLIDA (10/10 invariantes, RLS
 > completa, SQLite/TZ/rutas OK). 1 ALTA + 9 MEDIA + ~25 BAJA, **casi todo fixeado**
 > (16 commits, schema v26, falta deploy de `0111`/`0112`). Backlog real que queda:
