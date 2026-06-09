@@ -9,6 +9,7 @@ import '../../../data/providers/cobrador_provider.dart';
 import '../../../data/providers/cuotas_filtro_provider.dart';
 import '../../../data/providers/impersonation_provider.dart';
 import '../../../data/repositories/settings_repo.dart';
+import '../../../data/utils/cuota_estado_visual.dart';
 import '../../../data/utils/formatters.dart';
 import '../../../powersync/db.dart' as ps;
 import '../../shared/widgets/cargar_mas_button.dart';
@@ -824,7 +825,9 @@ class _CuotaCard extends ConsumerWidget {
       'otro': 'Otro',
     };
 
-    final (color, label) = _displayEstado(estado, vence, diasGracia, scheme);
+    final colores = ref.watch(appSettingsProvider).coloresEstados;
+    final (color, label) =
+        _displayEstado(estado, vence, diasGracia, scheme, colores);
 
     final subtexto = esManual
         ? (descripcion ?? 'Cuota manual')
@@ -921,18 +924,18 @@ class _CuotaCard extends ConsumerWidget {
     return Icons.event;
   }
 
-  (Color, String) _displayEstado(
-      String estado, DateTime vence, int dg, ColorScheme s) {
+  (Color, String) _displayEstado(String estado, DateTime vence, int dg,
+      ColorScheme s, ColoresEstados colores) {
     if (estado == 'pagada') return (s.tertiary, 'Pagada');
     if (estado == 'anulada') return (s.outline, 'Anulada');
     // Día Nicaragua (B11) para coincidir con el corte SQL del filtro.
     final diff = Fmt.hoyNicaragua()
         .difference(DateTime(vence.year, vence.month, vence.day))
         .inDays;
-    if (diff > dg) return (s.error, 'Vencida hace ${diff - dg} día(s)');
-    if (diff > 0) return (Colors.amber.shade700, 'En gracia');
-    if (diff == 0) return (s.primary, 'Vence hoy');
-    return (s.outline, 'Al día');
+    if (diff > dg) return (colores.mora, 'Vencida hace ${diff - dg} día(s)');
+    if (diff > 0) return (colores.gracia, 'En gracia');
+    if (diff == 0) return (colores.hoy, 'Vence hoy');
+    return (colores.proxima, 'Al día');
   }
 
   Future<void> _accionesCuota(BuildContext context, WidgetRef ref) async {

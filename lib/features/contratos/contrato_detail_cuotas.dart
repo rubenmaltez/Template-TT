@@ -324,7 +324,7 @@ class _CuotasSectionState extends ConsumerState<_CuotasSection> {
 // Fila compacta de cuota (con color bar)
 // ---------------------------------------------------------------------------
 
-class _CuotaRow extends StatelessWidget {
+class _CuotaRow extends ConsumerWidget {
   const _CuotaRow({
     required this.row,
     required this.diasGracia,
@@ -352,8 +352,9 @@ class _CuotaRow extends StatelessWidget {
   final VoidCallback? onLongPress;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final scheme = Theme.of(context).colorScheme;
+    final colores = ref.watch(appSettingsProvider).coloresEstados;
     final estado = row['estado'] as String? ?? 'pendiente';
     final monto = (row['monto'] as num? ?? 0).toDouble();
     final montoPagado = (row['monto_pagado'] as num? ?? 0).toDouble();
@@ -372,16 +373,16 @@ class _CuotaRow extends StatelessWidget {
       'pagada' => ('Pagada', Colors.green),
       'anulada' => ('Anulada', Colors.grey),
       'parcial' when diasFromVence > diasGracia =>
-        ('Vencida ${diasFromVence - diasGracia}d', scheme.error),
+        ('Vencida ${diasFromVence - diasGracia}d', colores.mora),
       'parcial' when diasFromVence > 0 =>
-        ('Gracia (parcial)', Colors.amber.shade700),
+        ('Gracia (parcial)', colores.gracia),
       'parcial' => ('Parcial', scheme.primary),
       'pendiente' when diasFromVence > diasGracia =>
-        ('Vencida ${diasFromVence - diasGracia}d', scheme.error),
+        ('Vencida ${diasFromVence - diasGracia}d', colores.mora),
       'pendiente' when diasFromVence > 0 =>
-        ('Gracia', Colors.amber.shade700),
-      'pendiente' when diasFromVence == 0 => ('Hoy', scheme.primary),
-      'pendiente' => ('${-diasFromVence}d', scheme.outline),
+        ('Gracia', colores.gracia),
+      'pendiente' when diasFromVence == 0 => ('Hoy', colores.hoy),
+      'pendiente' => ('${-diasFromVence}d', colores.proxima),
       _ => (estado, scheme.outline),
     };
 

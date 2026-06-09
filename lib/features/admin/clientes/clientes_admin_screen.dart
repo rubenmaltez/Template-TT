@@ -762,7 +762,7 @@ class _ListaState extends State<_Lista> {
   }
 }
 
-class _ClienteCard extends StatelessWidget {
+class _ClienteCard extends ConsumerWidget {
   const _ClienteCard({
     required this.row,
     required this.selected,
@@ -774,16 +774,17 @@ class _ClienteCard extends StatelessWidget {
   final VoidCallback onToggle;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final scheme = Theme.of(context).colorScheme;
+    final colores = ref.watch(appSettingsProvider).coloresEstados;
     final vencidas = row['vencidas'] as int? ?? 0;
     final enGracia = row['en_gracia'] as int? ?? 0;
     final contratos = row['contratos_activos'] as int? ?? 0;
     final saldo = (row['saldo'] as num? ?? 0).toDouble();
     final sinCobrador = row['cobrador_id'] == null;
     final inactivo = (row['activo'] as int? ?? 1) == 0;
-    // Ámbar para "en gracia" (consistente con el color de la cuota en gracia).
-    const ambar = Color(0xFFB45309);
+    // Color de "en gracia" desde la paleta configurable del tenant.
+    final ambar = colores.gracia;
 
     return Card(
       color: selected ? scheme.primaryContainer.withValues(alpha: 0.4) : null,
@@ -874,14 +875,14 @@ class _ClienteCard extends StatelessWidget {
                           ),
                         if (vencidas > 0)
                           Chip(
-                            avatar: Icon(Icons.warning, size: 14, color: scheme.error),
+                            avatar: Icon(Icons.warning, size: 14, color: colores.mora),
                             label: Text('$vencidas vencida(s)'),
-                            backgroundColor: scheme.errorContainer.withValues(alpha: 0.3),
+                            backgroundColor: colores.mora.withValues(alpha: 0.12),
                             visualDensity: VisualDensity.compact,
                           ),
                         if (enGracia > 0)
                           Chip(
-                            avatar: const Icon(Icons.hourglass_bottom,
+                            avatar: Icon(Icons.hourglass_bottom,
                                 size: 14, color: ambar),
                             label: Text('$enGracia en gracia'),
                             backgroundColor: ambar.withValues(alpha: 0.12),
@@ -899,7 +900,7 @@ class _ClienteCard extends StatelessWidget {
                     Fmt.cordobas(saldo),
                     style: TextStyle(
                       fontWeight: FontWeight.bold,
-                      color: vencidas > 0 ? scheme.error : null,
+                      color: vencidas > 0 ? colores.mora : null,
                     ),
                   ),
                   Text('Saldo',
