@@ -730,12 +730,13 @@ Rubén prefiere Supabase Dashboard sobre CLI por ahora. Workflows:
 Ya existe `supabase/functions/_shared/` y todas las funciones lo importan:
 `passwords.ts` (`generarPasswordSegura`), `auth_errors.ts` (`humanizeAuthError`)
 y `response.ts` (`corsHeaders`, `jsonError`). Ya NO hay copias inline
-duplicadas. **Nota de deploy por Dashboard**: el Dashboard no soporta subir
-varios archivos en un paste; al editar una función por Dashboard hay que
-asegurarse de que los `_shared/*.ts` ya estén deployados (se mantienen vía
-CLI/repo). El bundler de Edge Functions resuelve los imports relativos en
-deploy, así que el código fuente queda DRY aunque el flujo de Dashboard sea
-por-función.
+duplicadas. **Nota de deploy por Dashboard (verificado 2026-06-09)**: el editor
+de cada función en el Dashboard SÍ tiene un árbol de archivos (panel FILES)
+que incluye los `_shared/*.ts` bundleados — se pueden editar ahí y "Deploy
+updates". OJO: cada función es un **bundle independiente** — al cambiar un
+`_shared/*.ts` hay que repetir el edit + deploy EN CADA función que lo importa
+(ej. `passwords.ts` → crear-tenant, invitar-cobrador, reenviar-invitacion).
+El código fuente del repo sigue siendo la fuente de verdad DRY.
 
 ---
 
