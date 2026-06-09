@@ -151,7 +151,10 @@ serve(async (req) => {
     if (telefono.length > 32) {
       return jsonError("telefono demasiado largo (max 32)", 400);
     }
-    if (!["admin", "admin_cobranza", "cobrador"].includes(body.rol)) {
+    if (
+      !["admin", "admin_cobranza", "cobrador", "tecnico", "admin_tickets"]
+        .includes(body.rol)
+    ) {
       return jsonError("Rol inválido", 400);
     }
     if (

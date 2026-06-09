@@ -6,6 +6,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../data/providers/cobrador_provider.dart';
 import '../../../data/providers/impersonation_provider.dart';
+import '../../../data/providers/modulos_provider.dart';
 import '../../../data/repositories/super_admin_repo.dart';
 import '../../../data/utils/edge_functions.dart';
 import '../../../data/utils/formatters.dart';
@@ -279,6 +280,13 @@ class _InvitarDialogState extends ConsumerState<_InvitarDialog> {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
+    // Roles de tickets (Técnico / Admin de tickets) solo si el tenant tiene el
+    // módulo tickets habilitado.
+    final ticketsOn = ref
+            .watch(modulosHabilitadosProvider)
+            .valueOrNull
+            ?.contains('tickets') ??
+        false;
     // Width responsive: 400 en desktop/tablet, 90% del viewport en
     // mobile chico (iPhone SE = 375, no entra el 400 fijo + el switch
     // wrappea feo). Mismo patrón que _CrearTenantDialog.
@@ -345,10 +353,18 @@ class _InvitarDialogState extends ConsumerState<_InvitarDialog> {
             DropdownButtonFormField<String>(
               value: _rol,
               decoration: const InputDecoration(labelText: 'Rol'),
-              items: const [
-                DropdownMenuItem(value: 'cobrador', child: Text('Cobrador')),
-                DropdownMenuItem(value: 'admin_cobranza', child: Text('Admin de cobranza')),
-                DropdownMenuItem(value: 'admin', child: Text('Administrador')),
+              items: [
+                const DropdownMenuItem(
+                    value: 'cobrador', child: Text('Cobrador')),
+                const DropdownMenuItem(
+                    value: 'admin_cobranza', child: Text('Admin de cobranza')),
+                const DropdownMenuItem(
+                    value: 'admin', child: Text('Administrador')),
+                if (ticketsOn) ...const [
+                  DropdownMenuItem(
+                      value: 'admin_tickets', child: Text('Admin de tickets')),
+                  DropdownMenuItem(value: 'tecnico', child: Text('Técnico')),
+                ],
               ],
               onChanged: _enviando
                   ? null
@@ -554,6 +570,8 @@ class _RolChip extends StatelessWidget {
         'admin' => 'Admin',
         'admin_cobranza' => 'Cobranza',
         'cobrador' => 'Cobrador',
+        'tecnico' => 'Técnico',
+        'admin_tickets' => 'Admin tickets',
         _ => rol,
       }),
       visualDensity: VisualDensity.compact,
@@ -787,6 +805,15 @@ class _EditarCobradorDialogState extends ConsumerState<_EditarCobradorDialog> {
     // chico (un 400 fijo desborda el AlertDialog en pantallas ~360px).
     final screenW = MediaQuery.sizeOf(context).width;
     final dialogW = screenW < 460 ? screenW * 0.9 : 400.0;
+    // Roles de tickets: si el tenant tiene el módulo, o si el miembro YA es uno
+    // de esos roles (para no romper el dropdown con un value fuera de items).
+    final mostrarTickets = (ref
+                .watch(modulosHabilitadosProvider)
+                .valueOrNull
+                ?.contains('tickets') ??
+            false) ||
+        _rol == 'tecnico' ||
+        _rol == 'admin_tickets';
     return AlertDialog(
       title: const Text('Editar cobrador'),
       content: SingleChildScrollView(
@@ -810,10 +837,20 @@ class _EditarCobradorDialogState extends ConsumerState<_EditarCobradorDialog> {
                       ? null
                       : 'Solo el super_admin puede cambiar el rol',
                 ),
-                items: const [
-                  DropdownMenuItem(value: 'admin', child: Text('Administrador')),
-                  DropdownMenuItem(value: 'admin_cobranza', child: Text('Admin de cobranza')),
-                  DropdownMenuItem(value: 'cobrador', child: Text('Cobrador')),
+                items: [
+                  const DropdownMenuItem(
+                      value: 'admin', child: Text('Administrador')),
+                  const DropdownMenuItem(
+                      value: 'admin_cobranza',
+                      child: Text('Admin de cobranza')),
+                  const DropdownMenuItem(
+                      value: 'cobrador', child: Text('Cobrador')),
+                  if (mostrarTickets) ...const [
+                    DropdownMenuItem(
+                        value: 'admin_tickets',
+                        child: Text('Admin de tickets')),
+                    DropdownMenuItem(value: 'tecnico', child: Text('Técnico')),
+                  ],
                 ],
                 onChanged: _puedeCambiarRol
                     ? (v) => setState(() => _rol = v ?? _rol)
