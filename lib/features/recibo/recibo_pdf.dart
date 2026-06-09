@@ -58,7 +58,7 @@ Future<pw.Document> buildReciboPdf({
     final contenido = _pdfBloqueSingle(b.id, _pdfScale(b.size), row, settings,
         logoBytes: logoBytes, moraRows: moraRows);
     if (contenido.isEmpty) continue;
-    final zona = reciboBloqueInfo(b.id)?.zona ?? ReciboZona.body;
+    final zona = zonaEfectiva(b);
     if (children.isNotEmpty) {
       if (zonaPrev == 'header' && zona == ReciboZona.header) {
         children.add(pw.SizedBox(height: 2));
@@ -288,7 +288,7 @@ Future<pw.Document> buildMultiReciboPdf({
     final contenido = _pdfBloqueMulti(b.id, _pdfScale(b.size), rows, settings,
         logoBytes: logoBytes, moraRows: moraRows);
     if (contenido.isEmpty) continue;
-    final zona = reciboBloqueInfo(b.id)?.zona ?? ReciboZona.body;
+    final zona = zonaEfectiva(b);
     if (children.isNotEmpty) {
       if (zonaPrev == 'header' && zona == ReciboZona.header) {
         children.add(pw.SizedBox(height: 2));

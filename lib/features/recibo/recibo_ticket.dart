@@ -82,7 +82,7 @@ class ReciboTicket extends StatelessWidget {
       if (!b.visible) continue;
       final contenido = _buildBloque(b.id, _scaleDe(b.size) * baseFont);
       if (contenido.isEmpty) continue;
-      final zona = reciboBloqueInfo(b.id)?.zona ?? ReciboZona.body;
+      final zona = zonaEfectiva(b);
       if (children.isNotEmpty) {
         // Espaciado COMPACTO para aprovechar el papel: gap mínimo entre dos
         // bloques de header (van casi pegados), gap moderado en el resto. Sin

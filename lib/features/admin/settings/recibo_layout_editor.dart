@@ -39,6 +39,27 @@ class ReciboLayoutEditor extends ConsumerWidget {
         );
   }
 
+  Future<void> _resetLayout(BuildContext context, WidgetRef ref) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('Restaurar layout'),
+        content: const Text(
+            'Vuelve el recibo al orden y las zonas por defecto (incluye WhatsApp '
+            'en el encabezado). ¿Continuar?'),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Cancelar')),
+          FilledButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('Restaurar')),
+        ],
+      ),
+    );
+    if (ok == true) _save(ref, ReciboLayout.porDefecto);
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final settings = ref.watch(appSettingsProvider);
@@ -51,8 +72,7 @@ class ReciboLayoutEditor extends ConsumerWidget {
       ReciboZona.footer: [],
     };
     for (final b in layout) {
-      final zona = reciboBloqueInfo(b.id)?.zona ?? ReciboZona.body;
-      grupos[zona]!.add(b);
+      grupos[zonaEfectiva(b)]!.add(b);
     }
 
     // Reconstruye el layout flat SIEMPRE zona-agrupado (header → body → footer),
@@ -76,19 +96,39 @@ class ReciboLayoutEditor extends ConsumerWidget {
       _save(ref, rebuild());
     }
 
+    // Mueve un bloque de una zona a otra (lo agrega al final de la destino con
+    // su override `zona` seteado). El orden por zona lo reconstruye `rebuild()`.
+    void moverAZona(ReciboZona origen, int i, ReciboZona destino) {
+      if (origen == destino) return;
+      final b = grupos[origen]!.removeAt(i);
+      grupos[destino]!.add(b.copyWith(zona: destino));
+      _save(ref, rebuild());
+    }
+
     final editorChildren = <Widget>[
       _AjustesGenerales(tenantId: tenantId),
-      const SizedBox(height: 20),
+      const SizedBox(height: 12),
+      Align(
+        alignment: Alignment.centerRight,
+        child: OutlinedButton.icon(
+          icon: const Icon(Icons.restart_alt, size: 18),
+          label: const Text('Restaurar layout por defecto'),
+          onPressed: () => _resetLayout(context, ref),
+        ),
+      ),
+      const SizedBox(height: 8),
       for (final (zona, label, icon) in _zonas)
         _Segmento(
           label: label,
           icon: icon,
+          zona: zona,
           bloques: grupos[zona]!,
           onReorder: (o, n) => reordenar(zona, o, n),
           onVisible: (i, v) =>
               actualizar(zona, i, grupos[zona]![i].copyWith(visible: v)),
           onSize: (i, s) =>
               actualizar(zona, i, grupos[zona]![i].copyWith(size: s)),
+          onMover: (i, destino) => moverAZona(zona, i, destino),
           tenantId: tenantId,
         ),
     ];
@@ -244,19 +284,23 @@ class _Segmento extends StatelessWidget {
   const _Segmento({
     required this.label,
     required this.icon,
+    required this.zona,
     required this.bloques,
     required this.onReorder,
     required this.onVisible,
     required this.onSize,
+    required this.onMover,
     required this.tenantId,
   });
 
   final String label;
   final IconData icon;
+  final ReciboZona zona;
   final List<ReciboBloque> bloques;
   final void Function(int oldIndex, int newIndex) onReorder;
   final void Function(int index, bool visible) onVisible;
   final void Function(int index, ReciboTextoSize size) onSize;
+  final void Function(int index, ReciboZona destino) onMover;
   final String tenantId;
 
   @override
@@ -283,8 +327,10 @@ class _Segmento extends StatelessWidget {
                 bloque: bloques[i],
                 info: reciboBloqueInfo(bloques[i].id),
                 tenantId: tenantId,
+                zonaActual: zona,
                 onVisible: (v) => onVisible(i, v),
                 onSize: (s) => onSize(i, s),
+                onMover: (destino) => onMover(i, destino),
               ),
             ),
           ),
@@ -329,16 +375,20 @@ class _BloqueRow extends ConsumerWidget {
     required this.bloque,
     required this.info,
     required this.tenantId,
+    required this.zonaActual,
     required this.onVisible,
     required this.onSize,
+    required this.onMover,
   });
 
   final int index;
   final ReciboBloque bloque;
   final ReciboBloqueInfo? info;
   final String tenantId;
+  final ReciboZona zonaActual;
   final ValueChanged<bool> onVisible;
   final ValueChanged<ReciboTextoSize> onSize;
+  final ValueChanged<ReciboZona> onMover;
 
   // Sub-opción de un bloque (cédula del cliente, saldo de la cuota): clave del
   // setting booleano que vive DENTRO del bloque.
@@ -394,6 +444,22 @@ class _BloqueRow extends ConsumerWidget {
                   message: 'El total no se puede ocultar',
                   child: Icon(Icons.lock, size: 20, color: scheme.outline),
                 ),
+              // Menú "Mover a zona": reubica el bloque entre encabezado / cuerpo
+              // / pie (además del drag para reordenar dentro de la zona).
+              PopupMenuButton<ReciboZona>(
+                icon: Icon(Icons.more_vert, size: 20, color: scheme.outline),
+                tooltip: 'Mover a zona',
+                onSelected: onMover,
+                itemBuilder: (_) => [
+                  for (final (z, etiqueta) in const [
+                    (ReciboZona.header, 'Mover a Encabezado'),
+                    (ReciboZona.body, 'Mover a Cuerpo'),
+                    (ReciboZona.footer, 'Mover a Pie'),
+                  ])
+                    if (z != zonaActual)
+                      PopupMenuItem(value: z, child: Text(etiqueta)),
+                ],
+              ),
             ],
           ),
         ),

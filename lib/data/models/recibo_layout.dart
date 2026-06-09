@@ -20,31 +20,55 @@ ReciboTextoSize reciboSizeFromString(String? s) => switch (s) {
 /// el render por debajo es una sola lista lineal de arriba hacia abajo.
 enum ReciboZona { header, body, footer }
 
+ReciboZona? reciboZonaFromString(String? s) => switch (s) {
+      'header' => ReciboZona.header,
+      'body' => ReciboZona.body,
+      'footer' => ReciboZona.footer,
+      _ => null,
+    };
+
 /// Un bloque del layout: qué bloque es (id), si se muestra, y su tamaño.
 class ReciboBloque {
   const ReciboBloque({
     required this.id,
     this.visible = true,
     this.size = ReciboTextoSize.normal,
+    this.zona,
   });
 
   final String id;
   final bool visible;
   final ReciboTextoSize size;
 
-  ReciboBloque copyWith({bool? visible, ReciboTextoSize? size}) => ReciboBloque(
+  /// Zona elegida por el usuario (override del default del catálogo). null =
+  /// usar la zona del catálogo. Permite mover un bloque entre encabezado/cuerpo/
+  /// pie desde el editor (menú "Mover a zona").
+  final ReciboZona? zona;
+
+  ReciboBloque copyWith({
+    bool? visible,
+    ReciboTextoSize? size,
+    ReciboZona? zona,
+  }) =>
+      ReciboBloque(
         id: id,
         visible: visible ?? this.visible,
         size: size ?? this.size,
+        zona: zona ?? this.zona,
       );
 
-  Map<String, dynamic> toJson() =>
-      {'id': id, 'visible': visible, 'size': size.name};
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'visible': visible,
+        'size': size.name,
+        if (zona != null) 'zona': zona!.name,
+      };
 
   factory ReciboBloque.fromJson(Map<String, dynamic> j) => ReciboBloque(
         id: j['id'] as String,
         visible: j['visible'] as bool? ?? true,
         size: reciboSizeFromString(j['size'] as String?),
+        zona: reciboZonaFromString(j['zona'] as String?),
       );
 }
 
@@ -64,6 +88,7 @@ class ReciboBloqueInfo {
 const kReciboBloquesCatalogo = <ReciboBloqueInfo>[
   ReciboBloqueInfo('logo', 'Logo', ReciboZona.header),
   ReciboBloqueInfo('empresa', 'Datos de la empresa', ReciboZona.header),
+  ReciboBloqueInfo('whatsapp', 'WhatsApp', ReciboZona.header),
   ReciboBloqueInfo('titulo', 'Título', ReciboZona.header),
   ReciboBloqueInfo('meta', 'Datos del recibo (N°, fecha, cobrador)', ReciboZona.body),
   ReciboBloqueInfo('cliente', 'Cliente', ReciboZona.body),
@@ -75,7 +100,6 @@ const kReciboBloquesCatalogo = <ReciboBloqueInfo>[
       hideable: false),
   ReciboBloqueInfo('mora', 'Detalle de mora', ReciboZona.body),
   ReciboBloqueInfo('pie', 'Pie libre', ReciboZona.footer),
-  ReciboBloqueInfo('whatsapp', 'WhatsApp', ReciboZona.footer),
 ];
 
 ReciboBloqueInfo? reciboBloqueInfo(String id) {
@@ -84,6 +108,11 @@ ReciboBloqueInfo? reciboBloqueInfo(String id) {
   }
   return null;
 }
+
+/// Zona EFECTIVA de un bloque: la elegida por el usuario (`bloque.zona`) o, si
+/// no eligió, la del catálogo.
+ReciboZona zonaEfectiva(ReciboBloque b) =>
+    b.zona ?? reciboBloqueInfo(b.id)?.zona ?? ReciboZona.body;
 
 /// Helpers de parseo/saneo del layout (robusto a versiones viejas y datos
 /// corruptos — nunca se "pierde" un bloque ni se muestra un recibo sin totales).
@@ -118,7 +147,24 @@ class ReciboLayout {
     for (final info in kReciboBloquesCatalogo) {
       if (!vistos.contains(info.id)) out.add(ReciboBloque(id: info.id));
     }
-    return out.isEmpty ? porDefecto : out;
+    if (out.isEmpty) return porDefecto;
+    // Orden FINAL agrupado por zona EFECTIVA (header → body → footer),
+    // preservando el orden dentro de cada zona. Es el orden que iteran los 3
+    // renderers y el que muestra/guarda el editor, así un bloque movido de zona
+    // (ej. WhatsApp al encabezado) se refleja en el recibo impreso.
+    final porZona = <ReciboZona, List<ReciboBloque>>{
+      ReciboZona.header: [],
+      ReciboZona.body: [],
+      ReciboZona.footer: [],
+    };
+    for (final b in out) {
+      porZona[zonaEfectiva(b)]!.add(b);
+    }
+    return [
+      ...porZona[ReciboZona.header]!,
+      ...porZona[ReciboZona.body]!,
+      ...porZona[ReciboZona.footer]!,
+    ];
   }
 
   static List<Map<String, dynamic>> toJson(List<ReciboBloque> layout) =>
