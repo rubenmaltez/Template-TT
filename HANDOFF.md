@@ -7,7 +7,31 @@
 
 ---
 
-## 2026-06-09 (cont.) — Limpieza de settings + recibo (zonas) + "fuera de rango" gris ⚠️ correr 0113
+## ⭐ CHECKPOINT 2026-06-09 — pre-MVP v1 (LEER PRIMERO al reabrir)
+
+**Branch de trabajo: `pre-mvp-v1`** (rama nueva = checkpoint de este momento). **Desarrollar acá.**
+**Último commit: `f92da5c`** · todo pusheado a `origin/pre-mvp-v1`. App **v0.10.0** (Flutter Android + Windows).
+
+**Stack:** Supabase (Postgres + Auth + Edge Functions + Storage) · **PowerSync** (offline-first, SQLite local por usuario, schema **v26**) · Riverpod · go_router. Los buckets de `powersync/sync-rules.yaml` scopean la data por rol (cobrador = su slice; admin = todo el tenant).
+
+**Lo que se cerró HOY (2 tandas + fixes — detalle en las entradas de abajo y en `REPORTE-SESION.md`):**
+1. **Colores configurables de estados de cuota** (across-app: mapa / lista de cobros / cuotas-admin / detalle de contrato / clientes) + mapa de **6 estados** (mora/gracia/vence-hoy/próxima/fuera-de-rango/sin-deuda) + **gate por rango** (el cobrador no ve cuotas fuera de `dias_cuotas_visibles`; admin tiene "Ver todo") + fix del **parpadeo del banner offline**. SIN deploy server-side.
+2. **Limpieza de settings + recibo:** reglas/permisos sensibles (pago parcial/adelantado, cobrador anula/edita cobros) → tab **Avanzado** (super) + `editable_por='super_admin'`; **depósito** quitado del cobro+settings; "fuera de rango" = **GRIS "no disponible"** (era bug: todo morado); **"Días de cuotas próximas"** ahora setting **seedeado, default 5**; recibo con menú **"Mover a zona"** + botón **"Restaurar layout"** + WhatsApp al encabezado.
+3. **Fixes post-testing de Rubén:** pantalla negra del reset de recibo (`Navigator.pop` usaba el context del editor, no del diálogo); menú **"Pagos"** oculto al super_admin cuando `cobranza.pantalla_pagos` está OFF (Opción B — `_MenuItem.superRespetaSetting`).
+
+**Estado de deploy / DB:**
+- ✅ **Migración `0113` YA CORRIDA por Rubén** (dias_cuotas_visibles=5 + dias_gracia=10 + las 4 reglas super-only). Sin bump de schema ni redeploy de sync rules.
+- ⚠️ **Pendiente de sesiones ANTERIORES (NO de hoy):** migraciones **`0099`→`0112`** (Inventario + Tickets + Técnicos + Incidentes + cancelar-contrato) + redeploy de sync rules + `flutter pub get` (`mobile_scanner`). **Confirmar con Rubén si ya las corrió** — si los features de inventario/tickets no andan, falta esto.
+
+**¿Dónde quedamos?** Rubén estaba **testeando manualmente** el lote (ver `TESTING.md §0.3`) — venía OK (colores, settings, recibo, menú Pagos). **Próximo paso:** terminar el testing manual y atacar lo que reporte.
+
+**Backlog menor de los audits de hoy (no bloquea):** arm `sinDeuda` muerto en `contrato_detail_cuotas` (cosmético, exhaustividad de Dart); `seed_settings_recibo_layout` (migr 0090) tiene whatsapp sin campo `zona` (lo resuelve el catálogo, inofensivo).
+
+**Leer al abrir, en orden:** este CHECKPOINT → `CLAUDE.md` (reglas/proceso/invariantes de dinero) → `REPORTE-SESION.md` (entradas 2026-06-09) → `ESTADO-APP.md` → `TESTING.md §0.3` → `ARQUITECTURA.md`.
+
+---
+
+## 2026-06-09 (cont.) — Limpieza de settings + recibo (zonas) + "fuera de rango" gris (0113 corrida)
 
 Lote post-testing de Rubén (7 commits `4abbb41`→`567ca45`, pusheados, auditado 2 agentes —
 1 MEDIUM fixed). Branch `claude/new-features-inventory-tickets-and-technicians`.
