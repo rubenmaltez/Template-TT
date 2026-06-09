@@ -158,6 +158,47 @@ consistentes → auditoría.
 
 > Más reciente arriba. Formato por ítem: error → fix → expectativa.
 
+### 2026-06-09 (c) — AUDIT INTEGRAL de toda la app + lote 1 de fixes
+
+Auditoría profunda de TODA la app (6 agentes por dominio + verificación directa).
+Branch `claude/hopeful-ride-u1ivz5`, commits `2917a73` (lote 1) + `d31bbb8` (L7).
+Reporte completo en `AUDIT-INTEGRAL-2026-06-09.md`. Veredicto: app **sólida** (dinero
+10/10, integridad estructural limpia, change log 100%, sin fugas cross-tenant, sin
+CRITICAL/HIGH). Fixes aplicados (auditados, limpios):
+
+- **M1 — sync gate stuck post-forzar-password.** *Error:* `connectPowerSync()` no se
+  serializaba con el lock `_pendingOp` que sí usan `openDatabaseForUser`/`disconnectPowerSync`
+  → en el signOut global→re-login (forzar-password) el `db.connect` podía correr contra una
+  DB que se estaba cerrando/reabriendo, dejando PowerSync sin checkpoint y el sync gate
+  colgado hasta un F5. *Fix:* `connectPowerSync()` ahora espera `_pendingOp` y toma su propio
+  Completer (`lib/powersync/db.dart`). *Expectativa:* tras forzar-password, el afectado entra
+  y el sync gate avanza sin F5. (No reemplaza el grace de 8s — lo complementa cerrando la causa.)
+- **M5 — write del cobrador descartado silencioso.** *Error:* `_isNonRetryable` marcaba como
+  permanente TODO código `4…`, incluida la clase 40 (40001 serialization_failure / 40P01
+  deadlock), que es transitoria → un cobro/recibo podía descartarse de la cola sin reintento.
+  *Fix:* `if (code.startsWith('40')) return false;` antes del check amplio (`connector.dart`).
+  *Expectativa:* errores transitorios se reintentan; solo los de cliente (23/42/22/P0001) se descartan.
+- **M3 — rol `admin_tickets` en limbo.** *Error:* `/admin/cobradores` ofrecía `admin_tickets`,
+  pero el rol no tiene bucket de sync ni shell propio → caía en el shell del cobrador con data
+  vacía y podía navegar a `/admin/*`. *Fix:* el dropdown ya no lo ofrece (alineado con el
+  diálogo del super); se muestra "legacy" solo si el miembro ya lo tiene. *Expectativa:* nadie
+  asigna un rol incompleto. Completarlo (bucket + menú + landing) queda como feature.
+- **L2 — saldo stale offline al aplicar un cargo.** *Error:* `aplicar_cargo_dialog` insertaba
+  en `cargos_extra` sin espejar `cuotas.cargos_neto`/`estado` local → el saldo quedaba viejo
+  hasta el sync en las listas. *Fix:* el insert va en `writeTransaction` + mirror local con el
+  mismo cálculo del trigger (`calcularEstadoCuota`). Auditado: mirror **exacto** (5 escenarios,
+  no toca `monto_pagado`, sin doble-conteo con el cobro). *Expectativa:* el saldo refleja el
+  cargo al instante, también offline.
+- **L3 — viewer global de auditoría desordenado offline.** *Error:* `/admin/audit` ordenaba/
+  mostraba por `created_at` (hora de sync), no `ocurrido_en` (device-time). *Fix:* `COALESCE(
+  ocurrido_en, created_at)` en SELECT/ORDER/display. *Expectativa:* eventos offline en su hora real.
+- **L7 — sesgo de módulo en password generada.** *Fix:* rejection sampling en
+  `_shared/passwords.ts`. ⚠️ requiere **redeploy** de las edge functions.
+
+**Pendientes (con decisión/deploy/verificación):** M6 (confirmar deploy 0099→0112 — SQL de
+verificación en el AUDIT), M2 (gate de módulos server-side), M4+L1 (SLA/timestamps en hora
+local-naive), L4 (conteo eliminar-cobrador, tras M6), L5/L6/L8 (backlog).
+
 ### 2026-06-09 (cont.) — Limpieza de settings + recibo (zonas) + "fuera de rango" gris
 
 Lote de ajustes pedidos por Rubén durante el testing del feature de colores. 7 commits

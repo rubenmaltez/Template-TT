@@ -7,7 +7,38 @@
 
 ---
 
-## ⭐ CHECKPOINT 2026-06-09 — pre-MVP v1 (LEER PRIMERO al reabrir)
+## ⭐ CHECKPOINT 2026-06-09 (b) — AUDIT INTEGRAL + lote 1 de fixes (LEER PRIMERO)
+
+**Branch de trabajo: `claude/hopeful-ride-u1ivz5`** · últimos commits `2917a73` (lote 1)
++ `d31bbb8` (L7) sobre el checkpoint pre-MVP v1. **Detalle completo en `AUDIT-INTEGRAL-2026-06-09.md`.**
+
+**Qué se hizo:** auditoría profunda de TODA la app (6 agentes por dominio + verificación
+directa). **Veredicto: sólida** — dinero 10/10, integridad estructural limpia, change log
+100%, sin fugas cross-tenant, sin CRITICAL/HIGH. Hallazgos: 6 MEDIUM + 8 LOW.
+
+**Fixes aplicados y auditados (limpios):**
+- `2917a73` (lote 1, 2 reviews OK): **M1** `connectPowerSync()` toma el lock `_pendingOp`
+  (cierra la race del sync-gate-stuck post-forzar-password) · **M5** `_isNonRetryable` no
+  descarta la clase 40 (serialization/deadlock) · **M3** `/admin/cobradores` deja de ofrecer
+  `admin_tickets` (rol incompleto) · **L2** `aplicar_cargo_dialog` espeja `cargos_neto`/`estado`
+  local (saldo correcto offline, mirror verificado exacto) · **L3** viewer `/admin/audit` ordena/
+  muestra por `ocurrido_en`.
+- `d31bbb8`: **L7** password sin sesgo de módulo. ⚠️ **requiere redeploy de edge functions**.
+
+**Pendientes (necesitan TU decisión / deploy / verificación) — ver §Pendientes del AUDIT:**
+1. **M6 (PRIORIDAD):** confirmar deploy de `0099`→`0112` (¿corridas? dijiste "no estoy seguro").
+   Hay SQL de verificación en `AUDIT-INTEGRAL-2026-06-09.md`. **No habilitar inventario/tickets
+   a ningún tenant hasta confirmar** (sino el INSERT bloquea la cola de sync).
+2. **M2:** gate de módulos server-enforced (migración 0114 + decisión: ¿gatear lectura?).
+3. **M4+L1:** SLA de tickets en hora local-naive → verificar empíricamente si corre 6h post-sync.
+4. **L4:** conteo de `eliminar-cobrador` para tablas nuevas (hacer DESPUÉS de M6).
+5. **L5/L6/L8:** backlog LOW.
+
+**SIN deploy server-side de los fixes de hoy** (todo client-side salvo L7 = redeploy edge fns).
+
+---
+
+## ⭐ CHECKPOINT 2026-06-09 — pre-MVP v1 (contexto previo)
 
 **Branch de trabajo: `pre-mvp-v1`** (rama nueva = checkpoint de este momento). **Desarrollar acá.**
 **Último commit: `f92da5c`** · todo pusheado a `origin/pre-mvp-v1`. App **v0.10.0** (Flutter Android + Windows).
