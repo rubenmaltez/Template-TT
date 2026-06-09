@@ -22,12 +22,12 @@ import '../../../powersync/db.dart' as ps;
 /// estableciendo. Con debounce, solo aparece si la desconexión es real
 /// (≥3s consecutivos).
 ///
-/// **Asimetría intencional**: al reconectar, el banner desaparece
-/// **inmediato** (no hay debounce de salida — queremos quitar el ruido
-/// visual rápido). El trade-off es que un flicker rápido (`false → true
-/// → false` en <3s) silencia el banner — eso oculta "red inestable" como
-/// señal. Si en el futuro queremos distinguir "red inestable" de "todo
-/// bien", agregar un indicador sutil aparte del banner.
+/// **Asimetría intencional**: aparece tras 3s offline; al reconectar
+/// desaparece con un debounce corto (700ms), para que una reconexión
+/// transitoria (online un instante y vuelve a caer) no lo haga parpadear.
+/// Además el estado `AsyncLoading` del provider (cambio de DB / invalidación)
+/// se IGNORA: antes se leía como 'online' en falso y ocultaba el banner. La
+/// "red inestable" se señala aparte con [_UnstableNetworkHint].
 ///
 /// **Patrón**: usa `ref.listen` en lugar de `ref.watch` + setState. El
 /// listener solo dispara en CAMBIOS del provider, no en cada rebuild —
@@ -39,6 +39,9 @@ class OfflineBanner extends ConsumerStatefulWidget {
   final Widget child;
 
   static const _debounce = Duration(seconds: 3);
+  // Debounce de SALIDA: al reconectar esperamos un toque antes de ocultar, así
+  // una reconexión transitoria no hace parpadear el banner.
+  static const _hideDebounce = Duration(milliseconds: 700);
 
   @override
   ConsumerState<OfflineBanner> createState() => _OfflineBannerState();
@@ -46,6 +49,7 @@ class OfflineBanner extends ConsumerStatefulWidget {
 
 class _OfflineBannerState extends ConsumerState<OfflineBanner> {
   Timer? _showTimer;
+  Timer? _hideTimer;
   bool _show = false;
 
   // --- Flicker tracking para indicador de red inestable ---
@@ -83,6 +87,7 @@ class _OfflineBannerState extends ConsumerState<OfflineBanner> {
   @override
   void dispose() {
     _showTimer?.cancel();
+    _hideTimer?.cancel();
     _unstableResetTimer?.cancel();
     super.dispose();
   }
@@ -130,15 +135,27 @@ class _OfflineBannerState extends ConsumerState<OfflineBanner> {
     }
 
     if (offline) {
+      // Cancelá una salida pendiente: la red volvió a caer dentro del debounce
+      // de salida, así que el banner se queda.
+      _hideTimer?.cancel();
+      _hideTimer = null;
       if (_showTimer != null || _show) return;
       _showTimer = Timer(OfflineBanner._debounce, () {
         _showTimer = null;
         if (mounted) setState(() => _show = true);
       });
     } else {
+      // Volvió la conexión: cancelá el timer de entrada (silencia el handshake).
       _showTimer?.cancel();
       _showTimer = null;
-      if (_show) setState(() => _show = false);
+      // Salida con debounce corto: si la red se cae de nuevo en <700ms, el
+      // banner no llega a ocultarse → no parpadea por reconexiones transitorias.
+      if (_show && _hideTimer == null) {
+        _hideTimer = Timer(OfflineBanner._hideDebounce, () {
+          _hideTimer = null;
+          if (mounted) setState(() => _show = false);
+        });
+      }
     }
   }
 
@@ -148,8 +165,13 @@ class _OfflineBannerState extends ConsumerState<OfflineBanner> {
     // adicional ni necesitar tracking manual del último valor. El estado
     // inicial lo manejamos en initState (ref.listen no dispara en mount).
     ref.listen<AsyncValue<SyncStatus?>>(syncStatusProvider, (_, next) {
-      final offline = next.valueOrNull?.connected == false;
-      _onStatusChange(offline);
+      // Ignorá el estado de carga (provider recreándose: cambio de DB,
+      // invalidación, reconexión). Ahí valueOrNull es null, y el viejo
+      // `null?.connected == false` evaluaba a 'online' en FALSO → cancelaba el
+      // timer / ocultaba el banner y causaba el parpadeo de ~1s.
+      final status = next.valueOrNull;
+      if (status == null) return;
+      _onStatusChange(status.connected == false);
     });
 
     return Column(
