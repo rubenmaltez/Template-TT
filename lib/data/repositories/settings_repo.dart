@@ -198,14 +198,11 @@ class AppSettings {
   bool get comprobanteHabilitado =>
       settingValue<bool>(_map, 'cobranza.comprobante_habilitado', false);
 
-  /// Pantallas admin opcionales, habilitadas por el super_admin por tenant
-  /// (toggles super_admin-only en settings). Default FALSE → el item del menú no
-  /// aparece. `/admin/pagos` (historial de pagos + anular) y
-  /// `/admin/notificaciones` (gestión de mora).
+  /// Pantalla admin opcional `/admin/pagos` (historial de pagos + anular),
+  /// habilitada por el super_admin por tenant (toggle super_admin-only en
+  /// settings). Default FALSE → el item del menú no aparece.
   bool get pantallaPagosHabilitada =>
       settingValue<bool>(_map, 'cobranza.pantalla_pagos', false);
-  bool get pantallaNotificacionesHabilitada =>
-      settingValue<bool>(_map, 'cobranza.pantalla_notificaciones', false);
 
   /// Visibilidad del panel de Auditoría (/admin/audit) para el admin del
   /// tenant. Default FALSE → el item del menú no aparece y el router rebota la

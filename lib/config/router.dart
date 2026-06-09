@@ -18,7 +18,6 @@ import '../features/admin/incidentes/incidente_detail_screen.dart';
 import '../features/admin/incidentes/incidentes_screen.dart';
 import '../features/admin/inventario/inventario_screen.dart';
 import '../features/admin/red/red_admin_screen.dart';
-import '../features/admin/notificaciones/notificaciones_mora_screen.dart';
 import '../features/admin/pagos/pagos_admin_screen.dart';
 import '../features/admin/planes/planes_admin_screen.dart';
 import '../features/admin/reportes/reportes_admin_screen.dart';
@@ -278,19 +277,13 @@ final routerProvider = Provider<GoRouter>((ref) {
         if (!auditVisible) return '/admin';
       }
 
-      // Pantallas opcionales Pagos / Notificaciones: el admin sólo accede si el
-      // super_admin habilitó el toggle por tenant (B3 del audit — antes solo se
-      // ocultaban del menú, pero la URL directa entraba igual). El super_admin
-      // (rol != 'admin') las ve siempre; admin_cobranza ya cae en `soloAdmin`.
+      // Pantalla opcional Pagos: el admin sólo accede si el super_admin habilitó
+      // el toggle por tenant (B3 del audit). El super_admin (rol != 'admin') la
+      // ve siempre; admin_cobranza ya cae en `soloAdmin`.
       if (rol == 'admin') {
         final s = ref.read(appSettingsProvider);
         if ((loc == '/admin/pagos' || loc.startsWith('/admin/pagos/')) &&
             !s.pantallaPagosHabilitada) {
-          return '/admin';
-        }
-        if ((loc == '/admin/notificaciones' ||
-                loc.startsWith('/admin/notificaciones/')) &&
-            !s.pantallaNotificacionesHabilitada) {
           return '/admin';
         }
       }
@@ -310,7 +303,6 @@ final routerProvider = Provider<GoRouter>((ref) {
         '/admin/settings',
         '/admin/planes',
         '/admin/pagos',
-        '/admin/notificaciones',
       ];
       if (rol == 'admin_cobranza' &&
           soloAdmin.any((p) => loc == p || loc.startsWith('$p/'))) {
@@ -423,9 +415,6 @@ final routerProvider = Provider<GoRouter>((ref) {
                   contratoId: s.pathParameters['id']!))),
           GoRoute(path: '/admin/planes',
               pageBuilder: (_, s) => _fadePage(s, _titled('Planes', const PlanesAdminScreen()))),
-          GoRoute(path: '/admin/notificaciones',
-              pageBuilder: (_, s) => _fadePage(s, _titled('Notificaciones de mora',
-                  const NotificacionesMoraScreen()))),
           GoRoute(path: '/admin/cobradores',
               pageBuilder: (_, s) => _fadePage(s, _titled('Cobradores', const CobradoresAdminScreen()))),
           GoRoute(path: '/admin/cuotas',

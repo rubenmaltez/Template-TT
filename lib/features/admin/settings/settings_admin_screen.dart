@@ -158,7 +158,6 @@ const _superAdminOnly = {
   'cobranza.foto_obligatoria',
   // Pantallas admin opcionales: el super_admin las habilita por tenant.
   'cobranza.pantalla_pagos',
-  'cobranza.pantalla_notificaciones',
   // Visibilidad del panel de Auditoría para el admin (0089): default OFF.
   'cobranza.audit_visible_admin',
   // Descuentos (manual en campo): módulo que el super_admin habilita por
@@ -930,7 +929,6 @@ class _SettingTileState extends State<_SettingTile> {
       'cobranza.comprobante_habilitado': 'Habilitar foto de comprobante',
       'cobranza.foto_obligatoria': 'Foto comprobante obligatoria',
       'cobranza.pantalla_pagos': 'Pantalla de pagos del tenant (admin)',
-      'cobranza.pantalla_notificaciones': 'Pantalla de notificaciones de mora',
       'cobranza.audit_visible_admin': 'Panel de Auditoría visible al admin',
       'cobranza.pago_parcial': 'Permitir pago parcial',
       'cobranza.pago_adelantado': 'Permitir pago adelantado (multi-cuota)',

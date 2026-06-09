@@ -137,7 +137,6 @@ const kGruposAvanzado = <SettingGroup>[
     icono: Icons.dashboard_customize,
     entradas: [
       SettingEntry('cobranza.pantalla_pagos'),
-      SettingEntry('cobranza.pantalla_notificaciones'),
       SettingEntry('cobranza.audit_visible_admin'),
     ],
   ),

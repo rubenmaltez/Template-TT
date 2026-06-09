@@ -285,8 +285,6 @@ const _adminMenu = [
   // super_admin-only en settings). Sin habilitar, el item no aparece.
   _MenuItem(Icons.payments, 'Pagos', '/admin/pagos',
       adminOnly: true, settingKey: 'cobranza.pantalla_pagos'),
-  _MenuItem(Icons.notifications_active, 'Notificaciones', '/admin/notificaciones',
-      adminOnly: true, settingKey: 'cobranza.pantalla_notificaciones'),
   // Módulo opcional Inventario: aparece solo si el super_admin lo habilitó
   // para el tenant (tenant_modulos 'inventario'). adminOnly.
   _MenuItem(Icons.inventory_2, 'Inventario', '/admin/inventario',
@@ -425,8 +423,6 @@ class _ExpandableMenuItem extends ConsumerWidget {
 /// Centralizado para que el rail, el drawer y los grupos usen la misma lógica.
 Set<String> _pantallasOn(AppSettings settings) => <String>{
       if (settings.pantallaPagosHabilitada) 'cobranza.pantalla_pagos',
-      if (settings.pantallaNotificacionesHabilitada)
-        'cobranza.pantalla_notificaciones',
       if (settings.auditVisibleAdmin) 'cobranza.audit_visible_admin',
     };
 
