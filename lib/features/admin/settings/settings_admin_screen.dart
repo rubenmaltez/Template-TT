@@ -118,6 +118,9 @@ const _hidden = {
   // Legacy duplicados — la app ya usa los metodo_* de 0040.
   'pagos.transferencia_habilitada',
   'pagos.tarjeta_habilitada',
+  // Depósito = transferencia (mismo método). Se quitó como opción separada; se
+  // oculta el setting (la data histórica con metodo='deposito' se preserva).
+  'pagos.deposito_habilitado',
   // Orphaned — nunca leído por AppSettings.
   'cobranza.cargo_reconexion',
   // Modo de ruta: setting huérfano (0 usos en el código, sin getter). El

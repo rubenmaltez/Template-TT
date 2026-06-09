@@ -451,7 +451,6 @@ class _CobroScreenState extends ConsumerState<CobroScreen> {
     final metodosDisponibles = <MetodoPago>[
       if (settings.efectivoHabilitado) MetodoPago.efectivo,
       if (settings.transferenciaHabilitada) MetodoPago.transferencia,
-      if (settings.depositoHabilitado) MetodoPago.deposito,
       if (settings.tarjetaHabilitada) MetodoPago.tarjeta,
     ];
     if (metodosDisponibles.isNotEmpty && !metodosDisponibles.contains(_metodo)) {
@@ -1010,7 +1009,6 @@ class _MetodosWrap extends StatelessWidget {
     final disponibles = <MetodoPago>[
       if (settings.efectivoHabilitado) MetodoPago.efectivo,
       if (settings.transferenciaHabilitada) MetodoPago.transferencia,
-      if (settings.depositoHabilitado) MetodoPago.deposito,
       if (settings.tarjetaHabilitada) MetodoPago.tarjeta,
     ];
 

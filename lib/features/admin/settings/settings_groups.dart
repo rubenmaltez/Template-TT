@@ -95,7 +95,6 @@ const kGruposPagos = <SettingGroup>[
       // metodo_efectivo queda fijo en ON (lo fuerza el editor del tile).
       SettingEntry('pagos.metodo_efectivo'),
       SettingEntry('pagos.metodo_transferencia'),
-      SettingEntry('pagos.deposito_habilitado'),
       SettingEntry('pagos.metodo_tarjeta'),
     ],
   ),
