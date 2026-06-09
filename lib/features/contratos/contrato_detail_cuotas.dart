@@ -376,7 +376,8 @@ class _CuotaRow extends ConsumerWidget {
         ('Vencida ${diasFromVence - diasGracia}d', colores.mora),
       'parcial' when diasFromVence > 0 =>
         ('Gracia (parcial)', colores.gracia),
-      'parcial' => ('Parcial', scheme.primary),
+      'parcial' when diasFromVence == 0 => ('Hoy (parcial)', colores.hoy),
+      'parcial' => ('${-diasFromVence}d (parcial)', colores.proxima),
       'pendiente' when diasFromVence > diasGracia =>
         ('Vencida ${diasFromVence - diasGracia}d', colores.mora),
       'pendiente' when diasFromVence > 0 =>

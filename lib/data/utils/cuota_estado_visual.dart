@@ -109,27 +109,6 @@ class ColoresEstados {
       );
 }
 
-/// Deriva el estado visual de una cuota NO finalizada (pendiente/parcial) a
-/// partir de los días desde el vencimiento.
-///
-/// [diasFromVence] = hoy − fecha_vencimiento, en días (hora Nicaragua).
-/// Positivo = ya venció; 0 = vence hoy; negativo = vence en el futuro.
-///
-/// Coincide con los cortes SQL `date('now','-6 hours')` y con
-/// `Fmt.hoyNicaragua()` que usa el resto de la app.
-CuotaEstadoVisual estadoVisualCuota({
-  required int diasFromVence,
-  required int diasGracia,
-  required int diasVisibles,
-}) {
-  if (diasFromVence > diasGracia) return CuotaEstadoVisual.mora;
-  if (diasFromVence > 0) return CuotaEstadoVisual.gracia;
-  if (diasFromVence == 0) return CuotaEstadoVisual.hoy;
-  // Futuro: dentro del rango = proxima; más allá = fueraDeRango.
-  if (-diasFromVence <= diasVisibles) return CuotaEstadoVisual.proxima;
-  return CuotaEstadoVisual.fueraDeRango;
-}
-
 /// "#RRGGBB" (o "RRGGBB", o "#AARRGGBB") → Color. Null si el formato es inválido.
 Color? colorFromHex(String hex) {
   var h = hex.trim();
