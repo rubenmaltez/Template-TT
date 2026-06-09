@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../../data/providers/cobrador_provider.dart';
 import '../../data/providers/cuotas_filtro_provider.dart';
 import '../../data/repositories/settings_repo.dart';
+import '../../data/utils/cuota_estado_visual.dart';
 import '../../data/utils/formatters.dart';
 import '../../powersync/db.dart' as ps;
 import '../shared/widgets/dropdown_filtro.dart';
@@ -859,7 +860,9 @@ class _CuotaCompactRow extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final scheme = Theme.of(context).colorScheme;
-    final colores = ref.watch(appSettingsProvider).coloresEstados;
+    final settings = ref.watch(appSettingsProvider);
+    final colores = settings.coloresEstados;
+    final diasVisibles = settings.diasCuotasVisibles;
     final vence = DateTime.parse(row['fecha_vencimiento'] as String);
     final periodo = DateTime.parse(row['periodo'] as String);
     // Saldo canónico (regla #10): incluye cargos_neto (reconexión suma, descuento
@@ -874,13 +877,19 @@ class _CuotaCompactRow extends ConsumerWidget {
         .inDays;
     final esManual = row['contrato_id'] == null;
 
-    final (label, color) = diasFromVence > diasGracia
-        ? ('Vencida ${diasFromVence - diasGracia}d', colores.mora)
-        : diasFromVence > 0
-            ? ('Gracia', colores.gracia)
-            : diasFromVence == 0
-                ? ('Hoy', colores.hoy)
-                : ('${-diasFromVence}d', colores.proxima);
+    final ev = estadoVisualCuota(
+      diasFromVence: diasFromVence,
+      diasGracia: diasGracia,
+      diasVisibles: diasVisibles,
+    );
+    final color = colores.color(ev);
+    final label = switch (ev) {
+      CuotaEstadoVisual.mora => 'Vencida ${diasFromVence - diasGracia}d',
+      CuotaEstadoVisual.gracia => 'Gracia',
+      CuotaEstadoVisual.hoy => 'Hoy',
+      // proxima / fueraDeRango (esta gris): días hasta el vencimiento.
+      _ => '${-diasFromVence}d',
+    };
 
     // Mes de servicio (mes con más días del período de la cuota). Cargos
     // manuales y cuotas sin contrato → mes del periodo tal cual.

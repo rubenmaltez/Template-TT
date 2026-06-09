@@ -14,6 +14,7 @@ import '../../data/providers/modulos_provider.dart';
 import '../../data/repositories/pagos_repo.dart';
 import '../../data/repositories/settings_repo.dart';
 import '../../data/utils/cuota_estado.dart';
+import '../../data/utils/cuota_estado_visual.dart';
 import '../../data/utils/formatters.dart';
 import '../../powersync/db.dart' as ps;
 import '../admin/inventario/equipos_en_baja.dart';

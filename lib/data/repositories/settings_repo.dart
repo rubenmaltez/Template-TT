@@ -218,7 +218,7 @@ class AppSettings {
       settingValue<bool>(_map, 'cobranza.pago_adelantado', true);
 
   int get diasCuotasVisibles =>
-      settingValue<num>(_map, 'cobranza.dias_cuotas_visibles', 30).toInt();
+      settingValue<num>(_map, 'cobranza.dias_cuotas_visibles', 5).toInt();
 
   /// Colores configurables por estado de cuota (setting `cobranza.colores_estados`,
   /// map JSONB `{mora,gracia,hoy,proxima}` → "#RRGGBB"). Si falta o es inválido,

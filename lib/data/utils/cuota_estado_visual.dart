@@ -68,7 +68,9 @@ class ColoresEstados {
         CuotaEstadoVisual.gracia => gracia,
         CuotaEstadoVisual.hoy => hoy,
         CuotaEstadoVisual.proxima => proxima,
-        CuotaEstadoVisual.fueraDeRango => proxima.withValues(alpha: 0.45),
+        // Fuera de rango = "no disponible" (aún no cobrable) → gris, igual que
+        // sin-deuda. Pedido de Rubén (NO morado atenuado).
+        CuotaEstadoVisual.fueraDeRango => sinDeudaColor,
         CuotaEstadoVisual.sinDeuda => sinDeudaColor,
       };
 
@@ -107,6 +109,26 @@ class ColoresEstados {
         hoy: hoy ?? this.hoy,
         proxima: proxima ?? this.proxima,
       );
+}
+
+/// Deriva el estado visual de una cuota NO finalizada (pendiente/parcial) a
+/// partir de los días desde el vencimiento. Fuente ÚNICA usada por el mapa y por
+/// los badges (lista de cobros, detalle de contrato) — para que clasifiquen
+/// igual: dentro del rango = próxima (morado), más allá = fuera de rango (gris).
+///
+/// [diasFromVence] = hoy − fecha_vencimiento (hora Nicaragua). Positivo = ya
+/// venció; 0 = vence hoy; negativo = vence en el futuro.
+CuotaEstadoVisual estadoVisualCuota({
+  required int diasFromVence,
+  required int diasGracia,
+  required int diasVisibles,
+}) {
+  if (diasFromVence > diasGracia) return CuotaEstadoVisual.mora;
+  if (diasFromVence > 0) return CuotaEstadoVisual.gracia;
+  if (diasFromVence == 0) return CuotaEstadoVisual.hoy;
+  // Futuro: dentro del rango configurado = próxima; más allá = fuera de rango.
+  if (-diasFromVence <= diasVisibles) return CuotaEstadoVisual.proxima;
+  return CuotaEstadoVisual.fueraDeRango;
 }
 
 /// "#RRGGBB" (o "RRGGBB", o "#AARRGGBB") → Color. Null si el formato es inválido.

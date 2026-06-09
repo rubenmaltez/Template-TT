@@ -354,7 +354,9 @@ class _CuotaRow extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final scheme = Theme.of(context).colorScheme;
-    final colores = ref.watch(appSettingsProvider).coloresEstados;
+    final settings = ref.watch(appSettingsProvider);
+    final colores = settings.coloresEstados;
+    final diasVisibles = settings.diasCuotasVisibles;
     final estado = row['estado'] as String? ?? 'pendiente';
     final monto = (row['monto'] as num? ?? 0).toDouble();
     final montoPagado = (row['monto_pagado'] as num? ?? 0).toDouble();
@@ -368,24 +370,38 @@ class _CuotaRow extends ConsumerWidget {
         .difference(DateTime(vence.year, vence.month, vence.day))
         .inDays;
 
-    // Color coding segun estado
-    final (String label, Color color) = switch (estado) {
-      'pagada' => ('Pagada', Colors.green),
-      'anulada' => ('Anulada', Colors.grey),
-      'parcial' when diasFromVence > diasGracia =>
-        ('Vencida ${diasFromVence - diasGracia}d', colores.mora),
-      'parcial' when diasFromVence > 0 =>
-        ('Gracia (parcial)', colores.gracia),
-      'parcial' when diasFromVence == 0 => ('Hoy (parcial)', colores.hoy),
-      'parcial' => ('${-diasFromVence}d (parcial)', colores.proxima),
-      'pendiente' when diasFromVence > diasGracia =>
-        ('Vencida ${diasFromVence - diasGracia}d', colores.mora),
-      'pendiente' when diasFromVence > 0 =>
-        ('Gracia', colores.gracia),
-      'pendiente' when diasFromVence == 0 => ('Hoy', colores.hoy),
-      'pendiente' => ('${-diasFromVence}d', colores.proxima),
-      _ => (estado, scheme.outline),
-    };
+    // Color coding. Pagada/anulada son finalizadas; pendiente/parcial se
+    // clasifican por vencimiento vía estadoVisualCuota — que incluye 'fuera de
+    // rango' = GRIS "no disponible" para las que vencen más allá del rango.
+    final String label;
+    final Color color;
+    if (estado == 'pagada') {
+      label = 'Pagada';
+      color = Colors.green;
+    } else if (estado == 'anulada') {
+      label = 'Anulada';
+      color = Colors.grey;
+    } else if (estado == 'pendiente' || estado == 'parcial') {
+      final ev = estadoVisualCuota(
+        diasFromVence: diasFromVence,
+        diasGracia: diasGracia,
+        diasVisibles: diasVisibles,
+      );
+      final suf = estado == 'parcial' ? ' (parcial)' : '';
+      label = switch (ev) {
+        CuotaEstadoVisual.mora => 'Vencida ${diasFromVence - diasGracia}d$suf',
+        CuotaEstadoVisual.gracia => 'Gracia$suf',
+        CuotaEstadoVisual.hoy => 'Hoy$suf',
+        CuotaEstadoVisual.proxima ||
+        CuotaEstadoVisual.fueraDeRango =>
+          '${-diasFromVence}d$suf',
+        CuotaEstadoVisual.sinDeuda => estado,
+      };
+      color = colores.color(ev);
+    } else {
+      label = estado;
+      color = scheme.outline;
+    }
 
     // Mes de servicio (mes con más días del período): se deriva del día de
     // pago. Cargos manuales no tienen período de servicio → mes del periodo.
