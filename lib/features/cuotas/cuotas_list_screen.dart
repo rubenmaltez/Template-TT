@@ -10,7 +10,7 @@ import '../../powersync/db.dart' as ps;
 import '../shared/widgets/dropdown_filtro.dart';
 import '../shared/widgets/empty_state.dart';
 
-enum _Filtro { todas, mora, gracia, parciales, hoy }
+enum _Filtro { todas, mora, gracia, parciales, hoy, proxima }
 
 /// Pantalla de Cobros. La usa el cobrador (móvil-first, su vista de trabajo)
 /// y el admin en modo monitoreo (`adminMode: true`).
@@ -399,6 +399,7 @@ class _TabPorCobrar extends StatelessWidget {
         _Filtro.gracia => 'En gracia',
         _Filtro.parciales => 'Parciales',
         _Filtro.hoy => 'Vencen hoy',
+        _Filtro.proxima => 'Próximas',
       };
 }
 
@@ -481,6 +482,14 @@ class _CuotasListState extends State<_CuotasList> {
       _Filtro.hoy => (
           "AND cu.estado IN ('pendiente','parcial') "
               "AND date(cu.fecha_vencimiento) = date('now', '-6 hours')",
+          <Object?>[],
+        ),
+      // Próximas: vencen DESPUÉS de hoy pero dentro del rango visible. "Hoy" es
+      // su propio filtro (exclusivo de la fecha de hoy), así que acá es > hoy.
+      _Filtro.proxima => (
+          "AND cu.estado IN ('pendiente','parcial') "
+              "AND date(cu.fecha_vencimiento) > date('now', '-6 hours') "
+              "AND date(cu.fecha_vencimiento) <= date('now', '-6 hours', '+${widget.diasVisibles} days')",
           <Object?>[],
         ),
     };
@@ -808,7 +817,7 @@ class _TabPorClienteState extends State<_TabPorCliente> {
 // Shared widgets
 // ─────────────────────────────────────────────────────────────────────────────
 
-class _CuotaCompactRow extends StatelessWidget {
+class _CuotaCompactRow extends ConsumerWidget {
   const _CuotaCompactRow({
     required this.row,
     required this.diasGracia,
@@ -834,8 +843,9 @@ class _CuotaCompactRow extends StatelessWidget {
       };
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final scheme = Theme.of(context).colorScheme;
+    final colores = ref.watch(appSettingsProvider).coloresEstados;
     final vence = DateTime.parse(row['fecha_vencimiento'] as String);
     final periodo = DateTime.parse(row['periodo'] as String);
     // Saldo canónico (regla #10): incluye cargos_neto (reconexión suma, descuento
@@ -851,12 +861,12 @@ class _CuotaCompactRow extends StatelessWidget {
     final esManual = row['contrato_id'] == null;
 
     final (label, color) = diasFromVence > diasGracia
-        ? ('Vencida ${diasFromVence - diasGracia}d', scheme.error)
+        ? ('Vencida ${diasFromVence - diasGracia}d', colores.mora)
         : diasFromVence > 0
-            ? ('Gracia', Colors.amber.shade700)
+            ? ('Gracia', colores.gracia)
             : diasFromVence == 0
-                ? ('Hoy', scheme.primary)
-                : ('${-diasFromVence}d', scheme.outline);
+                ? ('Hoy', colores.hoy)
+                : ('${-diasFromVence}d', colores.proxima);
 
     // Mes de servicio (mes con más días del período de la cuota). Cargos
     // manuales y cuotas sin contrato → mes del periodo tal cual.
