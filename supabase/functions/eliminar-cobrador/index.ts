@@ -152,9 +152,11 @@ serve(async (req) => {
     // Tablas agregadas DESPUÉS del guard original (visitas, fotos, tickets,
     // inventario): el delete perdía atribución en silencio (FK SET NULL) o
     // reventaba con FK violation (visitas.cobrador_id NOT NULL). Conteo
-    // TOLERANTE: 42P01 (relation does not exist — migraciones 0099-0107 sin
-    // correr) cuenta como 0 para no bloquear el delete en una DB sin esos
-    // módulos; cualquier OTRO error sí aborta (defensiveness del guard base).
+    // TOLERANTE a tabla inexistente (migraciones 0099-0107 sin correr):
+    // PostgREST moderno devuelve PGRST205 ("table not in schema cache");
+    // versiones viejas / cache stale devuelven 42P01. Ambos cuentan como 0
+    // para no bloquear el delete en una DB sin esos módulos; cualquier OTRO
+    // error sí aborta (defensiveness del guard base).
     const countOpcional = async (
       tabla: string,
       columna: string,
@@ -163,7 +165,9 @@ serve(async (req) => {
         .select("id", { count: "exact", head: true })
         .eq(columna, body.cobrador_id);
       if (r.error) {
-        if (r.error.code === "42P01") return 0; // tabla aún no deployada
+        if (r.error.code === "42P01" || r.error.code === "PGRST205") {
+          return 0; // tabla aún no deployada
+        }
         console.error(`eliminar: count ${tabla}.${columna} falló`, r.error);
         return null; // error real → abortar
       }
@@ -173,9 +177,17 @@ serve(async (req) => {
     const extras = await Promise.all([
       countOpcional("visitas", "cobrador_id"),
       countOpcional("fotos_cliente", "created_by"),
+      // fotos_cliente.cobrador_id / contratos.cobrador_id / cuotas.cobrador_id
+      // son FK SIN ON DELETE (NO ACTION): si referencian al target y no se
+      // cuentan, el deleteUser revienta con FK violation (500 feo) DESPUÉS
+      // de haber escrito la fila de audit. Contarlas cierra ese hueco.
+      countOpcional("fotos_cliente", "cobrador_id"),
+      countOpcional("contratos", "cobrador_id"),
+      countOpcional("cuotas", "cobrador_id"),
       countOpcional("tickets", "asignado_a"),
       countOpcional("tickets", "creado_por"),
       countOpcional("ticket_eventos", "hecho_por"),
+      countOpcional("ticket_adjuntos", "subido_por"),
       countOpcional("ticket_materiales", "hecho_por"),
       countOpcional("inv_movimientos", "hecho_por"),
       countOpcional("inv_ubicaciones", "cobrador_id"),
@@ -185,16 +197,22 @@ serve(async (req) => {
     }
     const [
       visitas,
-      fotos,
+      fotosCreadas,
+      fotosCobrador,
+      contratos,
+      cuotas,
       ticketsAsig,
       ticketsCre,
       eventos,
+      adjuntos,
       materiales,
       movimientos,
       ubicaciones,
     ] = extras as number[];
-    const totalExtras = visitas + fotos + ticketsAsig + ticketsCre +
-      eventos + materiales + movimientos + ubicaciones;
+    const fotos = fotosCreadas + fotosCobrador;
+    const totalExtras = visitas + fotos + contratos + cuotas +
+      ticketsAsig + ticketsCre + eventos + adjuntos + materiales +
+      movimientos + ubicaciones;
 
     const total = pagos + recibos + cargos + clientes +
       pagosAnul + recibosAnul + cargosApl + totalExtras;
@@ -202,10 +220,13 @@ serve(async (req) => {
       const partesExtras = [
         visitas > 0 ? `${visitas} visitas` : null,
         fotos > 0 ? `${fotos} fotos` : null,
+        contratos > 0 ? `${contratos} contratos asignados` : null,
+        cuotas > 0 ? `${cuotas} cuotas asignadas` : null,
         (ticketsAsig + ticketsCre) > 0
           ? `${ticketsAsig + ticketsCre} tickets`
           : null,
         eventos > 0 ? `${eventos} eventos de ticket` : null,
+        adjuntos > 0 ? `${adjuntos} adjuntos de ticket` : null,
         materiales > 0 ? `${materiales} consumos de material` : null,
         movimientos > 0 ? `${movimientos} movimientos de inventario` : null,
         ubicaciones > 0 ? `${ubicaciones} ubicaciones de custodia` : null,

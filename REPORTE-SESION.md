@@ -195,9 +195,43 @@ CRITICAL/HIGH). Fixes aplicados (auditados, limpios):
 - **L7 — sesgo de módulo en password generada.** *Fix:* rejection sampling en
   `_shared/passwords.ts`. ⚠️ requiere **redeploy** de las edge functions.
 
-**Pendientes (con decisión/deploy/verificación):** M6 (confirmar deploy 0099→0112 — SQL de
-verificación en el AUDIT), M2 (gate de módulos server-side), M4+L1 (SLA/timestamps en hora
-local-naive), L4 (conteo eliminar-cobrador, tras M6), L5/L6/L8 (backlog).
+**Lote 2 + audit final (misma sesión, commits `9f60ab9` + lote 3):** se atacó TODO lo restante.
+- **M4 — SLA corrido ~6h post-sync.** *Error:* el cliente escribe `tickets.created_at`
+  local-naive; Postgres (sesión UTC) lo almacena como instante UTC corrido 6h, y el
+  `DateTime.parse` crudo del valor sincronizado hacía vencer el SLA 6h antes (un ticket podía
+  "nacer vencido"). *Fix:* `parseTicketWallClock` (ticket_sla.dart) reconstruye el DateTime
+  desde los COMPONENTES como wall-clock local — correcto en ambos formatos (pre y post-sync)
+  — aplicado en los 4 callsites del SLA. *Expectativa:* el deadline/semáforo del SLA es el
+  mismo antes y después de sincronizar. `fecha_pago`/`created_at` quedan local-naive por
+  convención (bucketing por `date()`), documentado en CLAUDE.md.
+- **M2 — gate de módulos server-side.** *Error:* las policies de inv_*/tickets/incidentes no
+  consultaban `tenant_tiene_modulo()` → un admin con el módulo OFF podía operar vía REST
+  directo (gap comercial, no cross-tenant). *Fix:* migración **`0114`** — recrea las policies
+  de ESCRITURA (+ storage `ticket-adjuntos`) agregando el gate; lectura no se gatea;
+  `super_admin_all` intacta; defensiva con `to_regclass` (segura en cualquier orden de deploy;
+  re-correr al final si 0099→0107 faltaban). *Expectativa:* módulo OFF = no se opera, ni por
+  fuera de la UI.
+- **L4 — eliminar-cobrador.** *Error:* el guard pre-delete no contaba visitas/fotos/tickets/
+  inventario → FK violation (visitas NOT NULL) o pérdida de atribución silenciosa (SET NULL).
+  *Fix:* 12 conteos nuevos (incl. FK NO ACTION: contratos/cuotas/fotos_cliente.cobrador_id y
+  ticket_adjuntos.subido_por), tolerantes a tabla inexistente con `42P01` **y `PGRST205`**
+  (PostgREST moderno — sin esto la tolerancia no toleraba nada; lo atrapó el audit final).
+  *Expectativa:* usuarios con CUALQUIER historial → 409 amigable "Desactivá en su lugar".
+- **L5 — historial del ticket como Agregador.** `HistorialTicketWidget`: ticket + adjuntos +
+  materiales en una timeline vía `json_extract($.ticket_id)` (hijas borradas físico siguen
+  visibles); `ticket_eventos` excluidos a propósito (la bitácora de la misma pantalla ya los
+  narra). Verbos propios de tickets/adjuntos en `_CambioTile._labelFor`.
+- **L6 — aviso de fotos fallidas sobrevive a F5.** El último `UploadResult` con fallas se
+  persiste en SharedPreferences; una corrida limpia o quedar sin pendientes borra la clave
+  (sin avisos zombie).
+- **AUDIT FINAL (3 agentes: correctness + deployment safety + QA de conformidad):** 14/14
+  findings resueltos o justificados, sin gaps. La 0114 verificada policy-por-policy
+  (equivalencia exacta + gate, PL/pgSQL válido, SELECT preservado, trigger SECURITY DEFINER
+  intacto, idempotente).
+
+**Pendiente (solo acciones de Rubén — pasos en §Pendientes del AUDIT):** M6 (SQL de
+verificación de 0099→0112), correr `0114` (ÚLTIMA), redeploy de edge functions
+(`eliminar-cobrador` + las de `_shared/passwords.ts`), rebuild + smoke tests.
 
 ### 2026-06-09 (cont.) — Limpieza de settings + recibo (zonas) + "fuera de rango" gris
 

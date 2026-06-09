@@ -295,6 +295,24 @@ class _CambioTile extends StatelessWidget {
             (Icons.build_circle_outlined, scheme.tertiary, 'Consumido en ticket'),
           _ => (Icons.edit, scheme.primary, 'Material de ticket'),
         };
+      // Verbos propios para la timeline MEZCLADA del HistorialTicketWidget:
+      // sin ellos, un adjunto borrado salía como "Eliminado" genérico, leíble
+      // como si fuera el ticket mismo.
+      case 'tickets':
+        return switch (accion) {
+          'create' =>
+            (Icons.confirmation_number_outlined, scheme.tertiary, 'Ticket creado'),
+          'delete' => (Icons.delete_outline, scheme.error, 'Ticket eliminado'),
+          _ => (Icons.edit, scheme.primary, 'Ticket actualizado'),
+        };
+      case 'ticket_adjuntos':
+        return switch (accion) {
+          'create' =>
+            (Icons.attach_file, scheme.tertiary, 'Adjunto agregado'),
+          'delete' =>
+            (Icons.delete_outline, scheme.error, 'Adjunto eliminado'),
+          _ => (Icons.edit, scheme.primary, 'Adjunto actualizado'),
+        };
       default:
         return switch (accion) {
           'create' => (Icons.add_circle_outline, scheme.tertiary, 'Creado'),

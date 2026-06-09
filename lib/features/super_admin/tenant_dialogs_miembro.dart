@@ -664,10 +664,12 @@ class _CambiarRolDialogState extends State<CambiarRolDialog> {
     );
   }
 
-  // `tecnico` (Fase 3, módulo tickets): móvil-first con shell propio. Sólo se
-  // ofrece si el tenant tiene el módulo tickets — el super_admin lo enciende
-  // antes en /super/tenants/:id. `admin_tickets` aún NO se expone (su shell
-  // acotado en AdminShell es un slice propio).
+  // `tecnico` (Fase 3, módulo tickets): móvil-first con shell propio. Se ofrece
+  // SIEMPRE acá (a diferencia del dropdown del admin, gateado por ticketsOn):
+  // el super_admin es quien habilita módulos, así que puede asignar el rol
+  // antes/después de encender tickets en /super/tenants/:id — con el módulo
+  // OFF el técnico solo vería su shell vacío (y 0114 bloquea writes server-
+  // side). `admin_tickets` NO se expone (rol incompleto: sin shell ni bucket).
   static const _roles = ['admin', 'admin_cobranza', 'cobrador', 'tecnico'];
 
   static String _label(String r) => switch (r) {

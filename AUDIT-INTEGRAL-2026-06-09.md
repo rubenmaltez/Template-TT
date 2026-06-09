@@ -33,19 +33,19 @@ de MEDIUM concretos.
 | # | Sev | Ubicación | Problema | Estado |
 |---|-----|-----------|----------|--------|
 | **M1** | MEDIUM | `lib/powersync/db.dart` `connectPowerSync()` | No tomaba el lock `_pendingOp` → race signOut→signIn (causa del "sync gate stuck post-forzar-password") | ✅ **FIXED** `2917a73` |
-| **M2** | MEDIUM | RLS de `inv_*`/`tickets` (0099/0103) | Gate de módulos opcionales NO server-enforced (solo router/UI) | ⏳ propuesta (migración) |
+| **M2** | MEDIUM | RLS de `inv_*`/`tickets` (0099/0103) | Gate de módulos opcionales NO server-enforced (solo router/UI) | ✅ **migración `0114` ESCRITA** (write-only gating + storage; defensiva con `to_regclass`) · ⏳ **correrla** (Rubén, Dashboard) |
 | **M3** | MEDIUM | `cobradores_admin_screen.dart` + sync-rules | Rol `admin_tickets` a medio implementar (sin bucket ni shell) | ✅ **mitigado** `2917a73` (no se ofrece) · completar = feature |
-| **M4** | MEDIUM | `ticket_sla.dart` + `ticket_form_screen.dart` | SLA anclado a `created_at` device-local-naive → puede correr ~6h post-sync | ⏳ requiere verificación empírica |
+| **M4** | MEDIUM | `ticket_sla.dart` + callsites | SLA anclado a `created_at` device-local-naive → corría ~6h post-sync | ✅ **FIXED** `9f60ab9` (`parseTicketWallClock` por componentes, correcto pre y post-sync, 4 callsites) |
 | **M5** | MEDIUM | `connector.dart` `_isNonRetryable` | Clasificaba clase 40 (serialization/deadlock) como permanente → descarte silencioso de writes | ✅ **FIXED** `2917a73` |
-| **M6** | MEDIUM (op) | migraciones `0099`→`0112` | Posiblemente NO deployadas; con módulo ON el INSERT falla y bloquea la cola de sync | ⏳ **checklist de verificación** abajo |
-| **L1** | LOW | `pagos_repo.dart:78`, tickets `created_at`, `aplicado_en`/`anulada_en` | Timestamps del cliente en hora local-naive, no `.toUtc()` | ⏳ batch con M4 |
+| **M6** | MEDIUM (op) | migraciones `0099`→`0112` | Posiblemente NO deployadas; con módulo ON el INSERT falla y bloquea la cola de sync | ⏳ **checklist de verificación** abajo (única acción: Rubén) |
+| **L1** | LOW | timestamps del cliente | `aplicado_en`/`anulada_en` sin `.toUtc()` | ✅ **ya estaban resueltos** (B10 del audit 2026-06-08) · convención `fecha_pago`/`tickets.created_at` local-naive documentada en CLAUDE.md |
 | **L2** | LOW | `aplicar_cargo_dialog.dart` | Cargo no espejaba `cargos_neto`/`estado` local (saldo stale offline) | ✅ **FIXED** `2917a73` (mirror verificado exacto) |
 | **L3** | LOW | `audit_admin_screen.dart` | Viewer global ordenaba por `created_at`, no `ocurrido_en` | ✅ **FIXED** `2917a73` |
-| **L4** | LOW | `eliminar-cobrador/index.ts` | El conteo pre-delete no cubre tablas nuevas (visitas/fotos/tickets/inv) → pérdida silenciosa de atribución | ⏳ **acoplado a M6** (hacer tras confirmar deploy) |
-| **L5** | LOW | `ticket_detail` historial | `ticket_eventos`/`ticket_adjuntos` solo en viewer global; `tickets` debería ser Agregador | ⏳ backlog (acoplado a M6) |
-| **L6** | LOW | `foto_comprobante_service.dart` | F5 pierde el último `UploadResult` con fallas | backlog conocido |
-| **L7** | LOW | `_shared/passwords.ts` | Sesgo de módulo (`bytes % 61`) | ✅ **FIXED** `d31bbb8` (rejection sampling) · requiere redeploy edge fns |
-| **L8** | LOW | `router.dart:256` | Gate del técnico no verifica módulo `tickets` ON | backlog |
+| **L4** | LOW | `eliminar-cobrador/index.ts` | El conteo pre-delete no cubría tablas nuevas → pérdida silenciosa de atribución / FK violation | ✅ **FIXED** `9f60ab9`+lote 3 (12 conteos nuevos, tolerante a `42P01`/`PGRST205` → desacoplado de M6) · ⏳ **redeploy** edge fn |
+| **L5** | LOW | `ticket_detail` historial | `tickets` debía ser Agregador | ✅ **FIXED** `9f60ab9` (`HistorialTicketWidget`: ticket+adjuntos+materiales; eventos excluidos — la bitácora ya los narra) |
+| **L6** | LOW | `foto_comprobante_service.dart` | F5 perdía el último `UploadResult` con fallas | ✅ **FIXED** `9f60ab9`+lote 3 (persistido en SharedPreferences; clave se limpia sin pendientes) |
+| **L7** | LOW | `_shared/passwords.ts` | Sesgo de módulo en password generada | ✅ **FIXED** `d31bbb8` (rejection sampling) · ⏳ **redeploy** edge fns |
+| **L8** | LOW | `router.dart:256` | Gate del técnico no verifica módulo `tickets` ON | ✅ **aceptado by-design** (M3 gatea la asignación del admin; 0114 bloquea writes server-side; el super asigna deliberadamente) |
 
 ---
 
@@ -83,10 +83,30 @@ Excel + WhatsApp". El mayor riesgo del bloque nuevo es de **deploy**, no de dise
   L2 (mirror local de `cargos_neto`/`estado`), L3 (orden/display por `ocurrido_en`).
 - **Commit `d31bbb8`**: L7 (password rejection sampling). **Requiere redeploy** de las
   edge functions que importan `_shared/passwords.ts`.
+- **Commit `9f60ab9`** (lote 2): M4 (`parseTicketWallClock` — SLA correcto pre/post-sync),
+  M2 (migración `0114` escrita), L4 (conteos extendidos en `eliminar-cobrador`),
+  L5 (`HistorialTicketWidget` agregador), L6 (UploadResult persistido), L1 (verificado
+  ya-resuelto + convención documentada en CLAUDE.md).
+- **Lote 3** (fixes convergentes del AUDIT FINAL — 3 agentes sobre todo el diff):
+  `PGRST205` además de `42P01` en la tolerancia de `eliminar-cobrador` (PostgREST
+  moderno NO devuelve 42P01 para tabla inexistente — sin esto la tolerancia no
+  toleraba nada) · +4 conteos (FK NO ACTION: `contratos`/`cuotas`/`fotos_cliente`
+  `.cobrador_id` + `ticket_adjuntos.subido_por`) · la 0114 gatea también la policy
+  de **storage** `ticket-adjuntos` (gap del audit de deployment) · clave stale de
+  fotos se limpia sin pendientes · verbos `tickets`/`ticket_adjuntos` en `_labelFor`
+  (timeline mezclada legible) · 3 comments corregidos (alfabeto 63 chars,
+  `tenant_dialogs_miembro`, no-op silencioso de UPDATE/DELETE en 0114).
+
+**Veredicto del AUDIT FINAL (3 agentes: correctness + deployment safety + QA de
+conformidad):** los 14 findings resueltos o justificados, **sin gaps de código**.
+La 0114 verificada policy-por-policy contra las originales (equivalencia exacta +
+gate), sintaxis PL/pgSQL válida, SELECT preservado vía policies `_read`, trigger
+SECURITY DEFINER intacto, idempotente. Sin TODO/FIXME nuevos, sin SQL
+Postgres-only, sin `date('now')` pelados, símbolos nuevos todos usados.
 
 ---
 
-## ⏳ Pendientes (necesitan decisión / deploy / verificación)
+## ⏳ Pendientes (única persona: Rubén — deploy/verificación)
 
 ### M6 — Verificar deploy de 0099→0113 (PRIORIDAD)
 Correr en el SQL Editor de Supabase para confirmar que el bloque está aplicado:
@@ -118,33 +138,25 @@ sync rules** ANTES de habilitar los módulos `inventario`/`tickets` a cualquier 
 Mientras no estén deployadas, **no habilitar esos módulos** (el INSERT fallaría y
 bloquearía la cola de sync del cliente).
 
-### M2 — Gate de módulos server-enforced (decisión + migración)
-Hoy un admin de un tenant con el módulo OFF puede leer/escribir `inv_*`/`tickets` vía
-REST/PowerSync directo (mismo tenant, **no cruza tenants** — es consistencia comercial).
-Fix propuesto: migración 0114 que recrea las policies de **escritura** (insert/update/
-delete) de inv_*/tickets/incidentes agregando
-`AND public.tenant_tiene_modulo(current_tenant_id(), 'inventario'|'tickets')`.
-`super_admin_all` queda intacta (el super siempre tiene acceso).
-**Decisión abierta:** ¿gatear también la **lectura** (SELECT)? Si sí, al apagar un
-módulo su data desaparece de la UI (más limpio, pero oculta data existente). Toca ~9
-tablas de policies → requiere deploy y testing.
+### Correr migración `0114` (M2 — ya escrita y auditada)
+`supabase/migrations/0114_gate_modulos_server_side.sql` por el SQL Editor. Gatea la
+**escritura** de inv_*/tickets/incidentes + el storage de `ticket-adjuntos` con
+`tenant_tiene_modulo()` (lectura NO se gatea — no esconder data histórica;
+`super_admin_all` intacta). Es **defensiva**: si 0099→0107 no corrieron aún, se
+saltea con NOTICEs — en ese caso **RE-CORRERLA al final**, después del bloque.
+**Orden recomendado: 0114 SIEMPRE ÚLTIMA** + correr la query de verificación del
+final del archivo (10 policies, cada qual/with_check con `tenant_tiene_modulo`).
 
-### M4 + L1 — Timestamps del cliente en hora local-naive
-El SLA del ticket se ancla a `created_at` escrito como hora local-naive (sin offset).
-Pre-sync funciona; **post-sync el deadline podría correr ~6h** (round-trip a `timestamptz`).
-**Verificar empíricamente** (crear ticket → sincronizar → comparar el deadline antes/
-después del primer checkpoint). Si corre 6h, anclar el SLA a un `created_at` normalizado
-con `.toUtc()`. Mismo patrón sistémico en `fecha_pago` y `aplicado_en`/`anulada_en` (L1)
-— normalizar los timestamps del cliente a `.toUtc()` en un batch.
+### Redeploy de edge functions (L4 + L7 — código listo y auditado)
+- `eliminar-cobrador` (conteos extendidos, tolerante a tablas faltantes — seguro
+  de deployar ANTES o después de M6).
+- Cualquier función que importe `_shared/passwords.ts` (el `_shared/` se deploya
+  vía CLI/repo según el flujo documentado en CLAUDE.md).
 
-### L4 — `eliminar-cobrador` (tras confirmar M6)
-Extender el conteo pre-delete a visitas/fotos_cliente/tickets/ticket_eventos/
-inv_movimientos/inv_ubicaciones. **Implementar DESPUÉS de confirmar el deploy** (si esas
-tablas no existen, la query de conteo falla y la función devolvería 500 bloqueando toda
-eliminación). Requiere redeploy de la edge function.
-
-### L5/L6/L8 — backlog
-- L5: convertir el historial del ticket en Agregador (surface `ticket_eventos`/
-  `ticket_adjuntos`) — LOW, acoplado a M6.
-- L6: persistir el último `UploadResult` de fotos (F5) — backlog conocido.
-- L8: gate de módulo del técnico en el router — LOW.
+### Rebuild + testing manual
+Mucho código Dart nuevo → `git pull` + `flutter run` desde cero. Smoke tests
+sugeridos: (1) forzar-password a un cobrador → el afectado re-loguea SIN F5;
+(2) aplicar un cargo offline → el saldo cambia al instante; (3) crear un ticket
+→ sincronizar → el deadline del SLA NO se corre; (4) historial del ticket
+muestra ticket+adjuntos+materiales; (5) con módulo OFF (post-0114), un write
+directo de inventario/tickets se rechaza.

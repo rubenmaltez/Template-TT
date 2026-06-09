@@ -7,34 +7,33 @@
 
 ---
 
-## ⭐ CHECKPOINT 2026-06-09 (b) — AUDIT INTEGRAL + lote 1 de fixes (LEER PRIMERO)
+## ⭐ CHECKPOINT 2026-06-09 (b) — AUDIT INTEGRAL + TODOS los findings atacados (LEER PRIMERO)
 
-**Branch de trabajo: `claude/hopeful-ride-u1ivz5`** · últimos commits `2917a73` (lote 1)
-+ `d31bbb8` (L7) sobre el checkpoint pre-MVP v1. **Detalle completo en `AUDIT-INTEGRAL-2026-06-09.md`.**
+**Branch de trabajo: `claude/hopeful-ride-u1ivz5`** · commits `2917a73` (lote 1) → `d31bbb8`
+(L7) → `9f60ab9` (lote 2) → lote 3 (convergentes del audit final) sobre el checkpoint
+pre-MVP v1. **Detalle completo en `AUDIT-INTEGRAL-2026-06-09.md`** (tabla actualizada).
 
-**Qué se hizo:** auditoría profunda de TODA la app (6 agentes por dominio + verificación
-directa). **Veredicto: sólida** — dinero 10/10, integridad estructural limpia, change log
-100%, sin fugas cross-tenant, sin CRITICAL/HIGH. Hallazgos: 6 MEDIUM + 8 LOW.
+**Qué se hizo:** (1) auditoría profunda de TODA la app (6 agentes por dominio). **Veredicto:
+sólida** — dinero 10/10, integridad estructural limpia, change log 100%, sin fugas
+cross-tenant, sin CRITICAL/HIGH. (2) Se atacaron **TODOS** los findings (6 MEDIUM + 8 LOW).
+(3) **AUDIT FINAL** (3 agentes sobre todo el diff): los 14 findings resueltos o
+justificados, **sin gaps de código**; fixes convergentes aplicados (lote 3).
 
-**Fixes aplicados y auditados (limpios):**
-- `2917a73` (lote 1, 2 reviews OK): **M1** `connectPowerSync()` toma el lock `_pendingOp`
-  (cierra la race del sync-gate-stuck post-forzar-password) · **M5** `_isNonRetryable` no
-  descarta la clase 40 (serialization/deadlock) · **M3** `/admin/cobradores` deja de ofrecer
-  `admin_tickets` (rol incompleto) · **L2** `aplicar_cargo_dialog` espeja `cargos_neto`/`estado`
-  local (saldo correcto offline, mirror verificado exacto) · **L3** viewer `/admin/audit` ordena/
-  muestra por `ocurrido_en`.
-- `d31bbb8`: **L7** password sin sesgo de módulo. ⚠️ **requiere redeploy de edge functions**.
+**Fixes (todos auditados):** M1 lock de `connectPowerSync` (cierra el sync-gate-stuck) ·
+M5 clase 40 retryable · M3 `admin_tickets` no se ofrece · M4 `parseTicketWallClock`
+(SLA sin corrimiento de 6h post-sync) · M2 **migración `0114`** (gate de módulos
+server-side, escritura + storage) · L2 mirror local de cargos · L3 orden `ocurrido_en` ·
+L4 `eliminar-cobrador` con 12 conteos nuevos tolerante a `PGRST205`/`42P01` ·
+L5 `HistorialTicketWidget` (agregador) · L6 UploadResult persistido · L7 password sin
+sesgo · L1/L8 verificados resueltos/by-design y documentados.
 
-**Pendientes (necesitan TU decisión / deploy / verificación) — ver §Pendientes del AUDIT:**
-1. **M6 (PRIORIDAD):** confirmar deploy de `0099`→`0112` (¿corridas? dijiste "no estoy seguro").
-   Hay SQL de verificación en `AUDIT-INTEGRAL-2026-06-09.md`. **No habilitar inventario/tickets
-   a ningún tenant hasta confirmar** (sino el INSERT bloquea la cola de sync).
-2. **M2:** gate de módulos server-enforced (migración 0114 + decisión: ¿gatear lectura?).
-3. **M4+L1:** SLA de tickets en hora local-naive → verificar empíricamente si corre 6h post-sync.
-4. **L4:** conteo de `eliminar-cobrador` para tablas nuevas (hacer DESPUÉS de M6).
-5. **L5/L6/L8:** backlog LOW.
-
-**SIN deploy server-side de los fixes de hoy** (todo client-side salvo L7 = redeploy edge fns).
+**⏳ Lo ÚNICO pendiente (acciones de Rubén — pasos exactos en §Pendientes del AUDIT):**
+1. **M6 (PRIORIDAD):** correr el SQL de verificación del AUDIT → confirmar si `0099`→`0112`
+   están corridas. **No habilitar inventario/tickets a ningún tenant hasta confirmar.**
+2. **Correr `0114`** por Dashboard — **SIEMPRE ÚLTIMA** (si 0099→0107 faltaban, re-correrla
+   después) + query de verificación del final del archivo.
+3. **Redeploy edge functions:** `eliminar-cobrador` + las que importan `_shared/passwords.ts`.
+4. **Rebuild** (`git pull` + `flutter run` desde cero) + smoke tests del AUDIT §Pendientes.
 
 ---
 

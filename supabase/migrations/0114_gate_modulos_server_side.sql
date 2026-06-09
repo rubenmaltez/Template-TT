@@ -23,9 +23,11 @@
 --     owner (bypassa RLS sin FORCE). El consumo de materiales es del módulo
 --     tickets; los inv_movimientos derivados son proyección del sistema.
 --   · Si un tenant tiene writes offline ENCOLADOS y el super le apaga el módulo
---     antes del sync, esos uploads se rechazan (42501) y el connector los
---     descarta con aviso — edge case aceptado (apagar un módulo con campo
---     activo es una acción deliberada del super).
+--     antes del sync: los INSERT se rechazan (42501) y el connector los
+--     descarta CON aviso; los UPDATE/DELETE bloqueados por USING son no-op
+--     silenciosos (0 rows, 2xx) — el dato local diverge hasta que el próximo
+--     checkpoint server-wins lo pisa (self-heals, sin aviso). Edge case
+--     aceptado: apagar un módulo con campo activo es acción deliberada del super.
 --
 -- DEFENSIVA: cada bloque se saltea con NOTICE si la tabla no existe todavía
 -- (migraciones 0099→0107 sin correr) → esta migración es segura de correr en
@@ -159,12 +161,38 @@ BEGIN
   ELSE
     RAISE NOTICE '0114: incidentes no existe (0107 sin correr) — skip';
   END IF;
+
+  -- ── Storage del bucket ticket-adjuntos (0104): mismo gap, mismo gate ───────
+  -- Sin esto, un tenant con tickets OFF no podía crear la fila ta_write
+  -- (gateada arriba) pero SÍ subir binarios al bucket vía Storage API.
+  -- La función helper storage_path_tenant + la policy existen solo si 0104
+  -- corrió; el to_regprocedure lo detecta.
+  IF to_regprocedure('public.storage_path_tenant(text)') IS NOT NULL THEN
+    DROP POLICY IF EXISTS "storage_write_ticket_adjuntos" ON storage.objects;
+    CREATE POLICY "storage_write_ticket_adjuntos" ON storage.objects
+      FOR ALL TO authenticated
+      USING (
+        bucket_id = 'ticket-adjuntos'
+        AND public.storage_path_tenant(name) = public.current_tenant_id()
+        AND public.is_ticket_staff()
+        AND public.tenant_tiene_modulo(public.current_tenant_id(), 'tickets')
+      )
+      WITH CHECK (
+        bucket_id = 'ticket-adjuntos'
+        AND public.storage_path_tenant(name) = public.current_tenant_id()
+        AND public.is_ticket_staff()
+        AND public.tenant_tiene_modulo(public.current_tenant_id(), 'tickets')
+      );
+  ELSE
+    RAISE NOTICE '0114: storage_path_tenant no existe (0104 sin correr) — skip';
+  END IF;
 END$$;
 
 -- Verificación rápida post-run (debe listar las policies recreadas con el gate):
---   SELECT tablename, policyname, qual, with_check FROM pg_policies
---    WHERE schemaname='public' AND policyname IN
+--   SELECT schemaname, tablename, policyname, qual, with_check FROM pg_policies
+--    WHERE (schemaname='public' AND policyname IN
 --      ('inv_insert','inv_update','inv_delete','tt_write','tk_write',
---       'te_insert','ta_write','tm_insert','inc_write')
---    ORDER BY tablename, policyname;
+--       'te_insert','ta_write','tm_insert','inc_write'))
+--       OR (schemaname='storage' AND policyname='storage_write_ticket_adjuntos')
+--    ORDER BY schemaname, tablename, policyname;
 -- Cada qual/with_check debe contener "tenant_tiene_modulo".

@@ -180,6 +180,17 @@ class FotoComprobanteService {
       "WHERE foto_comprobante_path LIKE 'local://%' AND anulado = 0",
     );
 
+    // Sin pendientes no hay nada que avisar: limpiar el resumen persistido.
+    // Cubre el caso "la foto fallida desapareció por cleanup" (archivo local
+    // borrado → path NULL) — sin esto, la clave de prefs replayaba un aviso
+    // de falla referido a nada en cada restart.
+    if (pendientes.isEmpty) {
+      if (_lastResult != null && _lastResult!.failed > 0) _lastResult = null;
+      unawaited(_persistirLastResult(
+          const UploadResult(succeeded: 0, failed: 0)));
+      return 0;
+    }
+
     var subidas = 0;
     var fallidas = 0;
     String? ultimoError;
