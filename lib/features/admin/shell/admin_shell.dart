@@ -284,7 +284,9 @@ const _adminMenu = [
   // Pantallas opcionales: las habilita el super_admin por tenant (toggle
   // super_admin-only en settings). Sin habilitar, el item no aparece.
   _MenuItem(Icons.payments, 'Pagos', '/admin/pagos',
-      adminOnly: true, settingKey: 'cobranza.pantalla_pagos'),
+      adminOnly: true,
+      settingKey: 'cobranza.pantalla_pagos',
+      superRespetaSetting: true),
   // Módulo opcional Inventario: aparece solo si el super_admin lo habilitó
   // para el tenant (tenant_modulos 'inventario'). adminOnly.
   _MenuItem(Icons.inventory_2, 'Inventario', '/admin/inventario',
@@ -308,6 +310,7 @@ class _MenuItem {
     this.adminOnly = false,
     this.superAdminOnly = false,
     this.settingKey,
+    this.superRespetaSetting = false,
     this.moduloKey,
     this.children = const [],
   });
@@ -319,6 +322,11 @@ class _MenuItem {
   // Si está seteado, el item solo se muestra cuando ese setting booleano está
   // en ON (pantallas opcionales que habilita el super_admin por tenant).
   final String? settingKey;
+  // Por defecto el super_admin VE el item aunque el setting esté OFF (acceso
+  // total). Con esto en true, el super TAMBIÉN respeta el setting → el item se
+  // oculta cuando está OFF. Útil cuando la pantalla NO bypassa al super (ej.
+  // Pagos): así no queda un item que lleva a "Sección no habilitada".
+  final bool superRespetaSetting;
   // Si está seteado, el item solo se muestra cuando el tenant tiene ese módulo
   // habilitado (tenant_modulos). Ej: 'inventario'. A diferencia de settingKey,
   // NO lo bypassa el super_admin: si el (sub)tenant no tiene el módulo, no se ve
@@ -336,11 +344,13 @@ bool _menuVisible(
   Set<String> modulosOn = const {},
 }) {
   // Pantallas/opciones gateadas por un setting per-tenant (las habilita el
-  // super_admin). El super_admin las ve SIEMPRE (acceso total al panel del
-  // tenant); el admin sólo si el setting está en ON. Si el item tiene
-  // settingKey, no es super_admin y el setting no está en ON, no se muestra.
+  // super_admin). Por defecto el super las ve SIEMPRE (acceso total al panel del
+  // tenant); el admin sólo si el setting está en ON. Excepción: items con
+  // `superRespetaSetting` (ej. Pagos, cuya pantalla NO bypassa al super) → el
+  // super también las oculta con el setting OFF, para no dejar un item que
+  // lleva a "Sección no habilitada".
   if (m.settingKey != null &&
-      !esSuperAdmin &&
+      (!esSuperAdmin || m.superRespetaSetting) &&
       !pantallasOn.contains(m.settingKey)) {
     return false;
   }
