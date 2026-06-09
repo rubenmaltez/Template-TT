@@ -128,10 +128,14 @@ SELECT table_name, column_name FROM information_schema.columns
    (table_name='incidentes'    AND column_name='alcance_label'));
 
 -- (c) ¿Los triggers de negocio están? Esperado: filas para cada tabla.
+-- OJO: comparar por OID ('tabla'::regclass), NO por ::text — regclass::text
+-- omite el prefijo 'public.' con el search_path normal y da 0 filas (falso
+-- negativo, confirmado en la verificación real del 2026-06-09).
 SELECT tgrelid::regclass AS tabla, tgname FROM pg_trigger
- WHERE NOT tgisinternal AND tgrelid::regclass::text IN
-   ('public.tickets','public.ticket_materiales','public.inv_movimientos',
-    'public.inv_seriales','public.incidentes') ORDER BY 1,2;
+ WHERE NOT tgisinternal AND tgrelid IN (
+   'public.tickets'::regclass, 'public.ticket_materiales'::regclass,
+   'public.inv_movimientos'::regclass, 'public.inv_seriales'::regclass,
+   'public.incidentes'::regclass) ORDER BY 1,2;
 ```
 Si falta algo → correr las migraciones faltantes (0099→0112 en orden) + **redeploy de
 sync rules** ANTES de habilitar los módulos `inventario`/`tickets` a cualquier tenant.
