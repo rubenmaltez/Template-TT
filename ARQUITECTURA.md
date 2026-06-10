@@ -25,6 +25,7 @@
 | Agregar un setting nuevo | **Receta R6** |
 | Cambiar lógica de mora/gracia/vencimiento | **Receta R7** |
 | Agregar un reporte (PDF + Excel) | **Receta R8** |
+| Cambiar textos/branding del recibo | **Receta R9** |
 | Tocar el flow de cobro (¡DINERO!) | **Receta R11** + invariantes de `CLAUDE.md` |
 | Agregar una tabla/entidad/módulo nuevo | **Receta R10** (checklist completo) |
 | Cambiar el menú/sidebar del admin | **Receta R12** |
