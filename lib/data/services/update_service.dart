@@ -1,9 +1,12 @@
 import 'dart:convert';
-import 'dart:io' show Platform;
+import 'dart:io' show Directory, File, Platform;
 
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
+import 'package:open_filex/open_filex.dart';
 import 'package:package_info_plus/package_info_plus.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:permission_handler/permission_handler.dart';
 
 /// Información de una actualización disponible.
 class AppUpdate {
@@ -18,21 +21,30 @@ class AppUpdate {
   final String? releaseNotes;
 }
 
-/// Servicio que checa si hay una versión más nueva de la app disponible.
+/// Servicio que checa si hay una versión más nueva de la app disponible
+/// y la descarga/instala IN-APP (sin delegar al navegador).
 ///
-/// Lee un archivo `version.json` hosteado en Supabase Storage (bucket
-/// público `installers`). Formato esperado:
+/// Check: lee `version.json` del último GitHub Release del repo
+/// (`releases/latest/download/` siempre apunta al más reciente). Formato:
 ///
 /// ```json
 /// {
-///   "version": "1.1.0",
-///   "download_url": "https://.../cobranza-isp-1.1.0.msix",
-///   "release_notes": "Mejora en reportes + fix de sync"
+///   "version": "0.11.0",
+///   "download_url_windows": "https://.../SITECSA-CRM.msix",
+///   "download_url_android": "https://.../SITECSA-CRM.apk",
+///   "download_url": "https://.../fallback",
+///   "release_notes": "..."
 /// }
 /// ```
 ///
-/// Compara con la versión local (`package_info_plus`) y retorna
-/// `AppUpdate` si hay nueva versión, `null` si está al día.
+/// Update in-app (2026-06-09 — antes se tiraba el link a Chrome y la
+/// descarga moría en la cadena de redirecciones de GitHub):
+///   1. [descargarActualizacion] baja el binario con el cliente HTTP de la
+///      app (sigue los 302 de GitHub sin drama) a un directorio propio,
+///      reportando progreso.
+///   2. [instalar] lanza el instalador del SISTEMA via open_filex:
+///      Android → diálogo "¿Instalar?" (requiere REQUEST_INSTALL_PACKAGES,
+///      pedido en runtime); Windows → App Installer del .msix.
 class UpdateService {
   /// URL del version.json. Hosteado como asset del último GitHub Release.
   /// La URL /latest/download/ siempre apunta al release más reciente.
@@ -106,5 +118,97 @@ class UpdateService {
       if (r[i]! < l[i]!) return false;
     }
     return false;
+  }
+
+  // ── Descarga + instalación in-app ─────────────────────────────────────────
+
+  /// Descarga el binario de [update] a un directorio de la app, en streaming
+  /// y reportando avance via [onProgress] (0.0→1.0, o null si el server no
+  /// mandó Content-Length → progreso indeterminado).
+  ///
+  /// El cliente HTTP de Dart sigue las redirecciones 302 de GitHub
+  /// (releases/latest/download → CDN firmado) sin intervención — exactamente
+  /// lo que el download manager de Chrome en Android no lograba.
+  ///
+  /// Lanza [Exception] con mensaje legible si la descarga falla; el caller
+  /// (banner) la muestra y ofrece reintentar. No usar en web (kIsWeb).
+  static Future<File> descargarActualizacion(
+    AppUpdate update, {
+    void Function(double? progreso)? onProgress,
+  }) async {
+    final client = http.Client();
+    try {
+      final response =
+          await client.send(http.Request('GET', Uri.parse(update.downloadUrl)));
+      if (response.statusCode != 200) {
+        throw Exception(
+            'No se pudo descargar la actualización (HTTP ${response.statusCode}). '
+            'Reintentá en unos minutos.');
+      }
+
+      final esApk = update.downloadUrl.toLowerCase().contains('.apk');
+      final nombre =
+          'SITECSA-CRM-v${update.version}.${esApk ? 'apk' : 'msix'}';
+      final dir = await _directorioDescarga();
+      final archivo = File('${dir.path}/$nombre');
+
+      final total = response.contentLength;
+      var recibido = 0;
+      final sink = archivo.openWrite(); // trunca si existía (re-descarga limpia)
+      try {
+        await for (final chunk in response.stream) {
+          sink.add(chunk);
+          recibido += chunk.length;
+          onProgress?.call(
+              (total != null && total > 0) ? recibido / total : null);
+        }
+        await sink.flush();
+      } finally {
+        await sink.close();
+      }
+
+      if (total != null && total > 0 && recibido < total) {
+        throw Exception('La descarga quedó incompleta. Reintentá.');
+      }
+      return archivo;
+    } finally {
+      client.close();
+    }
+  }
+
+  /// Directorio destino del instalador descargado.
+  /// Android: external-files de la app (/Android/data/<pkg>/files) — es el
+  /// path que el FileProvider de open_filex expone al instalador del sistema;
+  /// fallback al support dir si el device no tiene external storage.
+  /// Windows (y resto): temp del sistema.
+  static Future<Directory> _directorioDescarga() async {
+    if (!kIsWeb && Platform.isAndroid) {
+      return (await getExternalStorageDirectory()) ??
+          await getApplicationSupportDirectory();
+    }
+    return getTemporaryDirectory();
+  }
+
+  /// Lanza el instalador del sistema para [archivo] (el binario descargado).
+  /// Retorna null si se lanzó OK, o un mensaje de error legible si no.
+  ///
+  /// Android: pide en runtime el permiso "instalar apps desconocidas"
+  /// (REQUEST_INSTALL_PACKAGES — la 1ª vez el sistema abre el toggle de
+  /// ajustes para ESTA app; con el permiso dado, open_filex dispara el
+  /// diálogo nativo "¿Instalar SITECSA CRM?").
+  /// Windows: abre el .msix con App Installer (un click "Actualizar").
+  static Future<String?> instalar(File archivo) async {
+    if (!kIsWeb && Platform.isAndroid) {
+      final estado = await Permission.requestInstallPackages.request();
+      if (!estado.isGranted) {
+        return 'Para actualizar, permití "instalar aplicaciones" a SITECSA CRM '
+            'en el ajuste que se abrió, y tocá Instalar de nuevo.';
+      }
+    }
+    final resultado = await OpenFilex.open(archivo.path);
+    if (resultado.type != ResultType.done) {
+      return 'No se pudo abrir el instalador: ${resultado.message}';
+    }
+    return null;
   }
 }

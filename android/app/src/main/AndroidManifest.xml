@@ -1,6 +1,10 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <!-- Cámara: escaneo de código de barras de seriales (mobile_scanner). -->
     <uses-permission android:name="android.permission.CAMERA" />
+    <!-- Auto-update in-app: permite lanzar el instalador del APK descargado
+         (la 1ª vez Android pide el toggle "instalar apps de esta fuente"
+         para SITECSA CRM; lo gestiona permission_handler en runtime). -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
     <uses-feature android:name="android.hardware.camera" android:required="false" />
     <application
         android:label="SITECSA CRM"

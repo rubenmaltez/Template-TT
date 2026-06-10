@@ -69,6 +69,11 @@ dependencies:
   # Acciones del sistema (tel:, geo:, https:)
   url_launcher: ^6.3.0
 
+  # Abrir archivos con la app del sistema. Lo usa el auto-update in-app:
+  # lanza el instalador del APK (Android, via su FileProvider integrado) y el
+  # App Installer del .msix (Windows). Sin config manual de provider.
+  open_filex: ^4.5.0
+
   # Generación y descarga/impresión de reportes PDF
   pdf: ^3.11.1
   printing: ^5.13.3

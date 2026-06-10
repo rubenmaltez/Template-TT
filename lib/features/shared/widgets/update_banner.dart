@@ -1,15 +1,28 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../../data/providers/update_provider.dart';
+import '../../../data/services/update_service.dart';
 
 /// Banner que aparece en la parte superior de cualquier shell cuando
 /// hay una actualización disponible. Muestra versión + release notes
-/// + botón "Descargar".
+/// + botón "Actualizar" que descarga e instala IN-APP (2026-06-09):
+///
+///   1. Descarga el binario DENTRO de la app con barra de progreso
+///      (antes se delegaba a Chrome/browser y en Android la descarga
+///      moría en las redirecciones de GitHub).
+///   2. Al terminar lanza el instalador del sistema (Android: diálogo
+///      "¿Instalar?"; Windows: App Installer del .msix).
+///
+/// En web (sin filesystem) mantiene el fallback de abrir el link en el
+/// browser. Si la descarga in-app falla, ofrece reintentar o abrir en el
+/// navegador como plan B.
 ///
 /// Se oculta si no hay update, si el check falló, o si el user lo
-/// descartó (dismiss por sesión, reaparece al reiniciar la app).
+/// descartó (dismiss por sesión, reaparece al reiniciar la app). El
+/// dismiss se bloquea mientras descarga (evita una descarga huérfana).
 class UpdateBanner extends ConsumerStatefulWidget {
   const UpdateBanner({super.key});
 
@@ -19,6 +32,9 @@ class UpdateBanner extends ConsumerStatefulWidget {
 
 class _UpdateBannerState extends ConsumerState<UpdateBanner> {
   bool _dismissed = false;
+  bool _descargando = false;
+  double? _progreso; // null mientras descarga = indeterminado
+  String? _error;
 
   @override
   Widget build(BuildContext context) {
@@ -37,50 +53,99 @@ class _UpdateBannerState extends ConsumerState<UpdateBanner> {
           color: scheme.primary,
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            child: Row(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
               children: [
-                Icon(Icons.system_update,
-                    size: 20, color: scheme.onPrimary),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
+                Row(
+                  children: [
+                    Icon(Icons.system_update,
+                        size: 20, color: scheme.onPrimary),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            _descargando
+                                ? 'Descargando v${update.version}…'
+                                : 'Actualización disponible v${update.version}',
+                            style: TextStyle(
+                              color: scheme.onPrimary,
+                              fontWeight: FontWeight.w600,
+                              fontSize: 13,
+                            ),
+                          ),
+                          if (_error != null)
+                            Text(
+                              _error!,
+                              style: TextStyle(
+                                color: scheme.onPrimary,
+                                fontSize: 11,
+                              ),
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                            )
+                          else if (update.releaseNotes != null &&
+                              !_descargando)
+                            Text(
+                              update.releaseNotes!,
+                              style: TextStyle(
+                                color:
+                                    scheme.onPrimary.withValues(alpha: 0.8),
+                                fontSize: 11,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                        ],
+                      ),
+                    ),
+                    if (!_descargando) ...[
+                      TextButton(
+                        onPressed: () => _actualizar(update),
+                        style: TextButton.styleFrom(
+                          foregroundColor: scheme.onPrimary,
+                        ),
+                        child: Text(_error == null ? 'Actualizar' : 'Reintentar'),
+                      ),
+                      // Plan B tras un error: descarga clásica por browser.
+                      if (_error != null)
+                        TextButton(
+                          onPressed: () => _abrirEnNavegador(update.downloadUrl),
+                          style: TextButton.styleFrom(
+                            foregroundColor:
+                                scheme.onPrimary.withValues(alpha: 0.8),
+                          ),
+                          child: const Text('Navegador'),
+                        ),
+                      IconButton(
+                        icon: Icon(Icons.close,
+                            size: 18,
+                            color: scheme.onPrimary.withValues(alpha: 0.8)),
+                        onPressed: () => setState(() => _dismissed = true),
+                        tooltip: 'Cerrar',
+                      ),
+                    ] else if (_progreso != null)
                       Text(
-                        'Actualización disponible v${update.version}',
+                        '${(_progreso! * 100).round()}%',
                         style: TextStyle(
                           color: scheme.onPrimary,
                           fontWeight: FontWeight.w600,
                           fontSize: 13,
                         ),
                       ),
-                      if (update.releaseNotes != null)
-                        Text(
-                          update.releaseNotes!,
-                          style: TextStyle(
-                            color: scheme.onPrimary.withValues(alpha: 0.8),
-                            fontSize: 11,
-                          ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                    ],
+                  ],
+                ),
+                if (_descargando) ...[
+                  const SizedBox(height: 6),
+                  LinearProgressIndicator(
+                    value: _progreso, // null = indeterminado
+                    backgroundColor: scheme.onPrimary.withValues(alpha: 0.25),
+                    color: scheme.onPrimary,
+                    minHeight: 4,
                   ),
-                ),
-                TextButton(
-                  onPressed: () => _download(update.downloadUrl),
-                  style: TextButton.styleFrom(
-                    foregroundColor: scheme.onPrimary,
-                  ),
-                  child: const Text('Descargar'),
-                ),
-                IconButton(
-                  icon: Icon(Icons.close,
-                      size: 18, color: scheme.onPrimary.withValues(alpha: 0.8)),
-                  onPressed: () => setState(() => _dismissed = true),
-                  tooltip: 'Cerrar',
-                ),
+                ],
               ],
             ),
           ),
@@ -89,7 +154,50 @@ class _UpdateBannerState extends ConsumerState<UpdateBanner> {
     );
   }
 
-  Future<void> _download(String url) async {
+  Future<void> _actualizar(AppUpdate update) async {
+    // Web: sin filesystem → descarga clásica del browser (única opción).
+    if (kIsWeb) {
+      await _abrirEnNavegador(update.downloadUrl);
+      return;
+    }
+
+    setState(() {
+      _descargando = true;
+      _progreso = null;
+      _error = null;
+    });
+
+    try {
+      final archivo = await UpdateService.descargarActualizacion(
+        update,
+        onProgress: (p) {
+          if (mounted) setState(() => _progreso = p);
+        },
+      );
+      if (!mounted) return;
+      setState(() => _descargando = false);
+
+      final error = await UpdateService.instalar(archivo);
+      if (!mounted) return;
+      if (error != null) {
+        setState(() => _error = error);
+      }
+      // Si se lanzó OK, el instalador del sistema toma el control (en
+      // Android la app pasa a background; en Windows se abre App Installer).
+      // El banner queda como está — si el user cancela la instalación,
+      // puede tocar Actualizar de nuevo (la re-descarga pisa el archivo).
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _descargando = false;
+        _error = e is Exception
+            ? e.toString().replaceFirst('Exception: ', '')
+            : 'La descarga falló. Verificá tu conexión y reintentá.';
+      });
+    }
+  }
+
+  Future<void> _abrirEnNavegador(String url) async {
     final uri = Uri.parse(url);
     // No usar canLaunchUrl — en Android 11+ requiere <queries>
     // en AndroidManifest y retorna false sin ellas. launchUrl
