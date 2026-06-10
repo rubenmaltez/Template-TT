@@ -15,6 +15,7 @@ sesiones de Claude Code. Si estás abriendo este repo, leé esto primero.
 | 4 | **`ARQUITECTURA.md`** | Cómo está construida: módulos, conexiones, settings y **RECETAS de cambios** | Si cambia un módulo/tabla/setting/ruta/conexión |
 | 5 | `TESTING.md` §0 | Loop de testing manual con Rubén | Si un feature nuevo trae flujo de testing |
 | 6 | `Install Steps/` | Build, release, versionado e instalación | Si cambia el flujo de build |
+| 7 | `AGENTS.md` | Punto de entrada para agentes que NO son Claude Code (estándar multi-herramienta) | Solo si cambia el orden de lectura o una regla mínima |
 
 **Para hacer un CAMBIO en el código**: buscá tu caso en `ARQUITECTURA.md` §0
 (índice de cambios → recetas R1-R12). Eso evita escanear el repo.

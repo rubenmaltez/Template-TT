@@ -52,6 +52,10 @@
   `claude/plan-billing-app-q9mC4`.
 - Modelo de branching documentado acá (§ESTADO ACTUAL) y en `CLAUDE.md`
   (§Git/branching): ramas efímeras desde `main` → merge → borrar; hitos = tags.
+- **`AGENTS.md` creado** (post-consolidación): punto de entrada para agentes
+  de AI que NO son Claude Code (OpenCode/Codex/Cursor/Antigravity leen ese
+  archivo por estándar). Es un puente delgado: orden de lectura de los 4 docs
+  + reglas mínimas + contrato de cierre. Sin contenido duplicado (no driftea).
 
 ## 2026-06-09 (c) — Rework del sistema de documentación + build a Install Steps
 
