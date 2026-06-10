@@ -28,9 +28,13 @@
   TODAS corridas** en Supabase (verificado 2026-06-09) · sync rules v26 activas.
 - **Edge Functions:** las 6 deployadas al día (incl. `eliminar-cobrador` con
   conteos extendidos y `_shared/passwords.ts` sin sesgo, redeployadas 2026-06-09).
-- **Qué falta:** `flutter pub get` (lock) · generar keystore de release (guía
-  0-Setup §3b) · smoke tests B.2–B.6 + updater (entrada 2026-06-10) · publicar
-  release nuevo y borrar `v0.9.0`.
+- **Qué falta (testing/release — lo único pendiente):** smoke tests B.2–B.6
+  (lista en la entrada 2026-06-10) → publicar release nuevo `v0.11.0` con
+  `build-release.ps1` (1ª firma con el keystore → reinstalar apps una vez,
+  sincronizando antes) → probar el updater in-app → borrar release `v0.9.0`.
+- **Hecho recién (2026-06-10):** lock con `open_filex` commiteado (`092a51a`) ·
+  keystore `sitecsa-release.jks` + `key.properties` generados y verificados
+  fuera de git (Rubén tiene backup pendiente de confirmar).
 - **Salud:** audit integral 2026-06-09 → **sin CRITICAL/HIGH abiertos**;
   14/14 findings resueltos o aceptados con justificación.
 
@@ -64,9 +68,9 @@ permitiría repo privado— quedó documentada como alternativa futura).
   antes). Después, updates normales para siempre.
 - **Releases viejos limpiados** (con Rubén, gh CLI): quedó solo `v0.9.0`
   (endpoint vivo del auto-update) + tags `pre-mvp-v1/v2`. 18 releases borrados.
-- **Pendiente (Rubén):** `flutter pub get` (lock con open_filex) → generar
-  keystore → smoke tests B.2-B.6 + flujo del updater → publicar release nuevo
-  (`v0.11.0`) → borrar `v0.9.0`.
+- **Pendiente (Rubén):** ~~pub get~~ ✓ · ~~keystore~~ ✓ (generado y
+  verificado, backup recomendado) · smoke tests B.2-B.6 + flujo del updater →
+  publicar release nuevo (`v0.11.0`) → borrar `v0.9.0`.
 
 ## 2026-06-09 (e) — Limpieza de PC local + setup multi-PC
 
