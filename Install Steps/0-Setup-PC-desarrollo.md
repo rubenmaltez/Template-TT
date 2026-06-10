@@ -43,6 +43,34 @@ pendiente" y el build falla a propósito.
 > API) y en el Dashboard de PowerSync (Instance URL). La estructura del JSON
 > se ve en `lib/config/env.dart`.
 
+## Paso 3b — Copiar el keystore de firma del APK (junto con .env.json)
+
+El APK de release se firma con el keystore de SITECSA (estable entre PCs —
+sin él, un APK buildeado acá NO podría actualizar las apps ya instaladas).
+Son 2 archivos que van por el MISMO canal seguro que `.env.json` (nunca git):
+
+- `android/key.properties` (passwords del keystore)
+- `android/app/sitecsa-release.jks` (el keystore)
+
+> **Si es la PRIMERA VEZ (el keystore no existe todavía):** se genera UNA
+> única vez, en una sola PC, y se copia a las demás:
+> ```powershell
+> keytool -genkey -v -keystore android\app\sitecsa-release.jks -keyalg RSA -keysize 2048 -validity 10950 -alias sitecsa
+> ```
+> (`keytool` viene con el JDK de Android Studio.) Después creá
+> `android/key.properties` con:
+> ```
+> storePassword=LA_PASSWORD_QUE_ELEGISTE
+> keyPassword=LA_PASSWORD_QUE_ELEGISTE
+> keyAlias=sitecsa
+> storeFile=sitecsa-release.jks
+> ```
+> ⚠️ **GUARDÁ el .jks + passwords como oro** (backup fuera de la PC): si se
+> pierden, NINGUNA app instalada podrá actualizarse nunca más (habría que
+> desinstalar y reinstalar todo, perdiendo la data offline local).
+> Sin estos archivos el build cae a la firma debug (solo para desarrollo —
+> NUNCA distribuir un APK firmado con debug).
+
 ## Paso 4 — Dependencias y primera corrida
 
 ```powershell
@@ -86,6 +114,7 @@ son compatibles con los instalados — no hay que mover certificados privados.
 | Código + docs + scripts | `git clone` (rama `main`) |
 | `powersync.dll` / `powersync_x64.dll` / `SITECSA-CRM.cer` | vienen en el repo |
 | `.env.json` | **a mano, por canal seguro** (nunca git) |
+| `android/key.properties` + `android/app/sitecsa-release.jks` (firma APK) | **a mano, por canal seguro** (nunca git) |
 | Dependencias Dart | `flutter pub get` |
 | `build/`, `.dart_tool/`, etc. | se generan solos al compilar |
 | `Releases\` (instaladores versionados) | se crea sola al correr `build-release.ps1` (el histórico viejo queda en la PC anterior / GitHub Releases) |

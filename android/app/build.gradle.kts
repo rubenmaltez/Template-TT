@@ -1,8 +1,22 @@
+import java.io.FileInputStream
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("kotlin-android")
     // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
     id("dev.flutter.flutter-gradle-plugin")
+}
+
+// Firma de RELEASE con keystore dedicado (android/key.properties + .jks,
+// LOCALES — nunca al repo). Sin esto se firmaba con la debug key de la PC
+// que buildea -> un APK de otra PC no podia actualizar las apps instaladas
+// (firma distinta) y la "solucion" era desinstalar perdiendo la DB offline
+// del cobrador. Ver Install Steps/0-Setup-PC-desarrollo.md (paso keystore).
+val keystoreProperties = Properties()
+val keystorePropertiesFile = rootProject.file("key.properties")
+if (keystorePropertiesFile.exists()) {
+    keystoreProperties.load(FileInputStream(keystorePropertiesFile))
 }
 
 android {
@@ -30,11 +44,27 @@ android {
         versionName = flutter.versionName
     }
 
+    signingConfigs {
+        create("release") {
+            if (keystorePropertiesFile.exists()) {
+                keyAlias = keystoreProperties["keyAlias"] as String
+                keyPassword = keystoreProperties["keyPassword"] as String
+                storeFile = file(keystoreProperties["storeFile"] as String)
+                storePassword = keystoreProperties["storePassword"] as String
+            }
+        }
+    }
+
     buildTypes {
         release {
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
-            signingConfig = signingConfigs.getByName("debug")
+            // Con key.properties presente firma con el keystore de SITECSA
+            // (estable entre PCs). Fallback a debug SOLO para que
+            // `flutter run --release` funcione en un clone sin el keystore —
+            // NUNCA distribuir un APK firmado con debug (ver comment arriba).
+            signingConfig = if (keystorePropertiesFile.exists())
+                signingConfigs.getByName("release")
+            else
+                signingConfigs.getByName("debug")
         }
     }
 }

@@ -28,12 +28,45 @@
   TODAS corridas** en Supabase (verificado 2026-06-09) · sync rules v26 activas.
 - **Edge Functions:** las 6 deployadas al día (incl. `eliminar-cobrador` con
   conteos extendidos y `_shared/passwords.ts` sin sesgo, redeployadas 2026-06-09).
-- **Qué falta:** smoke tests B.2–B.6 de la app (lista en la entrada de abajo);
-  luego seguir el testing manual de `TESTING.md §0.3`.
+- **Qué falta:** `flutter pub get` (lock) · generar keystore de release (guía
+  0-Setup §3b) · smoke tests B.2–B.6 + updater (entrada 2026-06-10) · publicar
+  release nuevo y borrar `v0.9.0`.
 - **Salud:** audit integral 2026-06-09 → **sin CRITICAL/HIGH abiertos**;
   14/14 findings resueltos o aceptados con justificación.
 
 ---
+
+## 2026-06-10 — Auto-update in-app + fix de firma del APK + limpieza de releases
+
+**Por qué:** el banner de update delegaba la descarga al browser — en Android
+Chrome nunca completaba la descarga (moría en los redirects de GitHub) y en
+Windows quedaba en Descargas con instalación manual. Rubén eligió la opción A
+(updater in-app, GitHub sigue de host; la opción B —Supabase Storage, que
+permitiría repo privado— quedó documentada como alternativa futura).
+
+**Qué se hizo (commits `9355a82` + `2fdcb3c` + este):**
+- **Updater in-app**: la app descarga el binario ella misma (http streamed,
+  timeout 30s handshake + por-chunk, progreso 0-100% en el banner, errores en
+  español con Reintentar + plan B "Navegador") y lanza el instalador del
+  sistema vía `open_filex` (+1 dep): Android → diálogo "¿Instalar?" (permiso
+  `REQUEST_INSTALL_PACKAGES` runtime, 1 toggle la 1ª vez), Windows → App
+  Installer. Web mantiene fallback browser. Estado `_instalando` evita doble
+  descarga. Archivos: `update_service.dart`, `update_banner.dart`, manifest.
+- **Fix CRÍTICO de firma del APK** (encontrado por el audit de plataforma):
+  el release firmaba con la **debug key de la PC** → un APK de otra PC no
+  podía actualizar instalaciones existentes (y "arreglarlo" = desinstalar =
+  perder la DB offline del cobrador). Ahora `build.gradle.kts` firma con
+  keystore dedicado (`android/key.properties` + `sitecsa-release.jks`,
+  LOCALES — gitignored) con fallback a debug para dev. **Rubén debe generar
+  el keystore 1 vez** (pasos en `Install Steps/0-Setup-PC-desarrollo.md` §3b).
+  ⚠️ Transición: el PRÓXIMO release tendrá firma nueva → las apps ya
+  instaladas (firmadas debug) deben desinstalar/reinstalar UNA vez (sincronizar
+  antes). Después, updates normales para siempre.
+- **Releases viejos limpiados** (con Rubén, gh CLI): quedó solo `v0.9.0`
+  (endpoint vivo del auto-update) + tags `pre-mvp-v1/v2`. 18 releases borrados.
+- **Pendiente (Rubén):** `flutter pub get` (lock con open_filex) → generar
+  keystore → smoke tests B.2-B.6 + flujo del updater → publicar release nuevo
+  (`v0.11.0`) → borrar `v0.9.0`.
 
 ## 2026-06-09 (e) — Limpieza de PC local + setup multi-PC
 

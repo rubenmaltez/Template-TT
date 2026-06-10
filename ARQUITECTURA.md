@@ -339,7 +339,10 @@ Viewer global `/admin/audit` (gateado por `cobranza.audit_visible_admin`).
 
 ### Shared / Shells
 **[AI]** `shared/widgets/`: `offline_banner` (debounce 3s/700ms + red
-inestable), `sync_gate_screen`, `impersonation_banner`, `update_banner`,
+inestable), `sync_gate_screen`, `impersonation_banner`, `update_banner`
+(auto-update IN-APP: descarga con progreso vía `update_service` + instalador
+del sistema con open_filex; GitHub Releases `latest` es el endpoint; la firma
+del APK usa el keystore local `sitecsa-release.jks` — ver 0-Setup §3b),
 `aplicar_cargo_dialog` (cargo manual CON mirror local de `cargos_neto`),
 `historial_cambios_widget`, `empty_state`, `skeleton`, etc.
 Shells: `features/shell/app_shell.dart` (cobrador, bottom-nav) ·

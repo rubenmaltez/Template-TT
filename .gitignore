@@ -51,6 +51,12 @@ Releases/
 # instalan las PCs cliente para confiar el MSIX; no es secreto → va al repo).
 *.cer
 !SITECSA-CRM.cer
+# Keystore de firma del APK + sus passwords: SECRETOS — jamás al repo
+# (quien los tenga puede firmar updates). A PC nueva van por canal seguro
+# junto con .env.json (ver Install Steps/0-Setup-PC-desarrollo.md).
+*.jks
+*.keystore
+android/key.properties
 version.json.bak
 
 # Platform-specific
