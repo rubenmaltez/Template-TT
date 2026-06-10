@@ -33,8 +33,12 @@ class UpdateBanner extends ConsumerStatefulWidget {
 class _UpdateBannerState extends ConsumerState<UpdateBanner> {
   bool _dismissed = false;
   bool _descargando = false;
+  bool _instalando = false; // lanzando el instalador del sistema / pidiendo permiso
   double? _progreso; // null mientras descarga = indeterminado
   String? _error;
+
+  // Ocupado = sin botones ni dismiss (evita doble-descarga / abandono a medias).
+  bool get _ocupado => _descargando || _instalando;
 
   @override
   Widget build(BuildContext context) {
@@ -69,7 +73,9 @@ class _UpdateBannerState extends ConsumerState<UpdateBanner> {
                           Text(
                             _descargando
                                 ? 'Descargando v${update.version}…'
-                                : 'Actualización disponible v${update.version}',
+                                : _instalando
+                                    ? 'Abriendo instalador…'
+                                    : 'Actualización disponible v${update.version}',
                             style: TextStyle(
                               color: scheme.onPrimary,
                               fontWeight: FontWeight.w600,
@@ -86,8 +92,7 @@ class _UpdateBannerState extends ConsumerState<UpdateBanner> {
                               maxLines: 2,
                               overflow: TextOverflow.ellipsis,
                             )
-                          else if (update.releaseNotes != null &&
-                              !_descargando)
+                          else if (update.releaseNotes != null && !_ocupado)
                             Text(
                               update.releaseNotes!,
                               style: TextStyle(
@@ -101,7 +106,7 @@ class _UpdateBannerState extends ConsumerState<UpdateBanner> {
                         ],
                       ),
                     ),
-                    if (!_descargando) ...[
+                    if (!_ocupado) ...[
                       TextButton(
                         onPressed: () => _actualizar(update),
                         style: TextButton.styleFrom(
@@ -126,9 +131,9 @@ class _UpdateBannerState extends ConsumerState<UpdateBanner> {
                         onPressed: () => setState(() => _dismissed = true),
                         tooltip: 'Cerrar',
                       ),
-                    ] else if (_progreso != null)
+                    ] else if (_descargando && _progreso != null)
                       Text(
-                        '${(_progreso! * 100).round()}%',
+                        '${(_progreso!.clamp(0.0, 1.0) * 100).round()}%',
                         style: TextStyle(
                           color: scheme.onPrimary,
                           fontWeight: FontWeight.w600,
@@ -175,13 +180,20 @@ class _UpdateBannerState extends ConsumerState<UpdateBanner> {
         },
       );
       if (!mounted) return;
-      setState(() => _descargando = false);
+      // Sigue OCUPADO durante la instalación: en Android el permiso manda al
+      // user a Ajustes (minutos) y no queremos que un segundo tap dispare otra
+      // descarga en paralelo. El botón reaparece solo si instalar() falla.
+      setState(() {
+        _descargando = false;
+        _instalando = true;
+      });
 
       final error = await UpdateService.instalar(archivo);
       if (!mounted) return;
-      if (error != null) {
-        setState(() => _error = error);
-      }
+      setState(() {
+        _instalando = false;
+        _error = error; // null si se lanzó OK
+      });
       // Si se lanzó OK, el instalador del sistema toma el control (en
       // Android la app pasa a background; en Windows se abre App Installer).
       // El banner queda como está — si el user cancela la instalación,
@@ -190,6 +202,7 @@ class _UpdateBannerState extends ConsumerState<UpdateBanner> {
       if (!mounted) return;
       setState(() {
         _descargando = false;
+        _instalando = false;
         _error = e is Exception
             ? e.toString().replaceFirst('Exception: ', '')
             : 'La descarga falló. Verificá tu conexión y reintentá.';

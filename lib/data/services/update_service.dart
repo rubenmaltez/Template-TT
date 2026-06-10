@@ -1,5 +1,6 @@
+import 'dart:async' show TimeoutException;
 import 'dart:convert';
-import 'dart:io' show Directory, File, Platform;
+import 'dart:io' show Directory, File, FileSystemException, Platform, SocketException;
 
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
@@ -130,25 +131,35 @@ class UpdateService {
   /// (releases/latest/download → CDN firmado) sin intervención — exactamente
   /// lo que el download manager de Chrome en Android no lograba.
   ///
-  /// Lanza [Exception] con mensaje legible si la descarga falla; el caller
-  /// (banner) la muestra y ofrece reintentar. No usar en web (kIsWeb).
+  /// Lanza [Exception] con mensaje legible (en español) si la descarga falla;
+  /// el caller (banner) lo muestra y ofrece reintentar. No usar en web (kIsWeb).
+  ///
+  /// Timeouts: 30s para el handshake inicial y 30s POR CHUNK del stream (no
+  /// duración total — un APK grande en red lenta puede tardar minutos, pero un
+  /// stall real entre chunks se detecta). Sin esto, una red rural que se cuelga
+  /// sin RST dejaba el banner clavado en "Descargando…" para siempre.
+  static const _timeout = Duration(seconds: 30);
+
   static Future<File> descargarActualizacion(
     AppUpdate update, {
     void Function(double? progreso)? onProgress,
   }) async {
     final client = http.Client();
     try {
-      final response =
-          await client.send(http.Request('GET', Uri.parse(update.downloadUrl)));
+      final response = await client
+          .send(http.Request('GET', Uri.parse(update.downloadUrl)))
+          .timeout(_timeout);
       if (response.statusCode != 200) {
         throw Exception(
             'No se pudo descargar la actualización (HTTP ${response.statusCode}). '
             'Reintentá en unos minutos.');
       }
 
-      final esApk = update.downloadUrl.toLowerCase().contains('.apk');
-      final nombre =
-          'SITECSA-CRM-v${update.version}.${esApk ? 'apk' : 'msix'}';
+      // Extensión por PLATAFORMA (no sniffing de URL): Android instala APK,
+      // Windows instala MSIX. open_filex infiere el tipo de la extensión, así
+      // que debe matchear el contenido real que sirve la URL de esa plataforma.
+      final ext = (!kIsWeb && Platform.isAndroid) ? 'apk' : 'msix';
+      final nombre = 'SITECSA-CRM-v${update.version}.$ext';
       final dir = await _directorioDescarga();
       final archivo = File('${dir.path}/$nombre');
 
@@ -156,7 +167,7 @@ class UpdateService {
       var recibido = 0;
       final sink = archivo.openWrite(); // trunca si existía (re-descarga limpia)
       try {
-        await for (final chunk in response.stream) {
+        await for (final chunk in response.stream.timeout(_timeout)) {
           sink.add(chunk);
           recibido += chunk.length;
           onProgress?.call(
@@ -171,6 +182,18 @@ class UpdateService {
         throw Exception('La descarga quedó incompleta. Reintentá.');
       }
       return archivo;
+    } on TimeoutException {
+      throw Exception(
+          'La descarga se quedó sin conexión. Verificá tu internet y reintentá.');
+    } on SocketException {
+      throw Exception(
+          'Sin conexión con el servidor de descargas. Verificá tu internet y reintentá.');
+    } on http.ClientException {
+      throw Exception(
+          'Sin conexión con el servidor de descargas. Verificá tu internet y reintentá.');
+    } on FileSystemException {
+      throw Exception(
+          'No se pudo guardar la descarga (espacio o permisos). Liberá espacio y reintentá.');
     } finally {
       client.close();
     }
@@ -202,7 +225,7 @@ class UpdateService {
       final estado = await Permission.requestInstallPackages.request();
       if (!estado.isGranted) {
         return 'Para actualizar, permití "instalar aplicaciones" a SITECSA CRM '
-            'en el ajuste que se abrió, y tocá Instalar de nuevo.';
+            'en el ajuste que se abrió, y tocá Actualizar de nuevo.';
       }
     }
     final resultado = await OpenFilex.open(archivo.path);
