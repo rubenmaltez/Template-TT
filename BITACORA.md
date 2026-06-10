@@ -18,8 +18,12 @@
 
 ## ⭐ ESTADO ACTUAL (refrescar al cerrar cada sesión)
 
-- **Branch de trabajo:** `claude/hopeful-ride-u1ivz5` (pusheada). Base estable
-  previa: `pre-mvp-v1`.
+- **Branch viva: `main`** (única rama permanente; default del repo en GitHub).
+  Checkpoints históricos = **tags**: `pre-mvp-v2` (estado auditado 2026-06-09)
+  y `pre-mvp-v1` (checkpoint previo).
+- **Modelo de branching:** cada sesión de trabajo crea su rama efímera
+  (`claude/*` o feature) DESDE `main` → al terminar se mergea a `main` y la
+  rama se BORRA. Hitos importantes se marcan con tag, no con rama.
 - **App:** v0.10.0 · schema PowerSync **v26** · migraciones **0001→0114
   TODAS corridas** en Supabase (verificado 2026-06-09) · sync rules v26 activas.
 - **Edge Functions:** las 6 deployadas al día (incl. `eliminar-cobrador` con
@@ -30,6 +34,24 @@
   14/14 findings resueltos o aceptados con justificación.
 
 ---
+
+## 2026-06-09 (d) — Consolidación de ramas: main + tags pre-mvp
+
+**Por qué:** había 4 ramas en GitHub (2 de Claude viejas, el checkpoint
+`pre-mvp-v1`, y la default era una rama muerta `claude/plan-billing-app-q9mC4`)
+— confuso para sesiones futuras y para ver el código actual en GitHub.
+
+**Qué se hizo (decisión de Rubén — opción A):**
+- **`main`** creada desde el estado auditado (todo el trabajo del 2026-06-09)
+  → **única rama permanente y default del repo**.
+- Checkpoints convertidos a **tags inmutables**: `pre-mvp-v2` (= este estado,
+  audit integral + fixes + docs rework) y `pre-mvp-v1` (= `48111e5`, el
+  checkpoint previo).
+- **Borradas** todas las demás ramas: `claude/hopeful-ride-u1ivz5`,
+  `claude/new-features-inventory-tickets-and-technicians`, `pre-mvp-v1`,
+  `claude/plan-billing-app-q9mC4`.
+- Modelo de branching documentado acá (§ESTADO ACTUAL) y en `CLAUDE.md`
+  (§Git/branching): ramas efímeras desde `main` → merge → borrar; hitos = tags.
 
 ## 2026-06-09 (c) — Rework del sistema de documentación + build a Install Steps
 

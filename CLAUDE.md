@@ -244,6 +244,17 @@ cualquier cambio mergeado que Rubén quiera distribuir, guiarlo ahí.
 
 ---
 
+## Git / branching (modelo desde 2026-06-09)
+
+- **`main` es la ÚNICA rama permanente** y la default del repo. Siempre
+  refleja el último estado estable/auditado.
+- Cada sesión de trabajo desarrolla en una **rama efímera creada desde
+  `main`** (la que asigne el entorno, p.ej. `claude/*`). Al cerrar el
+  trabajo aprobado: **merge a `main` y BORRAR la rama** — no acumular ramas.
+- **Hitos/checkpoints = TAGS, nunca ramas** (`git tag <nombre>` + push del
+  tag). Existentes: `pre-mvp-v1`, `pre-mvp-v2`.
+- No reescribir historia de `main` (sin force-push).
+
 ## Reglas de comunicación con Rubén
 
 - Pasos detallados, **un comando por vez** cuando el output importa, con
