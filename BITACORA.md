@@ -11,7 +11,7 @@
 >    `ARQUITECTURA.md`. Si tocó misión/roles/stack → `PRODUCTO.md`.
 > Mantener cada entrada en ≤15 líneas. El detalle fino vive en los commits.
 > **Documentos hermanos:** `PRODUCTO.md` (qué es la app) · `ARQUITECTURA.md`
-> (cómo está conectada) · `CLAUDE.md` (reglas/proceso) · `Install Steps/`
+> (cómo está conectada) · `AGENTS.md` (reglas/proceso) · `Install Steps/`
 > (build y release) · `TESTING.md` (testing manual).
 
 ---
@@ -50,12 +50,14 @@
 - **Borradas** todas las demás ramas: `claude/hopeful-ride-u1ivz5`,
   `claude/new-features-inventory-tickets-and-technicians`, `pre-mvp-v1`,
   `claude/plan-billing-app-q9mC4`.
-- Modelo de branching documentado acá (§ESTADO ACTUAL) y en `CLAUDE.md`
+- Modelo de branching documentado acá (§ESTADO ACTUAL) y en `AGENTS.md`
   (§Git/branching): ramas efímeras desde `main` → merge → borrar; hitos = tags.
-- **`AGENTS.md` creado** (post-consolidación): punto de entrada para agentes
-  de AI que NO son Claude Code (OpenCode/Codex/Cursor/Antigravity leen ese
-  archivo por estándar). Es un puente delgado: orden de lectura de los 4 docs
-  + reglas mínimas + contrato de cierre. Sin contenido duplicado (no driftea).
+- **`AGENTS.md` = LA fuente única de reglas** (decisión de Rubén, patrón
+  oficial de Claude Code): todas las reglas/invariantes/proceso viven en
+  `AGENTS.md` (estándar que leen OpenCode/Codex/Cursor/Antigravity directo);
+  `CLAUDE.md` quedó como shim de 1 línea (`@AGENTS.md`) solo para que Claude
+  Code lo cargue automáticamente. Las referencias de los demás docs apuntan
+  a `AGENTS.md`. NO editar reglas en CLAUDE.md.
 
 ## 2026-06-09 (c) — Rework del sistema de documentación + build a Install Steps
 
@@ -67,7 +69,7 @@ auto-referencien y se mantengan al día.
 - Nuevo sistema de 4 docs activos en la raíz: `PRODUCTO.md` (misión/visión/
   día-a-día/stack+porqués) · `ARQUITECTURA.md` (rework: esquema dual
   humano/AI, módulo por módulo con conexiones + **recetas de cambios
-  comunes**) · `BITACORA.md` (este archivo) · `CLAUDE.md` (adelgazado: reglas/
+  comunes**) · `BITACORA.md` (este archivo) · `AGENTS.md` (adelgazado: reglas/
   proceso/invariantes + índice maestro).
 - `build-release.ps1` movido de la raíz a **`Install Steps/`** (con auto-cd a
   la raíz del repo para que las rutas relativas sigan funcionando);

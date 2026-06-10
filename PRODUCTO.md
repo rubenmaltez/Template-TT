@@ -6,7 +6,7 @@
 > de producto, cambia un rol, o se reemplaza una pieza del stack. Cambios de
 > código del día a día NO se anotan acá (van en `BITACORA.md`).
 > **Documentos hermanos:** `ARQUITECTURA.md` (cómo está construida y conectada)
-> · `BITACORA.md` (qué se hizo y por qué, sesión por sesión) · `CLAUDE.md`
+> · `BITACORA.md` (qué se hizo y por qué, sesión por sesión) · `AGENTS.md`
 > (reglas y proceso de trabajo para la AI) · `Install Steps/` (build y release).
 
 ---
@@ -95,7 +95,7 @@ seguridad del tipo "si signup estuviera habilitado..." está fuera de scope.**
 
 ### El mes del dinero (reglas inquebrantables)
 El control de dinero es la razón de ser del producto. Las 10 invariantes
-exactas viven en `CLAUDE.md` § "Invariantes de dinero" (la #1: lo APLICADO a
+exactas viven en `AGENTS.md` § "Invariantes de dinero" (la #1: lo APLICADO a
 la cuota es lo que cuenta como recaudado — nunca lo entregado ni el vuelto).
 `supabase/tests/invariantes_dinero.sql` las verifica contra data real después
 de cada deploy que toque dinero.

@@ -8,7 +8,7 @@
 > §0 si aparece un tipo de cambio nuevo. Cambios que no alteran el esquema
 > (fixes internos) NO se anotan acá (van en `BITACORA.md`).
 > **Documentos hermanos:** `PRODUCTO.md` (qué es la app y por qué) ·
-> `BITACORA.md` (estado vivo + historial) · `CLAUDE.md` (reglas/proceso) ·
+> `BITACORA.md` (estado vivo + historial) · `AGENTS.md` (reglas/proceso) ·
 > `Install Steps/` (build/release) · `TESTING.md` (testing manual).
 
 ---
@@ -26,7 +26,7 @@
 | Cambiar lógica de mora/gracia/vencimiento | **Receta R7** |
 | Agregar un reporte (PDF + Excel) | **Receta R8** |
 | Cambiar textos/branding del recibo | **Receta R9** |
-| Tocar el flow de cobro (¡DINERO!) | **Receta R11** + invariantes de `CLAUDE.md` |
+| Tocar el flow de cobro (¡DINERO!) | **Receta R11** + invariantes de `AGENTS.md` |
 | Agregar una tabla/entidad/módulo nuevo | **Receta R10** (checklist completo) |
 | Cambiar el menú/sidebar del admin | **Receta R12** |
 | Tocar tickets/técnico/inventario/incidentes | §3 módulos opcionales |
@@ -156,7 +156,7 @@ Correlativo: MAX del server como piso + recalculo en tx. Rutas: `/cobro/:ids`
 descuentos_*/cargo_reconexion_*/comprobante_*/foto_obligatoria`,
 `pagos.usd_habilitado/tasa_usd_cordoba/metodo_*`. Tablas: escribe `pagos`,
 `recibos`, `cargos_extra`, `cuotas` (mirror). Guard: bloqueado impersonando.
-**⚠️ Ver Receta R11 + invariantes de dinero en `CLAUDE.md` antes de tocar.**
+**⚠️ Ver Receta R11 + invariantes de dinero en `AGENTS.md` antes de tocar.**
 
 ### Cuotas — `lib/features/cuotas/` (cobrador+admin) · `lib/features/admin/cuotas/`
 **[H]** La lista de qué hay que cobrar. El cobrador ve SUS cuotas (mora
@@ -560,7 +560,7 @@ ambos — el menú oculta, el router rebota).
 | SQLite ≠ Postgres | grep `FILTER/::/ILIKE/RETURNING` en lib/ = 0 | crash en runtime local |
 | TZ `-6 hours` en límites de día | todo `date('now')`/`julianday('now')` | mora corrida 1 día de noche |
 | Estados derivados nunca persistidos | CHECK en `cuotas.estado` | constraint violation |
-| Timestamps: `ocurrido_en` en UTC; `fecha_pago`/`tickets.created_at` local-naive A PROPÓSITO | convención (ver CLAUDE.md backlog L1) | bucketing de reportes roto |
+| Timestamps: `ocurrido_en` en UTC; `fecha_pago`/`tickets.created_at` local-naive A PROPÓSITO | convención (ver AGENTS.md backlog L1) | bucketing de reportes roto |
 | Módulos opcionales: gate en menú+router+RLS (0114) | `_MenuItem`+redirect+policies | inconsistencia comercial |
 
 ---

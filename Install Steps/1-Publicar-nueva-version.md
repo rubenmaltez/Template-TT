@@ -34,7 +34,7 @@ en orden numérico.
 
 > Si la migración solo inserta filas en tablas ya sincronizadas (ej. `settings`),
 > **no** hace falta bumpear schema ni redeployar sync rules. Si agrega columnas o
-> tablas, seguí el checklist de integridad de `CLAUDE.md`.
+> tablas, seguí el checklist de integridad de `AGENTS.md`.
 
 ## Paso 3 — Build + publicar (un comando)
 

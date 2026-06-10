@@ -31,14 +31,14 @@ flutter run -d windows --dart-define-from-file=.env.json
   alcanza hot reload (`r`). Hay que **restart completo**: `q` y volver a `flutter run`
   (o Shift+R). El `GoRouter` se construye una vez en `routerProvider`.
 - **Cambios de UI normal** (un widget, un texto) → hot reload (`r`) suele alcanzar.
-- **Cambios de columna/tabla/sync** → seguir el checklist de integridad de CLAUDE.md
+- **Cambios de columna/tabla/sync** → seguir el checklist de integridad de AGENTS.md
   (migración en Supabase + `schema.dart` + bump `_schemaVersion` + redeploy sync rules
   + restart desde cero). Sin migración nueva ⇒ NO tocar Supabase.
 
 ### 0.2 Si hay dinero involucrado (pagos/cuotas/recibos/reportes)
 
 Antes del testing manual, las capas automáticas (ver §4 del modelo de 4 capas en
-CLAUDE.md):
+AGENTS.md):
 1. Audit estático (agentes) — ya corre en la sesión.
 2. `supabase/tests/invariantes_dinero.sql` — toda fila debe dar `violaciones = 0`.
 3. `flutter test` (pagos_repo y lógica crítica).
