@@ -44,7 +44,7 @@ Windows quedaba en Descargas con instalación manual. Rubén eligió la opción 
 (updater in-app, GitHub sigue de host; la opción B —Supabase Storage, que
 permitiría repo privado— quedó documentada como alternativa futura).
 
-**Qué se hizo (commits `9355a82` + `2fdcb3c` + este):**
+**Qué se hizo (commits `fc1583a` + `2fdcb3c` + `66e09e5`):**
 - **Updater in-app**: la app descarga el binario ella misma (http streamed,
   timeout 30s handshake + por-chunk, progreso 0-100% en el banner, errores en
   español con Reintentar + plan B "Navegador") y lanza el instalador del
