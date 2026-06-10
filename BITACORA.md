@@ -35,6 +35,24 @@
 
 ---
 
+## 2026-06-09 (e) — Limpieza de PC local + setup multi-PC
+
+**Por qué:** la carpeta local de Rubén tenía restos de versiones anteriores;
+y quiere poder trabajar desde otras PCs con solo `git clone`.
+
+**Qué se hizo:**
+- Carpeta local limpiada con `git clean -fdx` (dry-run revisado; exclusiones:
+  `.env.json`, `Releases\`, cert y DLLs) → working tree = `main` exacto.
+- **Binarios de soporte AL repo** (cambio de `.gitignore`): `powersync.dll` /
+  `powersync_x64.dll` (core nativo para los tests de dinero en Windows) y
+  `SITECSA-CRM.cer` (cert PÚBLICO del MSIX — no es secreto). `.env.json`
+  sigue SIEMPRE fuera de git (keys; a PC nueva va por canal seguro).
+- **`Install Steps/0-Setup-PC-desarrollo.md`** (nuevo): guía completa de PC
+  de dev nueva (herramientas → clone → .env.json → pub get → run → tests →
+  gh para releases). La firma MSIX usa el cert de prueba del paquete `msix`
+  (sin certificate_path) → releases compatibles desde cualquier PC.
+- `pubspec.lock` actualizado (faltaba `mobile_scanner` — pendiente viejo).
+
 ## 2026-06-09 (d) — Consolidación de ramas: main + tags pre-mvp
 
 **Por qué:** había 4 ramas en GitHub (2 de Claude viejas, el checkpoint

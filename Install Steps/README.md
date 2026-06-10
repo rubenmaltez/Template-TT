@@ -10,12 +10,14 @@ instala en los dispositivos. Si dudás del orden, mirá acá — no la memoria.
 > **`build-release.ps1` que vive EN ESTA CARPETA** (hace auto-cd a la raíz del
 > repo; correrlo como `.\'Install Steps'\build-release.ps1`).
 
-## Orden de uso (cada release)
+## Orden de uso
 
-1. **`1-Publicar-nueva-version.md`** — lo corrés vos (dev) en tu PC: bump de
-   versión, migraciones en Supabase, y `build-release.ps1` (genera instaladores
+0. **`0-Setup-PC-desarrollo.md`** — UNA VEZ por PC de dev nueva: herramientas,
+   clone, `.env.json` (único archivo que no viene por git), primera corrida.
+1. **`1-Publicar-nueva-version.md`** — cada release: bump de versión,
+   migraciones en Supabase, y `build-release.ps1` (genera instaladores
    + publica el GitHub Release).
-2. **`2-Instalar-en-PC.md`** — instalar/actualizar en una computadora Windows.
+2. **`2-Instalar-en-PC.md`** — instalar/actualizar la APP en una PC Windows.
 3. **`3-Instalar-en-Android.md`** — instalar/actualizar en un teléfono.
 
 ## Cómo queda organizado todo (orden absoluto)

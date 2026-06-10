@@ -30,11 +30,11 @@ supabase/.temp/
 *.db-shm
 *.db-wal
 
-# Core nativo de PowerSync (powersync-sqlite-core) copiado a la raíz para correr
-# los tests de repo (test/data/repositories/pagos_repo_test.dart). Local, NO committear.
-powersync.dll
-powersync_x64.dll
-powersync_aarch64.dll
+# Core nativo de PowerSync (powersync-sqlite-core) en la raíz: lo usan los
+# tests de repo (pagos_repo_test.dart) en Windows. Las DLLs SÍ van al repo
+# (decisión 2026-06-09: setup de PC nueva sin pasos manuales — ver
+# Install Steps/0-Setup-PC-desarrollo.md). Variantes Linux/macOS siguen
+# locales (CI baja la suya).
 libpowersync.so
 libpowersync.dylib
 libpowersync_x64.so
@@ -47,7 +47,10 @@ SITECSA-CRM-v*.msix
 SITECSA-CRM-v*.apk
 # Archivo historico de instaladores versionados (se apila local, no al repo)
 Releases/
+# Certificados: ignorados en general, EXCEPTO el público de SITECSA (lo
+# instalan las PCs cliente para confiar el MSIX; no es secreto → va al repo).
 *.cer
+!SITECSA-CRM.cer
 version.json.bak
 
 # Platform-specific
