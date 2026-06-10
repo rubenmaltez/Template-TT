@@ -3,6 +3,13 @@
 Esta carpeta es la **fuente única** de cómo se saca una versión nueva y cómo se
 instala en los dispositivos. Si dudás del orden, mirá acá — no la memoria.
 
+> **Para AIs/modelos futuros:** después de mergear un cambio que Rubén quiera
+> distribuir, guialo por `1-Publicar-nueva-version.md` — incluye el **bump de
+> versión obligatorio** en `pubspec.yaml` (semver `X.Y.Z` + build `+NNN` que
+> SIEMPRE sube, sino Android rechaza la actualización) y el script
+> **`build-release.ps1` que vive EN ESTA CARPETA** (hace auto-cd a la raíz del
+> repo; correrlo como `.\'Install Steps'\build-release.ps1`).
+
 ## Orden de uso (cada release)
 
 1. **`1-Publicar-nueva-version.md`** — lo corrés vos (dev) en tu PC: bump de
@@ -19,7 +26,7 @@ instala en los dispositivos. Si dudás del orden, mirá acá — no la memoria.
 | Instaladores **versionados** (se apilan) | `Releases\vX.Y.Z\` (en la raíz del proyecto) | `SITECSA-CRM-vX.Y.Z.msix` / `.apk` |
 | Copia cómoda para mandar | Escritorio | `SITECSA-CRM-vX.Y.Z.msix` / `.apk` |
 | Assets del GitHub Release (auto-update) | GitHub Releases | `SITECSA-CRM.msix` / `.apk` (nombre **fijo**) + `version.json` |
-| Scripts de PC | esta carpeta | `install-latest.ps1`, `uninstall.ps1` |
+| Scripts | esta carpeta | `build-release.ps1` (dev), `install-latest.ps1`, `uninstall.ps1` |
 
 ### Por qué dos nombres (versionado local + fijo en GitHub)
 

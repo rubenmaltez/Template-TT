@@ -8,14 +8,20 @@
     3. Copia los DOS instaladores a tu Escritorio.
     4. Crea (o actualiza) el GitHub Release con los 3 assets.
 
-  Uso:
-    .\build-release.ps1               # usa la version del pubspec  -> tag vX.Y.Z
-    .\build-release.ps1 -Tag v0.4.1   # tag explicito
+  Uso (desde la raiz del repo o desde cualquier carpeta):
+    .\'Install Steps'\build-release.ps1               # version del pubspec -> tag vX.Y.Z
+    .\'Install Steps'\build-release.ps1 -Tag v0.4.1   # tag explicito
 
   Requisitos: flutter, gh (GitHub CLI logueado), y .env.json en la raiz.
 #>
 param([string]$Tag = "")
 $ErrorActionPreference = "Stop"
+
+# El script vive en `Install Steps/` pero TODAS sus rutas son relativas a la
+# RAIZ del repo (pubspec.yaml, .env.json, build\, Releases\, version.json).
+# Auto-cd a la raiz para que funcione invocado desde cualquier carpeta.
+Set-Location (Split-Path $PSScriptRoot -Parent)
+
 $repo = "rubenmaltez/Template-TT"
 
 function Check($msg) { if ($LASTEXITCODE -ne 0) { throw "FALLO: $msg (exit $LASTEXITCODE)" } }

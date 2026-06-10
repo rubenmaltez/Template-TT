@@ -39,8 +39,11 @@ en orden numérico.
 ## Paso 3 — Build + publicar (un comando)
 
 ```powershell
-.\build-release.ps1
+.\'Install Steps'\build-release.ps1
 ```
+
+> El script vive en `Install Steps\` y hace auto-cd a la raíz del repo —
+> funciona invocado desde cualquier carpeta.
 
 Hace todo, en orden:
 1. Build Windows (MSIX) + Android (APK) con el `.env.json` baked.
@@ -50,7 +53,7 @@ Hace todo, en orden:
 4. Sube al **GitHub Release** los assets con nombre **fijo** (`SITECSA-CRM.msix`
    / `.apk`) + `version.json` actualizado. Tag `vX.Y.Z`.
 
-Para forzar un tag distinto: `.\build-release.ps1 -Tag v0.6.5`.
+Para forzar un tag distinto: `.\'Install Steps'\build-release.ps1 -Tag v0.6.5`.
 
 Salida esperada al final, en verde:
 ```

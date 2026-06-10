@@ -17,9 +17,9 @@ Pasos para validar que el sistema funciona end-to-end.
 ### 0.1 Traer el cambio y correr
 
 ```powershell
-# 1) Parado en la branch de trabajo (ver HANDOFF.md cuál es)
-git checkout claude/stoic-tesla-cGkJ6
-git pull origin claude/stoic-tesla-cGkJ6
+# 1) Parado en la branch de trabajo (ver BITACORA.md § ESTADO ACTUAL cuál es)
+git checkout <branch-de-trabajo>
+git pull origin <branch-de-trabajo>
 git log --oneline -1            # confirmar el commit esperado
 
 # 2) Correr en Windows
