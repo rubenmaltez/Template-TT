@@ -140,10 +140,23 @@ class UpdateService {
   /// sin RST dejaba el banner clavado en "Descargando…" para siempre.
   static const _timeout = Duration(seconds: 30);
 
+  /// Cache de la última descarga completa (M17, audit UX): en Android, el
+  /// permiso de instalación manda al user a Ajustes y al volver tocaba
+  /// "Actualizar" de nuevo → se RE-DESCARGABA el APK entero (minutos en 3G
+  /// rural). Si ya bajamos ESTA versión y el archivo sigue ahí, va directo.
+  static File? _cacheArchivo;
+  static String? _cacheVersion;
+
   static Future<File> descargarActualizacion(
     AppUpdate update, {
     void Function(double? progreso)? onProgress,
   }) async {
+    if (_cacheVersion == update.version &&
+        _cacheArchivo != null &&
+        await _cacheArchivo!.exists()) {
+      onProgress?.call(1.0);
+      return _cacheArchivo!;
+    }
     final client = http.Client();
     try {
       final response = await client
@@ -181,6 +194,8 @@ class UpdateService {
       if (total != null && total > 0 && recibido < total) {
         throw Exception('La descarga quedó incompleta. Reintentá.');
       }
+      _cacheArchivo = archivo;
+      _cacheVersion = update.version;
       return archivo;
     } on TimeoutException {
       throw Exception(

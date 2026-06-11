@@ -273,6 +273,7 @@ class _CuotasListScreenState extends ConsumerState<CuotasListScreen>
                 children: [
                   // Tab A: Por cliente (default — la vista de trabajo del cobrador)
                   _TabPorCliente(
+                    adminMode: widget.adminMode,
                     cobradorId: widget.adminMode ? _cobradorId : null,
                     comunidadId: widget.adminMode ? _comunidadId : null,
                   ),
@@ -292,7 +293,11 @@ class _CuotasListScreenState extends ConsumerState<CuotasListScreen>
                     onFiltroChanged: (f) {
                       setState(() => _filtro = f);
                       _clearSelection();
-                      if (f == _Filtro.mora) _marcarMoraComoVista();
+                      // M12 (audit): en adminMode NO se marcan como vistas —
+                      // el admin monitoreando borraba el badge del COBRADOR.
+                      if (f == _Filtro.mora && !widget.adminMode) {
+                        _marcarMoraComoVista();
+                      }
                     },
                   ),
                 ],
@@ -389,6 +394,7 @@ class _TabPorCobrar extends StatelessWidget {
         ),
         Expanded(
           child: _CuotasList(
+            adminMode: adminMode,
             filtro: filtro,
             diasGracia: diasGracia,
             diasVisibles: diasVisibles,
@@ -417,6 +423,7 @@ class _TabPorCobrar extends StatelessWidget {
 
 class _CuotasList extends StatefulWidget {
   const _CuotasList({
+    this.adminMode = false,
     required this.filtro,
     required this.diasGracia,
     required this.diasVisibles,
@@ -427,6 +434,7 @@ class _CuotasList extends StatefulWidget {
     this.cobradorId,
     this.comunidadId,
   });
+  final bool adminMode;
   final _Filtro filtro;
   final int diasGracia;
   final int diasVisibles;
@@ -661,6 +669,12 @@ class _CuotasListState extends State<_CuotasList> {
                         onTap: () {
                           if (widget.selected.isNotEmpty) {
                             widget.onToggle(cuotaId, contratoId, pendingIds);
+                          } else if (widget.adminMode) {
+                            // Monitoreo: el admin abre el CONTRATO (con su
+                            // shell), no la pantalla de cobro del cobrador.
+                            if (contratoId != null) {
+                              context.push('/admin/contratos/$contratoId');
+                            }
                           } else {
                             context.push('/cobro/$cuotaId');
                           }
@@ -686,8 +700,15 @@ class _CuotasListState extends State<_CuotasList> {
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _TabPorCliente extends StatefulWidget {
-  const _TabPorCliente({this.cobradorId, this.comunidadId});
+  const _TabPorCliente({
+    this.adminMode = false,
+    this.cobradorId,
+    this.comunidadId,
+  });
 
+  // En adminMode la navegacion usa las rutas /admin/* (sin esto el admin
+  // caia a las pantallas full-screen del cobrador y perdia el shell).
+  final bool adminMode;
   // Filtros admin (null = sin filtrar). En la vista del cobrador siempre null.
   final String? cobradorId;
   final String? comunidadId;
@@ -818,7 +839,9 @@ class _TabPorClienteState extends State<_TabPorCliente> {
                     color: enMora ? scheme.error : null,
                   ),
                 ),
-                onTap: () => context.push('/clientes/${r['id']}'),
+                onTap: () => context.push(widget.adminMode
+                    ? '/admin/clientes/${r['id']}'
+                    : '/clientes/${r['id']}'),
               ),
             );
           },

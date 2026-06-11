@@ -315,7 +315,7 @@ class _TicketDetailScreenState extends ConsumerState<TicketDetailScreen> {
       runSpacing: 8,
       children: [
         ...transiciones.map((to) => OutlinedButton(
-              onPressed: () => _cambiarEstado(t, to),
+              onPressed: () => _cambiarEstadoConfirmando(t, to),
               child: Text(estadoTicketLabel(to)),
             )),
         // Reasignar: sólo el admin (no el técnico) y no en estados terminales.
@@ -569,6 +569,40 @@ class _TicketDetailScreenState extends ConsumerState<TicketDetailScreen> {
     } catch (e) {
       _snack('Error: $e');
     }
+  }
+
+  /// M16 (audit UX): las transiciones TERMINALES para el rol confirman —
+  /// el técnico no puede volver de 'resuelto' (reabrir es del admin) y los
+  /// botones del Wrap son contiguos (guantes/sol → tap equivocado).
+  Future<void> _cambiarEstadoConfirmando(
+      Map<String, dynamic> t, String to) async {
+    final terminales = widget.tecnicoMode
+        ? const {'resuelto'}
+        : const {'cancelado', 'cerrado'};
+    if (terminales.contains(to)) {
+      final ok = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: Text('¿Marcar como "${estadoTicketLabel(to)}"?'),
+          content: Text(widget.tecnicoMode
+              ? 'No vas a poder volverlo a "En progreso": si falta algo, '
+                  'tendrá que reabrirlo el administrador.'
+              : 'Es un estado terminal del ticket.'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Volver'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Confirmar'),
+            ),
+          ],
+        ),
+      );
+      if (ok != true || !mounted) return;
+    }
+    await _cambiarEstado(t, to);
   }
 
   Future<void> _comentar(Map<String, dynamic> t) async {

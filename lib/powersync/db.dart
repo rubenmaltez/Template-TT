@@ -70,7 +70,11 @@ Future<void> openDatabaseForUser(String userId) async {
   if (_currentDbUserId == userId) return;
 
   // Serializar con cualquier operación en vuelo.
-  if (_pendingOp != null && !_pendingOp!.isCompleted) {
+  // WHILE y no IF (M5, audit Fase 4 del Sprint 1): al completarse la op en
+  // vuelo se despertaban TODOS los esperantes y corrian concurrentes (el
+  // segundo no re-chequeaba). Con el loop, cada despertado re-verifica si
+  // otro le gano el turno y vuelve a esperar.
+  while (_pendingOp != null && !_pendingOp!.isCompleted) {
     await _pendingOp!.future;
   }
   final op = Completer<void>();
@@ -104,7 +108,11 @@ Future<void> openDatabaseForUser(String userId) async {
 /// dejaba a PowerSync sin emitir checkpoint → sync gate colgado (el bug
 /// histórico "stuck post-forzar-password" que solo F5 desbloqueaba).
 Future<void> connectPowerSync() async {
-  if (_pendingOp != null && !_pendingOp!.isCompleted) {
+  // WHILE y no IF (M5, audit Fase 4 del Sprint 1): al completarse la op en
+  // vuelo se despertaban TODOS los esperantes y corrian concurrentes (el
+  // segundo no re-chequeaba). Con el loop, cada despertado re-verifica si
+  // otro le gano el turno y vuelve a esperar.
+  while (_pendingOp != null && !_pendingOp!.isCompleted) {
     await _pendingOp!.future;
   }
   final op = Completer<void>();
@@ -125,7 +133,11 @@ Future<void> connectPowerSync() async {
 
 /// Desconecta PowerSync sin borrar datos locales.
 Future<void> disconnectPowerSync() async {
-  if (_pendingOp != null && !_pendingOp!.isCompleted) {
+  // WHILE y no IF (M5, audit Fase 4 del Sprint 1): al completarse la op en
+  // vuelo se despertaban TODOS los esperantes y corrian concurrentes (el
+  // segundo no re-chequeaba). Con el loop, cada despertado re-verifica si
+  // otro le gano el turno y vuelve a esperar.
+  while (_pendingOp != null && !_pendingOp!.isCompleted) {
     await _pendingOp!.future;
   }
   final op = Completer<void>();

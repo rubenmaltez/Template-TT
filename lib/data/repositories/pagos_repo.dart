@@ -125,7 +125,9 @@ class PagosRepo {
             [
               _uuid.v4(), tenantId, cargo.cuotaId, cobradorId,
               cargo.tipo, cargo.monto, cargo.porcentaje,
-              cargo.descripcion, cobradorId, now, _uuid.v4(),
+              cargo.descripcion, cobradorId,
+              // aplicado_en en UTC (B10; antes heredaba el local-naive de fecha_pago)
+              ocurridoEn, _uuid.v4(),
               ocurridoEn,
               // pago_id (0115): liga el cargo automático a SU cobro para que
               // anularlo revierta los descuentos (M3) — trigger server + mirror.
@@ -328,7 +330,9 @@ class PagosRepo {
             [
               _uuid.v4(), tenantId, cargo.cuotaId, cobradorId,
               cargo.tipo, cargo.monto, cargo.porcentaje,
-              cargo.descripcion, cobradorId, now, _uuid.v4(),
+              cargo.descripcion, cobradorId,
+              // aplicado_en en UTC (B10; antes heredaba el local-naive de fecha_pago)
+              ocurridoEn, _uuid.v4(),
               ocurridoEn,
               pagoIds[cuotaIds.indexOf(cargo.cuotaId)],
             ],

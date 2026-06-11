@@ -10,6 +10,9 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+  # main.dart usa url_strategy (antes resolvia por transitiva — audit LOW).
+  flutter_web_plugins:
+    sdk: flutter
   flutter_localizations:
     sdk: flutter
 
@@ -36,8 +39,9 @@ dependencies:
   uuid: ^4.4.0
   collection: ^1.18.0
 
-  # Geolocalización + mapas (flutter_map + OSM, gratis sin API key)
-  geolocator: ^13.0.1
+  # Mapas (flutter_map + OSM, gratis sin API key). geolocator se QUITO
+  # (audit: 0 imports — la geo del cobro esta parqueada; el plugin nativo
+  # se compilaba en cada APK/MSIX sin uso). Volver a agregarlo con la feature.
   flutter_map: ^7.0.2
   latlong2: ^0.9.1
 

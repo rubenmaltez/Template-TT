@@ -8,6 +8,7 @@ import '../../data/providers/crud_error_provider.dart';
 import '../../data/services/rechazos_sync_service.dart';
 import '../shared/utils/shell_nav.dart';
 import '../shared/utils/sign_out_helper.dart';
+import '../shared/widgets/offline_banner.dart';
 import '../shared/widgets/update_banner.dart';
 
 /// Shell del panel Super Admin (gestión cross-tenant del SaaS).
@@ -126,6 +127,10 @@ class SuperShell extends ConsumerWidget {
       ),
       body: Column(
         children: [
+          // Mismo banner que los otros 3 shells (audit LOW): el panel super
+          // es RPC/Edge (online-only) — sin esto, la red caída aparecía como
+          // errores sueltos por pantalla sin la pista global.
+          const OfflineBanner(),
           const UpdateBanner(),
           Expanded(child: child),
         ],

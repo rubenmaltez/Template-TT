@@ -172,8 +172,9 @@ class _ImpresoraSetupScreenState extends ConsumerState<ImpresoraSetupScreen> {
                           ),
                           const SizedBox(height: 8),
                           const Text(
-                              'La app necesita BLUETOOTH_CONNECT y _SCAN para '
-                              'listar impresoras pareadas.'),
+                              'La app necesita permiso de Bluetooth para ver '
+                              'las impresoras emparejadas. Activalo en '
+                              'Ajustes del teléfono.'),
                           const SizedBox(height: 12),
                           OutlinedButton.icon(
                             icon: const Icon(Icons.settings),

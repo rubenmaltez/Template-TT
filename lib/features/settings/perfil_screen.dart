@@ -421,6 +421,9 @@ class _SyncCard extends ConsumerWidget {
               data: (s) {
                 final connected = s?.connected ?? false;
                 final last = s?.lastSyncedAt;
+                // Audit F4 Sprint 1: si una subida está fallando y
+                // reintentando, la UI se veía "sana" — única pista visible.
+                final subiendoConError = s?.uploadError != null;
                 return Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -439,6 +442,16 @@ class _SyncCard extends ConsumerWidget {
                       Text(
                           'Última sincronización: ${Fmt.fechaCorta(last)} ${Fmt.hora(last)}',
                           style: Theme.of(context).textTheme.bodySmall),
+                    ],
+                    if (subiendoConError) ...[
+                      const SizedBox(height: 6),
+                      Text(
+                        'Hay cambios reintentando subirse. Si persiste, '
+                        'avisale al administrador.',
+                        style: TextStyle(
+                            fontSize: 12,
+                            color: Theme.of(context).colorScheme.error),
+                      ),
                     ],
                   ],
                 );

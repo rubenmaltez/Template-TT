@@ -14,7 +14,7 @@
 
   Requisitos: flutter, gh (GitHub CLI logueado), y .env.json en la raiz.
 #>
-param([string]$Tag = "")
+param([string]$Tag = "", [string]$Notes = "")
 $ErrorActionPreference = "Stop"
 
 # El script vive en `Install Steps/` pero TODAS sus rutas son relativas a la
@@ -86,6 +86,11 @@ Copy-Item (Join-Path $relDir $apkVer)  ".\SITECSA-CRM.apk"  -Force
 # 6) version.json al dia (solo el campo version; las URLs usan latest/download y no cambian)
 $vj = Get-Content version.json -Raw | ConvertFrom-Json
 $vj.version = $ver
+# M26 (audit): sin -Notes, el banner del updater mostraba el changelog de una
+# version vieja para siempre. Con -Notes se actualiza; sin el parametro se
+# avisa y se deja lo anterior (decision consciente, no olvido).
+if ($Notes -ne "") { $vj.release_notes = $Notes }
+else { Write-Host "AVISO: sin -Notes, release_notes queda como estaba: '$($vj.release_notes)'" -ForegroundColor Yellow }
 ($vj | ConvertTo-Json) | Set-Content version.json -Encoding UTF8
 
 # 7) Publicar / actualizar el release
