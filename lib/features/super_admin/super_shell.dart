@@ -127,12 +127,11 @@ class SuperShell extends ConsumerWidget {
       ),
       body: Column(
         children: [
-          // Mismo banner que los otros 3 shells (audit LOW): el panel super
-          // es RPC/Edge (online-only) — sin esto, la red caída aparecía como
-          // errores sueltos por pantalla sin la pista global.
-          const OfflineBanner(),
           const UpdateBanner(),
-          Expanded(child: child),
+          // Mismo patrón que los otros 3 shells (audit LOW): el panel super
+          // es RPC/Edge (online-only) — sin el banner, la red caída aparecía
+          // como errores sueltos por pantalla sin la pista global.
+          Expanded(child: OfflineBanner(child: child)),
         ],
       ),
     );
