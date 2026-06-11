@@ -34,10 +34,12 @@
   Sprint 2 IMPLEMENTADO en la rama `claude/jolly-albattani-09axxa`** (ver
   entrada 2026-06-11 b): ajustes de cuota + M2/M3/M22 + retiro Editar monto.
 - **Qué falta:**
-  1. **Rama abierta (Sprint 2 + mega-sprint):** audit Fase 4 del mega-sprint
-     → testing de Rubén: correr **0116** en Dashboard (la 0115 y sync rules
-     YA están deployadas) + `flutter pub get` (cambió pubspec) + analyze +
-     test + manual (TESTING §0.3) → merge → borrar rama. ⚠️ v27 = resync.
+  1. **Rama abierta — testing 1-6 VERDE, manual INTERRUMPIDO con feedback:**
+     0115 y 0116 corridas y VERIFICADAS · sync rules v8 Active · invariantes
+     14/14 en cero · pub get OK · analyze = 4 infos diferidos · tests 254 ✓.
+     El manual (paso 7) se cortó: Rubén pidió REDISEÑAR el feature de
+     Ajustes antes de mergear (ver entrada 2026-06-11 d — ES LO PRÓXIMO).
+     NO mergear hasta resolver. pubspec.lock local de Rubén sin commitear.
   2. Smoke tests B.2–B.6 (entrada 2026-06-10) → release `v0.11.0` con
      `build-release.ps1` (1ª firma con el keystore → reinstalar apps una vez,
      sincronizando antes) → probar el updater in-app → borrar release `v0.9.0`.
@@ -49,6 +51,48 @@
   keystore generado y verificado fuera de git (backup pendiente de confirmar).
 - **Salud:** del audit 2026-06-09 no queda nada abierto; del audit 2026-06-11
   quedan **7 HIGH sin atacar** (priorizados en el reporte, Sprints 2-3).
+
+---
+
+## 2026-06-11 (d) — CHECKPOINT: feedback de Rubén sobre Ajustes (rediseño pendiente)
+
+**Testing del mega-sprint:** pasos 1-6 TODOS verdes (deploy 0115+0116
+verificados, invariantes 14/14=0, pub get, analyze 4 infos, tests 254).
+El manual destapó 4 problemas de PRODUCTO/UX — la próxima sesión arranca
+acá: evaluar el approach y proponer el rediseño ANTES de seguir.
+
+**Feedback de Rubén (verbatim resumido) + diagnóstico preliminar:**
+1. **No encuentra el toggle "Ajustes de cuota" en Avanzado** — activó
+   "Permitir descuentos" (que es OTRO feature: el del cobrador en campo).
+   Causa: los 3 settings nuevos de ajustes no tienen GRUPO curado en el
+   panel → caen al final en "Otros" (el F3 que QA flaggeó como backlog
+   resultó bloqueante de descubribilidad). Consecuencia: nunca vio el
+   icono % ni el AjustarCuotaDialog (motivo+preview) — lo que probó fue el
+   viejo AplicarCargoDialog del flujo de cobro, que le pareció poco
+   intuitivo. HAY DOS DIÁLOGOS y se confunden → candidato a unificar.
+2. **Quiere ajustes a UNA O VARIAS cuotas pendientes a la vez** (ej. días
+   sin internet que afectan 2 meses) con semántica clara ajuste vs promo.
+3. **Espera los toggles del recibo** (mostrar ajustes/promos) — eso era
+   Sprint 3 (bloque "Descuentos y ajustes" del diseñador, no implementado).
+   Alinear: adelantarlo al rediseño.
+4. **El tab Cuotas re-linkeado (M25) lo afectó:** anuló una cuota de prueba
+   y NO HAY des-anular (la anulación de cuota es terminal). Decidir:
+   des-anular cuota (trivial sin pagos; complejo con pagos por la cascada
+   0023) o sacar/endurecer "Anular cuota" de esa pantalla.
+
+**Reparación de data pendiente (SQL en Dashboard):** des-anular la cuota
+de prueba (cliente Byr, Febrero 2026, sin pagos) — SELECT id de la anulada
+y UPDATE estado='pendiente', anulada_en/por/motivo_anulacion = NULL.
+
+**Plan próxima sesión (pedido explícito):** re-evaluar el approach completo
+de ajustes/promos/descuentos con sugerencias de diseño: (a) panel Avanzado
+con grupo propio "Ajustes" (y revisar nombres/UX de los 3 settings), (b) UN
+solo flujo intuitivo de descuentos (¿unificar AplicarCargoDialog +
+AjustarCuotaDialog?), (c) ajustes multi-cuota desde el contrato, (d) bloque
+de recibo + toggles, (e) destino de /admin/cuotas y des-anular. La base
+contable (cargos_extra origen/pago_id/grupo_promo + guards 0115/0116 +
+INV13/14) está deployada y sólida — el rediseño es de UX/entrada, no del
+motor.
 
 ---
 
