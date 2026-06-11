@@ -20,9 +20,8 @@
 
 - **Branch viva: `main`** (única rama permanente; default del repo en GitHub).
   Checkpoints históricos = **tags**: `pre-mvp-v2` (estado auditado 2026-06-09)
-  y `pre-mvp-v1` (checkpoint previo). **Rama de trabajo ABIERTA:
-  `claude/jolly-albattani-09axxa`** (audit integral 2026-06-11 + Sprint 1 de
-  fixes) — tras el testing de Rubén: merge a `main` y BORRAR la rama.
+  y `pre-mvp-v1` (checkpoint previo). La rama del Sprint 1
+  (`claude/jolly-albattani-09axxa`) se mergeó a `main` y se borró (2026-06-11).
 - **Modelo de branching:** cada sesión de trabajo crea su rama efímera
   (`claude/*` o feature) DESDE `main` → al terminar se mergea a `main` y la
   rama se BORRA. Hitos importantes se marcan con tag, no con rama.
@@ -34,11 +33,13 @@
   9 HIGH + ~26 MEDIUM. **Sprint 1 IMPLEMENTADO y auditado** en la rama de
   trabajo (ver entrada 2026-06-11). Sprints 2-4 pendientes de decisión.
 - **Qué falta:**
-  1. **Sprint 1**: `flutter analyze` + `flutter test` + smoke manual
-     (TESTING §0.3 "Rechazos de sync") → merge a `main` → borrar la rama.
-  2. Smoke tests B.2–B.6 (entrada 2026-06-10) → release `v0.11.0` con
+  1. Smoke tests B.2–B.6 (entrada 2026-06-10) → release `v0.11.0` con
      `build-release.ps1` (1ª firma con el keystore → reinstalar apps una vez,
      sincronizando antes) → probar el updater in-app → borrar release `v0.9.0`.
+  2. Decidir Sprints 2-4 del audit 2026-06-11 (7 HIGH restantes).
+  3. Pedido nuevo de Rubén (2026-06-11, propuesta presentada): preview/selector
+     multi-cuota al cobrar desde el MAPA (hoy salta directo a 1 cuota;
+     la lista ya tiene multi-select). Esperando elección de opción.
 - **Hecho recién (2026-06-10):** lock con `open_filex` commiteado (`092a51a`) ·
   keystore generado y verificado fuera de git (backup pendiente de confirmar).
 - **Salud:** del audit 2026-06-09 no queda nada abierto; del audit 2026-06-11
@@ -73,10 +74,19 @@ divergencia silenciosa y en escrituras offline sin guard server-side.
 - Tests nuevos: clasificador del connector · monotonicidad del hwm · 2
   regresiones en `pagos_repo_test` (sync borra recibo anulado) · rechazos.
 
-**Pendiente:** analyze+test+manual (TESTING §0.3) → merge. **Backlog nuevo:**
-avisos de rechazo invisibles para admin/súper (sin pantalla Perfil; decidir
-si darles vista) · surfacear el retry-loop de una op envenenada en `_SyncCard`
-· `rechazos_sync_v1` es per-device, no per-user (aceptado: equipos personales).
+**Testing de Rubén (2026-06-11): APROBADO** — `flutter analyze` sin issues del
+sprint (54 infos pre-existentes: deprecations `value→initialValue` etc., quedan
+para una pasada de limpieza) · `flutter test` 244 verdes (se actualizó
+`recibo_layout_test` que esperaba el orden PRE-954b624, no era regresión) ·
+smoke manual OK (pre-check de código duplicado + cobro con correlativo
+correcto). **Mergeado a `main`; rama borrada.**
+
+**Pendiente/backlog nuevo:** fotos de cliente SIN compresión → Storage rechaza
+con 413 y el SnackBar muestra el error crudo en inglés (visto en el smoke;
+candidato Sprint 2 junto con M14 errores crudos) · avisos de rechazo invisibles
+para admin/súper (sin pantalla Perfil; decidir si darles vista) · surfacear el
+retry-loop de una op envenenada en `_SyncCard` · `rechazos_sync_v1` es
+per-device, no per-user (aceptado: equipos personales).
 
 ---
 
