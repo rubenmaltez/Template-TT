@@ -35,7 +35,10 @@ class TecnicoShell extends ConsumerWidget {
             duration: const Duration(seconds: 8),
             action: SnackBarAction(
               label: 'VER',
-              onPressed: () => context.go('/tecnico/perfil'),
+              onPressed: () {
+                // El SnackBar vive 8s: el shell pudo desmontarse (signOut).
+                if (context.mounted) context.go('/tecnico/perfil');
+              },
             ),
           ),
         );

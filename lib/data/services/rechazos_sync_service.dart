@@ -127,6 +127,17 @@ class RechazosSyncService {
 
   final _cambios = StreamController<void>.broadcast();
 
+  /// Cola interna: serializa los read-modify-write a prefs. Los `registrar`
+  /// llegan `unawaited` desde el connector (varios descartes en un mismo
+  /// batch) — concurrentes se pisarían y perderían avisos (audit Fase 4).
+  Future<void> _serial = Future.value();
+
+  Future<void> _encolar(Future<void> Function() accion) {
+    // Las acciones nunca tiran (catch-all interno) → el encadenado es seguro.
+    _serial = _serial.then((_) => accion());
+    return _serial;
+  }
+
   /// Lista actual al suscribirse + re-emisión en cada cambio.
   Stream<List<RechazoSync>> watch() async* {
     yield await listar();
@@ -153,10 +164,27 @@ class RechazosSyncService {
     }
   }
 
-  Future<void> registrar(RechazoSync rechazo) async {
+  Future<void> registrar(RechazoSync rechazo) =>
+      _encolar(() => _registrarImpl(rechazo));
+
+  Future<void> _registrarImpl(RechazoSync rechazo) async {
     try {
       final prefs = await SharedPreferences.getInstance();
       final raw = prefs.getStringList(_kPrefsKey) ?? <String>[];
+      // Dedupe (audit Fase 4): si el batch se reintenta (op descartada + op
+      // retryable en el MISMO batch), la misma op se re-descarta en cada
+      // retry — sin esto se apilaba un aviso idéntico por intento. El más
+      // nuevo reemplaza al viejo (refresca fecha y sube al tope).
+      raw.removeWhere((s) {
+        try {
+          final m = jsonDecode(s) as Map;
+          return m['tabla'] == rechazo.tabla &&
+              m['registro_id'] == rechazo.registroId &&
+              m['codigo'] == rechazo.codigo;
+        } catch (_) {
+          return true; // entrada corrupta: aprovechar y limpiarla
+        }
+      });
       raw.insert(0, jsonEncode(rechazo.toJson()));
       if (raw.length > _kMax) raw.removeRange(_kMax, raw.length);
       await prefs.setStringList(_kPrefsKey, raw);
@@ -166,7 +194,9 @@ class RechazosSyncService {
 
   /// Descarta UN aviso (el dato divergente sigue tal cual — esto solo borra
   /// la notificación, decisión consciente del usuario).
-  Future<void> descartar(String id) async {
+  Future<void> descartar(String id) => _encolar(() => _descartarImpl(id));
+
+  Future<void> _descartarImpl(String id) async {
     try {
       final prefs = await SharedPreferences.getInstance();
       final raw = prefs.getStringList(_kPrefsKey) ?? <String>[];
@@ -182,7 +212,9 @@ class RechazosSyncService {
     } catch (_) {}
   }
 
-  Future<void> limpiar() async {
+  Future<void> limpiar() => _encolar(_limpiarImpl);
+
+  Future<void> _limpiarImpl() async {
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.remove(_kPrefsKey);

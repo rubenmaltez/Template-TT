@@ -107,7 +107,7 @@ class PagosRepo {
     if (_pisoCorrelativo != null) {
       // Reflejar en el hwm lo emitido desde OTROS dispositivos.
       await CorrelativoStore.subirA(
-          cobradorId, prefijoRecibo, _pisoCorrelativo!);
+          cobradorId, prefijoRecibo, _pisoCorrelativo);
     }
     final hwmLocal = await CorrelativoStore.leer(cobradorId, prefijoRecibo);
 
@@ -301,7 +301,7 @@ class PagosRepo {
       if (sr.isNotEmpty) _pisoMulti = (sr.first['correlativo'] as num).toInt();
     } catch (_) {}
     if (_pisoMulti != null) {
-      await CorrelativoStore.subirA(cobradorId, prefijoRecibo, _pisoMulti!);
+      await CorrelativoStore.subirA(cobradorId, prefijoRecibo, _pisoMulti);
     }
     final hwmMulti = await CorrelativoStore.leer(cobradorId, prefijoRecibo);
     final correlativosEmitidos = <int>[];

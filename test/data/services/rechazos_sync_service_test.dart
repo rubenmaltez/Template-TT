@@ -109,5 +109,36 @@ void main() {
       await svc.registrar(_rechazo('a'));
       expect((await svc.listar()).map((r) => r.id), ['a']);
     });
+
+    test('dedupe: re-descartar la misma op (retry del batch) REEMPLAZA el '
+        'aviso en vez de apilarlo', () async {
+      final svc = RechazosSyncService.instance;
+      RechazoSync intento(String id, String fecha) => RechazoSync(
+            id: id,
+            tabla: 'pagos',
+            registroId: 'reg-fijo',
+            op: 'put',
+            codigo: '23505',
+            mensaje: 'duplicate key',
+            fechaUtcIso: fecha,
+          );
+
+      await svc.registrar(intento('a', '2026-06-11T10:00:00Z'));
+      await svc.registrar(_rechazo('otro')); // registro distinto en el medio
+      await svc.registrar(intento('b', '2026-06-11T10:05:00Z'));
+
+      final lista = await svc.listar();
+      expect(lista, hasLength(2));
+      expect(lista.first.id, 'b'); // reemplazó al 'a' y subió al tope
+      expect(lista.map((r) => r.id), isNot(contains('a')));
+    });
+
+    test('registrar concurrente (unawaited, como llega del connector) no '
+        'pierde avisos', () async {
+      final svc = RechazosSyncService.instance;
+      await Future.wait(
+          [for (var i = 0; i < 10; i++) svc.registrar(_rechazo('c$i'))]);
+      expect(await svc.listar(), hasLength(10));
+    });
   });
 }
