@@ -68,6 +68,17 @@ AGENTS.md):
   encima del tope configurado se rechaza con mensaje claro.
   *Si falla:* correr `invariantes_dinero.sql` (INV13) y revisar que 0115
   esté corrida (queries de verificación al pie de la migración).
+- **Mega-sprint 2026-06-11 (smokes rápidos):** (1) en COBRO: tipeá "500,50"
+  → el monto vale 500.50; back de Android con datos cargados → pide
+  confirmación; aplicá un descuento manual con un cargo de reconexión
+  pendiente → el total conserva la reconexión y no la duplica al confirmar.
+  (2) Cancelar contrato → pide confirmación explícita. (3) Doble-click en
+  "Crear cliente/contrato" → una sola entidad. (4) Como admin, filtrá "En
+  mora" en /admin/cobros → el badge del cobrador NO se borra; tocá un
+  cliente → abre la vista /admin con el menú lateral. (5) Menú →
+  Administración → Cuotas existe y permite anular. (6) Personal → ícono 🕐
+  → historial del miembro. (7) Provocá un error cualquiera → mensaje en
+  español, no "Exception:". (8) Historial de cobros → "Cargar más" al fondo.
 - **Cobro de campo (cobrador):** abrir una cuota pendiente → cargar monto, método,
   moneda (probar **USD con vuelto** y **C$**), foto → imprimir/guardar recibo.
   *Ver:* recibo correcto, recaudado = aplicado (no lo entregado), vuelto siempre en C$.

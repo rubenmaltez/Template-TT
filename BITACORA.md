@@ -34,10 +34,10 @@
   Sprint 2 IMPLEMENTADO en la rama `claude/jolly-albattani-09axxa`** (ver
   entrada 2026-06-11 b): ajustes de cuota + M2/M3/M22 + retiro Editar monto.
 - **Qué falta:**
-  1. **Sprint 2 (rama abierta):** audit Fase 4 → testing de Rubén (correr
-     0115 en Dashboard + redeploy sync rules + analyze/test/manual, ver
-     TESTING §0.3 "Ajustes de cuota") → merge → borrar rama. ⚠️ El bump a
-     v27 fuerza resync desde cero de todos los dispositivos.
+  1. **Rama abierta (Sprint 2 + mega-sprint):** audit Fase 4 del mega-sprint
+     → testing de Rubén: correr **0116** en Dashboard (la 0115 y sync rules
+     YA están deployadas) + `flutter pub get` (cambió pubspec) + analyze +
+     test + manual (TESTING §0.3) → merge → borrar rama. ⚠️ v27 = resync.
   2. Smoke tests B.2–B.6 (entrada 2026-06-10) → release `v0.11.0` con
      `build-release.ps1` (1ª firma con el keystore → reinstalar apps una vez,
      sincronizando antes) → probar el updater in-app → borrar release `v0.9.0`.
@@ -49,6 +49,43 @@
   keystore generado y verificado fuera de git (backup pendiente de confirmar).
 - **Salud:** del audit 2026-06-09 no queda nada abierto; del audit 2026-06-11
   quedan **7 HIGH sin atacar** (priorizados en el reporte, Sprints 2-3).
+
+---
+
+## 2026-06-11 (c) — Mega-sprint de correcciones (todo el backlog arreglable)
+
+**Por qué:** decisión de Rubén: "corrijamos todo lo faltante primero y
+dejamos para último los tests" — atacar TODOS los HIGH restantes del audit
+integral + los MEDIUM/LOW técnicos acumulados, y testear todo junto.
+
+**Qué se hizo** (commits `1cc16e3`→`8c4e330`; detalle por commit en git):
+- **Los 7 HIGH restantes**: #3 cargos auto re-deduplicados al aplicar cargo
+  manual · #4 enforce server de cobrador_anula/edita_cobros · #6 PopScope en
+  cobro · #7 doble-submit en forms de cliente/contrato · #8 confirmación al
+  cancelar contrato · #9 changelog de `cobradores` (+ botón Historial) ·
+  #10 guard server de transiciones de seriales.
+- **Migración 0116** (NO corrida aún): los guards #4/#9/#10 + correlativo de
+  tickets re-asignado en server (M18) + audit_log append-only para el súper
+  (M23) + sin filas update fantasma (no-op guard en la función de changelog).
+- **MEDIUMs**: M8 coma decimal en TODOS los montos (parseMonto) · M9 flush
+  del debounce de settings · M11 fin del flash "Recibo no encontrado" · M12
+  el admin ya no borra el badge de mora del cobrador · M13 KPIs con error
+  visible · M14 `mensajeErrorHumano` en ~40 spots · M15 gates de edición en
+  historial · M16 confirmación de transiciones terminales de tickets · M17
+  updater sin re-descarga post-permiso · M21 UTC en inventario · M25 menú
+  Cuotas re-linkeado · M26 build-release -Notes · M5 lock con while.
+- **LOWs**: aplicado_en UTC · OfflineBanner en SuperShell · aviso de
+  retry-loop en _SyncCard · copy Bluetooth · auth humanizado · mounted tras
+  awaits · Cargar más en historial · geolocator fuera / web_plugins
+  declarado · 50 de los 54 infos del analyze (42 initialValue + 8 imports).
+- **Decisiones tomadas** (revisables): #4 ENFORZADO server-side (no solo
+  documentado) · /admin/cuotas RE-LINKEADA (recupera "Anular cuota") · una
+  cuota con ajuste NO recibe además pronto-pago (anti doble-descuento).
+
+**Diferido (consciente):** promos (Sprint 3 aprobado en diseño) · M19/M20
+(evento server de tickets / cola offline de firma: diseño) · compresión real
+de fotos (dep nueva) · M4 clamp de saldo (decisión de semántica) · vista de
+rechazos para admin/súper · deprecations announce/Radio/translate.
 
 ---
 
