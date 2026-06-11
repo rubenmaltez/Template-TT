@@ -54,6 +54,7 @@ import 'package:powersync/powersync.dart';
 // Prefijado para evitar cualquier colisión con símbolos re-exportados por
 // `powersync.dart` (que re-exporta parte de sqlite_async). Usamos `sq.open` y
 // `sq.OperatingSystem` para apuntar la extensión nativa.
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sqlite3/open.dart' as sq;
 import 'package:uuid/uuid.dart';
 
@@ -93,6 +94,10 @@ void main() {
   const clienteId = 'cli-test';
 
   setUp(() async {
+    // SharedPreferences en memoria y LIMPIO por test: el high-water mark del
+    // correlativo (CorrelativoStore) no debe filtrar estado entre tests —
+    // cada test arranca con hwm 0, igual que un dispositivo nuevo.
+    SharedPreferences.setMockInitialValues({});
     tmpDir = await Directory.systemTemp.createTemp('pagos_repo_test_');
     final dbPath = p.join(tmpDir.path, 'test_${uuid.v4()}.db');
     db = PowerSyncDatabase(schema: schema, path: dbPath);
@@ -714,6 +719,93 @@ void main() {
       final cuota = await getCuota(cuotaId);
       expect(num2(cuota['monto_pagado']), 500);
       expect(cuota['estado'], 'pagada');
+    });
+  });
+
+  // ─────────────────────────────────────────────────────────────────────
+  // GRUPO — high-water mark del correlativo (audit 2026-06-11, finding #2)
+  // ─────────────────────────────────────────────────────────────────────
+  group('correlativo: high-water mark local (CorrelativoStore)', () {
+    test(
+        'anulación sincronizada que borra el último recibo local NO reusa '
+        'el número ya impreso', () async {
+      final contratoId = await seedContrato();
+      final cuota1 = await seedCuota(contratoId: contratoId, monto: 500);
+      final cuota2 = await seedCuota(contratoId: contratoId, monto: 500);
+
+      final res1 = await repo.registrarCobro(
+        tenantId: tenantId,
+        cobradorId: cobradorId,
+        prefijoRecibo: prefijo,
+        cuotaId: cuota1,
+        montoCordobas: 500,
+        moneda: Moneda.nio,
+        montoOriginal: 500,
+        tasaConversion: 1,
+        metodo: MetodoPago.efectivo,
+      );
+      expect((await getReciboDePago(res1.pagoId))['correlativo'], 1);
+
+      // El admin anula el recibo en el server: las sync rules (filtran
+      // anulado = false) hacen que PowerSync BORRE la fila del SQLite del
+      // cobrador. Lo simulamos con un DELETE local directo.
+      await db.execute('DELETE FROM recibos WHERE id = ?', [res1.reciboId]);
+
+      // Sin hwm: MAX(correlativo) local = 0 y el piso server es inalcanzable
+      // (sin sesión Supabase, como offline) → se reusaría el #1 ya impreso.
+      final res2 = await repo.registrarCobro(
+        tenantId: tenantId,
+        cobradorId: cobradorId,
+        prefijoRecibo: prefijo,
+        cuotaId: cuota2,
+        montoCordobas: 500,
+        moneda: Moneda.nio,
+        montoOriginal: 500,
+        tasaConversion: 1,
+        metodo: MetodoPago.efectivo,
+      );
+      final recibo2 = await getReciboDePago(res2.pagoId);
+      expect(recibo2['correlativo'], 2,
+          reason: 'reusar el #1 duplicaría el número impreso del cliente y '
+              'el server rechazaría el INSERT (23505) descartando el recibo');
+      expect(recibo2['numero_completo'], 'A-00002');
+    });
+
+    test('multi-cuota también persiste el hwm (no reusa tras borrado local)',
+        () async {
+      final contratoId = await seedContrato();
+      final cuota1 = await seedCuota(contratoId: contratoId, monto: 500);
+      final cuota2 = await seedCuota(contratoId: contratoId, monto: 500);
+      final cuota3 = await seedCuota(contratoId: contratoId, monto: 500);
+
+      final res = await repo.registrarCobroMultiple(
+        tenantId: tenantId,
+        cobradorId: cobradorId,
+        prefijoRecibo: prefijo,
+        cuotaIds: [cuota1, cuota2],
+        montosCordobas: [500, 500],
+        moneda: Moneda.nio,
+        montosOriginal: [500, 500],
+        tasaConversion: 1,
+        metodo: MetodoPago.efectivo,
+      );
+      // Emitió #1 y #2; el sync remueve ambos (anulación masiva del admin).
+      for (final rid in res.reciboIds!) {
+        await db.execute('DELETE FROM recibos WHERE id = ?', [rid]);
+      }
+
+      final res2 = await repo.registrarCobro(
+        tenantId: tenantId,
+        cobradorId: cobradorId,
+        prefijoRecibo: prefijo,
+        cuotaId: cuota3,
+        montoCordobas: 500,
+        moneda: Moneda.nio,
+        montoOriginal: 500,
+        tasaConversion: 1,
+        metodo: MetodoPago.efectivo,
+      );
+      expect((await getReciboDePago(res2.pagoId))['correlativo'], 3);
     });
   });
 }

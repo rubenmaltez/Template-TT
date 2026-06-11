@@ -5,6 +5,7 @@ import 'package:uuid/uuid.dart';
 
 import '../../powersync/db.dart' as ps;
 import '../models/pago.dart';
+import '../services/correlativo_store.dart';
 import '../utils/cuota_estado.dart';
 
 /// Resultado de un cobro exitoso. La UI navega a /recibo/[reciboId].
@@ -78,11 +79,17 @@ class PagosRepo {
     final now = (fechaPago ?? DateTime.now()).toIso8601String();
     // Hora REAL del dispositivo (UTC) para el change log — offline-first.
     final ocurridoEn = DateTime.now().toUtc().toIso8601String();
-    final correlativoCompleter = <int>[];
+    final correlativoEmitido = <int>[];
 
     // Guard correlativo: SIEMPRE consultar el server para el MAX porque
     // los recibos anulados no se sincronizan al cobrador (sync rules
-    // filtran anulado = false), pero el server SÍ los tiene.
+    // filtran anulado = false), pero el server SÍ los tiene. Con timeout
+    // corto: sin él, una señal degradada (1 raya / portal cautivo) colgaba
+    // el flujo de COBRO varios minutos (audit 2026-06-11 M6); el catch
+    // degrada al guard local. Complemento OFFLINE: el high-water mark de
+    // CorrelativoStore nunca decrece — cubre el caso "recibo anulado recién
+    // removido del SQLite por el sync + sin señal", donde el MAX local baja
+    // y se reimprimía un número ya emitido (audit #2).
     int? _pisoCorrelativo;
     try {
       final serverRows = await Supabase.instance.client
@@ -91,11 +98,18 @@ class PagosRepo {
           .eq('cobrador_id', cobradorId)
           .eq('prefijo', prefijoRecibo)
           .order('correlativo', ascending: false)
-          .limit(1);
+          .limit(1)
+          .timeout(const Duration(seconds: 5));
       if (serverRows.isNotEmpty) {
         _pisoCorrelativo = (serverRows.first['correlativo'] as num).toInt();
       }
     } catch (_) {}
+    if (_pisoCorrelativo != null) {
+      // Reflejar en el hwm lo emitido desde OTROS dispositivos.
+      await CorrelativoStore.subirA(
+          cobradorId, prefijoRecibo, _pisoCorrelativo!);
+    }
+    final hwmLocal = await CorrelativoStore.leer(cobradorId, prefijoRecibo);
 
     await _dbOrGlobal.writeTransaction((tx) async {
       if (cargosAuto != null) {
@@ -132,9 +146,10 @@ class PagosRepo {
         [cobradorId, prefijoRecibo],
       );
       final maxLocal = (rows.first['max_local'] as num).toInt();
-      final piso = _pisoCorrelativo ?? 0;
+      final pisoServer = _pisoCorrelativo ?? 0;
+      final piso = pisoServer > hwmLocal ? pisoServer : hwmLocal;
       final correlativo = (maxLocal > piso ? maxLocal : piso) + 1;
-      correlativoCompleter.add(correlativo);
+      correlativoEmitido.add(correlativo);
       final numeroCompleto =
           '$prefijoRecibo-${correlativo.toString().padLeft(5, '0')}';
 
@@ -230,6 +245,13 @@ class PagosRepo {
       }
     });
 
+    // Persistir el high-water mark (best-effort, post-tx): si el sync luego
+    // remueve este recibo (anulación del admin), el número no se reusa.
+    if (correlativoEmitido.isNotEmpty) {
+      await CorrelativoStore.subirA(
+          cobradorId, prefijoRecibo, correlativoEmitido.last);
+    }
+
     return CobroResultado(pagoId: pagoId, reciboId: reciboId);
   }
 
@@ -265,7 +287,7 @@ class PagosRepo {
     final reciboIds = <String>[];
     String? primerPagoId;
 
-    // Guard correlativo (mismo que registrarCobro).
+    // Guard correlativo (mismo que registrarCobro: timeout + hwm local).
     int? _pisoMulti;
     try {
       final sr = await Supabase.instance.client
@@ -274,9 +296,15 @@ class PagosRepo {
           .eq('cobrador_id', cobradorId)
           .eq('prefijo', prefijoRecibo)
           .order('correlativo', ascending: false)
-          .limit(1);
+          .limit(1)
+          .timeout(const Duration(seconds: 5));
       if (sr.isNotEmpty) _pisoMulti = (sr.first['correlativo'] as num).toInt();
     } catch (_) {}
+    if (_pisoMulti != null) {
+      await CorrelativoStore.subirA(cobradorId, prefijoRecibo, _pisoMulti!);
+    }
+    final hwmMulti = await CorrelativoStore.leer(cobradorId, prefijoRecibo);
+    final correlativosEmitidos = <int>[];
 
     await _dbOrGlobal.writeTransaction((tx) async {
       // Insertar cargos automáticos (reconexión / pronto pago) antes de
@@ -316,8 +344,10 @@ class PagosRepo {
           [cobradorId, prefijoRecibo],
         );
         final maxL = (rows.first['max_local'] as num).toInt();
-        final pisoM = _pisoMulti ?? 0;
+        final pisoSrv = _pisoMulti ?? 0;
+        final pisoM = pisoSrv > hwmMulti ? pisoSrv : hwmMulti;
         final correlativo = (maxL > pisoM ? maxL : pisoM) + 1;
+        correlativosEmitidos.add(correlativo);
         final numeroCompleto =
             '$prefijoRecibo-${correlativo.toString().padLeft(5, '0')}';
 
@@ -393,6 +423,12 @@ class PagosRepo {
         }
       }
     });
+
+    // Persistir el high-water mark (best-effort, post-tx).
+    if (correlativosEmitidos.isNotEmpty) {
+      await CorrelativoStore.subirA(
+          cobradorId, prefijoRecibo, correlativosEmitidos.last);
+    }
 
     return CobroResultado(
       pagoId: primerPagoId!,
