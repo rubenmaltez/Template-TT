@@ -37,7 +37,7 @@ público → findings de seguridad "si signup estuviera habilitado…" = fuera d
 scope. Foco: bugs reales, no hardening hipotético.
 
 Stack: Flutter (Android + Windows) · Supabase (Postgres+Auth+Edge+Storage) ·
-PowerSync (offline-first, schema **v26** — verificar SIEMPRE en
+PowerSync (offline-first, schema **v27** — verificar SIEMPRE en
 `lib/powersync/db.dart`, no confiar en docs) · Riverpod · go_router.
 
 ---

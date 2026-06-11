@@ -25,9 +25,9 @@
 - **Modelo de branching:** cada sesión de trabajo crea su rama efímera
   (`claude/*` o feature) DESDE `main` → al terminar se mergea a `main` y la
   rama se BORRA. Hitos importantes se marcan con tag, no con rama.
-- **App:** v0.10.0 · schema PowerSync **v27 EN LA RAMA** (main sigue v26
-  hasta mergear el Sprint 2; la migración **0115 NO está corrida** todavía) ·
-  migraciones 0001→0114 corridas (verificado 2026-06-09).
+- **App:** v0.10.0 · schema PowerSync **v27** · migraciones **0001→0115
+  TODAS corridas** (0115 corrida y VERIFICADA 2026-06-11: columnas/triggers/
+  settings ✓) · **sync rules v8 "Active"** (redeploy 2026-06-11).
 - **Edge Functions:** las 6 deployadas al día (redeployadas 2026-06-09).
 - **Audit integral 2026-06-11** (8 agentes; reporte + plan de 4 sprints en
   `docs/archive/AUDIT-INTEGRAL-2026-06-11.md`). **Sprint 1 mergeado a main.

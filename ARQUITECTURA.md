@@ -66,7 +66,7 @@ provider global que toca `ps.db` lleva `ref.watch(dbEpochProvider)`.
                 │ ps.db.watch / .execute / .writeTransaction
 ┌───────────────┴──────────────────────────────────────────────────────────┐
 │ PowerSync (SQLite local) · lib/powersync/{db,schema,connector}.dart        │
-│   ps.db = PowerSyncDatabase per-user (sitecsa_{uid}_v26.db)                │
+│   ps.db = PowerSyncDatabase per-user (sitecsa_{uid}_v27.db)                │
 │   schema.dart declara tablas · connector.dart sube la CRUD queue           │
 └───────────────▲───────────────────────────────────┬──────────────────────┘
         download │ (sync rules: buckets por rol)      │ upload (CRUD queue)
@@ -99,7 +99,7 @@ los providers globales. Workers de fondo con conexión: fotos pendientes,
 error_logs, caché del logo. Telemetría `[SYNC-DIAG]` en consola.
 
 ### `lib/powersync/` — la capa de datos local
-- **`db.dart`**: `ps.db` global per-user; **`_schemaVersion = 26`** vive en el
+- **`db.dart`**: `ps.db` global per-user; **`_schemaVersion = 27`** vive en el
   nombre del archivo SQLite → bumpearlo fuerza DB fresca para todos.
 - **`schema.dart`**: TODA columna de Postgres que la app usa DEBE estar acá.
 - **`connector.dart`** (`SupabaseConnector`): drena la CRUD queue con
@@ -606,7 +606,7 @@ ambos — el menú oculta, el router rebota).
 | `lib/features/admin/shell/admin_shell.dart` | menú admin + gates |
 | `lib/features/shared/widgets/historial_cambios_widget.dart` | los 5 widgets de historial |
 | `supabase/functions/_shared/*.ts` | helpers de las 6 Edge Functions |
-| `supabase/tests/invariantes_dinero.sql` | las 11 verificaciones de dinero |
+| `supabase/tests/invariantes_dinero.sql` | las 14 verificaciones de dinero |
 
-_Verificado contra: schema v26 · migraciones 0001→0114 · 6 Edge Functions ·
-audit integral 2026-06-09 (sin CRITICAL/HIGH)._
+_Verificado contra: schema v27 · migraciones 0001→0115 · 6 Edge Functions ·
+audits 2026-06-09 y 2026-06-11 (Sprints 1-2 aplicados)._

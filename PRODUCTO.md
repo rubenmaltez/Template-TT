@@ -154,9 +154,9 @@ confiar en el cliente. El cliente **espeja** los triggers localmente
 sincronizar, **el server siempre gana**.
 
 ### Números actuales (actualizar en releases mayores)
-- App **v0.10.0** · schema PowerSync **v26** · migraciones **0001→0114**.
-- ~177 archivos Dart (~53k LOC) · 6 Edge Functions + `_shared/`.
-- Tests: 210 en CI (14 de dinero contra PowerSync real) + 11 invariantes SQL.
+- App **v0.10.0** · schema PowerSync **v27** · migraciones **0001→0115**.
+- ~180 archivos Dart (~54k LOC) · 6 Edge Functions + `_shared/`.
+- Tests: 254 en CI (~30 de dinero contra PowerSync real) + 14 invariantes SQL.
 - Último audit integral (2026-06-09, 9 agentes): **sin CRITICAL/HIGH** —
   dinero 10/10, RLS sin fugas, integridad estructural limpia.
 
