@@ -6,6 +6,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../config/theme.dart';
 import '../../../data/providers/impersonation_provider.dart';
 import '../../../data/services/impersonation_service.dart';
+import '../../../data/utils/errores.dart';
 import '../../../powersync/db.dart' as ps;
 
 /// Banner que avisa al super_admin que está VIENDO/gestionando un tenant
@@ -36,7 +37,9 @@ class _ImpersonationBannerState extends ConsumerState<ImpersonationBanner> {
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error al salir: $e')),
+        SnackBar(
+            content:
+                Text(mensajeErrorHumano(e, contexto: 'salir del tenant'))),
       );
       setState(() => _saliendo = false);
     }

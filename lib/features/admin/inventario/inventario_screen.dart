@@ -9,6 +9,7 @@ import '../../../powersync/db.dart' as ps;
 import '../../shared/widgets/barcode_scanner_screen.dart';
 import '../../shared/widgets/empty_state.dart';
 import '../../shared/widgets/historial_cambios_widget.dart';
+import '../../../data/utils/errores.dart';
 
 /// Inventario — módulo opcional (gateado por tenant_modulos 'inventario').
 /// Pestañas: Productos (catálogo, 2A) · Ubicaciones · Proveedores (2B).
@@ -82,7 +83,7 @@ class _ProductosTabState extends ConsumerState<_ProductosTab> {
         stream: _productos,
         initialData: const [],
         builder: (context, snap) {
-          if (snap.hasError) return Center(child: Text('Error: ${snap.error}'));
+          if (snap.hasError) return Center(child: Text(mensajeErrorHumano(snap.error!)));
           final rows = snap.data!;
           if (rows.isEmpty) {
             return EmptyState(
@@ -248,7 +249,7 @@ class _UbicacionesTabState extends ConsumerState<_UbicacionesTab> {
         stream: _ubicaciones,
         initialData: const [],
         builder: (context, snap) {
-          if (snap.hasError) return Center(child: Text('Error: ${snap.error}'));
+          if (snap.hasError) return Center(child: Text(mensajeErrorHumano(snap.error!)));
           final rows = snap.data!;
           if (rows.isEmpty) {
             return EmptyState(
@@ -375,7 +376,7 @@ class _ProveedoresTabState extends ConsumerState<_ProveedoresTab> {
         stream: _proveedores,
         initialData: const [],
         builder: (context, snap) {
-          if (snap.hasError) return Center(child: Text('Error: ${snap.error}'));
+          if (snap.hasError) return Center(child: Text(mensajeErrorHumano(snap.error!)));
           final rows = snap.data!;
           if (rows.isEmpty) {
             return EmptyState(
@@ -498,7 +499,7 @@ class _CategoriasTabState extends ConsumerState<_CategoriasTab> {
         stream: _categorias,
         initialData: const [],
         builder: (context, snap) {
-          if (snap.hasError) return Center(child: Text('Error: ${snap.error}'));
+          if (snap.hasError) return Center(child: Text(mensajeErrorHumano(snap.error!)));
           final rows = snap.data!;
           if (rows.isEmpty) {
             return EmptyState(
@@ -685,7 +686,7 @@ class _ExistenciasTabState extends ConsumerState<_ExistenciasTab> {
         stream: _stock,
         initialData: const [],
         builder: (context, snap) {
-          if (snap.hasError) return Center(child: Text('Error: ${snap.error}'));
+          if (snap.hasError) return Center(child: Text(mensajeErrorHumano(snap.error!)));
           final rows = snap.data!;
           if (rows.isEmpty) {
             return const EmptyState(
@@ -761,6 +762,9 @@ class _ExistenciasTabState extends ConsumerState<_ExistenciasTab> {
     );
     if (res == null) return;
     final now = DateTime.now().toIso8601String();
+    // ocurrido_en en UTC (convención B10; antes iba local-naive y el
+    // historial del serial se desordenaba ±6h).
+    final ocurridoEn = DateTime.now().toUtc().toIso8601String();
 
     // Pre-check de unicidad de seriales (local). El UNIQUE(tenant,serial) del
     // server es la red dura si otro device creó el mismo serial sin sincronizar.
@@ -819,14 +823,14 @@ class _ExistenciasTabState extends ConsumerState<_ExistenciasTab> {
             await tx.execute(movSql, [
               const Uuid().v4(), tenantId, res.productoId, serialId, 1,
               res.ubicacionDestinoId, res.proveedorId, res.numeroFactura,
-              res.costoUnitario, hechoPor, now, now,
+              res.costoUnitario, hechoPor, ocurridoEn, now,
             ]);
           }
         } else {
           await tx.execute(movSql, [
             const Uuid().v4(), tenantId, res.productoId, null, res.cantidad,
             res.ubicacionDestinoId, res.proveedorId, res.numeroFactura,
-            res.costoUnitario, hechoPor, now, now,
+            res.costoUnitario, hechoPor, ocurridoEn, now,
           ]);
         }
 
@@ -879,6 +883,9 @@ class _ExistenciasTabState extends ConsumerState<_ExistenciasTab> {
     );
     if (res == null || !context.mounted) return;
     final now = DateTime.now().toIso8601String();
+    // ocurrido_en en UTC (convención B10; antes iba local-naive y el
+    // historial del serial se desordenaba ±6h).
+    final ocurridoEn = DateTime.now().toUtc().toIso8601String();
 
     // Mapear el tipo al par origen/destino que entiende la fórmula de stock.
     String? origen;
@@ -905,7 +912,7 @@ class _ExistenciasTabState extends ConsumerState<_ExistenciasTab> {
            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
         [
           const Uuid().v4(), tenantId, res.tipo, res.productoId, res.cantidad,
-          origen, destino, res.motivo, hechoPor, now, now,
+          origen, destino, res.motivo, hechoPor, ocurridoEn, now,
         ],
       );
       // M1: mostrar el stock resultante (y avisar si quedó negativo). Stock de
@@ -1121,7 +1128,7 @@ class _MovimientoDialogState extends State<_MovimientoDialog> {
       );
     }
     return DropdownButtonFormField<String?>(
-      value: _stockPorUbi.any((r) => r['id'] == _origenId) ? _origenId : null,
+      initialValue: _stockPorUbi.any((r) => r['id'] == _origenId) ? _origenId : null,
       decoration: const InputDecoration(labelText: 'Ubicación origen (con stock)'),
       isExpanded: true,
       onChanged: (v) => setState(() => _origenId = v),
@@ -1143,7 +1150,7 @@ class _MovimientoDialogState extends State<_MovimientoDialog> {
         final rows = snap.data!;
         final exists = value == null || rows.any((r) => r['id'] == value);
         return DropdownButtonFormField<String?>(
-          value: exists ? value : null,
+          initialValue: exists ? value : null,
           decoration: InputDecoration(labelText: label),
           isExpanded: true,
           onChanged: onChanged,
@@ -1167,7 +1174,7 @@ class _MovimientoDialogState extends State<_MovimientoDialog> {
           mainAxisSize: MainAxisSize.min,
           children: [
             DropdownButtonFormField<String>(
-              value: _tipo,
+              initialValue: _tipo,
               decoration: const InputDecoration(labelText: 'Tipo'),
               isExpanded: true,
               onChanged: (v) {
@@ -1188,7 +1195,7 @@ class _MovimientoDialogState extends State<_MovimientoDialog> {
                 final exists = _productoId == null ||
                     rows.any((r) => r['id'] == _productoId);
                 return DropdownButtonFormField<String?>(
-                  value: exists ? _productoId : null,
+                  initialValue: exists ? _productoId : null,
                   decoration:
                       const InputDecoration(labelText: 'Producto (granel)'),
                   isExpanded: true,
@@ -1218,7 +1225,7 @@ class _MovimientoDialogState extends State<_MovimientoDialog> {
                   (v) => setState(() => _ajusteUbiId = v)),
               const SizedBox(height: 12),
               DropdownButtonFormField<bool>(
-                value: _sumar,
+                initialValue: _sumar,
                 decoration: const InputDecoration(labelText: 'Operación'),
                 onChanged: (v) => setState(() => _sumar = v ?? false),
                 items: const [
@@ -1414,7 +1421,7 @@ class _IngresoDialogState extends State<_IngresoDialog> {
                 final exists =
                     _productoId == null || rows.any((r) => r['id'] == _productoId);
                 return DropdownButtonFormField<String?>(
-                  value: exists ? _productoId : null,
+                  initialValue: exists ? _productoId : null,
                   decoration: const InputDecoration(labelText: 'Producto'),
                   isExpanded: true,
                   onChanged: (v) {
@@ -1443,7 +1450,7 @@ class _IngresoDialogState extends State<_IngresoDialog> {
                 final exists = _ubicacionId == null ||
                     rows.any((r) => r['id'] == _ubicacionId);
                 return DropdownButtonFormField<String?>(
-                  value: exists ? _ubicacionId : null,
+                  initialValue: exists ? _ubicacionId : null,
                   decoration: const InputDecoration(labelText: 'Ubicación destino'),
                   isExpanded: true,
                   onChanged: (v) => setState(() => _ubicacionId = v),
@@ -1502,7 +1509,7 @@ class _IngresoDialogState extends State<_IngresoDialog> {
                 final exists = _proveedorId == null ||
                     rows.any((r) => r['id'] == _proveedorId);
                 return DropdownButtonFormField<String?>(
-                  value: exists ? _proveedorId : null,
+                  initialValue: exists ? _proveedorId : null,
                   decoration:
                       const InputDecoration(labelText: 'Proveedor (opcional)'),
                   isExpanded: true,
@@ -1639,7 +1646,7 @@ class _EquiposTabState extends ConsumerState<_EquiposTab> {
       stream: _seriales,
       initialData: const [],
       builder: (context, snap) {
-        if (snap.hasError) return Center(child: Text('Error: ${snap.error}'));
+        if (snap.hasError) return Center(child: Text(mensajeErrorHumano(snap.error!)));
         final rows = snap.data!;
         if (rows.isEmpty) {
           return const EmptyState(
@@ -1765,6 +1772,9 @@ class _EquiposTabState extends ConsumerState<_EquiposTab> {
     // 4. Persistir atómico. Re-valida el estado DENTRO de la transacción para
     // evitar doble-asignación sobre data stale (otro tap / otra pestaña).
     final now = DateTime.now().toIso8601String();
+    // ocurrido_en en UTC (convención B10; antes iba local-naive y el
+    // historial del serial se desordenaba ±6h).
+    final ocurridoEn = DateTime.now().toUtc().toIso8601String();
     try {
       await ps.db.writeTransaction((tx) async {
         final cur = await tx.getOptional(
@@ -1786,7 +1796,8 @@ class _EquiposTabState extends ConsumerState<_EquiposTab> {
              VALUES (?, ?, 'asignacion', ?, ?, 1, ?, ?, ?, ?, ?, ?)''',
           [
             const Uuid().v4(), tenantId, cur['producto_id'], s['id'],
-            cur['ubicacion_id'], cliente.id, contratoId, hechoPor, now, now,
+            cur['ubicacion_id'], cliente.id, contratoId, hechoPor, ocurridoEn,
+            now,
           ],
         );
       });
@@ -1807,6 +1818,9 @@ class _EquiposTabState extends ConsumerState<_EquiposTab> {
         await _pickUbicacion(context, titulo: 'Devolver a qué ubicación');
     if (destino == null || !context.mounted) return;
     final now = DateTime.now().toIso8601String();
+    // ocurrido_en en UTC (convención B10; antes iba local-naive y el
+    // historial del serial se desordenaba ±6h).
+    final ocurridoEn = DateTime.now().toUtc().toIso8601String();
     try {
       await ps.db.writeTransaction((tx) async {
         final cur = await tx.getOptional(
@@ -1837,7 +1851,7 @@ class _EquiposTabState extends ConsumerState<_EquiposTab> {
              VALUES (?, ?, 'devolucion', ?, ?, 1, ?, ?, ?, ?, ?)''',
           [
             const Uuid().v4(), tenantId, cur['producto_id'], s['id'],
-            destino.id, cur['cliente_id'], hechoPor, now, now,
+            destino.id, cur['cliente_id'], hechoPor, ocurridoEn, now,
           ],
         );
       });
@@ -1859,6 +1873,9 @@ class _EquiposTabState extends ConsumerState<_EquiposTab> {
         excluirId: s['ubicacion_id'] as String?);
     if (destino == null || !context.mounted) return;
     final now = DateTime.now().toIso8601String();
+    // ocurrido_en en UTC (convención B10; antes iba local-naive y el
+    // historial del serial se desordenaba ±6h).
+    final ocurridoEn = DateTime.now().toUtc().toIso8601String();
     try {
       await ps.db.writeTransaction((tx) async {
         final cur = await tx.getOptional(
@@ -1879,7 +1896,7 @@ class _EquiposTabState extends ConsumerState<_EquiposTab> {
              VALUES (?, ?, 'transferencia', ?, ?, 1, ?, ?, ?, ?, ?)''',
           [
             const Uuid().v4(), tenantId, cur['producto_id'], s['id'],
-            cur['ubicacion_id'], destino.id, hechoPor, now, now,
+            cur['ubicacion_id'], destino.id, hechoPor, ocurridoEn, now,
           ],
         );
       });
@@ -1905,6 +1922,9 @@ class _EquiposTabState extends ConsumerState<_EquiposTab> {
     );
     if (res == null || !context.mounted) return;
     final now = DateTime.now().toIso8601String();
+    // ocurrido_en en UTC (convención B10; antes iba local-naive y el
+    // historial del serial se desordenaba ±6h).
+    final ocurridoEn = DateTime.now().toUtc().toIso8601String();
     try {
       await ps.db.writeTransaction((tx) async {
         final cur = await tx.getOptional(
@@ -1932,7 +1952,7 @@ class _EquiposTabState extends ConsumerState<_EquiposTab> {
           [
             const Uuid().v4(), tenantId, cur['producto_id'], s['id'],
             estabaEnStock ? cur['ubicacion_id'] : null,
-            cur['cliente_id'], res.motivo, hechoPor, now, now,
+            cur['cliente_id'], res.motivo, hechoPor, ocurridoEn, now,
           ],
         );
       });
@@ -2073,7 +2093,7 @@ class _UbicacionDialogState extends State<_UbicacionDialog> {
           ),
           const SizedBox(height: 12),
           DropdownButtonFormField<String>(
-            value: _tipo,
+            initialValue: _tipo,
             decoration: const InputDecoration(labelText: 'Tipo'),
             onChanged: (v) => setState(() => _tipo = v ?? 'central'),
             items: _tiposUbicacion.entries
@@ -2324,7 +2344,7 @@ class _ProductoDialogState extends State<_ProductoDialog> {
                       final exists = _categoriaId == null ||
                           rows.any((r) => r['id'] == _categoriaId);
                       return DropdownButtonFormField<String?>(
-                        value: exists ? _categoriaId : null,
+                        initialValue: exists ? _categoriaId : null,
                         decoration: const InputDecoration(
                             labelText: 'Categoría (opcional)'),
                         onChanged: (v) => setState(() => _categoriaId = v),
@@ -2366,7 +2386,7 @@ class _ProductoDialogState extends State<_ProductoDialog> {
             ),
             if (!_serializado) ...[
               DropdownButtonFormField<String>(
-                value: _unidad,
+                initialValue: _unidad,
                 decoration: const InputDecoration(labelText: 'Unidad de medida'),
                 onChanged: (v) => setState(() => _unidad = v ?? 'unidad'),
                 items: _unidades
@@ -2618,7 +2638,7 @@ class _BajaDialogState extends State<_BajaDialog> {
         mainAxisSize: MainAxisSize.min,
         children: [
           DropdownButtonFormField<String>(
-            value: _estado,
+            initialValue: _estado,
             decoration: const InputDecoration(labelText: 'Estado'),
             onChanged: (v) => setState(() => _estado = v ?? 'danado'),
             items: _opciones.entries

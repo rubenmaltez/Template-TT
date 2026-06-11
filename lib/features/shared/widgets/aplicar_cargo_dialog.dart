@@ -247,7 +247,7 @@ class _AplicarCargoDialogState extends ConsumerState<AplicarCargoDialog> {
           mainAxisSize: MainAxisSize.min,
           children: [
             DropdownButtonFormField<CargoTipo>(
-              value: _tipo,
+              initialValue: _tipo,
               decoration: const InputDecoration(labelText: 'Tipo'),
               items: tipos
                   .map((t) => DropdownMenuItem(value: t, child: Text(t.label)))

@@ -8,6 +8,7 @@ import '../../../data/utils/montos.dart';
 import '../../../powersync/db.dart' as ps;
 import '../../shared/widgets/empty_state.dart';
 import '../../shared/widgets/historial_cambios_widget.dart';
+import '../../../data/utils/errores.dart';
 
 /// CRUD de planes del tenant. Sin planes no se pueden crear contratos.
 ///
@@ -68,7 +69,7 @@ class _PlanesAdminScreenState extends ConsumerState<PlanesAdminScreen> {
             initialData: const [],
             builder: (context, snap) {
               if (snap.hasError) {
-                return Center(child: Text('Error: ${snap.error}'));
+                return Center(child: Text(mensajeErrorHumano(snap.error!)));
               }
               final rows = snap.data!;
               if (rows.isEmpty) {
@@ -332,7 +333,7 @@ class _PlanFormDialogState extends ConsumerState<_PlanFormDialog> {
             ),
             const SizedBox(height: 12),
             DropdownButtonFormField<String>(
-              value: _tipo,
+              initialValue: _tipo,
               decoration: const InputDecoration(labelText: 'Tipo'),
               items: const [
                 DropdownMenuItem(value: 'internet', child: Text('Internet')),

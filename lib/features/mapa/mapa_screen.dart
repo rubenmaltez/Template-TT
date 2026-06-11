@@ -14,6 +14,7 @@ import '../../data/utils/formatters.dart';
 import '../../powersync/db.dart' as ps;
 import '../shared/widgets/dropdown_filtro.dart';
 import '../shared/widgets/empty_state.dart';
+import '../../data/utils/errores.dart';
 
 /// Mapa de clientes con flutter_map + OpenStreetMap (sin API key).
 /// Marcador coloreado según estado de cobranza.
@@ -196,7 +197,7 @@ class _MapaScreenState extends ConsumerState<MapaScreen> {
       initialData: const [],
       builder: (context, snap) {
         if (snap.hasError) {
-          return Center(child: Text('Error: ${snap.error}'));
+          return Center(child: Text(mensajeErrorHumano(snap.error!)));
         }
         final rows = snap.data!;
         if (rows.isEmpty) {

@@ -89,11 +89,16 @@ class _CambiarPasswordDialogState extends State<CambiarPasswordDialog> {
         } else if (actualVerificada) {
           // signInWithPassword OK, falló updateUser. La sesión ya rotó
           // pero la password vieja sigue activa — el user puede
-          // reintentar el dialog sin problema.
-          _error = 'No pude actualizar la contraseña (${e.message}). '
-              'Tu contraseña sigue siendo la actual, reintentá.';
+          // reintentar el dialog sin problema. C7: sin e.message crudo
+          // (inglés de Supabase); el caso típico es repetir la vieja.
+          _error = (msg.contains('same password') ||
+                  msg.contains('different from the old'))
+              ? 'La nueva contraseña debe ser distinta a la anterior.'
+              : 'No se pudo actualizar la contraseña. Tu contraseña sigue '
+                  'siendo la actual, reintentá.';
         } else {
-          _error = e.message;
+          // C7: resto de AuthExceptions del signIn — genérico en español.
+          _error = 'No se pudo actualizar la contraseña. Reintentá.';
         }
       });
     } catch (e) {

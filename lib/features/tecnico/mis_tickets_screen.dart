@@ -7,6 +7,7 @@ import '../../data/utils/ticket_sla.dart';
 import '../../powersync/db.dart' as ps;
 import '../shared/widgets/empty_state.dart';
 import '../shared/widgets/ticket_sla_countdown.dart';
+import '../../data/utils/errores.dart';
 
 /// "Mis tickets" — lista de tickets asignados al técnico (Fase 3B). El SQLite
 /// local ya viene acotado por el bucket `por_tecnico_tickets` (sólo los suyos),
@@ -81,7 +82,7 @@ class _MisTicketsScreenState extends ConsumerState<MisTicketsScreen> {
             initialData: const [],
             builder: (context, snap) {
               if (snap.hasError) {
-                return Center(child: Text('Error: ${snap.error}'));
+                return Center(child: Text(mensajeErrorHumano(snap.error!)));
               }
               final rows = snap.data ?? const [];
               if (rows.isEmpty) {

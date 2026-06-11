@@ -295,7 +295,7 @@ class _FiltrosBarState extends ConsumerState<_FiltrosBar> {
                 width: 220,
                 child: DropdownButtonFormField<String?>(
                   isDense: true,
-                  value: filter.tenantId,
+                  initialValue: filter.tenantId,
                   decoration: const InputDecoration(
                     isDense: true,
                     border: OutlineInputBorder(),

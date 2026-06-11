@@ -6,6 +6,7 @@ import 'package:permission_handler/permission_handler.dart';
 import '../../data/providers/impresora_provider.dart';
 import '../../data/repositories/settings_repo.dart';
 import '../../data/services/impresora/impresora_service.dart';
+import '../../data/utils/errores.dart';
 import '../shared/widgets/empty_state.dart';
 
 /// Pantalla de configuración de impresora Bluetooth.
@@ -151,7 +152,7 @@ class _ImpresoraSetupScreenState extends ConsumerState<ImpresoraSetupScreen> {
                               ImpresoraBT(nombre: f.nombre, mac: f.mac)),
                         ),
                   loading: () => const SizedBox.shrink(),
-                  error: (e, _) => Text('Error: $e'),
+                  error: (e, _) => Text(mensajeErrorHumano(e)),
                 ),
                 const SizedBox(height: 16),
                 if (!_permisosOk)

@@ -10,6 +10,7 @@ import '../../data/providers/auth_identity_provider.dart';
 import '../../data/repositories/super_admin_repo.dart';
 import '../../data/services/impersonation_service.dart';
 import '../../data/utils/cobrador_helpers.dart';
+import '../../data/utils/errores.dart';
 import '../../data/utils/formatters.dart';
 import '../shared/widgets/phone_text_field.dart';
 import '../../data/utils/validators.dart';
@@ -115,7 +116,7 @@ class TenantsListScreen extends ConsumerWidget {
         error: (e, _) => Center(
           child: Padding(
             padding: const EdgeInsets.all(24),
-            child: Text('Error cargando tenants:\n$e',
+            child: Text(mensajeErrorHumano(e, contexto: 'cargar los tenants'),
                 textAlign: TextAlign.center),
           ),
         ),
@@ -186,7 +187,9 @@ class _TenantCardState extends ConsumerState<_TenantCard> {
     } catch (e) {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error al entrar: $e')),
+          SnackBar(
+              content:
+                  Text(mensajeErrorHumano(e, contexto: 'entrar al tenant'))),
         );
       }
     } finally {

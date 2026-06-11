@@ -101,6 +101,9 @@ Future<void> _aplicarATodos(
   String? ubicacion,
 }) async {
   final now = DateTime.now().toIso8601String();
+  // ocurrido_en en UTC (convención B10; antes iba local-naive y el
+  // historial del serial se desordenaba ±6h).
+  final ocurridoEn = DateTime.now().toUtc().toIso8601String();
   await ps.db.writeTransaction((tx) async {
     for (final e in equipos) {
       final cur = await tx.getOptional(
@@ -120,7 +123,7 @@ Future<void> _aplicarATodos(
              VALUES (?, ?, 'devolucion', ?, ?, 1, ?, ?, ?, ?, ?)''',
           [
             const Uuid().v4(), tenantId, cur['producto_id'], e['id'],
-            ubicacion, cur['cliente_id'], hechoPor, now, now,
+            ubicacion, cur['cliente_id'], hechoPor, ocurridoEn, now,
           ],
         );
       } else {
@@ -136,7 +139,7 @@ Future<void> _aplicarATodos(
           [
             const Uuid().v4(), tenantId, cur['producto_id'], e['id'],
             cur['cliente_id'], 'Retirado al dar de baja el servicio',
-            hechoPor, now, now,
+            hechoPor, ocurridoEn, now,
           ],
         );
       }

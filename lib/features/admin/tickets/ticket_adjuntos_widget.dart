@@ -9,6 +9,7 @@ import 'package:uuid/uuid.dart';
 import '../../../data/providers/cobrador_provider.dart';
 import '../../../powersync/db.dart' as ps;
 import '../../shared/widgets/signature_pad.dart';
+import '../../../data/utils/errores.dart';
 
 const _maxAdjuntos = 10;
 const _bucket = 'ticket-adjuntos';
@@ -155,7 +156,7 @@ class _TicketAdjuntosWidgetState extends ConsumerState<TicketAdjuntosWidget> {
               stream: _stream,
               initialData: const [],
               builder: (context, snap) {
-                if (snap.hasError) return Text('Error: ${snap.error}');
+                if (snap.hasError) return Text(mensajeErrorHumano(snap.error!));
                 final rows = snap.data!;
                 final canAdd = widget.canEdit && rows.length < _maxAdjuntos;
                 if (rows.isEmpty && !widget.canEdit) {

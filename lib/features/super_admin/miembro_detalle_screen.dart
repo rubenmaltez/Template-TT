@@ -10,6 +10,7 @@ import '../../data/utils/formatters.dart';
 import '../shared/widgets/chips.dart';
 import '../shared/widgets/empty_state.dart';
 import '../shared/widgets/skeleton.dart';
+import '../../data/utils/errores.dart';
 
 /// Pantalla de detalle de un miembro del tenant. Muestra:
 ///   - Header con info básica (avatar, nombre, email, chips de rol/estado)
@@ -39,7 +40,7 @@ class MiembroDetalleScreen extends ConsumerWidget {
 
     return miembros.when(
       loading: () => const Center(child: CircularProgressIndicator()),
-      error: (e, _) => Center(child: Text('Error: $e')),
+      error: (e, _) => Center(child: Text(mensajeErrorHumano(e))),
       data: (lista) {
         final c = lista.where((m) => m.id == cobradorId).firstOrNull;
         if (c == null) {

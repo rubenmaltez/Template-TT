@@ -3,8 +3,6 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import 'dart:typed_data';
-
 import 'package:image_picker/image_picker.dart';
 
 import '../../data/models/cuota.dart';
@@ -16,6 +14,7 @@ import '../../data/repositories/cuotas_repo.dart';
 import '../../data/repositories/pagos_repo.dart';
 import '../../data/repositories/settings_repo.dart';
 import '../../data/utils/cobro_calculo.dart';
+import '../../data/utils/errores.dart';
 import '../../data/utils/formatters.dart';
 import '../../data/utils/montos.dart';
 import '../../powersync/db.dart' as ps;
@@ -474,7 +473,10 @@ class _CobroScreenState extends ConsumerState<CobroScreen> {
       }
     } catch (e) {
       if (!mounted) return;
-      setState(() => _error = e.toString());
+      // M14: e.toString() crudo confundía al cobrador; el detalle técnico
+      // queda en debugPrint dentro del helper.
+      setState(
+          () => _error = mensajeErrorHumano(e, contexto: 'registrar el cobro'));
     } finally {
       if (mounted) setState(() => _enviando = false);
     }

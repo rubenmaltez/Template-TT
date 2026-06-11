@@ -11,6 +11,7 @@ import '../../../data/utils/ticket_sla.dart';
 import '../../../powersync/db.dart' as ps;
 import '../../shared/widgets/empty_state.dart';
 import '../../shared/widgets/historial_cambios_widget.dart';
+import '../../../data/utils/errores.dart';
 
 /// CRUD de tipos de ticket (catálogo per-tenant con SLA por tipo). Solo admin.
 class TicketTiposScreen extends ConsumerStatefulWidget {
@@ -128,7 +129,7 @@ class _TicketTiposScreenState extends ConsumerState<TicketTiposScreen> {
       stream: _tipos,
       initialData: const [],
       builder: (context, snap) {
-        if (snap.hasError) return Center(child: Text('Error: ${snap.error}'));
+        if (snap.hasError) return Center(child: Text(mensajeErrorHumano(snap.error!)));
         final rows = snap.data!;
         if (rows.isEmpty) {
           return EmptyState(

@@ -66,7 +66,7 @@ class _TicketFormScreenState extends ConsumerState<TicketFormScreen> {
               final exists =
                   _tipoId == null || rows.any((r) => r['id'] == _tipoId);
               return DropdownButtonFormField<String?>(
-                value: exists ? _tipoId : null,
+                initialValue: exists ? _tipoId : null,
                 isExpanded: true,
                 decoration: const InputDecoration(labelText: 'Tipo de ticket'),
                 onChanged: (v) => setState(() => _tipoId = v),
@@ -119,7 +119,7 @@ class _TicketFormScreenState extends ConsumerState<TicketFormScreen> {
           ),
           const SizedBox(height: 12),
           DropdownButtonFormField<String>(
-            value: _prioridad,
+            initialValue: _prioridad,
             decoration: const InputDecoration(labelText: 'Prioridad'),
             onChanged: (v) => setState(() => _prioridad = v ?? 'media'),
             items: kTicketPrioridades
@@ -137,7 +137,7 @@ class _TicketFormScreenState extends ConsumerState<TicketFormScreen> {
               final exists =
                   _asignadoA == null || rows.any((r) => r['id'] == _asignadoA);
               return DropdownButtonFormField<String?>(
-                value: exists ? _asignadoA : null,
+                initialValue: exists ? _asignadoA : null,
                 isExpanded: true,
                 decoration:
                     const InputDecoration(labelText: 'Asignar a (opcional)'),
@@ -165,7 +165,7 @@ class _TicketFormScreenState extends ConsumerState<TicketFormScreen> {
               return Padding(
                 padding: const EdgeInsets.only(top: 12),
                 child: DropdownButtonFormField<String?>(
-                  value: exists ? _incidenteId : null,
+                  initialValue: exists ? _incidenteId : null,
                   isExpanded: true,
                   decoration: const InputDecoration(
                       labelText: 'Incidente / corte (opcional)'),

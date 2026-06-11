@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../../../powersync/db.dart' as ps;
+import '../../../../data/utils/errores.dart';
 
 /// Selector geo en cascada (departamento → municipio → comunidad) con
 /// opción de crear inline cualquier nivel si no existe.
@@ -214,7 +215,7 @@ class _Selector extends StatelessWidget {
       initialData: const [],
       builder: (context, snap) {
         if (snap.hasError) {
-          return Center(child: Text('Error: ${snap.error}'));
+          return Center(child: Text(mensajeErrorHumano(snap.error!)));
         }
         final rows = snap.data!;
         // Verificar que valueId sigue existiendo en la lista; si no, reset.
@@ -224,7 +225,7 @@ class _Selector extends StatelessWidget {
           children: [
             Expanded(
               child: DropdownButtonFormField<String?>(
-                value: stillExists ? valueId : null,
+                initialValue: stillExists ? valueId : null,
                 decoration: InputDecoration(labelText: label, enabled: enabled),
                 onChanged: enabled ? onChanged : null,
                 items: [
@@ -262,7 +263,7 @@ class _Selector extends StatelessWidget {
     } catch (e) {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error: $e')),
+          SnackBar(content: Text(mensajeErrorHumano(e))),
         );
       }
     }

@@ -102,7 +102,7 @@ class _DocumentoContratoSectionState extends State<_DocumentoContratoSection> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error: $e')),
+          SnackBar(content: Text(mensajeErrorHumano(e))),
         );
       }
     } finally {

@@ -361,7 +361,7 @@ class _AgregarMaterialSheetState extends State<_AgregarMaterialSheet> {
             // Ubicación-origen (única para el técnico; lista para el admin).
             if (widget.ubicaciones.length > 1)
               DropdownButtonFormField<String>(
-                value: _ubicacionId,
+                initialValue: _ubicacionId,
                 decoration: const InputDecoration(
                     labelText: 'Desde la ubicación', isDense: true),
                 items: [
@@ -406,7 +406,7 @@ class _AgregarMaterialSheetState extends State<_AgregarMaterialSheet> {
                     style: TextStyle(color: scheme.outline))
               else
                 DropdownButtonFormField<String>(
-                  value: _serialSel,
+                  initialValue: _serialSel,
                   isExpanded: true,
                   decoration: const InputDecoration(
                       labelText: 'Equipo (serial)', isDense: true),
@@ -425,7 +425,7 @@ class _AgregarMaterialSheetState extends State<_AgregarMaterialSheet> {
                     style: TextStyle(color: scheme.outline))
               else ...[
                 DropdownButtonFormField<String>(
-                  value: _granelSel,
+                  initialValue: _granelSel,
                   isExpanded: true,
                   decoration: const InputDecoration(
                       labelText: 'Producto', isDense: true),

@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../../../data/utils/formatters.dart';
 import '../../../powersync/db.dart' as ps;
 import '../../shared/widgets/empty_state.dart';
+import '../../../data/utils/errores.dart';
 export 'contrato_form_screen.dart';
 
 class ContratosAdminScreen extends ConsumerStatefulWidget {
@@ -80,7 +81,7 @@ class _ContratosAdminScreenState extends ConsumerState<ContratosAdminScreen> {
             initialData: const [],
             builder: (context, snap) {
               if (snap.hasError) {
-                return Center(child: Text('Error: ${snap.error}'));
+                return Center(child: Text(mensajeErrorHumano(snap.error!)));
               }
               final rows = snap.data!;
               if (rows.isEmpty) {

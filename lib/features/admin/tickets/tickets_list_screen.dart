@@ -7,6 +7,7 @@ import '../../../data/utils/ticket_sla.dart';
 import '../../../powersync/db.dart' as ps;
 import '../../shared/widgets/empty_state.dart';
 import '../../shared/widgets/ticket_sla_countdown.dart';
+import '../../../data/utils/errores.dart';
 
 /// Lista de tickets del tenant (admin). Filtro por grupo de estado + acceso a
 /// los tipos. Tap → detalle. FAB → nuevo ticket.
@@ -104,7 +105,7 @@ class _TicketsListScreenState extends ConsumerState<TicketsListScreen> {
               initialData: const [],
               builder: (context, snap) {
                 if (snap.hasError) {
-                  return Center(child: Text('Error: ${snap.error}'));
+                  return Center(child: Text(mensajeErrorHumano(snap.error!)));
                 }
                 // El filtro por grupo de estado ya se aplicó en SQL (_buildStream).
                 final rows = snap.data ?? const [];

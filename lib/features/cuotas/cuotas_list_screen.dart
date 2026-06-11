@@ -6,6 +6,7 @@ import '../../data/providers/cobrador_provider.dart';
 import '../../data/providers/cuotas_filtro_provider.dart';
 import '../../data/repositories/settings_repo.dart';
 import '../../data/utils/cuota_estado_visual.dart';
+import '../../data/utils/errores.dart';
 import '../../data/utils/formatters.dart';
 import '../../powersync/db.dart' as ps;
 import '../shared/widgets/dropdown_filtro.dart';
@@ -561,10 +562,19 @@ class _CuotasListState extends State<_CuotasList> {
   Widget build(BuildContext context) {
     return StreamBuilder<List<Map<String, dynamic>>>(
       stream: _cuotasStream,
-      initialData: const [],
       builder: (context, snap) {
-        if (snap.hasError) return Center(child: Text('Error: ${snap.error}'));
-        final rows = snap.data!;
+        if (snap.hasError) {
+          return Center(child: Text(mensajeErrorHumano(snap.error!)));
+        }
+        // M11: sin initialData, el primer frame muestra carga en vez de
+        // flashear el estado vacío antes de que llegue la data real.
+        if (snap.connectionState == ConnectionState.waiting && !snap.hasData) {
+          return const Padding(
+            padding: EdgeInsets.all(32),
+            child: Center(child: CircularProgressIndicator()),
+          );
+        }
+        final rows = snap.data ?? const [];
         if (rows.isEmpty) {
           return const EmptyState(
             icon: Icons.check_circle_outline,
@@ -773,10 +783,19 @@ class _TabPorClienteState extends State<_TabPorCliente> {
     final scheme = Theme.of(context).colorScheme;
     return StreamBuilder<List<Map<String, dynamic>>>(
       stream: _stream,
-      initialData: const [],
       builder: (context, snap) {
-        if (snap.hasError) return Center(child: Text('Error: ${snap.error}'));
-        final rows = snap.data!;
+        if (snap.hasError) {
+          return Center(child: Text(mensajeErrorHumano(snap.error!)));
+        }
+        // M11: sin initialData, el primer frame muestra carga en vez de
+        // flashear el estado vacío antes de que llegue la data real.
+        if (snap.connectionState == ConnectionState.waiting && !snap.hasData) {
+          return const Padding(
+            padding: EdgeInsets.all(32),
+            child: Center(child: CircularProgressIndicator()),
+          );
+        }
+        final rows = snap.data ?? const [];
         if (rows.isEmpty) {
           return const EmptyState(
             icon: Icons.check_circle_outline,

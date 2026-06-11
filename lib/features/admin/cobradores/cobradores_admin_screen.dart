@@ -17,6 +17,7 @@ import '../../shared/widgets/credenciales_dialog.dart';
 import '../../shared/widgets/empty_state.dart';
 import '../../shared/widgets/historial_cambios_widget.dart';
 import '../../shared/widgets/phone_text_field.dart';
+import '../../../data/utils/errores.dart';
 
 /// Los 3 roles que cobran en campo y por lo tanto necesitan prefijo de
 /// recibo (correlativo propio). El super_admin NO cobra → no lleva prefijo.
@@ -100,7 +101,7 @@ class _CobradoresAdminScreenState
       initialData: const [],
       builder: (context, snap) {
         if (snap.hasError) {
-          return Center(child: Text('Error: ${snap.error}'));
+          return Center(child: Text(mensajeErrorHumano(snap.error!)));
         }
         final rows = snap.data!;
         if (rows.isEmpty) {
@@ -352,7 +353,7 @@ class _InvitarDialogState extends ConsumerState<_InvitarDialog> {
             ),
             const SizedBox(height: 12),
             DropdownButtonFormField<String>(
-              value: _rol,
+              initialValue: _rol,
               decoration: const InputDecoration(labelText: 'Rol'),
               items: [
                 const DropdownMenuItem(
@@ -879,7 +880,7 @@ class _EditarCobradorDialogState extends ConsumerState<_EditarCobradorDialog> {
               PhoneTextField(controller: _telCtrl),
               const SizedBox(height: 12),
               DropdownButtonFormField<String>(
-                value: _rol,
+                initialValue: _rol,
                 decoration: InputDecoration(
                   labelText: 'Rol',
                   helperText: _puedeCambiarRol

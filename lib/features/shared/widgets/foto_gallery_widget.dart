@@ -5,6 +5,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../../powersync/db.dart' as ps;
+import '../../../data/utils/errores.dart';
 
 const _maxFotos = 10;
 const _bucket = 'fotos-clientes';
@@ -169,7 +170,7 @@ class _FotoGalleryWidgetState extends ConsumerState<FotoGalleryWidget> {
           initialData: const [],
           builder: (context, snap) {
             if (snap.hasError) {
-              return Text('Error: ${snap.error}');
+              return Text(mensajeErrorHumano(snap.error!));
             }
             final fotos = snap.data!;
             final canAdd = widget.canEdit && fotos.length < _maxFotos;

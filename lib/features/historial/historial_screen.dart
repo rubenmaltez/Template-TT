@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:collection/collection.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -8,9 +10,11 @@ import '../../data/providers/cobrador_provider.dart';
 import '../../data/providers/impersonation_provider.dart';
 import '../../data/repositories/pagos_repo.dart';
 import '../../data/repositories/settings_repo.dart';
+import '../../data/utils/errores.dart';
 import '../../data/utils/formatters.dart';
 import '../../data/utils/montos.dart';
 import '../../powersync/db.dart' as ps;
+import '../shared/widgets/cargar_mas_button.dart';
 import '../shared/widgets/empty_state.dart';
 
 class HistorialScreen extends ConsumerStatefulWidget {
@@ -20,18 +24,38 @@ class HistorialScreen extends ConsumerStatefulWidget {
   ConsumerState<HistorialScreen> createState() => _HistorialScreenState();
 }
 
+/// Página inicial del historial; "Cargar más" agrega de a esta cantidad
+/// (C12: antes era un LIMIT 100 fijo y los cobros viejos eran inalcanzables).
+const int _kPageSize = 100;
+
 class _HistorialScreenState extends ConsumerState<HistorialScreen> {
-  // Cacheamos el stream de PowerSync en initState para evitar que cada
-  // rebuild cree una nueva suscripción (anti-patrón ps.db.watch inline).
-  late final Stream<List<Map<String, dynamic>>> _historialStream;
+  // Cacheamos el stream de PowerSync en el state para evitar que cada
+  // rebuild cree una nueva suscripción (anti-patrón ps.db.watch inline);
+  // solo se reconstruye al paginar, vía setState (patrón cuotas_admin).
+  late Stream<List<Map<String, dynamic>>> _historialStream;
+  int _pageSize = _kPageSize;
+  bool _loadingMore = false;
+  Timer? _loadingMoreTimer;
 
   @override
   void initState() {
     super.initState();
-    _historialStream = ps.db.watch(
+    _historialStream = _buildStream();
+  }
+
+  @override
+  void dispose() {
+    _loadingMoreTimer?.cancel();
+    super.dispose();
+  }
+
+  Stream<List<Map<String, dynamic>>> _buildStream() {
+    // M15: vuelto_cordobas y moneda alimentan el gate de edición (un pago
+    // con vuelto o en moneda extranjera no se edita, igual que pagos_admin).
+    return ps.db.watch(
       '''
-      SELECT p.id, p.monto_cordobas, p.moneda, p.monto_original,
-             p.metodo, p.fecha_pago, p.notas, p.grupo_cobro,
+      SELECT p.id, p.monto_cordobas, p.vuelto_cordobas, p.moneda,
+             p.monto_original, p.metodo, p.fecha_pago, p.notas, p.grupo_cobro,
              c.nombre AS cliente_nombre,
              r.id AS recibo_id, r.numero_completo
         FROM pagos p
@@ -40,9 +64,22 @@ class _HistorialScreenState extends ConsumerState<HistorialScreen> {
    LEFT JOIN recibos r ON r.pago_id = p.id AND r.anulado = 0
        WHERE p.anulado = 0
        ORDER BY p.fecha_pago DESC
-       LIMIT 100
+       LIMIT ?
       ''',
+      parameters: [_pageSize],
     );
+  }
+
+  void _onLoadMore() {
+    setState(() {
+      _pageSize += _kPageSize;
+      _loadingMore = true;
+      _historialStream = _buildStream();
+    });
+    _loadingMoreTimer?.cancel();
+    _loadingMoreTimer = Timer(const Duration(milliseconds: 400), () {
+      if (mounted) setState(() => _loadingMore = false);
+    });
   }
 
   @override
@@ -51,12 +88,20 @@ class _HistorialScreenState extends ConsumerState<HistorialScreen> {
       appBar: AppBar(title: const Text('Historial de cobros')),
       body: StreamBuilder<List<Map<String, dynamic>>>(
         stream: _historialStream,
-        initialData: const [],
         builder: (context, snap) {
           if (snap.hasError) {
-            return Center(child: Text('Error: ${snap.error}'));
+            return Center(child: Text(mensajeErrorHumano(snap.error!)));
           }
-          final rows = snap.data!;
+          // M11: sin initialData, el primer frame muestra carga en vez de
+          // flashear "Sin cobros aún" antes de que llegue la data real.
+          if (snap.connectionState == ConnectionState.waiting &&
+              !snap.hasData) {
+            return const Padding(
+              padding: EdgeInsets.all(32),
+              child: Center(child: CircularProgressIndicator()),
+            );
+          }
+          final rows = snap.data ?? const [];
           if (rows.isEmpty) {
             return const EmptyState(
               icon: Icons.history,
@@ -68,11 +113,20 @@ class _HistorialScreenState extends ConsumerState<HistorialScreen> {
             rows,
             (r) => (r['fecha_pago'] as String).substring(0, 10),
           );
+          // "Probablemente hay más" si trajimos exactamente _pageSize rows;
+          // en el último tap puede traer 0 nuevos y el botón desaparece.
+          final hayMas = rows.length >= _pageSize;
 
           return ListView.builder(
             padding: const EdgeInsets.only(bottom: 80),
-            itemCount: byDay.length,
+            itemCount: byDay.length + (hayMas ? 1 : 0),
             itemBuilder: (_, i) {
+              if (i == byDay.length) {
+                return CargarMasButton(
+                  loading: _loadingMore,
+                  onPressed: _onLoadMore,
+                );
+              }
               final entry = byDay.entries.elementAt(i);
               final dia = DateTime.parse(entry.key);
               final total = entry.value.fold<double>(
@@ -158,14 +212,39 @@ class _GrupoDia extends ConsumerWidget {
                             ),
                             if (puedeEditar) ...[
                               const SizedBox(width: 4),
-                              IconButton(
-                                icon: Icon(Icons.edit, size: 20, color: scheme.primary),
-                                tooltip: 'Editar pago',
-                                onPressed: () => _editar(context, ref, p),
-                                visualDensity: VisualDensity.compact,
-                                padding: EdgeInsets.zero,
-                                constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
-                              ),
+                              // M15: mismos gates que pagos_admin — el editor
+                              // solo maneja córdobas sin vuelto; editar un
+                              // pago con vuelto o en otra moneda corrompería
+                              // monto_original/tasa (deja tasa=1.0).
+                              if (((p['vuelto_cordobas'] as num?) ?? 0) > 0)
+                                IconButton(
+                                  icon: Icon(Icons.edit, size: 20, color: scheme.outline),
+                                  tooltip: 'No se puede editar: este pago tiene vuelto',
+                                  onPressed: () => _avisarVuelto(context, p),
+                                  visualDensity: VisualDensity.compact,
+                                  padding: EdgeInsets.zero,
+                                  constraints: const BoxConstraints(minWidth: 40, minHeight: 40),
+                                )
+                              else if ((p['moneda'] as String? ?? 'NIO') != 'NIO')
+                                IconButton(
+                                  icon: Icon(Icons.edit, size: 20, color: scheme.outline),
+                                  tooltip: 'No se puede editar: pago en moneda extranjera',
+                                  onPressed: () => _avisarMoneda(context),
+                                  visualDensity: VisualDensity.compact,
+                                  padding: EdgeInsets.zero,
+                                  constraints: const BoxConstraints(minWidth: 40, minHeight: 40),
+                                )
+                              else
+                                IconButton(
+                                  icon: Icon(Icons.edit, size: 20, color: scheme.primary),
+                                  tooltip: 'Editar pago',
+                                  onPressed: () => _editar(context, ref, p),
+                                  visualDensity: VisualDensity.compact,
+                                  padding: EdgeInsets.zero,
+                                  // M15: 32px quedaba bajo el mínimo táctil;
+                                  // 40 + densidad compacta sin romper la fila.
+                                  constraints: const BoxConstraints(minWidth: 40, minHeight: 40),
+                                ),
                             ],
                             if (puedeAnular) ...[
                               const SizedBox(width: 4),
@@ -175,7 +254,7 @@ class _GrupoDia extends ConsumerWidget {
                                 onPressed: () => _anular(context, ref, p),
                                 visualDensity: VisualDensity.compact,
                                 padding: EdgeInsets.zero,
-                                constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                                constraints: const BoxConstraints(minWidth: 40, minHeight: 40),
                               ),
                             ],
                           ],
@@ -235,10 +314,39 @@ class _GrupoDia extends ConsumerWidget {
     } catch (e) {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error al editar: $e')),
+          // M14: saca el "Exception: " a los guards del repo (su mensaje ya
+          // viene en español) y humaniza los errores técnicos.
+          SnackBar(content: Text(mensajeErrorHumano(e))),
         );
       }
     }
+  }
+
+  // M15: avisos de los gates de edición (mismos textos que pagos_admin).
+  void _avisarVuelto(BuildContext context, Map<String, dynamic> pago) {
+    final vuelto = (pago['vuelto_cordobas'] as num?) ?? 0;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          'Este pago tiene vuelto (${Fmt.cordobas(vuelto)}). Para corregirlo, '
+          'anulalo y registrá el cobro de nuevo.',
+        ),
+        duration: const Duration(seconds: 4),
+      ),
+    );
+  }
+
+  void _avisarMoneda(BuildContext context) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text(
+          'Este pago fue en moneda extranjera. El editor solo maneja córdobas '
+          'y perdería la conversión. Para corregirlo, anulalo y registrá el '
+          'cobro de nuevo.',
+        ),
+        duration: Duration(seconds: 4),
+      ),
+    );
   }
 
   Future<void> _anular(
@@ -256,9 +364,15 @@ class _GrupoDia extends ConsumerWidget {
       ));
       return;
     }
+    // M15: el diálogo dice a quién/cuánto se anula — con varios cobros del
+    // día era fácil anular la fila equivocada sin darse cuenta.
     final motivo = await showDialog<String?>(
       context: context,
-      builder: (_) => const _AnularCobroDialog(),
+      builder: (_) => _AnularCobroDialog(
+        cliente: pago['cliente_nombre'] as String,
+        monto: (pago['monto_cordobas'] as num).toDouble(),
+        numeroRecibo: pago['numero_completo'] as String?,
+      ),
     );
     if (motivo == null || motivo.trim().isEmpty || !context.mounted) return;
 
@@ -279,7 +393,8 @@ class _GrupoDia extends ConsumerWidget {
     } catch (e) {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error al anular: $e')),
+          // M14: ídem _editar — guards del repo pasan tal cual, técnico no.
+          SnackBar(content: Text(mensajeErrorHumano(e))),
         );
       }
     }
@@ -366,7 +481,7 @@ class _EditarCobroDialogState extends State<_EditarCobroDialog> {
           ),
           const SizedBox(height: 16),
           DropdownButtonFormField<MetodoPago>(
-            value: _metodo,
+            initialValue: _metodo,
             decoration: const InputDecoration(labelText: 'Método de pago'),
             items: MetodoPago.values
                 .map((m) => DropdownMenuItem(value: m, child: Text(m.label)))
@@ -416,7 +531,18 @@ class _EditarCobroDialogState extends State<_EditarCobroDialog> {
 }
 
 class _AnularCobroDialog extends StatefulWidget {
-  const _AnularCobroDialog();
+  const _AnularCobroDialog({
+    required this.cliente,
+    required this.monto,
+    this.numeroRecibo,
+  });
+
+  /// M15: contexto de QUÉ se anula (cliente, monto y recibo) para que el
+  /// cobrador confirme sobre el pago correcto.
+  final String cliente;
+  final double monto;
+  final String? numeroRecibo;
+
   @override
   State<_AnularCobroDialog> createState() => _AnularCobroDialogState();
 }
@@ -432,12 +558,20 @@ class _AnularCobroDialogState extends State<_AnularCobroDialog> {
 
   @override
   Widget build(BuildContext context) {
+    final recibo =
+        widget.numeroRecibo != null ? ' (recibo ${widget.numeroRecibo})' : '';
     return AlertDialog(
       title: const Text('Anular pago'),
       content: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          Text(
+            'Anular pago de ${widget.cliente} por '
+            '${Fmt.cordobas(widget.monto)}$recibo.',
+            style: const TextStyle(fontWeight: FontWeight.w600),
+          ),
+          const SizedBox(height: 8),
           const Text(
               'Esta acción queda registrada en auditoría. La cuota volverá '
               'a su estado anterior y el recibo emitido queda inválido. '

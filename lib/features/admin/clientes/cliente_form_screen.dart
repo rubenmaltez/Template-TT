@@ -9,6 +9,7 @@ import 'package:uuid/uuid.dart';
 
 import '../../../data/providers/cobrador_provider.dart';
 import '../../../data/providers/form_dirty_provider.dart';
+import '../../../data/utils/errores.dart';
 import '../../../data/utils/validators.dart';
 import '../../../powersync/db.dart' as ps;
 import '../../shared/widgets/confirm_discard_dialog.dart';
@@ -72,6 +73,9 @@ class _ClienteFormScreenState extends ConsumerState<ClienteFormScreen> {
     }
     final rows = await ps.db
         .getAll('SELECT * FROM clientes WHERE id = ?', [widget.clienteId]);
+    // C7: el await pudo resolver con el form ya desmontado (back rápido) —
+    // setState sobre un State muerto tira en debug.
+    if (!mounted) return;
     if (rows.isEmpty) {
       setState(() => _cargando = false);
       return;
@@ -691,7 +695,7 @@ class _SelectorCobradorState extends State<_SelectorCobrador> {
       initialData: const [],
       builder: (context, snap) {
         if (snap.hasError) {
-          return Text('Error: ${snap.error}');
+          return Text(mensajeErrorHumano(snap.error!));
         }
         final rows = snap.data!;
         // Si el value del cobrador no está aún en la lista de items
@@ -702,7 +706,7 @@ class _SelectorCobradorState extends State<_SelectorCobrador> {
             ? widget.cobradorId
             : null;
         return DropdownButtonFormField<String?>(
-          value: safeValue,
+          initialValue: safeValue,
           decoration: const InputDecoration(labelText: 'Cobrador asignado'),
           items: [
             const DropdownMenuItem<String?>(

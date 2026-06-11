@@ -78,7 +78,10 @@ class _CobrosKPIs extends ConsumerWidget {
       ]),
       loading: () => const SizedBox(
           height: 100, child: Center(child: CircularProgressIndicator())),
-      error: (_, __) => const SizedBox.shrink(),
+      // M13: antes el error desaparecía el KPI en silencio (parecía "en 0").
+      error: (_, __) => Text('No se pudo calcular',
+          style: TextStyle(
+              fontSize: 12, color: Theme.of(context).colorScheme.error)),
     );
   }
 }
@@ -244,7 +247,10 @@ class _OperativoKPIs extends ConsumerWidget {
         ),
       ]),
       loading: () => const SizedBox.shrink(),
-      error: (_, __) => const SizedBox.shrink(),
+      // M13: antes el error desaparecía el KPI en silencio (parecía "en 0").
+      error: (_, __) => Text('No se pudo calcular',
+          style: TextStyle(
+              fontSize: 12, color: Theme.of(context).colorScheme.error)),
     );
   }
 }
@@ -390,7 +396,11 @@ class _TopCobradoresCard extends ConsumerWidget {
                 );
               },
               loading: () => const SizedBox.shrink(),
-              error: (_, __) => const SizedBox.shrink(),
+              // M13: antes el error dejaba el card vacío en silencio.
+              error: (_, __) => Text('No se pudo calcular',
+                  style: TextStyle(
+                      fontSize: 12,
+                      color: Theme.of(context).colorScheme.error)),
             ),
           ],
         ),
@@ -431,7 +441,11 @@ class _DistribucionCuotasCard extends ConsumerWidget {
                 );
               },
               loading: () => const SizedBox.shrink(),
-              error: (_, __) => const SizedBox.shrink(),
+              // M13: antes el error dejaba el card vacío en silencio.
+              error: (_, __) => Text('No se pudo calcular',
+                  style: TextStyle(
+                      fontSize: 12,
+                      color: Theme.of(context).colorScheme.error)),
             ),
           ],
         ),

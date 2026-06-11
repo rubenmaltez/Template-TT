@@ -14,6 +14,7 @@ import '../shared/widgets/empty_state.dart';
 import '../shared/widgets/skeleton.dart';
 import 'tenant_dialogs_invitar.dart';
 import 'tenant_miembro_card.dart';
+import '../../data/utils/errores.dart';
 
 /// Detalle de un tenant: toggles de módulos. Cada switch llama
 /// set_tenant_modulo() vía RPC y refresca la lista global.
@@ -211,7 +212,7 @@ class _ModuloTileState extends ConsumerState<_ModuloTile> {
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text('Error: $e'),
+        content: Text(mensajeErrorHumano(e)),
         backgroundColor: Theme.of(context).colorScheme.error,
       ));
     } finally {

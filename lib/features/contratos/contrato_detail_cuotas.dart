@@ -103,7 +103,7 @@ class _CuotasSectionState extends ConsumerState<_CuotasSection> {
             padding: EdgeInsets.symmetric(vertical: 24),
             child: Center(child: CircularProgressIndicator()),
           ),
-          error: (e, _) => Center(child: Text('Error: $e')),
+          error: (e, _) => Center(child: Text(mensajeErrorHumano(e))),
           data: (allRows) {
 
             // Contadores por filtro (incluyendo 'manuales' = sin contrato_id NO,

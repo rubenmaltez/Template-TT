@@ -3,6 +3,7 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
+import '../../../data/utils/errores.dart';
 
 /// Pad de firma simple, SIN dependencias: se dibuja con el dedo (Android) o el
 /// mouse (Windows) sobre un canvas blanco; "Guardar" exporta a PNG vía
@@ -53,7 +54,7 @@ class _SignaturePadState extends State<SignaturePad> {
       if (mounted) {
         setState(() => _guardando = false);
         ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('Error: $e')));
+            .showSnackBar(SnackBar(content: Text(mensajeErrorHumano(e))));
       }
     }
   }

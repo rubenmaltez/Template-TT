@@ -7,6 +7,7 @@ import '../../../data/providers/cobrador_provider.dart';
 import '../../../data/utils/formatters.dart';
 import '../../../powersync/db.dart' as ps;
 import '../../shared/widgets/empty_state.dart';
+import '../../../data/utils/errores.dart';
 
 /// Lista de incidentes (outages) del tenant. Filtro abiertos/resueltos, badge de
 /// estado + alcance (nodo/hub/puerto/general), FAB → crear. Tap → detalle.
@@ -77,7 +78,7 @@ class _IncidentesScreenState extends ConsumerState<IncidentesScreen> {
               initialData: const [],
               builder: (context, snap) {
                 if (snap.hasError) {
-                  return Center(child: Text('Error: ${snap.error}'));
+                  return Center(child: Text(mensajeErrorHumano(snap.error!)));
                 }
                 final rows = snap.data ?? const [];
                 if (rows.isEmpty) {
@@ -157,7 +158,7 @@ class _IncidentesScreenState extends ConsumerState<IncidentesScreen> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('Error: $e')));
+            .showSnackBar(SnackBar(content: Text(mensajeErrorHumano(e))));
       }
     }
   }
@@ -312,7 +313,7 @@ class _CrearIncidenteSheetState extends ConsumerState<_CrearIncidenteSheet> {
               ),
               const SizedBox(height: 12),
               DropdownButtonFormField<String>(
-                value: _nivel,
+                initialValue: _nivel,
                 decoration: const InputDecoration(
                     labelText: 'Alcance del corte', isDense: true),
                 items: const [
@@ -355,7 +356,7 @@ class _CrearIncidenteSheetState extends ConsumerState<_CrearIncidenteSheet> {
   }
 
   Widget _nodoDropdown() => DropdownButtonFormField<String>(
-        value: _nodoId,
+        initialValue: _nodoId,
         isExpanded: true,
         decoration: const InputDecoration(labelText: 'Nodo', isDense: true),
         items: [
@@ -374,7 +375,7 @@ class _CrearIncidenteSheetState extends ConsumerState<_CrearIncidenteSheet> {
       );
 
   Widget _hubDropdown() => DropdownButtonFormField<String>(
-        value: _hubId,
+        initialValue: _hubId,
         isExpanded: true,
         decoration: const InputDecoration(labelText: 'Hub', isDense: true),
         items: [
@@ -393,7 +394,7 @@ class _CrearIncidenteSheetState extends ConsumerState<_CrearIncidenteSheet> {
       );
 
   Widget _puertoDropdown() => DropdownButtonFormField<String>(
-        value: _puertoId,
+        initialValue: _puertoId,
         isExpanded: true,
         decoration: const InputDecoration(labelText: 'Puerto', isDense: true),
         items: [

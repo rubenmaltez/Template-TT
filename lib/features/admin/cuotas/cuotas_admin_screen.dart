@@ -14,6 +14,7 @@ import '../../../data/utils/montos.dart';
 import '../../../powersync/db.dart' as ps;
 import '../../shared/widgets/cargar_mas_button.dart';
 import '../../shared/widgets/empty_state.dart';
+import '../../../data/utils/errores.dart';
 
 class CuotasAdminScreen extends ConsumerStatefulWidget {
   const CuotasAdminScreen({super.key});
@@ -201,7 +202,7 @@ class _CuotasAdminScreenState extends ConsumerState<CuotasAdminScreen> {
                 initialData: const [],
                 builder: (context, snap) {
                   if (snap.hasError) {
-                    return Center(child: Text('Error: ${snap.error}'));
+                    return Center(child: Text(mensajeErrorHumano(snap.error!)));
                   }
                   final rows = snap.data!;
                   if (rows.isEmpty) {
@@ -318,7 +319,7 @@ class _CuotasAdminScreenState extends ConsumerState<CuotasAdminScreen> {
     } catch (e) {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error: $e')),
+          SnackBar(content: Text(mensajeErrorHumano(e))),
         );
       }
     }
@@ -601,7 +602,7 @@ class _NuevaCuotaManualDialogState extends State<_NuevaCuotaManualDialog> {
                   )
                 else
                   DropdownButtonFormField<String?>(
-                    value: _contratoId,
+                    initialValue: _contratoId,
                     decoration: const InputDecoration(
                       labelText: 'Contrato (opcional)',
                     ),
@@ -629,7 +630,7 @@ class _NuevaCuotaManualDialogState extends State<_NuevaCuotaManualDialog> {
 
               // Tipo de cargo
               DropdownButtonFormField<String>(
-                value: _tipoCargo,
+                initialValue: _tipoCargo,
                 decoration: const InputDecoration(labelText: 'Tipo de cargo *'),
                 items: _tiposCargo.entries
                     .map((e) => DropdownMenuItem(value: e.key, child: Text(e.value)))
@@ -949,7 +950,7 @@ class _CuotaCard extends ConsumerWidget {
     } catch (e) {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error: $e')),
+          SnackBar(content: Text(mensajeErrorHumano(e))),
         );
       }
     }

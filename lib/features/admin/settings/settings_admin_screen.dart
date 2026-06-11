@@ -1,7 +1,6 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
@@ -10,9 +9,11 @@ import '../../../data/providers/cobrador_provider.dart';
 import '../../../data/providers/logo_empresa_provider.dart';
 import '../../../data/repositories/settings_repo.dart';
 import '../../../data/utils/cuota_estado_visual.dart';
+import '../../../data/utils/montos.dart';
 import '../../shared/widgets/empty_state.dart';
 import 'recibo_layout_editor.dart';
 import 'settings_groups.dart';
+import '../../../data/utils/errores.dart';
 
 /// Panel de configuración. Agrupa settings por categoría en pestañas; dentro
 /// de cada pestaña, en tarjetas-sección (`SettingGroup`). Algunas secciones
@@ -59,7 +60,7 @@ class SettingsAdminScreen extends ConsumerWidget {
 
     return settingsAsync.when(
       loading: () => const Center(child: CircularProgressIndicator()),
-      error: (e, _) => Center(child: Text('Error: $e')),
+      error: (e, _) => Center(child: Text(mensajeErrorHumano(e))),
       data: (settings) {
         if (settings.isEmpty) {
           return const EmptyState(
@@ -837,6 +838,16 @@ class _SettingTileState extends State<_SettingTile> {
   late bool _boolValor;
   Timer? _debounce;
 
+  // M9: error de parse del campo numérico ('Número inválido') — antes el
+  // tryParse fallido descartaba lo tipeado EN SILENCIO y el user creía
+  // haber guardado.
+  String? _numError;
+
+  // M9: último valor agendado por el debounce, para FLUSHEARLO en dispose
+  // (antes salir de la pantalla dentro de los 600ms cancelaba y perdía la
+  // edición).
+  dynamic _pendiente;
+
   @override
   void initState() {
     super.initState();
@@ -860,13 +871,23 @@ class _SettingTileState extends State<_SettingTile> {
   @override
   void dispose() {
     _ctrl.dispose();
+    // M9: si quedó un guardado pendiente, ejecutarlo (flush) en vez de
+    // cancelarlo. Best-effort: si el padre ya soltó sus providers (cierre
+    // de pantalla completa) el catch evita romper el teardown.
+    if ((_debounce?.isActive ?? false) && _pendiente != null) {
+      try {
+        unawaited(widget.onSave(_pendiente));
+      } catch (_) {}
+    }
     _debounce?.cancel();
     super.dispose();
   }
 
   void _debouncedSave(dynamic valor) {
+    _pendiente = valor;
     _debounce?.cancel();
     _debounce = Timer(const Duration(milliseconds: 600), () {
+      _pendiente = null;
       widget.onSave(valor);
     });
   }
@@ -988,7 +1009,7 @@ class _SettingTileState extends State<_SettingTile> {
     if (s.clave == 'recibo.formato_default_mm') {
       final current = (s.valor as num?)?.toInt() ?? 80;
       return DropdownButtonFormField<int>(
-        value: current == 80 ? 80 : 58,
+        initialValue: current == 80 ? 80 : 58,
         decoration: const InputDecoration(isDense: true),
         items: const [
           DropdownMenuItem(value: 58, child: Text('58 mm (angosto)')),
@@ -1006,7 +1027,7 @@ class _SettingTileState extends State<_SettingTile> {
           ? current
           : dropdownOptions.first.$1;
       return DropdownButtonFormField<String>(
-        value: validValue,
+        initialValue: validValue,
         decoration: const InputDecoration(isDense: true),
         items: dropdownOptions
             .map((o) => DropdownMenuItem(value: o.$1, child: Text(o.$2)))
@@ -1024,13 +1045,23 @@ class _SettingTileState extends State<_SettingTile> {
         controller: _ctrl,
         enabled: enabled,
         keyboardType: const TextInputType.numberWithOptions(decimal: true),
-        inputFormatters: [
-          FilteringTextInputFormatter.allow(RegExp(r'[0-9.]')),
-        ],
-        decoration: const InputDecoration(isDense: true),
+        // M9: acepta coma decimal (teclado Android es-NI) — siempre en
+        // pareja con parseMonto, que la normaliza.
+        inputFormatters: [montoInputFormatter],
+        decoration: InputDecoration(isDense: true, errorText: _numError),
         onChanged: (v) {
-          final n = num.tryParse(v);
-          if (n != null) _debouncedSave(n);
+          final n = parseMonto(v);
+          if (n == null) {
+            // M9: parse fallido AVISA y no guarda (antes era silencioso).
+            // Campo vacío no es error: simplemente no hay nada que guardar.
+            setState(
+                () => _numError = v.trim().isEmpty ? null : 'Número inválido');
+            return;
+          }
+          if (_numError != null) setState(() => _numError = null);
+          // Enteros como int (JSON `10`, no `10.0`) — mismo shape que
+          // generaba el num.tryParse anterior.
+          _debouncedSave(n % 1 == 0 ? n.toInt() : n);
         },
       );
     }
@@ -1179,6 +1210,9 @@ class _LogoUploadWidgetState extends ConsumerState<_LogoUploadWidget> {
     try {
       final service = ref.read(logoEmpresaServiceProvider);
       final path = await service.pickYSubir(tenantId: widget.tenantId);
+      // C7: el picker/upload pudo resolver con la pantalla ya desmontada —
+      // setState/ref sobre un State muerto tiran en debug.
+      if (!mounted) return;
       if (path == null) {
         // Usuario canceló el picker.
         setState(() => _subiendo = false);
@@ -1190,15 +1224,15 @@ class _LogoUploadWidgetState extends ConsumerState<_LogoUploadWidget> {
             'empresa.logo_path',
             path,
           );
+      // C7: ídem tras el segundo await (ref.invalidate exige State vivo).
+      if (!mounted) return;
       // Invalidar el provider para refrescar la URL firmada.
       ref.invalidate(logoEmpresaUrlProvider);
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Logo actualizado')),
-        );
-      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Logo actualizado')),
+      );
     } catch (e) {
-      setState(() => _error = e.toString());
+      if (mounted) setState(() => _error = e.toString());
     } finally {
       if (mounted) setState(() => _subiendo = false);
     }

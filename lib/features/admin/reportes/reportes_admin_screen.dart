@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../config/router.dart';
 import '../../../data/models/pago.dart';
 import '../../../data/repositories/settings_repo.dart';
+import '../../../data/utils/errores.dart';
 import '../../../data/utils/formatters.dart';
 import '../../../features/shared/widgets/rango_fechas_dialog.dart';
 import '../../../powersync/db.dart' as ps;
@@ -1312,7 +1313,7 @@ class _RecaudacionMensualCardState extends State<_RecaudacionMensualCard> {
               initialData: const [],
               builder: (context, snap) {
                 if (snap.hasError) {
-                  return Text('Error: ${snap.error}',
+                  return Text(mensajeErrorHumano(snap.error!),
                       style: TextStyle(color: Theme.of(context).colorScheme.error));
                 }
                 final rows = snap.data!;
@@ -1422,7 +1423,7 @@ class _CobradoresMesCardState extends State<_CobradoresMesCard> {
               initialData: const [],
               builder: (context, snap) {
                 if (snap.hasError) {
-                  return Text('Error: ${snap.error}',
+                  return Text(mensajeErrorHumano(snap.error!),
                       style: TextStyle(color: Theme.of(context).colorScheme.error));
                 }
                 final rows = snap.data!;
@@ -1517,7 +1518,7 @@ class _MoraPorComunidadCardState extends State<_MoraPorComunidadCard> {
               initialData: const [],
               builder: (context, snap) {
                 if (snap.hasError) {
-                  return Text('Error: ${snap.error}',
+                  return Text(mensajeErrorHumano(snap.error!),
                       style: TextStyle(color: Theme.of(context).colorScheme.error));
                 }
                 final rows = snap.data!;
@@ -1592,7 +1593,7 @@ class _PlanesPopularesCardState extends State<_PlanesPopularesCard> {
               initialData: const [],
               builder: (context, snap) {
                 if (snap.hasError) {
-                  return Text('Error: ${snap.error}',
+                  return Text(mensajeErrorHumano(snap.error!),
                       style: TextStyle(color: Theme.of(context).colorScheme.error));
                 }
                 final rows = snap.data!;

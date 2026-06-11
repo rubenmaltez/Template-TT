@@ -24,6 +24,7 @@ import '../shared/widgets/empty_state.dart';
 import '../shared/widgets/foto_comprobante_view.dart';
 import '../shared/widgets/impersonation_banner.dart';
 import '../shared/widgets/historial_cambios_widget.dart';
+import '../../data/utils/errores.dart';
 
 part 'contrato_detail_header.dart';
 part 'contrato_detail_cuotas.dart';
@@ -306,7 +307,7 @@ class _ContratoDetailScreenState extends ConsumerState<ContratoDetailScreen> {
       ),
       body: ref.watch(contratoDetalleProvider(widget.contratoId)).when(
         loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) => Center(child: Text('Error: $e')),
+        error: (e, _) => Center(child: Text(mensajeErrorHumano(e))),
         data: (rows) {
           if (rows.isEmpty) {
             return const EmptyState(
@@ -494,7 +495,7 @@ class _EquiposContratoSectionState extends State<_EquiposContratoSection> {
           if (snap.hasError) {
             return Padding(
               padding: const EdgeInsets.all(16),
-              child: Text('Error: ${snap.error}'),
+              child: Text(mensajeErrorHumano(snap.error!)),
             );
           }
           final rows = snap.data!;

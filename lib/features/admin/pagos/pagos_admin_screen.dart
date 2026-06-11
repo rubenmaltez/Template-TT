@@ -8,6 +8,7 @@ import '../../../data/providers/cobrador_provider.dart';
 import '../../../data/providers/impersonation_provider.dart';
 import '../../../data/repositories/pagos_repo.dart';
 import '../../../data/repositories/settings_repo.dart';
+import '../../../data/utils/errores.dart';
 import '../../../data/utils/formatters.dart';
 import '../../../data/utils/montos.dart';
 import '../../../powersync/db.dart' as ps;
@@ -178,7 +179,7 @@ class _PagosAdminScreenState extends ConsumerState<PagosAdminScreen> {
             initialData: const [],
             builder: (context, snap) {
               if (snap.hasError) {
-                return Center(child: Text('Error: ${snap.error}'));
+                return Center(child: Text(mensajeErrorHumano(snap.error!)));
               }
               final rows = snap.data!;
               if (rows.isEmpty) {
@@ -475,7 +476,9 @@ class _PagoCard extends ConsumerWidget {
     } catch (e) {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error al editar: $e')),
+          // M14: saca el "Exception: " a los guards del repo (su mensaje ya
+          // viene en español) y humaniza los errores técnicos.
+          SnackBar(content: Text(mensajeErrorHumano(e))),
         );
       }
     }
@@ -507,7 +510,8 @@ class _PagoCard extends ConsumerWidget {
     } catch (e) {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error: $e')),
+          // M14: ídem _editar — guards del repo pasan tal cual, técnico no.
+          SnackBar(content: Text(mensajeErrorHumano(e))),
         );
       }
     }
@@ -646,7 +650,7 @@ class _EditarPagoDialogState extends State<_EditarPagoDialog> {
           ),
           const SizedBox(height: 16),
           DropdownButtonFormField<MetodoPago>(
-            value: _metodo,
+            initialValue: _metodo,
             decoration: const InputDecoration(labelText: 'Método de pago'),
             items: MetodoPago.values
                 .map((m) => DropdownMenuItem(value: m, child: Text(m.label)))

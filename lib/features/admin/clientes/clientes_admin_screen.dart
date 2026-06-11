@@ -10,6 +10,7 @@ import '../../../data/utils/validators.dart';
 import '../../../powersync/db.dart' as ps;
 import '../../shared/widgets/cargar_mas_button.dart';
 import '../../shared/widgets/empty_state.dart';
+import '../../../data/utils/errores.dart';
 
 class ClientesAdminScreen extends ConsumerStatefulWidget {
   const ClientesAdminScreen({super.key});
@@ -349,7 +350,7 @@ class _CobradorChipState extends State<_CobradorChip> {
       initialData: const [],
       builder: (context, snap) {
         if (snap.hasError) {
-          return Chip(label: Text('Error: ${snap.error}'));
+          return Chip(label: Text(mensajeErrorHumano(snap.error!)));
         }
         final rows = snap.data!;
         String label = 'Cobrador';
@@ -423,7 +424,7 @@ class _ComunidadChipState extends State<_ComunidadChip> {
       initialData: const [],
       builder: (context, snap) {
         if (snap.hasError) {
-          return Chip(label: Text('Error: ${snap.error}'));
+          return Chip(label: Text(mensajeErrorHumano(snap.error!)));
         }
         final rows = snap.data!;
         String label = 'Comunidad';
@@ -492,7 +493,7 @@ class _NodoChipState extends State<_NodoChip> {
       initialData: const [],
       builder: (context, snap) {
         if (snap.hasError) {
-          return Chip(label: Text('Error: ${snap.error}'));
+          return Chip(label: Text(mensajeErrorHumano(snap.error!)));
         }
         final rows = snap.data!;
         String label = 'Nodo';
@@ -722,7 +723,7 @@ class _ListaState extends State<_Lista> {
       initialData: const [],
       builder: (context, snap) {
         if (snap.hasError) {
-          return Center(child: Text('Error: ${snap.error}'));
+          return Center(child: Text(mensajeErrorHumano(snap.error!)));
         }
         final rows = snap.data!;
         if (rows.isEmpty) {
@@ -956,7 +957,7 @@ class _SeleccionarCobradorDialogState
           builder: (context, snap) {
             if (snap.hasError) {
               return SizedBox(
-                  height: 100, child: Center(child: Text('Error: ${snap.error}')));
+                  height: 100, child: Center(child: Text(mensajeErrorHumano(snap.error!))));
             }
             final rows = snap.data!;
             return ListView(

@@ -18,6 +18,7 @@ import '../shared/widgets/impersonation_banner.dart';
 import 'recibo_mora.dart';
 import 'recibo_pdf.dart';
 import 'recibo_ticket.dart';
+import '../../data/utils/errores.dart';
 
 /// Preview visual del recibo + acción para imprimir.
 /// La impresión Bluetooth real se conecta en una iteración siguiente.
@@ -144,7 +145,6 @@ class _ReciboScreenState extends ConsumerState<ReciboScreen> {
       ),
       body: StreamBuilder<List<Map<String, dynamic>>>(
         stream: _reciboStream,
-        initialData: const [],
         builder: (context, snap) {
           if (snap.hasError) {
             return const EmptyState(
@@ -152,13 +152,22 @@ class _ReciboScreenState extends ConsumerState<ReciboScreen> {
               titulo: 'Error al cargar el recibo',
             );
           }
-          if (snap.data!.isEmpty) {
+          // M11: sin initialData, el primer frame muestra carga en vez de
+          // flashear "Recibo no encontrado" antes de que llegue la data real.
+          if (snap.connectionState == ConnectionState.waiting &&
+              !snap.hasData) {
+            return const Padding(
+              padding: EdgeInsets.all(32),
+              child: Center(child: CircularProgressIndicator()),
+            );
+          }
+          final rows = snap.data ?? const [];
+          if (rows.isEmpty) {
             return const EmptyState(
               icon: Icons.receipt_long,
               titulo: 'Recibo no encontrado',
             );
           }
-          final rows = snap.data!;
           final r = rows.first;
           final esMulti = _esMultiCuota && rows.length > 1;
 
@@ -512,6 +521,9 @@ class _AccionesImpresionState extends ConsumerState<_AccionesImpresion> {
             widget.reciboId,
           ],
         );
+        // C7: re-chequear tras el await — el execute pudo resolver con la
+        // pantalla ya desmontada (context muerto para el SnackBar).
+        if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Recibo enviado a impresora')),
         );
@@ -523,7 +535,7 @@ class _AccionesImpresionState extends ConsumerState<_AccionesImpresion> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error: $e')),
+          SnackBar(content: Text(mensajeErrorHumano(e))),
         );
       }
     } finally {

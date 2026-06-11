@@ -8,6 +8,7 @@ import '../../../powersync/db.dart' as ps;
 import '../../shared/widgets/empty_state.dart';
 import '../../shared/widgets/historial_cambios_widget.dart';
 import '../../shared/widgets/mapa_picker_screen.dart';
+import '../../../data/utils/errores.dart';
 
 /// Datos capturados por `_NodoDialog` (crear/editar nodo).
 typedef _NodoData = ({
@@ -75,7 +76,7 @@ class _RedAdminScreenState extends ConsumerState<RedAdminScreen> {
             initialData: const [],
             builder: (context, snap) {
               if (snap.hasError) {
-                return Center(child: Text('Error: ${snap.error}'));
+                return Center(child: Text(mensajeErrorHumano(snap.error!)));
               }
               final nodos = snap.data!;
               if (nodos.isEmpty) {
@@ -121,7 +122,7 @@ class _RedAdminScreenState extends ConsumerState<RedAdminScreen> {
     } catch (e) {
       if (context.mounted) {
         ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('Error: $e')));
+            .showSnackBar(SnackBar(content: Text(mensajeErrorHumano(e))));
       }
     }
   }
@@ -214,7 +215,7 @@ class _NodoTileState extends State<_NodoTile> {
     } catch (e) {
       if (context.mounted) {
         ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('Error: $e')));
+            .showSnackBar(SnackBar(content: Text(mensajeErrorHumano(e))));
       }
     }
   }
@@ -246,7 +247,7 @@ class _NodoTileState extends State<_NodoTile> {
     } catch (e) {
       if (context.mounted) {
         ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('Error: $e')));
+            .showSnackBar(SnackBar(content: Text(mensajeErrorHumano(e))));
       }
     }
   }
@@ -346,7 +347,7 @@ class _HubTileState extends State<_HubTile> {
     } catch (e) {
       if (context.mounted) {
         ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('Error: $e')));
+            .showSnackBar(SnackBar(content: Text(mensajeErrorHumano(e))));
       }
     }
   }
@@ -364,7 +365,7 @@ class _HubTileState extends State<_HubTile> {
     } catch (e) {
       if (context.mounted) {
         ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('Error: $e')));
+            .showSnackBar(SnackBar(content: Text(mensajeErrorHumano(e))));
       }
     }
   }
@@ -412,7 +413,7 @@ class _HubTileState extends State<_HubTile> {
     } catch (e) {
       if (context.mounted) {
         ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('Error: $e')));
+            .showSnackBar(SnackBar(content: Text(mensajeErrorHumano(e))));
       }
     }
   }
@@ -643,7 +644,7 @@ class _NodoDialogState extends State<_NodoDialog> {
             ),
             const SizedBox(height: 12),
             DropdownButtonFormField<String?>(
-              value: _tipo,
+              initialValue: _tipo,
               decoration: const InputDecoration(labelText: 'Tipo (opcional)'),
               onChanged: (v) => setState(() => _tipo = v),
               items: const [

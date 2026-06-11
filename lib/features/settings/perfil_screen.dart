@@ -12,6 +12,7 @@ import '../../data/services/rechazos_sync_service.dart';
 import '../../data/providers/impresora_provider.dart';
 import '../../data/providers/sync_status_provider.dart';
 import '../../data/services/map_tile_cache.dart';
+import '../../data/utils/errores.dart';
 import '../../data/utils/formatters.dart';
 import '../../powersync/db.dart' as ps;
 import '../auth/cambiar_password_dialog.dart';
@@ -417,7 +418,7 @@ class _SyncCard extends ConsumerWidget {
             const SizedBox(height: 8),
             status.when(
               loading: () => const LinearProgressIndicator(),
-              error: (e, _) => Text('Error: $e'),
+              error: (e, _) => Text(mensajeErrorHumano(e)),
               data: (s) {
                 final connected = s?.connected ?? false;
                 final last = s?.lastSyncedAt;

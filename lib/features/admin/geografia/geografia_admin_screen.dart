@@ -6,6 +6,7 @@ import '../../../data/providers/cobrador_provider.dart';
 import '../../../powersync/db.dart' as ps;
 import '../../shared/widgets/empty_state.dart';
 import '../../shared/widgets/historial_cambios_widget.dart';
+import '../../../data/utils/errores.dart';
 
 /// Abre el historial (audit log) de una fila de geografía. `tabla` ∈
 /// departamentos/municipios/comunidades (per-tenant + auditables desde 0097).
@@ -111,7 +112,7 @@ class _GeografiaAdminScreenState extends ConsumerState<GeografiaAdminScreen> {
             initialData: const [],
             builder: (context, snap) {
               if (snap.hasError) {
-                return Center(child: Text('Error: ${snap.error}'));
+                return Center(child: Text(mensajeErrorHumano(snap.error!)));
               }
               final deptos = snap.data!;
               if (deptos.isEmpty) {
@@ -153,7 +154,7 @@ class _GeografiaAdminScreenState extends ConsumerState<GeografiaAdminScreen> {
     } catch (e) {
       if (context.mounted) {
         ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('Error: $e')));
+            .showSnackBar(SnackBar(content: Text(mensajeErrorHumano(e))));
       }
     }
   }
@@ -263,7 +264,7 @@ class _DeptoTileState extends State<_DeptoTile> {
     } catch (e) {
       if (context.mounted) {
         ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('Error: $e')));
+            .showSnackBar(SnackBar(content: Text(mensajeErrorHumano(e))));
       }
     }
   }
@@ -294,7 +295,7 @@ class _DeptoTileState extends State<_DeptoTile> {
     } catch (e) {
       if (context.mounted) {
         ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('Error: $e')));
+            .showSnackBar(SnackBar(content: Text(mensajeErrorHumano(e))));
       }
     }
   }
@@ -399,7 +400,7 @@ class _MunicipioTileState extends State<_MunicipioTile> {
     } catch (e) {
       if (context.mounted) {
         ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('Error: $e')));
+            .showSnackBar(SnackBar(content: Text(mensajeErrorHumano(e))));
       }
     }
   }
@@ -415,7 +416,7 @@ class _MunicipioTileState extends State<_MunicipioTile> {
     } catch (e) {
       if (context.mounted) {
         ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('Error: $e')));
+            .showSnackBar(SnackBar(content: Text(mensajeErrorHumano(e))));
       }
     }
   }
@@ -460,7 +461,7 @@ class _MunicipioTileState extends State<_MunicipioTile> {
     } catch (e) {
       if (context.mounted) {
         ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('Error: $e')));
+            .showSnackBar(SnackBar(content: Text(mensajeErrorHumano(e))));
       }
     }
   }

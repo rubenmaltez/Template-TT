@@ -8,6 +8,7 @@ import '../../../data/utils/formatters.dart';
 import '../../../powersync/db.dart' as ps;
 import '../../shared/widgets/cargar_mas_button.dart';
 import '../../shared/widgets/empty_state.dart';
+import '../../../data/utils/errores.dart';
 
 class AuditAdminScreen extends StatefulWidget {
   const AuditAdminScreen({super.key});
@@ -192,7 +193,7 @@ class _AuditAdminScreenState extends State<AuditAdminScreen> {
             initialData: const [],
             builder: (context, snap) {
               if (snap.hasError) {
-                return Center(child: Text('Error: ${snap.error}'));
+                return Center(child: Text(mensajeErrorHumano(snap.error!)));
               }
               final rows = snap.data!;
               if (rows.isEmpty) {

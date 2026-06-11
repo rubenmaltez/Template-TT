@@ -10,6 +10,7 @@ import 'package:uuid/uuid.dart';
 
 import '../../../data/providers/cobrador_provider.dart';
 import '../../../data/providers/form_dirty_provider.dart';
+import '../../../data/utils/errores.dart';
 import '../../../data/utils/formatters.dart';
 import '../../../data/utils/montos.dart';
 import '../../../powersync/db.dart' as ps;
@@ -381,7 +382,12 @@ class _ContratoFormScreenState extends ConsumerState<ContratoFormScreen> {
         }
       }
     } catch (e) {
-      if (mounted) setState(() => _error = e.toString());
+      // M14: e.toString() crudo (SQLite/Postgres en inglés) no le sirve a un
+      // admin; el detalle queda en debugPrint dentro del helper.
+      if (mounted) {
+        setState(
+            () => _error = mensajeErrorHumano(e, contexto: 'guardar el contrato'));
+      }
     } finally {
       if (mounted) setState(() => _guardando = false);
     }
@@ -726,7 +732,7 @@ class _ClienteSelectorState extends State<_ClienteSelector> {
       initialData: const [],
       builder: (context, snap) {
         if (snap.hasError) {
-          return Center(child: Text('Error: ${snap.error}'));
+          return Center(child: Text(mensajeErrorHumano(snap.error!)));
         }
         final rows = snap.data!;
         // Guard: si el value actual no está en los items (stream re-emit
@@ -737,7 +743,7 @@ class _ClienteSelectorState extends State<_ClienteSelector> {
             ? widget.clienteId
             : null;
         return DropdownButtonFormField<String?>(
-          value: safeClienteId,
+          initialValue: safeClienteId,
           decoration: InputDecoration(
             labelText: 'Cliente *',
             enabled: widget.enabled,
@@ -786,7 +792,7 @@ class _PlanSelectorState extends State<_PlanSelector> {
       initialData: const [],
       builder: (context, snap) {
         if (snap.hasError) {
-          return Center(child: Text('Error: ${snap.error}'));
+          return Center(child: Text(mensajeErrorHumano(snap.error!)));
         }
         final rows = snap.data!;
         if (rows.isEmpty) {
@@ -794,7 +800,7 @@ class _PlanSelectorState extends State<_PlanSelector> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               DropdownButtonFormField<String?>(
-                value: null,
+                initialValue: null,
                 decoration: const InputDecoration(labelText: 'Plan *'),
                 items: const [
                   DropdownMenuItem<String?>(value: null, child: Text('—')),
@@ -818,7 +824,7 @@ class _PlanSelectorState extends State<_PlanSelector> {
             ? widget.planId
             : null;
         return DropdownButtonFormField<String?>(
-          value: safePlanId,
+          initialValue: safePlanId,
           decoration: const InputDecoration(labelText: 'Plan *'),
           items: [
             const DropdownMenuItem<String?>(value: null, child: Text('—')),

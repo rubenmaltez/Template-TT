@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -80,10 +79,15 @@ class _SetPasswordScreenState extends ConsumerState<SetPasswordScreen> {
       // Redirigimos al root — el router decide /admin, /, etc. según rol.
       context.go('/');
     } on AuthException catch (e) {
-      // Mensajes específicos de Supabase (policy de password, etc.) llegan
-      // limpios acá; no necesitan replaceFirst.
+      // C7: e.message viene en inglés crudo de Supabase; mapeamos el caso
+      // típico (repetir la contraseña vieja) y el resto cae a un genérico
+      // accionable en español.
+      final msg = e.message.toLowerCase();
       setState(() {
-        _error = e.message;
+        _error = (msg.contains('same password') ||
+                msg.contains('different from the old'))
+            ? 'La nueva contraseña debe ser distinta a la anterior.'
+            : 'No se pudo actualizar la contraseña. Reintentá.';
         _saving = false;
       });
     } catch (e) {

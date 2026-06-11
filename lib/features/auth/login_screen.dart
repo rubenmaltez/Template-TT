@@ -425,7 +425,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   }
 
   /// Convierte códigos de error técnicos de Supabase en mensajes legibles.
-  /// Fallback al string original si no hay traducción específica.
+  /// Fallback genérico en español (C7: antes devolvía el string técnico
+  /// crudo en inglés del SDK).
   String _humanizeAuthError(String raw) {
     final lower = raw.toLowerCase();
     if (lower.contains('otp_expired') ||
@@ -436,6 +437,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     if (lower.contains('access_denied')) {
       return 'Acceso denegado. Probá iniciar sesión normalmente.';
     }
-    return raw;
+    return 'No se pudo completar la operación. Reintentá o pedí un link '
+        'nuevo.';
   }
 }

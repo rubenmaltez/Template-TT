@@ -6,6 +6,7 @@ import 'package:uuid/uuid.dart';
 
 import '../../../data/providers/cobrador_provider.dart';
 import '../../../data/repositories/settings_repo.dart';
+import '../../../data/utils/errores.dart';
 import '../../../data/utils/formatters.dart';
 import '../../../data/utils/ticket_sla.dart';
 import '../../../powersync/db.dart' as ps;
@@ -77,7 +78,7 @@ class _TicketDetailScreenState extends ConsumerState<TicketDetailScreen> {
       stream: _ticket,
       initialData: const [],
       builder: (context, snap) {
-        if (snap.hasError) return Center(child: Text('Error: ${snap.error}'));
+        if (snap.hasError) return Center(child: Text(mensajeErrorHumano(snap.error!)));
         final rows = snap.data!;
         if (rows.isEmpty) {
           return const EmptyState(
@@ -300,7 +301,7 @@ class _TicketDetailScreenState extends ConsumerState<TicketDetailScreen> {
         [jsonEncode(nueva), ocurrido, t['id']],
       );
     } catch (e) {
-      _snack('Error: $e');
+      _snack(mensajeErrorHumano(e));
     }
   }
 
@@ -392,7 +393,7 @@ class _TicketDetailScreenState extends ConsumerState<TicketDetailScreen> {
                 : 'Vinculado al incidente: $nombreInc');
       });
     } catch (e) {
-      _snack('Error: $e');
+      _snack(mensajeErrorHumano(e));
     }
   }
 
@@ -567,7 +568,7 @@ class _TicketDetailScreenState extends ConsumerState<TicketDetailScreen> {
     } on _TkError catch (e) {
       _snack(e.message);
     } catch (e) {
-      _snack('Error: $e');
+      _snack(mensajeErrorHumano(e));
     }
   }
 
@@ -620,7 +621,7 @@ class _TicketDetailScreenState extends ConsumerState<TicketDetailScreen> {
       });
       _comentario.clear();
     } catch (e) {
-      _snack('Error: $e');
+      _snack(mensajeErrorHumano(e));
     }
   }
 
@@ -677,7 +678,7 @@ class _TicketDetailScreenState extends ConsumerState<TicketDetailScreen> {
             comentario: elegido.id == null ? 'Sin asignar' : 'Asignado a ${elegido.nombre}');
       });
     } catch (e) {
-      _snack('Error: $e');
+      _snack(mensajeErrorHumano(e));
     }
   }
 

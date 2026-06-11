@@ -8,6 +8,7 @@ import '../../../data/utils/ticket_sla.dart';
 import '../../../powersync/db.dart' as ps;
 import '../../shared/widgets/empty_state.dart';
 import '../../shared/widgets/historial_cambios_widget.dart';
+import '../../../data/utils/errores.dart';
 
 /// Detalle de un incidente: header (estado/alcance/fechas), clientes afectados
 /// DERIVADOS de la topología de red, tickets agrupados, resolver e historial.
@@ -47,7 +48,7 @@ class _IncidenteDetailScreenState extends ConsumerState<IncidenteDetailScreen> {
       stream: _incidente,
       initialData: const [],
       builder: (context, snap) {
-        if (snap.hasError) return Center(child: Text('Error: ${snap.error}'));
+        if (snap.hasError) return Center(child: Text(mensajeErrorHumano(snap.error!)));
         final rows = snap.data!;
         if (rows.isEmpty) {
           return const EmptyState(
@@ -225,7 +226,7 @@ class _IncidenteDetailScreenState extends ConsumerState<IncidenteDetailScreen> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('Error: $e')));
+            .showSnackBar(SnackBar(content: Text(mensajeErrorHumano(e))));
       }
     }
   }

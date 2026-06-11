@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../../powersync/db.dart' as ps;
+import '../../../../data/utils/errores.dart';
 
 /// Selector en cascada de la topología de red (Nodo → Hub → Puerto) para
 /// asignar `clientes.puerto_id`. **Solo selección** (la topología la administra
@@ -188,7 +189,7 @@ class _RedSelector extends StatelessWidget {
       initialData: const [],
       builder: (context, snap) {
         if (snap.hasError) {
-          return Center(child: Text('Error: ${snap.error}'));
+          return Center(child: Text(mensajeErrorHumano(snap.error!)));
         }
         final rows = snap.data!;
         final stillExists =
@@ -197,7 +198,7 @@ class _RedSelector extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             DropdownButtonFormField<String?>(
-              value: stillExists ? valueId : null,
+              initialValue: stillExists ? valueId : null,
               decoration: InputDecoration(labelText: label, enabled: enabled),
               onChanged: enabled ? onChanged : null,
               items: [

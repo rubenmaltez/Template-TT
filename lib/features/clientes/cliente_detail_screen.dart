@@ -8,6 +8,7 @@ import '../../data/providers/modulos_provider.dart';
 import '../../data/repositories/clientes_repo.dart';
 import '../../data/services/external_actions.dart';
 import '../../data/services/visitas_service.dart';
+import '../../data/utils/errores.dart';
 import '../../data/utils/formatters.dart';
 import '../../powersync/db.dart' as ps;
 import '../shared/widgets/empty_state.dart';
@@ -123,7 +124,7 @@ class _ClienteDetailScreenState extends ConsumerState<ClienteDetailScreen> {
           : null,
       body: clienteAsync.when(
         loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) => Center(child: Text('Error: $e')),
+        error: (e, _) => Center(child: Text(mensajeErrorHumano(e))),
         data: (cliente) {
           if (cliente == null) {
             return const EmptyState(
@@ -518,7 +519,7 @@ class _SelectorCobradorSheetState extends State<_SelectorCobradorSheet> {
           if (snap.hasError) {
             return Padding(
               padding: const EdgeInsets.all(24),
-              child: Text('Error: ${snap.error}'),
+              child: Text(mensajeErrorHumano(snap.error!)),
             );
           }
           final rows = snap.data!;
@@ -629,7 +630,7 @@ class _ContratosSectionState extends State<_ContratosSection> {
           if (snap.hasError) {
             return Card(child: Padding(
               padding: const EdgeInsets.all(16),
-              child: Text('Error: ${snap.error}'),
+              child: Text(mensajeErrorHumano(snap.error!)),
             ));
           }
           final rows = snap.data!;
@@ -866,7 +867,7 @@ class _EquiposInstaladosSectionState extends State<_EquiposInstaladosSection> {
             if (snap.hasError) {
               return Padding(
                 padding: const EdgeInsets.all(16),
-                child: Text('Error: ${snap.error}'),
+                child: Text(mensajeErrorHumano(snap.error!)),
               );
             }
             final rows = snap.data!;
@@ -951,7 +952,7 @@ class _RegistrarVisitaDialogState extends State<_RegistrarVisitaDialog> {
         mainAxisSize: MainAxisSize.min,
         children: [
           DropdownButtonFormField<VisitaResultado>(
-            value: _resultado,
+            initialValue: _resultado,
             decoration: const InputDecoration(
               labelText: 'Resultado',
               border: OutlineInputBorder(),
@@ -1041,7 +1042,7 @@ class _VisitasSectionState extends ConsumerState<_VisitasSection> {
             if (snap.hasError) {
               return Padding(
                 padding: const EdgeInsets.all(16),
-                child: Text('Error: ${snap.error}'),
+                child: Text(mensajeErrorHumano(snap.error!)),
               );
             }
             final visitas = snap.data!;

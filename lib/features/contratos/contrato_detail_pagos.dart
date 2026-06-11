@@ -61,7 +61,7 @@ class _PagosSectionState extends ConsumerState<_PagosSection> {
             padding: EdgeInsets.symmetric(vertical: 24),
             child: Center(child: CircularProgressIndicator()),
           ),
-          error: (e, _) => Center(child: Text('Error: $e')),
+          error: (e, _) => Center(child: Text(mensajeErrorHumano(e))),
           data: (rows) {
             if (rows.isEmpty) {
               return Padding(
