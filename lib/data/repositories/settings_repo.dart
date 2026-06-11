@@ -177,8 +177,14 @@ class AppSettings {
   // Cuotas: permisos del admin.
   bool get cuotasManuales =>
       settingValue<bool>(_map, 'cuotas.manuales', false);
-  bool get cuotasEditarMonto =>
-      settingValue<bool>(_map, 'cuotas.editar_monto', false);
+
+  // Ajustes de cuota (Sprint 2, 0115): habilitación + topes super-only.
+  bool get ajustesHabilitados =>
+      settingValue<bool>(_map, 'cobranza.ajustes_habilitados', false);
+  double get ajusteMaxPorcentaje =>
+      settingValue<num>(_map, 'cobranza.ajuste_max_porcentaje', 50).toDouble();
+  double get ajusteMaxMonto =>
+      settingValue<num>(_map, 'cobranza.ajuste_max_monto', 0).toDouble();
 
   // Permisos del cobrador (toggles en Settings → Cobranza).
   bool get cobradorEditaFecha =>

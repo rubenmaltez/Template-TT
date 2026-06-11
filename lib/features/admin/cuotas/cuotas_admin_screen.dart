@@ -127,7 +127,6 @@ class _CuotasAdminScreenState extends ConsumerState<CuotasAdminScreen> {
       });
     }
     final cuotasManuales = settings.cuotasManuales;
-    final cuotasEditarMonto = settings.cuotasEditarMonto;
 
     // El chip "Parcial" se muestra si el tenant permite pago parcial O si ya
     // existen cuotas parciales (históricas). Si queda oculto y estaba
@@ -226,7 +225,6 @@ class _CuotasAdminScreenState extends ConsumerState<CuotasAdminScreen> {
                       return _CuotaCard(
                         row: rows[i],
                         diasGracia: diasGracia,
-                        editarMontoHabilitado: cuotasEditarMonto,
                       );
                     },
                   );
@@ -712,91 +710,20 @@ class _NuevaCuotaManualDialogState extends State<_NuevaCuotaManualDialog> {
 }
 
 // ---------------------------------------------------------------------------
-// Dialog: editar monto de cuota
-// ---------------------------------------------------------------------------
-
-class _EditarMontoCuotaDialog extends StatefulWidget {
-  const _EditarMontoCuotaDialog({required this.montoActual});
-  final double montoActual;
-
-  @override
-  State<_EditarMontoCuotaDialog> createState() => _EditarMontoCuotaDialogState();
-}
-
-class _EditarMontoCuotaDialogState extends State<_EditarMontoCuotaDialog> {
-  late final TextEditingController _ctrl;
-
-  @override
-  void initState() {
-    super.initState();
-    // Mostrar sin decimales si es entero, con 2 decimales si no.
-    final txt = widget.montoActual == widget.montoActual.roundToDouble()
-        ? widget.montoActual.toInt().toString()
-        : widget.montoActual.toStringAsFixed(2);
-    _ctrl = TextEditingController(text: txt);
-  }
-
-  @override
-  void dispose() {
-    _ctrl.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return AlertDialog(
-      title: const Text('Editar monto'),
-      content: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text('Monto actual: ${Fmt.cordobas(widget.montoActual)}'),
-          const SizedBox(height: 16),
-          TextField(
-            controller: _ctrl,
-            autofocus: true,
-            keyboardType: const TextInputType.numberWithOptions(decimal: true),
-            inputFormatters: [
-              FilteringTextInputFormatter.allow(RegExp(r'[\d.]')),
-            ],
-            decoration: const InputDecoration(
-              labelText: 'Nuevo monto (C\$) *',
-              prefixText: 'C\$ ',
-            ),
-          ),
-        ],
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(context),
-          child: const Text('Cancelar'),
-        ),
-        FilledButton(
-          onPressed: () {
-            final v = double.tryParse(_ctrl.text);
-            if (v == null || v <= 0) return;
-            Navigator.pop(context, v);
-          },
-          child: const Text('Guardar'),
-        ),
-      ],
-    );
-  }
-}
-
-// ---------------------------------------------------------------------------
 // Card de cuota individual
 // ---------------------------------------------------------------------------
+// "Editar monto" se RETIRÓ (Sprint 2, audit 2026-06-11 M1: mutaba
+// cuotas.monto sin recalcular estado ni registrar motivo — ni cliente ni
+// server). La variación legítima de una cuota es un AJUSTE (cargos_extra,
+// origen='ajuste') desde el detalle del contrato.
 
 class _CuotaCard extends ConsumerWidget {
   const _CuotaCard({
     required this.row,
     required this.diasGracia,
-    required this.editarMontoHabilitado,
   });
   final Map<String, dynamic> row;
   final int diasGracia;
-  final bool editarMontoHabilitado;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -946,16 +873,6 @@ class _CuotaCard extends ConsumerWidget {
         child: ListView(
           shrinkWrap: true,
           children: [
-            if (editarMontoHabilitado)
-              ListTile(
-                leading: const Icon(Icons.edit),
-                title: const Text('Editar monto'),
-                subtitle: const Text('Modificar el monto de la cuota'),
-                onTap: () async {
-                  Navigator.pop(context);
-                  await _editarMonto(context, ref);
-                },
-              ),
             ListTile(
               leading: const Icon(Icons.block),
               title: const Text('Anular cuota'),
@@ -969,43 +886,6 @@ class _CuotaCard extends ConsumerWidget {
         ),
       ),
     );
-  }
-
-  Future<void> _editarMonto(BuildContext context, WidgetRef ref) async {
-    // No editar el monto de cuotas del tenant mientras se impersona (M3).
-    if (bloqueadoPorImpersonacion(context, ref)) return;
-    final montoActual = (row['monto'] as num).toDouble();
-    final nuevoMonto = await showDialog<double?>(
-      context: context,
-      builder: (_) => _EditarMontoCuotaDialog(montoActual: montoActual),
-    );
-    if (nuevoMonto == null || nuevoMonto == montoActual || !context.mounted) {
-      return;
-    }
-
-    try {
-      // Hora REAL del dispositivo (UTC) para el change log — offline-first.
-      final ocurridoEn = DateTime.now().toUtc().toIso8601String();
-      await ps.db.execute(
-        'UPDATE cuotas SET monto = ?, ocurrido_en = ? WHERE id = ?',
-        [nuevoMonto, ocurridoEn, row['id']],
-      );
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              'Monto actualizado: ${Fmt.cordobas(montoActual)} -> ${Fmt.cordobas(nuevoMonto)}',
-            ),
-          ),
-        );
-      }
-    } catch (e) {
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error: $e')),
-        );
-      }
-    }
   }
 
   Future<void> _anular(BuildContext context, WidgetRef ref) async {

@@ -115,6 +115,10 @@ class SettingsAdminScreen extends ConsumerWidget {
 // para que el catch-all de "Otros" lo respete (no re-mostrar orphans).
 const _hidden = {
   'empresa.logo_path',
+  // "Editar monto" RETIRADO (Sprint 2, audit 2026-06-11 M1): mutaba
+  // cuotas.monto sin recalcular estado ni motivo. Reemplazado por los
+  // AJUSTES (cargos_extra origen='ajuste'). El seed histórico se preserva.
+  'cuotas.editar_monto',
   // Legacy duplicados — la app ya usa los metodo_* de 0040.
   'pagos.transferencia_habilitada',
   'pagos.tarjeta_habilitada',
@@ -184,6 +188,11 @@ const _superAdminOnly = {
   'cobranza.descuento_max_porcentaje',
   // Reconexión: ídem, super_admin-only por tenant (0086).
   'cobranza.cargo_reconexion_habilitado',
+  // Ajustes de cuota (Sprint 2, 0115): habilitación + topes, super-only
+  // (enforced server-side por trg_cargos_ajuste_guard).
+  'cobranza.ajustes_habilitados',
+  'cobranza.ajuste_max_porcentaje',
+  'cobranza.ajuste_max_monto',
   'cobranza.monto_reconexion',
 };
 
@@ -1101,7 +1110,9 @@ class _SettingTileState extends State<_SettingTile> {
       'recibo.mostrar_empresa': 'Mostrar datos de empresa',
       'recibo.mostrar_cedula': 'Mostrar cédula del cliente',
       'cuotas.manuales': 'Cuotas manuales',
-      'cuotas.editar_monto': 'Editar monto de cuota',
+      'cobranza.ajustes_habilitados': 'Ajustes de cuota (admin)',
+      'cobranza.ajuste_max_porcentaje': 'Tope % de un ajuste (0=sin tope)',
+      'cobranza.ajuste_max_monto': 'Tope C\$ de un ajuste (0=sin tope)',
       'cuotas.descuento_pronto_pago': 'Descuento pronto pago (valor)',
       'cuotas.descuento_pronto_pago_tipo': 'Tipo de descuento pronto pago',
     };
