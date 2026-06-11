@@ -46,18 +46,42 @@ void main() {
       expect(logo.size, ReciboTextoSize.grande);
     });
 
-    test('completa los bloques faltantes al final, sin perder ninguno', () {
+    test('completa los faltantes sin perder ninguno, agrupando por zona '
+        '(header → body → footer) y preservando el orden DENTRO de la zona',
+        () {
+      // 'totales', 'mora' y 'cliente' son de body, pedidos en orden distinto
+      // al del catálogo; 'logo' es de header pero viene ÚLTIMO en el raw.
       final raw = [
         {'id': 'totales', 'visible': true, 'size': 'grande'},
+        {'id': 'mora', 'visible': true, 'size': 'normal'},
+        {'id': 'cliente', 'visible': true, 'size': 'normal'},
         {'id': 'logo', 'visible': true, 'size': 'normal'},
       ];
       final l = ReciboLayout.fromRaw(raw);
-      // Los 2 pedidos van primero, en ese orden.
-      expect(l[0].id, 'totales');
-      expect(l[1].id, 'logo');
+      final ids = l.map((b) => b.id).toList();
+
       // Ninguno del catálogo se pierde.
-      expect(l.map((b) => b.id).toSet(), catalogoIds.toSet());
+      expect(ids.toSet(), catalogoIds.toSet());
       expect(l.length, catalogoIds.length);
+
+      // Desde 954b624 el saneo devuelve el orden agrupado por zona EFECTIVA
+      // (el que iteran los 3 renderers y el editor): 'logo' (header) sale
+      // antes que 'totales' (body) aunque en el raw estaba después, y el
+      // footer ('pie') cierra el recibo.
+      expect(ids.indexOf('logo'), lessThan(ids.indexOf('totales')));
+      expect(ids.last, 'pie');
+
+      // DENTRO de body se preserva el orden pedido (totales → mora →
+      // cliente, aunque el catálogo diga otro) y los faltantes del catálogo
+      // se completan DESPUÉS de los pedidos de su zona.
+      expect(ids.indexOf('totales'), lessThan(ids.indexOf('mora')));
+      expect(ids.indexOf('mora'), lessThan(ids.indexOf('cliente')));
+      expect(ids.indexOf('cliente'), lessThan(ids.indexOf('meta')),
+          reason: 'los faltantes van después de los pedidos de su zona');
+
+      // La config pedida se conserva tras el saneo.
+      expect(l.firstWhere((b) => b.id == 'totales').size,
+          ReciboTextoSize.grande);
     });
   });
 
