@@ -380,7 +380,14 @@ class _HistorialCuotaWidgetState extends ConsumerState<HistorialCuotaWidget> {
     //
     // La subquery `IN (SELECT ...)` corre sobre SQLite local (válida acá; la
     // restricción de "sin subqueries" aplica a las SYNC RULES, no a las
-    // queries de `ps.db.watch`). Orden ASC por ocurrido_en (device time, con
+    // queries de `ps.db.watch`). M22 (audit 2026-06-11): pagos y cargos_extra
+    // se matchean por el `\$.cuota_id` del SNAPSHOT (regla del modelo: las
+    // filas borradas físico siguen apareciendo en el historial — un cargo
+    // borrado por reversión de ajuste o por el admin conserva su rastro).
+    // Excepción documentada: recibos no llevan cuota_id en el snapshot, así
+    // que van vía `\$.pago_id IN (SELECT pagos)`; un pago NO es borrable
+    // físico por el tenant (solo super), riesgo teórico aceptado.
+    // Orden ASC por ocurrido_en (device time, con
     // fallback a created_at) = cronológico real del cobro hacia adelante. Es
     // CLAVE que coincida con el campo que usa la ventana de agrupación de
     // _construirEventos (ocurrido_en), sino el pago y el update de su cuota se
@@ -394,15 +401,15 @@ class _HistorialCuotaWidgetState extends ConsumerState<HistorialCuotaWidget> {
         FROM audit_log a
    LEFT JOIN cobradores c ON c.id = a.user_id
        WHERE (a.tabla = 'cuotas' AND a.registro_id = ?)
-          OR (a.tabla = 'pagos' AND a.registro_id IN (
-                SELECT id FROM pagos WHERE cuota_id = ?
-              ))
+          OR (a.tabla = 'pagos' AND json_extract(
+                COALESCE(a.valor_nuevo, a.valor_anterior), '\$.cuota_id'
+              ) = ?)
           OR (a.tabla = 'recibos' AND json_extract(
                 COALESCE(a.valor_nuevo, a.valor_anterior), '\$.pago_id'
               ) IN (SELECT id FROM pagos WHERE cuota_id = ?))
-          OR (a.tabla = 'cargos_extra' AND a.registro_id IN (
-                SELECT id FROM cargos_extra WHERE cuota_id = ?
-              ))
+          OR (a.tabla = 'cargos_extra' AND json_extract(
+                COALESCE(a.valor_nuevo, a.valor_anterior), '\$.cuota_id'
+              ) = ?)
        ORDER BY COALESCE(a.ocurrido_en, a.created_at) ASC,
                 CASE a.tabla
                   WHEN 'pagos' THEN 0 WHEN 'recibos' THEN 1 ELSE 2
@@ -660,10 +667,12 @@ class _HistorialSerialWidgetState extends ConsumerState<HistorialSerialWidget> {
         FROM audit_log a
    LEFT JOIN cobradores c ON c.id = a.user_id
        WHERE (a.tabla = 'inv_seriales' AND a.registro_id = ?)
-          OR (a.tabla = 'inv_movimientos' AND a.registro_id IN (
-                SELECT id FROM inv_movimientos WHERE serial_id = ?))
-          OR (a.tabla = 'ticket_materiales' AND a.registro_id IN (
-                SELECT id FROM ticket_materiales WHERE serial_id = ?))
+          OR (a.tabla = 'inv_movimientos' AND json_extract(
+                COALESCE(a.valor_nuevo, a.valor_anterior), '\$.serial_id'
+              ) = ?)
+          OR (a.tabla = 'ticket_materiales' AND json_extract(
+                COALESCE(a.valor_nuevo, a.valor_anterior), '\$.serial_id'
+              ) = ?)
        ORDER BY COALESCE(a.ocurrido_en, a.created_at) DESC
       ''',
       parameters: [widget.serialId, widget.serialId, widget.serialId],
