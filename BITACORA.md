@@ -74,9 +74,18 @@ diseño "todo descuento es cargos_extra, nunca mutar cuotas.monto" + retirar
 - INV13 en `invariantes_dinero.sql` · tests: 5 de ajustes + 3 de reversión
   + 2 de tope (harness PowerSync real).
 
-**Pendiente:** audit Fase 4 → deploy 0115 + sync rules → testing Rubén →
-merge. Limitación documentada: el descuento MANUAL del flujo de cobro
-(pre-pago, sin pago_id) no se auto-revierte al anular — backlog.
+**Audit Fase 4 (Code+QA+Regresión): 3 aprobados**; fixes aplicados (seed
+chain 0113 · guard sin rebote de cascadas · DELETE de cargos para
+admin_cobranza · INV14 anti-fantasma · UX quitar en pagadas).
+**Pendiente:** deploy 0115 + sync rules → testing Rubén → merge.
+**Backlog nuevo (QA/Regresión, no bloquea):** descuento MANUAL del cobro
+(sin pago_id) no se auto-revierte al anular · settings de ajustes caen en
+"Otros" del tab Avanzado (agruparlos) · "Exception:" crudo al editar pago
+(M15) · guard server sin validación de saldo (INV4/14 lo detectan) ·
+'origen' no seleccionable en el catálogo del viewer de audit · DECISIÓN
+Rubén: cuota con ajuste no recibe además pronto-pago (anti doble-descuento,
+default actual) · el cobrador ve bajar el saldo sin el motivo (capacitación
+o mostrar el ajuste en su vista).
 
 ---
 
