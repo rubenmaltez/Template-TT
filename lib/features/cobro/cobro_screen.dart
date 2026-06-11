@@ -17,6 +17,7 @@ import '../../data/repositories/pagos_repo.dart';
 import '../../data/repositories/settings_repo.dart';
 import '../../data/utils/cobro_calculo.dart';
 import '../../data/utils/formatters.dart';
+import '../../data/utils/montos.dart';
 import '../../powersync/db.dart' as ps;
 import '../shared/widgets/aplicar_cargo_dialog.dart';
 import '../shared/widgets/empty_state.dart';
@@ -208,39 +209,77 @@ class _CobroScreenState extends ConsumerState<CobroScreen> {
     super.dispose();
   }
 
-  Future<void> _cancelar(BuildContext context) async {
-    // Si hay datos significativos cargados, confirmar antes de descartar.
-    final hayDatos = _montoCtrl.text.trim().isNotEmpty &&
-        double.tryParse(_montoCtrl.text) != null &&
-        double.parse(_montoCtrl.text) > 0;
+  /// Fix audit 2026-06-11 #3: tras aplicar un cargo/descuento MANUAL (que el
+  /// dialog inserta en DB al toque), el total se recalculaba SOLO desde DB y
+  /// PISABA el ajuste de los `_cargosAuto` aún no insertados → se cobraba de
+  /// menos (la reconexión se perdía del total pero se insertaba igual al
+  /// confirmar → cuota "completa" que quedaba parcial), de más (pronto pago
+  /// perdido → sobrepago) o se DUPLICABA la reconexión (el dedupe solo había
+  /// corrido al cargar la pantalla). Acá: total fresco de DB + re-dedupe de
+  /// los auto contra lo que el manual insertó + re-aplicación de los vigentes.
+  Future<void> _refrescarTotalConCargosAuto() async {
+    final cuota = _cuotas.first;
+    var nuevo = await ref.read(cuotasRepoProvider).totalACobrar(cuota.id);
+    final invalidados = <_CargoAutoPreview>[];
+    for (final c in _cargosAuto) {
+      final dupe = await ps.db.getAll(
+        c.tipo == 'reconexion'
+            ? "SELECT id FROM cargos_extra WHERE cuota_id = ? AND tipo = 'reconexion'"
+            : "SELECT id FROM cargos_extra WHERE cuota_id = ? AND tipo IN ('descuento_monto','descuento_porcentaje')",
+        [cuota.id],
+      );
+      if (dupe.isNotEmpty) {
+        invalidados.add(c); // el manual ya cubrió este tipo: no duplicar
+        continue;
+      }
+      nuevo = c.tipo == 'reconexion'
+          ? nuevo + c.monto
+          : (nuevo - c.monto).clamp(0.0, double.infinity);
+    }
+    _cargosAuto.removeWhere(invalidados.contains);
+    if (!mounted) return;
+    setState(() {
+      _totalesACobrar[0] = nuevo;
+      final s = (nuevo - cuota.montoPagado).clamp(0.0, double.infinity);
+      _montoCtrl.text = s.toStringAsFixed(2);
+    });
+  }
+
+  /// Confirma el descarte si hay datos cargados. Devuelve true si se puede
+  /// salir. Compartido por el botón Cancelar y el back del sistema (PopScope).
+  Future<bool> _confirmarDescarte() async {
+    final v = parseMonto(_montoCtrl.text);
+    final hayDatos = v != null && v > 0;
     final tieneFoto = _fotoPath != null;
     final tieneRef = _referenciaCtrl.text.trim().isNotEmpty;
-    if (hayDatos || tieneFoto || tieneRef) {
-      final descartar = await showDialog<bool>(
-        context: context,
-        builder: (ctx) => AlertDialog(
-          title: const Text('¿Descartar cobro?'),
-          content: const Text('Vas a perder el monto/foto/referencia '
-              'cargados. Esta cuota queda sin cobrar.'),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('Seguir editando'),
+    if (!hayDatos && !tieneFoto && !tieneRef) return true;
+    final descartar = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('¿Descartar cobro?'),
+        content: const Text('Vas a perder el monto/foto/referencia '
+            'cargados. Esta cuota queda sin cobrar.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Seguir editando'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: FilledButton.styleFrom(
+              backgroundColor: Theme.of(ctx).colorScheme.error,
+              foregroundColor: Theme.of(ctx).colorScheme.onError,
             ),
-            FilledButton(
-              onPressed: () => Navigator.pop(ctx, true),
-              style: FilledButton.styleFrom(
-                backgroundColor: Theme.of(ctx).colorScheme.error,
-                foregroundColor: Theme.of(ctx).colorScheme.onError,
-              ),
-              child: const Text('Descartar'),
-            ),
-          ],
-        ),
-      );
-      if (descartar != true) return;
-    }
-    if (context.mounted) context.pop();
+            child: const Text('Descartar'),
+          ),
+        ],
+      ),
+    );
+    return descartar == true;
+  }
+
+  Future<void> _cancelar(BuildContext context) async {
+    if (await _confirmarDescarte() && context.mounted) context.pop();
   }
 
   Future<void> _confirmar() async {
@@ -282,7 +321,7 @@ class _CobroScreenState extends ConsumerState<CobroScreen> {
       final saldoCuota = (_totalesACobrar.first - _cuotas.first.montoPagado)
           .clamp(0.0, double.infinity);
       final entregadoCordobas =
-          CobroCalculo.aCordobas(double.tryParse(_montoCtrl.text) ?? 0, tasa);
+          CobroCalculo.aCordobas(parseMonto(_montoCtrl.text) ?? 0, tasa);
       if (entregadoCordobas < saldoCuota - 0.01) {
         setState(() => _error =
             'No se permite pago parcial: cobrá el total de ${Fmt.cordobas(saldoCuota)}.');
@@ -299,7 +338,7 @@ class _CobroScreenState extends ConsumerState<CobroScreen> {
             .clamp(0.0, double.infinity);
       }
       final entregadoCordobas =
-          CobroCalculo.aCordobas(double.tryParse(_montoCtrl.text) ?? 0, tasa);
+          CobroCalculo.aCordobas(parseMonto(_montoCtrl.text) ?? 0, tasa);
       if (entregadoCordobas < totalSaldo - 0.01) {
         setState(() => _error =
             'En cobro múltiple cada cuota se paga completa: el monto no puede '
@@ -331,7 +370,8 @@ class _CobroScreenState extends ConsumerState<CobroScreen> {
         final dist = CobroCalculo.distribuirMulti(
           saldosCordobas: saldos,
           entregadoCordobas:
-              CobroCalculo.aCordobas(double.parse(_montoCtrl.text), tasa),
+              // El validator del form ya garantizó que parsea (M8: con coma).
+              CobroCalculo.aCordobas(parseMonto(_montoCtrl.text)!, tasa),
           tasa: tasa,
         );
 
@@ -376,7 +416,7 @@ class _CobroScreenState extends ConsumerState<CobroScreen> {
         // si el cliente pagó en USD. monto_original preserva lo entregado
         // en la moneda original (US$30 si pagó 30 dólares), no el aplicado.
         // La matemática vive en CobroCalculo (puro + testeado).
-        final entregado = double.parse(_montoCtrl.text);
+        final entregado = parseMonto(_montoCtrl.text)!;
         final saldoCuota = (_totalesACobrar.first - _cuotas.first.montoPagado)
             .clamp(0.0, double.infinity);
         final dist = CobroCalculo.calcular(
@@ -503,11 +543,21 @@ class _CobroScreenState extends ConsumerState<CobroScreen> {
     // y el monto persistido coinciden — sin divergencia.
     final tasaEfectiva =
         _moneda == Moneda.usd ? (_tasaSnapshot ?? settings.tasaUsd) : 1.0;
-    final montoEnNio = (double.tryParse(_montoCtrl.text) ?? 0) * tasaEfectiva;
+    final montoEnNio = (parseMonto(_montoCtrl.text) ?? 0) * tasaEfectiva;
 
     final esCompleto = montoEnNio >= saldo - 0.01;
 
-    return Scaffold(
+    // PopScope (fix audit #6): el back del sistema (gesto Android / flecha)
+    // pasaba de largo y descartaba monto/foto/referencia sin confirmar —
+    // solo el botón Cancelar preguntaba. Misma confirmación para ambos.
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, _) async {
+        if (didPop || _enviando) return;
+        final salir = await _confirmarDescarte();
+        if (salir && mounted) context.pop();
+      },
+      child: Scaffold(
       appBar: AppBar(
         title: Text(
           _esMultiCuota
@@ -582,17 +632,8 @@ class _CobroScreenState extends ConsumerState<CobroScreen> {
                     montoCuota: cuota.monto,
                   ),
                 );
-                if (aplicado == true) {
-                  final repo = ref.read(cuotasRepoProvider);
-                  final nuevo = await repo.totalACobrar(_cuotas.first.id);
-                  if (mounted) {
-                    setState(() {
-                      _totalesACobrar[0] = nuevo;
-                      final s = (nuevo - cuota.montoPagado)
-                          .clamp(0.0, double.infinity);
-                      _montoCtrl.text = s.toStringAsFixed(2);
-                    });
-                  }
+                if (aplicado == true && mounted) {
+                  await _refrescarTotalConCargosAuto();
                 }
               },
             ),
@@ -645,7 +686,7 @@ class _CobroScreenState extends ConsumerState<CobroScreen> {
             controller: _montoCtrl,
             keyboardType: const TextInputType.numberWithOptions(decimal: true),
             inputFormatters: [
-              FilteringTextInputFormatter.allow(RegExp(r'[0-9.]')),
+              montoInputFormatter, // dígitos + coma/punto (M8)
             ],
             decoration: InputDecoration(
               prefixText: _moneda.symbol + ' ',
@@ -657,7 +698,7 @@ class _CobroScreenState extends ConsumerState<CobroScreen> {
             onChanged: (_) => setState(() {}),
             validator: (v) {
               if (v == null || v.isEmpty) return 'Ingresá un monto';
-              final n = double.tryParse(v);
+              final n = parseMonto(v);
               if (n == null || n <= 0) return 'Monto inválido';
               return null;
             },
@@ -798,6 +839,7 @@ class _CobroScreenState extends ConsumerState<CobroScreen> {
           ),
         ],
         ),
+      ),
       ),
     );
   }
