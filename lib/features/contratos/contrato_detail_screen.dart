@@ -201,8 +201,10 @@ class _ContratoDetailScreenState extends ConsumerState<ContratoDetailScreen> {
           '''
           INSERT INTO cargos_extra (
             id, tenant_id, cuota_id, cobrador_id, tipo, monto, porcentaje,
-            descripcion, aplicado_por, aplicado_en, client_local_id, ocurrido_en
-          ) VALUES (?, ?, ?, ?, 'descuento_monto', ?, NULL, ?, ?, ?, ?, ?)
+            descripcion, aplicado_por, aplicado_en, client_local_id, ocurrido_en,
+            origen
+          ) VALUES (?, ?, ?, ?, 'descuento_monto', ?, NULL, ?, ?, ?, ?, ?,
+            'liquidacion')
           ''',
           [
             localId, tenantId, p['id'], cobradorCuota, saldo,

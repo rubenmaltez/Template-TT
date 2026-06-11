@@ -158,8 +158,9 @@ class _AplicarCargoDialogState extends ConsumerState<AplicarCargoDialog> {
           '''
           INSERT INTO cargos_extra (
             id, tenant_id, cuota_id, cobrador_id, tipo, monto, porcentaje,
-            descripcion, aplicado_por, aplicado_en, client_local_id, ocurrido_en
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            descripcion, aplicado_por, aplicado_en, client_local_id, ocurrido_en,
+            origen
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'cobro')
           ''',
           [
             const Uuid().v4(),

@@ -881,6 +881,125 @@ void main() {
       expect((await getReciboDePago(res2.pagoId))['correlativo'], 3);
     });
   });
+
+  // ─────────────────────────────────────────────────────────────────────
+  // GRUPO — reversión de descuentos al anular (audit 2026-06-11, M3 + 0115)
+  // ─────────────────────────────────────────────────────────────────────
+  group('anularPago revierte los descuentos del cobro (mirror de 0115)', () {
+    test('descuento pronto-pago del cobro anulado se BORRA y el total de la '
+        'cuota se restaura', () async {
+      final contratoId = await seedContrato();
+      final cuotaId = await seedCuota(contratoId: contratoId, monto: 500);
+
+      // Cobro con descuento automático de 100 → aplica 400 y queda pagada.
+      final res = await repo.registrarCobro(
+        tenantId: tenantId,
+        cobradorId: cobradorId,
+        prefijoRecibo: prefijo,
+        cuotaId: cuotaId,
+        montoCordobas: 400,
+        moneda: Moneda.nio,
+        montoOriginal: 400,
+        tasaConversion: 1,
+        metodo: MetodoPago.efectivo,
+        cargosAuto: [
+          CargoAutoInfo(
+            cuotaId: cuotaId,
+            tipo: 'descuento_monto',
+            monto: 100,
+            descripcion: 'Descuento pronto pago',
+          ),
+        ],
+      );
+      var cuota = await getCuota(cuotaId);
+      expect(cuota['estado'], 'pagada');
+      expect(num2(cuota['cargos_neto']), -100);
+
+      // El cargo quedó ligado al pago (0115).
+      final cargos = await db.getAll(
+          'SELECT origen, pago_id FROM cargos_extra WHERE cuota_id = ?',
+          [cuotaId]);
+      expect(cargos, hasLength(1));
+      expect(cargos.first['origen'], 'cobro');
+      expect(cargos.first['pago_id'], res.pagoId);
+
+      // Anular: el descuento se borra; total restaurado a 500 y pendiente.
+      await repo.anularPago(
+          pagoId: res.pagoId, anuladoPorId: cobradorId, motivo: 'error');
+      expect(
+          await db.getAll(
+              'SELECT id FROM cargos_extra WHERE cuota_id = ?', [cuotaId]),
+          isEmpty,
+          reason: 'el descuento nació con este cobro: anularlo lo revierte');
+      cuota = await getCuota(cuotaId);
+      expect(cuota['estado'], 'pendiente');
+      expect(num2(cuota['monto_pagado']), 0);
+      expect(num2(cuota['cargos_neto']), 0);
+    });
+
+    test('la RECONEXIÓN del cobro anulado se PRESERVA (se sigue debiendo)',
+        () async {
+      final contratoId = await seedContrato();
+      final cuotaId = await seedCuota(contratoId: contratoId, monto: 500);
+
+      final res = await repo.registrarCobro(
+        tenantId: tenantId,
+        cobradorId: cobradorId,
+        prefijoRecibo: prefijo,
+        cuotaId: cuotaId,
+        montoCordobas: 600, // 500 + reconexión 100
+        moneda: Moneda.nio,
+        montoOriginal: 600,
+        tasaConversion: 1,
+        metodo: MetodoPago.efectivo,
+        cargosAuto: [
+          CargoAutoInfo(
+            cuotaId: cuotaId,
+            tipo: 'reconexion',
+            monto: 100,
+            descripcion: 'Cargo por reconexión',
+          ),
+        ],
+      );
+      expect((await getCuota(cuotaId))['estado'], 'pagada');
+
+      await repo.anularPago(
+          pagoId: res.pagoId, anuladoPorId: cobradorId, motivo: 'error');
+      final cargos = await db.getAll(
+          'SELECT tipo FROM cargos_extra WHERE cuota_id = ?', [cuotaId]);
+      expect(cargos, hasLength(1));
+      expect(cargos.first['tipo'], 'reconexion');
+      final cuota = await getCuota(cuotaId);
+      expect(num2(cuota['cargos_neto']), 100); // la deuda de reconexión queda
+      expect(cuota['estado'], 'pendiente');
+    });
+
+    test('descuento histórico SIN pago_id no se toca al anular', () async {
+      final contratoId = await seedContrato();
+      final cuotaId = await seedCuota(contratoId: contratoId, monto: 500);
+      // Cargo legacy (pre-0115): sin pago_id.
+      await seedCargo(cuotaId: cuotaId, tipo: 'descuento_monto', monto: 50);
+
+      final res = await repo.registrarCobro(
+        tenantId: tenantId,
+        cobradorId: cobradorId,
+        prefijoRecibo: prefijo,
+        cuotaId: cuotaId,
+        montoCordobas: 450,
+        moneda: Moneda.nio,
+        montoOriginal: 450,
+        tasaConversion: 1,
+        metodo: MetodoPago.efectivo,
+      );
+      await repo.anularPago(
+          pagoId: res.pagoId, anuladoPorId: cobradorId, motivo: 'error');
+      expect(
+          await db.getAll(
+              'SELECT id FROM cargos_extra WHERE cuota_id = ?', [cuotaId]),
+          hasLength(1),
+          reason: 'el cargo legacy no nació de este cobro: se preserva');
+    });
+  });
 }
 
 String _now() => DateTime.now().toUtc().toIso8601String();

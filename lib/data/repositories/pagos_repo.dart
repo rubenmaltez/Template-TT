@@ -119,14 +119,17 @@ class PagosRepo {
             INSERT INTO cargos_extra (
               id, tenant_id, cuota_id, cobrador_id, tipo, monto,
               porcentaje, descripcion, aplicado_por, aplicado_en, client_local_id,
-              ocurrido_en
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+              ocurrido_en, origen, pago_id
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'cobro', ?)
             ''',
             [
               _uuid.v4(), tenantId, cargo.cuotaId, cobradorId,
               cargo.tipo, cargo.monto, cargo.porcentaje,
               cargo.descripcion, cobradorId, now, _uuid.v4(),
               ocurridoEn,
+              // pago_id (0115): liga el cargo automático a SU cobro para que
+              // anularlo revierta los descuentos (M3) — trigger server + mirror.
+              pagoId,
             ],
           );
         }
@@ -305,6 +308,9 @@ class PagosRepo {
     }
     final hwmMulti = await CorrelativoStore.leer(cobradorId, prefijoRecibo);
     final correlativosEmitidos = <int>[];
+    // IDs de pago precomputados: los cargos automáticos se insertan ANTES
+    // del loop y necesitan ligarse al pago de SU cuota (pago_id, 0115/M3).
+    final pagoIds = [for (var i = 0; i < cuotaIds.length; i++) _uuid.v4()];
 
     await _dbOrGlobal.writeTransaction((tx) async {
       // Insertar cargos automáticos (reconexión / pronto pago) antes de
@@ -316,21 +322,22 @@ class PagosRepo {
             INSERT INTO cargos_extra (
               id, tenant_id, cuota_id, cobrador_id, tipo, monto,
               porcentaje, descripcion, aplicado_por, aplicado_en, client_local_id,
-              ocurrido_en
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+              ocurrido_en, origen, pago_id
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'cobro', ?)
             ''',
             [
               _uuid.v4(), tenantId, cargo.cuotaId, cobradorId,
               cargo.tipo, cargo.monto, cargo.porcentaje,
               cargo.descripcion, cobradorId, now, _uuid.v4(),
               ocurridoEn,
+              pagoIds[cuotaIds.indexOf(cargo.cuotaId)],
             ],
           );
         }
       }
 
       for (var i = 0; i < cuotaIds.length; i++) {
-        final pagoId = _uuid.v4();
+        final pagoId = pagoIds[i];
         final reciboId = _uuid.v4();
         primerPagoId ??= pagoId;
         reciboIds.add(reciboId);
@@ -477,8 +484,25 @@ class PagosRepo {
         [ocurridoEn, anuladoPorId, ocurridoEn, pagoId],
       );
 
+      // Mirror del trigger server trg_pagos_revertir_descuentos (0115, M3):
+      // los DESCUENTOS que ESTE cobro insertó (pronto pago / manual del
+      // flujo de cobro con pago_id) se borran — sin esto, la cuota quedaba
+      // con el total rebajado para siempre. La reconexión se preserva a
+      // propósito (se sigue debiendo). Cargos históricos (pago_id NULL)
+      // no se tocan.
+      await tx.execute(
+        '''
+        DELETE FROM cargos_extra
+         WHERE pago_id = ?
+           AND tipo IN ('descuento_monto', 'descuento_porcentaje')
+        ''',
+        [pagoId],
+      );
+
       // Reflejar localmente el recálculo del trigger server, considerando
-      // cargos_extra (descuentos restan, reconexión/otro suman).
+      // cargos_extra (descuentos restan, reconexión/otro suman). El delta se
+      // lee DESPUÉS del DELETE de arriba, así que cargos_neto también espeja
+      // la reversión.
       final cuotaRows = await tx.getAll(
         'SELECT monto, monto_pagado, estado FROM cuotas WHERE id = ?',
         [cuotaId],
@@ -497,8 +521,8 @@ class PagosRepo {
           deltaCargosExtra: delta,
         );
         await tx.execute(
-          'UPDATE cuotas SET monto_pagado = ?, estado = ?, ocurrido_en = ? WHERE id = ?',
-          [pagadoNuevo, nuevoEstado, ocurridoEn, cuotaId],
+          'UPDATE cuotas SET monto_pagado = ?, estado = ?, cargos_neto = ?, ocurrido_en = ? WHERE id = ?',
+          [pagadoNuevo, nuevoEstado, delta, ocurridoEn, cuotaId],
         );
       }
     });
