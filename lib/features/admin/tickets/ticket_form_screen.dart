@@ -8,6 +8,7 @@ import 'package:uuid/uuid.dart';
 import '../../../data/providers/cobrador_provider.dart';
 import '../../../data/utils/ticket_sla.dart';
 import '../../../powersync/db.dart' as ps;
+import '../../../data/utils/errores.dart';
 
 /// Crear un ticket. El correlativo se computa cliente-side (MAX+1 por tenant);
 /// el UNIQUE(tenant,correlativo) del server es la red dura. Al crear se registra
@@ -292,7 +293,7 @@ class _TicketFormScreenState extends ConsumerState<TicketFormScreen> {
     } catch (e) {
       if (mounted) {
         setState(() => _guardando = false);
-        _snack('Error: $e');
+        _snack(mensajeErrorHumano(e));
       }
     }
   }

@@ -85,7 +85,7 @@ class _TicketTiposScreenState extends ConsumerState<TicketTiposScreen> {
             categoria: 'tickets',
           );
     } catch (e) {
-      if (context.mounted) _snack(context, 'Error: $e');
+      if (context.mounted) _snack(context, mensajeErrorHumano(e));
     }
   }
 
@@ -120,7 +120,7 @@ class _TicketTiposScreenState extends ConsumerState<TicketTiposScreen> {
             categoria: 'tickets',
           );
     } catch (e) {
-      if (context.mounted) _snack(context, 'Error: $e');
+      if (context.mounted) _snack(context, mensajeErrorHumano(e));
     }
   }
 
@@ -203,7 +203,7 @@ class _TicketTiposScreenState extends ConsumerState<TicketTiposScreen> {
         );
       }
     } catch (e) {
-      _snack(context, 'Error: $e');
+      _snack(context, mensajeErrorHumano(e));
     }
   }
 
@@ -237,7 +237,7 @@ class _TicketTiposScreenState extends ConsumerState<TicketTiposScreen> {
     try {
       await ps.db.execute('DELETE FROM ticket_tipos WHERE id = ?', [id]);
     } catch (e) {
-      _snack(context, 'Error: $e');
+      _snack(context, mensajeErrorHumano(e));
     }
   }
 

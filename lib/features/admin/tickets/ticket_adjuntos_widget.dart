@@ -98,7 +98,7 @@ class _TicketAdjuntosWidgetState extends ConsumerState<TicketAdjuntosWidget> {
       });
       if (mounted) _snack(descripcion ?? 'Adjunto subido');
     } catch (e) {
-      if (mounted) _snack('Error al subir: $e');
+      if (mounted) _snack(mensajeErrorHumano(e, contexto: 'subir'));
     } finally {
       if (mounted) setState(() => _uploading = false);
     }
@@ -126,7 +126,7 @@ class _TicketAdjuntosWidgetState extends ConsumerState<TicketAdjuntosWidget> {
       await Supabase.instance.client.storage.from(_bucket).remove([path]);
       if (mounted) _snack('Adjunto eliminado');
     } catch (e) {
-      if (mounted) _snack('Error: $e');
+      if (mounted) _snack(mensajeErrorHumano(e));
     }
   }
 

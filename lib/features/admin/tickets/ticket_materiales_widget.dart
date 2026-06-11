@@ -5,6 +5,7 @@ import 'package:uuid/uuid.dart';
 import '../../../data/providers/cobrador_provider.dart';
 import '../../../data/providers/modulos_provider.dart';
 import '../../../powersync/db.dart' as ps;
+import '../../../data/utils/errores.dart';
 
 /// Cantidad sin decimales superfluos (entero si es redondo). Espeja `_fmtCant`
 /// de inventario_screen (privado allá).
@@ -193,7 +194,7 @@ class _TicketMaterialesWidgetState
       });
       _snack('Material registrado. El stock se descuenta al sincronizar.');
     } catch (e) {
-      _snack('Error: $e');
+      _snack(mensajeErrorHumano(e));
     }
   }
 

@@ -99,7 +99,7 @@ class _FotoGalleryWidgetState extends ConsumerState<FotoGalleryWidget> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error al subir: $e')),
+          SnackBar(content: Text(mensajeErrorHumano(e, contexto: 'subir'))),
         );
       }
     } finally {
@@ -140,7 +140,7 @@ class _FotoGalleryWidgetState extends ConsumerState<FotoGalleryWidget> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error al eliminar: $e')),
+          SnackBar(content: Text(mensajeErrorHumano(e, contexto: 'eliminar'))),
         );
       }
     }

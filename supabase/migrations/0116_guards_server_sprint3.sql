@@ -121,9 +121,13 @@ security definer
 set search_path = public, pg_temp
 as $$
 begin
+  -- `id <> new.id` (QA Fase 4): sin esto, el RE-UPSERT de un retry de
+  -- PowerSync encontraba SU PROPIA fila como "conflicto" y renumeraba el
+  -- ticket en cada reintento (EXCLUDED hereda el NEW post-trigger).
   if exists (select 1 from public.tickets
               where tenant_id = new.tenant_id
-                and correlativo = new.correlativo) then
+                and correlativo = new.correlativo
+                and id <> new.id) then
     select coalesce(max(correlativo), 0) + 1
       into new.correlativo
       from public.tickets
@@ -144,6 +148,8 @@ create trigger trg_tickets_correlativo
 --    inv_movimientos. El INSERT directo es legítimo (impersonación).
 -- =========================================================================
 drop policy if exists "super_admin_all" on public.audit_log;
+drop policy if exists "super_admin_select" on public.audit_log;
+drop policy if exists "super_admin_insert" on public.audit_log;
 create policy "super_admin_select" on public.audit_log
   for select using (public.is_super_admin());
 create policy "super_admin_insert" on public.audit_log

@@ -5,6 +5,7 @@ import 'package:uuid/uuid.dart';
 import '../../../data/providers/cobrador_provider.dart';
 import '../../../data/providers/modulos_provider.dart';
 import '../../../powersync/db.dart' as ps;
+import '../../../data/utils/errores.dart';
 
 /// Cuando se CANCELA un contrato o se DESACTIVA un cliente que tiene equipos de
 /// inventario INSTALADOS, ofrece (no bloqueante) devolverlos a stock o
@@ -77,7 +78,7 @@ Future<void> ofrecerGestionEquiposEnBaja(
           tipo: 'devolucion', nuevoEstado: 'en_stock', ubicacion: destino.id);
       _snack(context, 'Equipos devueltos a ${destino.nombre}');
     } catch (e) {
-      _snack(context, 'Error: $e');
+      _snack(context, mensajeErrorHumano(e));
     }
   } else if (accion == 'retirar') {
     try {
@@ -85,7 +86,7 @@ Future<void> ofrecerGestionEquiposEnBaja(
           tipo: 'baja', nuevoEstado: 'retirado', ubicacion: null);
       _snack(context, 'Equipos retirados');
     } catch (e) {
-      _snack(context, 'Error: $e');
+      _snack(context, mensajeErrorHumano(e));
     }
   }
 }

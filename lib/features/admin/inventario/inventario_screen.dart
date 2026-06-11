@@ -180,7 +180,7 @@ class _ProductosTabState extends ConsumerState<_ProductosTab> {
         );
       }
     } catch (e) {
-      _snack(context, 'Error: $e');
+      _snack(context, mensajeErrorHumano(e));
     }
   }
 
@@ -311,7 +311,7 @@ class _UbicacionesTabState extends ConsumerState<_UbicacionesTab> {
         );
       }
     } catch (e) {
-      _snack(context, 'Error: $e');
+      _snack(context, mensajeErrorHumano(e));
     }
   }
 
@@ -439,7 +439,7 @@ class _ProveedoresTabState extends ConsumerState<_ProveedoresTab> {
         );
       }
     } catch (e) {
-      _snack(context, 'Error: $e');
+      _snack(context, mensajeErrorHumano(e));
     }
   }
 
@@ -590,7 +590,7 @@ class _CategoriasTabState extends ConsumerState<_CategoriasTab> {
         );
       }
     } catch (e) {
-      if (context.mounted) _snack(context, 'Error: $e');
+      if (context.mounted) _snack(context, mensajeErrorHumano(e));
     }
   }
 
@@ -850,7 +850,7 @@ class _ExistenciasTabState extends ConsumerState<_ExistenciasTab> {
         }
       });
     } catch (e) {
-      _snack(context, 'Error: $e');
+      _snack(context, mensajeErrorHumano(e));
     }
   }
 
@@ -939,7 +939,7 @@ class _ExistenciasTabState extends ConsumerState<_ExistenciasTab> {
             : 'Movimiento registrado. Stock$etq: ${_fmtCant(stock)}',
       );
     } catch (e) {
-      _snack(context, 'Error: $e');
+      _snack(context, mensajeErrorHumano(e));
     }
   }
 
@@ -1805,7 +1805,7 @@ class _EquiposTabState extends ConsumerState<_EquiposTab> {
     } on _InvError catch (e) {
       _snack(context, e.message);
     } catch (e) {
-      _snack(context, 'Error: $e');
+      _snack(context, mensajeErrorHumano(e));
     }
   }
 
@@ -1859,7 +1859,7 @@ class _EquiposTabState extends ConsumerState<_EquiposTab> {
     } on _InvError catch (e) {
       _snack(context, e.message);
     } catch (e) {
-      _snack(context, 'Error: $e');
+      _snack(context, mensajeErrorHumano(e));
     }
   }
 
@@ -1904,7 +1904,7 @@ class _EquiposTabState extends ConsumerState<_EquiposTab> {
     } on _InvError catch (e) {
       _snack(context, e.message);
     } catch (e) {
-      _snack(context, 'Error: $e');
+      _snack(context, mensajeErrorHumano(e));
     }
   }
 
@@ -1964,7 +1964,7 @@ class _EquiposTabState extends ConsumerState<_EquiposTab> {
     } on _InvError catch (e) {
       _snack(context, e.message);
     } catch (e) {
-      _snack(context, 'Error: $e');
+      _snack(context, mensajeErrorHumano(e));
     }
   }
 }
@@ -2308,7 +2308,7 @@ class _ProductoDialogState extends State<_ProductoDialog> {
       );
       if (mounted) setState(() => _categoriaId = id);
     } catch (e) {
-      if (mounted) _snack(context, 'Error: $e');
+      if (mounted) _snack(context, mensajeErrorHumano(e));
     }
   }
 
@@ -2472,7 +2472,7 @@ Future<String?> _borrarSiLibre({
   } on _InvError catch (e) {
     return e.message;
   } catch (e) {
-    return 'Error: $e';
+    return mensajeErrorHumano(e);
   }
 }
 

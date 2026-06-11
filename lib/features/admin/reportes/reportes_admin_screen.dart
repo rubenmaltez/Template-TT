@@ -358,7 +358,7 @@ class _ArqueoCajaCard extends ConsumerWidget {
       if (context.mounted) {
         final msg = e is UnsupportedError
             ? (e.message?.toString() ?? 'Exportación no soportada')
-            : 'Error generando arqueo: $e';
+            : mensajeErrorHumano(e, contexto: 'generar el arqueo');
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text(msg)),
         );
@@ -673,7 +673,7 @@ class _DescargarPdfMenu extends ConsumerWidget {
       if (context.mounted) {
         final msg = e is UnsupportedError
             ? (e.message?.toString() ?? 'Exportación no soportada')
-            : 'Error generando reporte: $e';
+            : mensajeErrorHumano(e, contexto: 'generar el reporte');
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text(msg)),
         );
@@ -887,7 +887,7 @@ class _DescargarPdfMenu extends ConsumerWidget {
         // el resto lo prefijamos como error de generación.
         final msg = e is UnsupportedError
             ? (e.message?.toString() ?? 'Exportación no soportada')
-            : 'Error generando Excel: $e';
+            : mensajeErrorHumano(e, contexto: 'generar el Excel');
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text(msg)),
         );

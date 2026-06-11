@@ -5,6 +5,7 @@ import '../../../data/providers/cobrador_provider.dart';
 import '../../../data/repositories/settings_repo.dart';
 import '../../../data/utils/audit_changelog.dart';
 import '../../shared/widgets/empty_state.dart';
+import '../../../data/utils/errores.dart';
 
 /// Panel de configuración del CHANGE LOG (Fase C). El super_admin elige, por
 /// entidad, qué campos aparecen en el historial de cambios (`HistorialCambios`
@@ -81,7 +82,7 @@ class _AuditCamposScreenState extends ConsumerState<AuditCamposScreen> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error al guardar: $e')),
+          SnackBar(content: Text(mensajeErrorHumano(e, contexto: 'guardar'))),
         );
       }
     } finally {

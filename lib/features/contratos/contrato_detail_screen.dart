@@ -158,7 +158,7 @@ class _ContratoDetailScreenState extends ConsumerState<ContratoDetailScreen> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error al cambiar el estado: $e')),
+          SnackBar(content: Text(mensajeErrorHumano(e, contexto: 'cambiar el estado'))),
         );
       }
     } finally {
