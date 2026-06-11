@@ -272,6 +272,31 @@ inv12 AS (
   ) t
 )
 
+-- INV14 (QA Fase 4, Sprint 2): cuotas.cargos_neto debe coincidir con la suma
+-- real de cargos_extra. Detecta el "fantasma": un cargo cuyo INSERT/DELETE
+-- fue rechazado/filtrado en el server mientras el PATCH espejo de la cuota
+-- sí entró (divergencia muda que ninguna otra INV veía).
+,inv14 AS (
+  SELECT 'INV14: cuotas.cargos_neto == SUM real de cargos_extra' AS invariante,
+         COUNT(*) AS violaciones,
+         COALESCE(string_agg(id::text, ', ' ORDER BY id), '') AS ejemplo_ids
+  FROM (
+    SELECT cu.id
+    FROM public.cuotas cu
+    WHERE abs(
+      COALESCE(cu.cargos_neto, 0)
+      - COALESCE((SELECT SUM(CASE
+                    WHEN ce.tipo IN ('reconexion','otro') THEN ce.monto
+                    WHEN ce.tipo IN ('descuento_monto','descuento_porcentaje')
+                      THEN -ce.monto
+                    ELSE 0 END)
+                   FROM public.cargos_extra ce
+                  WHERE ce.cuota_id = cu.id), 0)
+    ) > 0.01
+    LIMIT 10
+  ) t
+)
+
 SELECT * FROM inv1
 UNION ALL SELECT * FROM inv2
 UNION ALL SELECT * FROM inv3
@@ -285,4 +310,5 @@ UNION ALL SELECT * FROM inv10
 UNION ALL SELECT * FROM inv11
 UNION ALL SELECT * FROM inv12
 UNION ALL SELECT * FROM inv13
+UNION ALL SELECT * FROM inv14
 ORDER BY invariante;

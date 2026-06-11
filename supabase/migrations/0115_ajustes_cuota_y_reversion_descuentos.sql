@@ -221,6 +221,20 @@ create trigger trg_pagos_revertir_descuentos
   when (new.anulado = true and old.anulado = false)
   execute function public.pagos_revertir_descuentos_trg();
 
+-- =========================================================================
+-- 6. Quitar ajuste también para admin_cobranza (QA Fase 4, finding ALTO):
+--    la policy de DELETE de 0013 exigía is_admin(), pero la UI de ajustes
+--    es para admin Y admin_cobranza — su DELETE moría FILTRADO por RLS en
+--    silencio (0 filas, sin error) y el cargo "resucitaba" al sync con la
+--    cuota ya espejada en 0 → divergencia muda de dinero. UPDATE ya era
+--    is_admin_or_cobranza (cargos_write_admins); el DELETE se alinea.
+-- =========================================================================
+drop policy "cargos_delete_admin" on public.cargos_extra;
+create policy "cargos_delete_admin" on public.cargos_extra
+  for delete using (
+    tenant_id = public.current_tenant_id() and public.is_admin_or_cobranza()
+  );
+
 COMMIT;
 
 -- Verificación post-deploy (correr a mano):
