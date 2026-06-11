@@ -100,24 +100,38 @@ class SupabaseConnector extends PowerSyncBackendConnector {
     }
   }
 
-  bool _isNonRetryable(PostgrestException e) {
-    final code = e.code;
-    if (code == null) return false;
-    // Clase 40 = transaction rollback (40001 serialization_failure,
-    // 40P01 deadlock_detected, 40003 statement_completion_unknown). Son
-    // TRANSITORIOS: reintentar suele resolver. NO clasificar como permanente
-    // o se descartaría silenciosamente un write válido del cobrador (un
-    // cobro/recibo que él ve local pero nunca sube). Va ANTES del check
-    // amplio de '4' de abajo.
-    if (code.startsWith('40')) return false;
-    // Postgres error codes: P0001 = raise_exception (triggers),
-    // 23xxx = integrity constraint violations, 42xxx = syntax/access.
-    // Todos son errores de cliente, no retryables.
-    if (code.startsWith('P') || code.startsWith('2') || code.startsWith('4')) {
-      return true;
-    }
-    return false;
-  }
+  bool _isNonRetryable(PostgrestException e) => esCodigoNoRetryable(e.code);
+}
+
+/// Clasifica el código de error de un upload rechazado (pública para tests).
+///
+/// `true` = error PERMANENTE de cliente: el server NUNCA va a aceptar este
+/// write tal como está. Se descarta de la cola (con aviso + registro) para
+/// no trabar el sync. `false` = se reintenta.
+///
+/// La regla es ALLOWLIST de clases SQLSTATE permanentes — todo lo demás se
+/// trata como transitorio, porque descartar un write válido pierde plata
+/// (un cobro offline que el server nunca recibe), mientras que reintentar
+/// de más solo demora la cola. Audit 2026-06-11 (#1): la versión anterior
+/// clasificaba por prefijos `'P'`/`'4'` y descartaba transitorios reales:
+/// PGRST301 (JWT expirado justo al recuperar señal, antes del refresh),
+/// PGRST000/002 (DB no disponible) y códigos HTTP tipo 429 (rate limit).
+///
+///   - Permanentes: 23xxx (constraint), 42xxx (schema/permiso RLS),
+///     22xxx (formato de dato) y P0001 (RAISE EXCEPTION de triggers de
+///     negocio). Solo SQLSTATE reales (5 chars) — un '429' HTTP no matchea.
+///   - Retryables: PGRST*, códigos HTTP, clase 40 (serialization/deadlock)
+///     y cualquier desconocido. OJO: un permanente "raro" (p.ej. PGRST204
+///     por columna que falta en el server) BLOQUEA la cola reintentando —
+///     a propósito: preserva el dato y se destraba al correr la migración
+///     faltante, en vez de perder el write para siempre.
+bool esCodigoNoRetryable(String? code) {
+  if (code == null) return false;
+  if (code == 'P0001') return true;
+  if (code.length != 5) return false;
+  return code.startsWith('23') ||
+      code.startsWith('42') ||
+      code.startsWith('22');
 }
 
 /// Error de CRUD upload surfaceado a la UI.
