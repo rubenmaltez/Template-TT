@@ -37,9 +37,8 @@
      `build-release.ps1` (1ª firma con el keystore → reinstalar apps una vez,
      sincronizando antes) → probar el updater in-app → borrar release `v0.9.0`.
   2. Decidir Sprints 2-4 del audit 2026-06-11 (7 HIGH restantes).
-  3. Pedido nuevo de Rubén (2026-06-11, propuesta presentada): preview/selector
-     multi-cuota al cobrar desde el MAPA (hoy salta directo a 1 cuota;
-     la lista ya tiene multi-select). Esperando elección de opción.
+  (El preview multi-cuota al cobrar desde el MAPA fue pedido y CANCELADO por
+  Rubén el mismo 2026-06-11 — queda como está; no re-proponer.)
 - **Hecho recién (2026-06-10):** lock con `open_filex` commiteado (`092a51a`) ·
   keystore generado y verificado fuera de git (backup pendiente de confirmar).
 - **Salud:** del audit 2026-06-09 no queda nada abierto; del audit 2026-06-11
