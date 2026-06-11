@@ -91,6 +91,15 @@ const Map<String, Set<String>> kAuditCamposVisiblesDefault = {
     'precio_mensual',
     'activo',
   },
+  // Cobradores (0116, fix #9 del audit: era la única entidad editable sin
+  // changelog — el prefijo de recibo es rastro de dinero).
+  'cobradores': {
+    'nombre',
+    'telefono',
+    'prefijo_recibo',
+    'rol',
+    'activo',
+  },
   // Geografía (per-tenant desde 0097) + topología de red (0098).
   'departamentos': {'nombre', 'codigo'},
   'municipios': {'nombre', 'departamento_id'},
@@ -225,6 +234,7 @@ const Map<String, List<String>> kAuditCamposCatalogo = {
     'precio_mensual',
     'activo',
   ],
+  'cobradores': ['nombre', 'telefono', 'prefijo_recibo', 'rol', 'activo'],
   'departamentos': ['nombre', 'codigo'],
   'municipios': ['nombre', 'departamento_id'],
   'comunidades': ['nombre', 'municipio_id'],
@@ -259,6 +269,7 @@ const Map<String, String> kAuditEntidadLabel = {
   'visitas': 'Visitas',
   'fotos_cliente': 'Fotos',
   'planes': 'Planes',
+  'cobradores': 'Personal',
   'departamentos': 'Departamentos',
   'municipios': 'Municipios',
   'comunidades': 'Comunidades',

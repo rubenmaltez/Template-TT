@@ -15,6 +15,7 @@ import '../../../powersync/db.dart' as ps;
 import '../../super_admin/tenant_dialogs_miembro.dart' show ForzarPasswordDialog;
 import '../../shared/widgets/credenciales_dialog.dart';
 import '../../shared/widgets/empty_state.dart';
+import '../../shared/widgets/historial_cambios_widget.dart';
 import '../../shared/widgets/phone_text_field.dart';
 
 /// Los 3 roles que cobran en campo y por lo tanto necesitan prefijo de
@@ -530,6 +531,14 @@ class _CobradorCard extends ConsumerWidget {
                 ),
               ),
               const SizedBox(width: 8),
+              // Historial de cambios (0116, fix #9 del audit): cobradores era
+              // la única entidad editable sin rastro — y el prefijo de recibo
+              // es numeración de dinero.
+              IconButton(
+                icon: const Icon(Icons.history),
+                tooltip: 'Historial de cambios',
+                onPressed: () => _historial(context, row['id'] as String),
+              ),
               IconButton(
                 icon: const Icon(Icons.edit),
                 tooltip: 'Editar',
@@ -537,6 +546,44 @@ class _CobradorCard extends ConsumerWidget {
               ),
             ],
           ),
+        ),
+      ),
+    );
+  }
+
+  void _historial(BuildContext context, String cobradorId) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (_) => DraggableScrollableSheet(
+        expand: false,
+        initialChildSize: 0.6,
+        maxChildSize: 0.9,
+        builder: (context, scrollCtrl) => Column(
+          children: [
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: Row(
+                children: [
+                  const Icon(Icons.history),
+                  const SizedBox(width: 8),
+                  Text('Historial del miembro',
+                      style: Theme.of(context).textTheme.titleMedium),
+                ],
+              ),
+            ),
+            const Divider(),
+            Expanded(
+              child: SingleChildScrollView(
+                controller: scrollCtrl,
+                child: HistorialCambiosWidget(
+                  tabla: 'cobradores',
+                  registroId: cobradorId,
+                ),
+              ),
+            ),
+          ],
         ),
       ),
     );
