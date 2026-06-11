@@ -461,6 +461,11 @@ const schema = Schema([
     Column.text('aplicado_en'),
     Column.text('client_local_id'),
     Column.text('ocurrido_en'),
+    // 0115 (Sprint 2): origen del cargo ('cobro'|'ajuste'|'promo'|
+    // 'liquidacion'), grupo de promoción y pago que lo insertó (reversión M3).
+    Column.text('origen'),
+    Column.text('grupo_promo'),
+    Column.text('pago_id'),
   ], indexes: [
     Index('by_cuota', [IndexedColumn('cuota_id')]),
   ]),
