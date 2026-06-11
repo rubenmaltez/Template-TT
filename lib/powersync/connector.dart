@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 import 'package:powersync/powersync.dart';
@@ -7,6 +8,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../config/env.dart';
 import '../data/models/error_log_entry.dart';
 import '../data/services/error_log_service.dart';
+import '../data/services/rechazos_sync_service.dart';
 
 /// Conector entre PowerSync y Supabase usando **Supabase Auth directo**.
 ///
@@ -70,9 +72,10 @@ class SupabaseConnector extends PowerSyncBackendConnector {
             // El write local fue RECHAZADO por el server (constraint/RLS/
             // trigger). No es retryable: lo saltamos para no trabar la cola.
             // OJO: el dato local queda DIVERGENTE del server (que no lo aceptó).
-            // Lo surfaceamos a la UI (uploadErrors) y lo persistimos en
-            // error_logs con el TIPO de op + código para diagnóstico; un próximo
-            // write sobre la misma fila lo reconcilia o el admin lo corrige.
+            // Triple rastro (audit 2026-06-11 #5): SnackBar inmediato
+            // (uploadErrors), aviso PERSISTENTE en el Perfil del usuario
+            // (RechazosSyncService) y error_logs con el opData completo —
+            // único registro del contenido para reconstruir el write a mano.
             final detalle = '${op.op.name.toUpperCase()} ${op.table}/${op.id}'
                 ' — ${e.code ?? '?'} ${e.message}';
             debugPrint('[CRUD] Non-retryable rejected: $detalle');
@@ -80,9 +83,22 @@ class SupabaseConnector extends PowerSyncBackendConnector {
               table: op.table,
               id: op.id,
               message: e.message,
+              codigo: e.code,
             ));
+            final ahoraUtc = DateTime.now().toUtc();
+            unawaited(RechazosSyncService.instance.registrar(RechazoSync(
+              id: '${ahoraUtc.microsecondsSinceEpoch}-${op.id}',
+              tabla: op.table,
+              registroId: op.id,
+              op: op.op.name,
+              codigo: e.code,
+              mensaje: e.message,
+              fechaUtcIso: ahoraUtc.toIso8601String(),
+              data: op.opData,
+            )));
             unawaited(ErrorLogService.instance.record(
-              error: 'CRUD rejected (local diverge): $detalle',
+              error: 'CRUD rejected (local diverge): $detalle'
+                  ' — opData: ${jsonEncode(op.opData)}',
               stack: StackTrace.current,
               type: ErrorLogType.zone,
             ));
@@ -140,9 +156,14 @@ class CrudUploadError {
     required this.table,
     required this.id,
     required this.message,
+    this.codigo,
   });
 
   final String table;
   final String id;
   final String message;
+
+  /// Código SQLSTATE/PostgREST del rechazo — los shells lo usan para
+  /// humanizar el mensaje (ver `humanizarRechazoSync`).
+  final String? codigo;
 }

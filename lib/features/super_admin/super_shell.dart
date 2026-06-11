@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 
 import '../../data/providers/crud_error_provider.dart';
+import '../../data/services/rechazos_sync_service.dart';
 import '../shared/utils/shell_nav.dart';
 import '../shared/utils/sign_out_helper.dart';
 import '../shared/widgets/update_banner.dart';
@@ -30,8 +31,10 @@ class SuperShell extends ConsumerWidget {
       if (error != null && context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content:
-                Text('Error al sincronizar ${error.table}: ${error.message}'),
+            content: Text(
+                'Un cambio en ${etiquetaTablaSync(error.table)} fue rechazado '
+                'por el servidor: '
+                '${humanizarRechazoSync(error.codigo, error.message)}'),
             backgroundColor: Theme.of(context).colorScheme.error,
             duration: const Duration(seconds: 6),
           ),

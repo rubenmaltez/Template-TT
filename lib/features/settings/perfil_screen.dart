@@ -6,7 +6,9 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../data/providers/cobrador_provider.dart';
 import '../shared/utils/sign_out_helper.dart';
+import '../../data/providers/crud_error_provider.dart';
 import '../../data/providers/foto_comprobante_provider.dart';
+import '../../data/services/rechazos_sync_service.dart';
 import '../../data/providers/impresora_provider.dart';
 import '../../data/providers/sync_status_provider.dart';
 import '../../data/services/map_tile_cache.dart';
@@ -86,6 +88,8 @@ class PerfilScreen extends ConsumerWidget {
           const SizedBox(height: 12),
         ],
         const _SyncCard(),
+        // Rechazos de sync persistidos: visible SOLO si hay (audit #5).
+        const _RechazosSyncCard(),
         if (!kIsWeb) ...[
           const SizedBox(height: 12),
           const _ImpresoraCard(),
@@ -441,6 +445,127 @@ class _SyncCard extends ConsumerWidget {
               },
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Card "Cambios sin sincronizar": rechazos PERMANENTES del server que el
+/// connector descartó de la cola (audit 2026-06-11, finding #5). Antes el
+/// único rastro era un SnackBar de 6 segundos; ahora el aviso persiste acá
+/// hasta que el usuario lo descarta a propósito. Si no hay rechazos, no
+/// renderiza nada.
+class _RechazosSyncCard extends ConsumerWidget {
+  const _RechazosSyncCard();
+
+  /// `fechaUtcIso` viene en UTC; se muestra en hora Nicaragua (UTC−6 sin
+  /// DST). No usar `Fmt.fechaHoraNi` acá: ese helper es para timestamps
+  /// local-naive (fecha_pago) y formatea sin shift.
+  static String _fechaHoraNicaragua(String isoUtc) {
+    final dt = DateTime.tryParse(isoUtc);
+    if (dt == null) return isoUtc;
+    final ni = dt.toUtc().subtract(const Duration(hours: 6));
+    String dos(int v) => v.toString().padLeft(2, '0');
+    return '${dos(ni.day)}/${dos(ni.month)}/${ni.year} '
+        '${dos(ni.hour)}:${dos(ni.minute)}';
+  }
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final rechazos = ref.watch(rechazosSyncProvider).valueOrNull ?? const [];
+    if (rechazos.isEmpty) return const SizedBox.shrink();
+
+    final scheme = Theme.of(context).colorScheme;
+    final onColor = scheme.onErrorContainer;
+    return Padding(
+      padding: const EdgeInsets.only(top: 12),
+      child: Card(
+        color: scheme.errorContainer,
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Icon(Icons.sync_problem, color: onColor),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Cambios sin sincronizar (${rechazos.length})',
+                      style: Theme.of(context)
+                          .textTheme
+                          .titleMedium
+                          ?.copyWith(color: onColor),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'El servidor rechazó estos cambios: lo que ves en este '
+                'dispositivo puede NO coincidir con el servidor. Si es un '
+                'cobro, avisale al administrador antes de descartar el aviso.',
+                style: Theme.of(context)
+                    .textTheme
+                    .bodySmall
+                    ?.copyWith(color: onColor),
+              ),
+              const SizedBox(height: 4),
+              for (final r in rechazos)
+                ListTile(
+                  dense: true,
+                  contentPadding: EdgeInsets.zero,
+                  title: Text(
+                    '${r.tablaLabel} · ${r.opLabel}',
+                    style: TextStyle(
+                        color: onColor, fontWeight: FontWeight.w600),
+                  ),
+                  subtitle: Text(
+                    '${r.mensajeHumano}\n${_fechaHoraNicaragua(r.fechaUtcIso)}',
+                    style: TextStyle(color: onColor),
+                  ),
+                  trailing: IconButton(
+                    icon: Icon(Icons.close, color: onColor),
+                    tooltip: 'Descartar aviso',
+                    onPressed: () =>
+                        RechazosSyncService.instance.descartar(r.id),
+                  ),
+                ),
+              Align(
+                alignment: Alignment.centerRight,
+                child: TextButton(
+                  onPressed: () async {
+                    final ok = await showDialog<bool>(
+                      context: context,
+                      builder: (ctx) => AlertDialog(
+                        title: const Text('¿Descartar todos los avisos?'),
+                        content: const Text(
+                            'Los datos divergentes quedan como están; '
+                            'esto solo borra los avisos.'),
+                        actions: [
+                          TextButton(
+                            onPressed: () => Navigator.pop(ctx, false),
+                            child: const Text('Cancelar'),
+                          ),
+                          FilledButton(
+                            onPressed: () => Navigator.pop(ctx, true),
+                            child: const Text('Descartar todos'),
+                          ),
+                        ],
+                      ),
+                    );
+                    if (ok == true) {
+                      await RechazosSyncService.instance.limpiar();
+                    }
+                  },
+                  child: Text('Descartar todos',
+                      style: TextStyle(color: onColor)),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );

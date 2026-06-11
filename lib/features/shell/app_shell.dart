@@ -6,6 +6,7 @@ import '../../data/providers/crud_error_provider.dart';
 import '../../data/providers/mora_count_provider.dart';
 import '../../data/providers/sync_status_provider.dart';
 import '../../data/repositories/settings_repo.dart';
+import '../../data/services/rechazos_sync_service.dart';
 import '../shared/utils/shell_nav.dart';
 import 'global_search_delegate.dart';
 import '../shared/widgets/offline_banner.dart';
@@ -23,11 +24,20 @@ class AppShell extends ConsumerWidget {
     ref.listen(crudUploadErrorProvider, (_, next) {
       final error = next.valueOrNull;
       if (error != null && context.mounted) {
+        // Mensaje humano en español; el detalle queda PERSISTIDO en
+        // Perfil → "Cambios sin sincronizar" (audit 2026-06-11 #5).
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Error al sincronizar ${error.table}: ${error.message}'),
+            content: Text(
+                'Un cambio en ${etiquetaTablaSync(error.table)} fue rechazado '
+                'por el servidor: '
+                '${humanizarRechazoSync(error.codigo, error.message)}'),
             backgroundColor: Theme.of(context).colorScheme.error,
-            duration: const Duration(seconds: 6),
+            duration: const Duration(seconds: 8),
+            action: SnackBarAction(
+              label: 'VER',
+              onPressed: () => context.go('/perfil'),
+            ),
           ),
         );
       }

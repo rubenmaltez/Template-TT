@@ -11,6 +11,7 @@ import '../../../data/providers/modulos_provider.dart';
 import '../../../data/providers/sync_status_provider.dart';
 import '../../../data/providers/tickets_alerta_provider.dart';
 import '../../../data/repositories/settings_repo.dart';
+import '../../../data/services/rechazos_sync_service.dart';
 import '../../shared/widgets/app_version_label.dart';
 import '../../shared/widgets/impersonation_banner.dart';
 import '../../shared/widgets/update_banner.dart';
@@ -42,7 +43,9 @@ class AdminShell extends ConsumerWidget {
                       error.message.toString().toLowerCase().contains('codigo')
                   ? 'Código de cliente duplicado: otro cliente ya usa ese '
                       'código. Editá el cliente y asignale uno distinto.'
-                  : 'Error al sincronizar ${error.table}: ${error.message}'),
+                  : 'Un cambio en ${etiquetaTablaSync(error.table)} fue '
+                      'rechazado por el servidor: '
+                      '${humanizarRechazoSync(error.codigo, error.message)}'),
             backgroundColor: Theme.of(context).colorScheme.error,
             duration: const Duration(seconds: 6),
           ),
