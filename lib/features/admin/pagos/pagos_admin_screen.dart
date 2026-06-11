@@ -9,6 +9,7 @@ import '../../../data/providers/impersonation_provider.dart';
 import '../../../data/repositories/pagos_repo.dart';
 import '../../../data/repositories/settings_repo.dart';
 import '../../../data/utils/formatters.dart';
+import '../../../data/utils/montos.dart';
 import '../../../powersync/db.dart' as ps;
 import '../../shared/widgets/cargar_mas_button.dart';
 import '../../shared/widgets/historial_cambios_widget.dart';
@@ -601,6 +602,7 @@ class _EditarPagoDialog extends StatefulWidget {
 }
 
 class _EditarPagoDialogState extends State<_EditarPagoDialog> {
+  String? _montoError;
   late final TextEditingController _montoCtrl;
   late final TextEditingController _notasCtrl;
   late MetodoPago _metodo;
@@ -634,9 +636,12 @@ class _EditarPagoDialogState extends State<_EditarPagoDialog> {
             controller: _montoCtrl,
             autofocus: true,
             keyboardType: const TextInputType.numberWithOptions(decimal: true),
-            decoration: const InputDecoration(
+            inputFormatters: [montoInputFormatter],
+            decoration: InputDecoration(
               labelText: 'Monto (C\$)',
               prefixText: 'C\$ ',
+              // M8: coma decimal aceptada; parse fallido avisa (antes mudo).
+              errorText: _montoError,
             ),
           ),
           const SizedBox(height: 16),
@@ -667,8 +672,11 @@ class _EditarPagoDialogState extends State<_EditarPagoDialog> {
         ),
         FilledButton(
           onPressed: () {
-            final monto = double.tryParse(_montoCtrl.text);
-            if (monto == null || monto <= 0) return;
+            final monto = parseMonto(_montoCtrl.text);
+            if (monto == null || monto <= 0) {
+              setState(() => _montoError = 'Monto inválido');
+              return;
+            }
             Navigator.pop(
               context,
               _EditarPagoResult(

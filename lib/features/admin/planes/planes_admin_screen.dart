@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../../data/providers/cobrador_provider.dart';
 import '../../../data/utils/formatters.dart';
+import '../../../data/utils/montos.dart';
 import '../../../powersync/db.dart' as ps;
 import '../../shared/widgets/empty_state.dart';
 import '../../shared/widgets/historial_cambios_widget.dart';
@@ -251,7 +251,7 @@ class _PlanFormDialogState extends ConsumerState<_PlanFormDialog> {
       setState(() => _error = 'Nombre requerido');
       return;
     }
-    final precio = double.tryParse(_precio.text);
+    final precio = parseMonto(_precio.text); // acepta coma decimal (M8)
     if (precio == null || precio <= 0) {
       setState(() => _error = 'Precio inválido');
       return;
@@ -348,9 +348,7 @@ class _PlanFormDialogState extends ConsumerState<_PlanFormDialog> {
                 labelText: 'Precio mensual (C\$) *',
               ),
               keyboardType: const TextInputType.numberWithOptions(decimal: true),
-              inputFormatters: [
-                FilteringTextInputFormatter.allow(RegExp(r'[0-9.]')),
-              ],
+              inputFormatters: [montoInputFormatter],
             ),
             const SizedBox(height: 12),
             SwitchListTile(

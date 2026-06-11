@@ -1,7 +1,6 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
 
@@ -11,6 +10,7 @@ import '../../../data/providers/impersonation_provider.dart';
 import '../../../data/repositories/settings_repo.dart';
 import '../../../data/utils/cuota_estado_visual.dart';
 import '../../../data/utils/formatters.dart';
+import '../../../data/utils/montos.dart';
 import '../../../powersync/db.dart' as ps;
 import '../../shared/widgets/cargar_mas_button.dart';
 import '../../shared/widgets/empty_state.dart';
@@ -474,7 +474,7 @@ class _NuevaCuotaManualDialogState extends State<_NuevaCuotaManualDialog> {
       _clienteId != null &&
       _tipoCargo.isNotEmpty &&
       _montoCtrl.text.isNotEmpty &&
-      (double.tryParse(_montoCtrl.text) ?? 0) > 0;
+      (parseMonto(_montoCtrl.text) ?? 0) > 0;
 
   @override
   Widget build(BuildContext context) {
@@ -654,9 +654,7 @@ class _NuevaCuotaManualDialogState extends State<_NuevaCuotaManualDialog> {
               TextField(
                 controller: _montoCtrl,
                 keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                inputFormatters: [
-                  FilteringTextInputFormatter.allow(RegExp(r'[\d.]')),
-                ],
+                inputFormatters: [montoInputFormatter],
                 decoration: const InputDecoration(
                   labelText: 'Monto (C\$) *',
                   prefixText: 'C\$ ',
@@ -696,7 +694,7 @@ class _NuevaCuotaManualDialogState extends State<_NuevaCuotaManualDialog> {
                       contratoId: _contratoId,
                       tipoCargo: _tipoCargo,
                       descripcion: _descripcionCtrl.text.trim(),
-                      monto: double.parse(_montoCtrl.text),
+                      monto: parseMonto(_montoCtrl.text)!,
                       fechaVencimiento: _fechaVencimiento,
                     ),
                   );

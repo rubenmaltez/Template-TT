@@ -9,6 +9,7 @@ import '../../data/providers/impersonation_provider.dart';
 import '../../data/repositories/pagos_repo.dart';
 import '../../data/repositories/settings_repo.dart';
 import '../../data/utils/formatters.dart';
+import '../../data/utils/montos.dart';
 import '../../powersync/db.dart' as ps;
 import '../shared/widgets/empty_state.dart';
 
@@ -320,6 +321,7 @@ class _EditarCobroDialog extends StatefulWidget {
 }
 
 class _EditarCobroDialogState extends State<_EditarCobroDialog> {
+  String? _montoError;
   late final TextEditingController _montoCtrl;
   late final TextEditingController _notasCtrl;
   late MetodoPago _metodo;
@@ -353,9 +355,13 @@ class _EditarCobroDialogState extends State<_EditarCobroDialog> {
             controller: _montoCtrl,
             autofocus: true,
             keyboardType: const TextInputType.numberWithOptions(decimal: true),
-            decoration: const InputDecoration(
+            inputFormatters: [montoInputFormatter],
+            decoration: InputDecoration(
               labelText: 'Monto (C\$)',
               prefixText: 'C\$ ',
+              // M8/M15: antes el parse fallido hacía return EN SILENCIO y
+              // "Guardar" parecía colgado.
+              errorText: _montoError,
             ),
           ),
           const SizedBox(height: 16),
@@ -386,8 +392,11 @@ class _EditarCobroDialogState extends State<_EditarCobroDialog> {
         ),
         FilledButton(
           onPressed: () {
-            final monto = double.tryParse(_montoCtrl.text);
-            if (monto == null || monto <= 0) return;
+            final monto = parseMonto(_montoCtrl.text);
+            if (monto == null || monto <= 0) {
+              setState(() => _montoError = 'Monto inválido');
+              return;
+            }
             Navigator.pop(
               context,
               _EditarCobroResult(

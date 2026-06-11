@@ -8,6 +8,7 @@ import '../../../data/providers/impersonation_provider.dart';
 import '../../../data/repositories/settings_repo.dart';
 import '../../../data/utils/cuota_estado.dart';
 import '../../../data/utils/formatters.dart';
+import '../../../data/utils/montos.dart';
 import '../../../powersync/db.dart' as ps;
 
 enum CargoTipo {
@@ -92,7 +93,7 @@ class _AplicarCargoDialogState extends ConsumerState<AplicarCargoDialog> {
     if (cobrador == null) return;
     final s = ref.read(appSettingsProvider);
 
-    final valor = double.tryParse(_valor.text);
+    final valor = parseMonto(_valor.text); // acepta coma decimal (M8)
     if (valor == null || valor <= 0) {
       setState(() => _error = 'Valor inválido');
       return;
@@ -276,9 +277,7 @@ class _AplicarCargoDialogState extends ConsumerState<AplicarCargoDialog> {
                     : null,
               ),
               keyboardType: const TextInputType.numberWithOptions(decimal: true),
-              inputFormatters: [
-                FilteringTextInputFormatter.allow(RegExp(r'[0-9.]')),
-              ],
+              inputFormatters: [montoInputFormatter],
             ),
             if (_tipo == CargoTipo.otro) ...[
               const SizedBox(height: 12),

@@ -11,6 +11,7 @@ import 'package:uuid/uuid.dart';
 import '../../../data/providers/cobrador_provider.dart';
 import '../../../data/providers/form_dirty_provider.dart';
 import '../../../data/utils/formatters.dart';
+import '../../../data/utils/montos.dart';
 import '../../../powersync/db.dart' as ps;
 import '../../shared/widgets/confirm_discard_dialog.dart';
 
@@ -295,7 +296,7 @@ class _ContratoFormScreenState extends ConsumerState<ContratoFormScreen> {
       final diaPago = _fechaInicio.day;
       final fechaPrimerCobroStr =
           _primerCobroEstimado().toIso8601String().substring(0, 10);
-      final costoInstalacion = double.tryParse(_costoCtrl.text.trim());
+      final costoInstalacion = parseMonto(_costoCtrl.text);
       final notas =
           _notasCtrl.text.trim().isEmpty ? null : _notasCtrl.text.trim();
       // Hora REAL del dispositivo (UTC) para el change log — offline-first.
