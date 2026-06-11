@@ -274,6 +274,9 @@ const _adminMenu = [
   _MenuItem(Icons.admin_panel_settings, 'Administración', '/admin/cobradores',
       adminOnly: true, children: [
     _MenuItem(Icons.groups, 'Personal', '/admin/cobradores', adminOnly: true),
+    // Re-linkeada (M25 del audit: quedó huérfana en BULK 12 y era la única
+    // pantalla con "Anular cuota" — inalcanzable sin barra de URL).
+    _MenuItem(Icons.receipt_long, 'Cuotas', '/admin/cuotas', adminOnly: true),
     _MenuItem(Icons.wifi, 'Planes', '/admin/planes', adminOnly: true),
     _MenuItem(Icons.location_city, 'Geografía', '/admin/geografia',
         adminOnly: true),
