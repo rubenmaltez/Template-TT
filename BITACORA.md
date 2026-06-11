@@ -25,24 +25,58 @@
 - **Modelo de branching:** cada sesión de trabajo crea su rama efímera
   (`claude/*` o feature) DESDE `main` → al terminar se mergea a `main` y la
   rama se BORRA. Hitos importantes se marcan con tag, no con rama.
-- **App:** v0.10.0 · schema PowerSync **v26** · migraciones **0001→0114
-  TODAS corridas** en Supabase (verificado 2026-06-09) · sync rules v26 activas.
+- **App:** v0.10.0 · schema PowerSync **v27 EN LA RAMA** (main sigue v26
+  hasta mergear el Sprint 2; la migración **0115 NO está corrida** todavía) ·
+  migraciones 0001→0114 corridas (verificado 2026-06-09).
 - **Edge Functions:** las 6 deployadas al día (redeployadas 2026-06-09).
-- **Audit integral 2026-06-11** (8 agentes; reporte completo + plan de 4
-  sprints en `docs/archive/AUDIT-INTEGRAL-2026-06-11.md`): 1 CRITICAL +
-  9 HIGH + ~26 MEDIUM. **Sprint 1 IMPLEMENTADO y auditado** en la rama de
-  trabajo (ver entrada 2026-06-11). Sprints 2-4 pendientes de decisión.
+- **Audit integral 2026-06-11** (8 agentes; reporte + plan de 4 sprints en
+  `docs/archive/AUDIT-INTEGRAL-2026-06-11.md`). **Sprint 1 mergeado a main.
+  Sprint 2 IMPLEMENTADO en la rama `claude/jolly-albattani-09axxa`** (ver
+  entrada 2026-06-11 b): ajustes de cuota + M2/M3/M22 + retiro Editar monto.
 - **Qué falta:**
-  1. Smoke tests B.2–B.6 (entrada 2026-06-10) → release `v0.11.0` con
+  1. **Sprint 2 (rama abierta):** audit Fase 4 → testing de Rubén (correr
+     0115 en Dashboard + redeploy sync rules + analyze/test/manual, ver
+     TESTING §0.3 "Ajustes de cuota") → merge → borrar rama. ⚠️ El bump a
+     v27 fuerza resync desde cero de todos los dispositivos.
+  2. Smoke tests B.2–B.6 (entrada 2026-06-10) → release `v0.11.0` con
      `build-release.ps1` (1ª firma con el keystore → reinstalar apps una vez,
      sincronizando antes) → probar el updater in-app → borrar release `v0.9.0`.
-  2. Decidir Sprints 2-4 del audit 2026-06-11 (7 HIGH restantes).
+  3. Decidir Sprint 3 (promos opción A, ya aprobada en diseño) y resto de
+     HIGH del audit.
   (El preview multi-cuota al cobrar desde el MAPA fue pedido y CANCELADO por
   Rubén el mismo 2026-06-11 — queda como está; no re-proponer.)
 - **Hecho recién (2026-06-10):** lock con `open_filex` commiteado (`092a51a`) ·
   keystore generado y verificado fuera de git (backup pendiente de confirmar).
 - **Salud:** del audit 2026-06-09 no queda nada abierto; del audit 2026-06-11
   quedan **7 HIGH sin atacar** (priorizados en el reporte, Sprints 2-3).
+
+---
+
+## 2026-06-11 (b) — Sprint 2: Ajustes de cuota + rieles de cargos (M2/M3/M22)
+
+**Por qué:** Rubén pidió evaluar promos y ajustes de cuota; se aprobó el
+diseño "todo descuento es cargos_extra, nunca mutar cuotas.monto" + retirar
+"Editar monto" + topes preventivos. Promos (opción A) quedan para Sprint 3.
+
+**Qué se hizo** (commits `c98251f`→`fa00fa3`, rama de trabajo):
+- **Migración 0115** (NO corrida aún): cargos_extra.origen/grupo_promo/
+  pago_id · setting_bool · settings super-only `ajustes_habilitados` +
+  topes · `trg_cargos_ajuste_guard` (guard server REAL del feature) ·
+  `trg_pagos_revertir_descuentos` (M3). Schema v27 (resync al actualizar).
+- **Feature Ajustes:** CuotasRepo.aplicarAjuste/quitarAjuste/ajustesDeCuota
+  con mirrors · AjustarCuotaDialog (preview, motivo, topes, coma decimal) ·
+  icono % por cuota en el detalle del contrato + sheet con quitar.
+- **Fixes del audit:** M22 (agregadores leen `$.padre_id` del snapshot —
+  los cargos borrados conservan rastro) · M2 (tope en editarPago) · M3
+  (anular pago borra SUS descuentos; reconexión se preserva; cargos del
+  cobro llevan pago_id) · M1/M25 ("Editar monto" RETIRADO; setting a
+  `_hidden`).
+- INV13 en `invariantes_dinero.sql` · tests: 5 de ajustes + 3 de reversión
+  + 2 de tope (harness PowerSync real).
+
+**Pendiente:** audit Fase 4 → deploy 0115 + sync rules → testing Rubén →
+merge. Limitación documentada: el descuento MANUAL del flujo de cobro
+(pre-pago, sin pago_id) no se auto-revierte al anular — backlog.
 
 ---
 

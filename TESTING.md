@@ -57,6 +57,17 @@ AGENTS.md):
   aviso y la card desaparece sola al quedar vacía.
   *Si falla:* el detalle técnico con el contenido del cambio (opData) queda en
   `/super/logs` (error_logs).
+- **Ajustes de cuota (Sprint 2, 0115):** como súper, en Configuración →
+  Avanzado activá "Ajustes de cuota (admin)". Como admin, abrí un contrato →
+  icono **%** en una cuota pendiente → "Aplicar ajuste" (probá monto Y
+  porcentaje, con coma decimal "120,50") con motivo.
+  *Ver:* preview "Saldo: X → Y" antes de confirmar; el saldo de la cuota baja
+  en el contrato, en Cobros y en el mapa (mismo número); el historial de la
+  cuota registra el cargo; quitar el ajuste restaura el saldo Y deja rastro
+  en el historial. Con el setting OFF el icono % no aparece, y un ajuste por
+  encima del tope configurado se rechaza con mensaje claro.
+  *Si falla:* correr `invariantes_dinero.sql` (INV13) y revisar que 0115
+  esté corrida (queries de verificación al pie de la migración).
 - **Cobro de campo (cobrador):** abrir una cuota pendiente → cargar monto, método,
   moneda (probar **USD con vuelto** y **C$**), foto → imprimir/guardar recibo.
   *Ver:* recibo correcto, recaudado = aplicado (no lo entregado), vuelto siempre en C$.

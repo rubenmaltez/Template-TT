@@ -180,6 +180,15 @@ NUNCA escribir `estado='vencida'` (choca el CHECK). Settings:
 `cobranza.dias_gracia` (10) / `dias_cuotas_visibles` (5) / `colores_estados`.
 Saldo canónico: `monto + COALESCE(cargos_neto,0) − monto_pagado` (igual en
 TODAS las pantallas — invariante #10).
+**AJUSTES de cuota (Sprint 2, 0115):** la variación legítima de una cuota es
+un cargo `origen='ajuste'` (descuento con motivo) — `cuotas.monto` NO se muta
+("Editar monto" se RETIRÓ). UI: icono % por cuota en el detalle del contrato
+(`AjustarCuotaDialog` + sheet) → `CuotasRepo.aplicarAjuste/quitarAjuste`
+(mirrors de neto/estado). Guard REAL server-side `trg_cargos_ajuste_guard`:
+setting super-only `cobranza.ajustes_habilitados` + topes
+`ajuste_max_porcentaje/_monto` + motivo + solo descuento_*. Al anular un
+pago, sus descuentos (`cargos_extra.pago_id`) se borran — trigger
+`trg_pagos_revertir_descuentos` + mirror en `anularPago` (M3).
 
 ### Clientes — `lib/features/clientes/` · `lib/features/admin/clientes/`
 **[H]** El catálogo de clientes del ISP. Detalle COMPARTIDO admin+cobrador:

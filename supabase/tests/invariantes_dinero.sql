@@ -254,6 +254,24 @@ inv12 AS (
   ) t
 )
 
+-- INV13 (Sprint 2, 0115): todo AJUSTE es un descuento con motivo. El guard
+-- server (trg_cargos_ajuste_guard) lo impide hacia adelante; esto detecta
+-- data legacy/migrada inconsistente o un bypass.
+,inv13 AS (
+  SELECT 'INV13: cargos origen=ajuste son descuento_* con motivo no vacío' AS invariante,
+         COUNT(*) AS violaciones,
+         COALESCE(string_agg(id::text, ', ' ORDER BY id), '') AS ejemplo_ids
+  FROM (
+    SELECT ce.id
+    FROM public.cargos_extra ce
+    WHERE ce.origen = 'ajuste'
+      AND (ce.tipo NOT IN ('descuento_monto', 'descuento_porcentaje')
+           OR ce.descripcion IS NULL
+           OR btrim(ce.descripcion) = '')
+    LIMIT 10
+  ) t
+)
+
 SELECT * FROM inv1
 UNION ALL SELECT * FROM inv2
 UNION ALL SELECT * FROM inv3
@@ -266,4 +284,5 @@ UNION ALL SELECT * FROM inv9
 UNION ALL SELECT * FROM inv10
 UNION ALL SELECT * FROM inv11
 UNION ALL SELECT * FROM inv12
+UNION ALL SELECT * FROM inv13
 ORDER BY invariante;
