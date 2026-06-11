@@ -551,6 +551,33 @@ class PagosRepo {
       final cuotaId = pagoRows.first['cuota_id'] as String;
       final montoPrevio = (pagoRows.first['monto_cordobas'] as num).toDouble();
 
+      // Tope contra el saldo (M2, audit 2026-06-11): sin esto, un typo del
+      // admin (500 → 5000) inflaba el recaudado en silencio — el trigger
+      // server tampoco lo limita (marca 'pagada' y guarda el sobrepago, que
+      // recién aparecía corriendo invariantes_dinero.sql INV4). El máximo
+      // editable = total de la cuota (monto + cargos_neto) menos lo pagado
+      // por LOS DEMÁS pagos (pagado actual − este pago).
+      if (montoCordobas != null && montoCordobas != montoPrevio) {
+        final topeRows = await tx.getAll(
+          'SELECT monto, cargos_neto, monto_pagado FROM cuotas WHERE id = ?',
+          [cuotaId],
+        );
+        if (topeRows.isNotEmpty) {
+          final r = topeRows.first;
+          final total = (r['monto'] as num).toDouble() +
+              ((r['cargos_neto'] as num?)?.toDouble() ?? 0.0);
+          final pagadoOtros =
+              ((r['monto_pagado'] as num?)?.toDouble() ?? 0.0) - montoPrevio;
+          final maximo = total - pagadoOtros;
+          if (montoCordobas > maximo + 0.01) {
+            throw Exception(
+              'El monto excede el saldo de la cuota: máximo '
+              '${maximo.toStringAsFixed(2)} (la cuota quedaría sobrepagada).',
+            );
+          }
+        }
+      }
+
       // Construir SET clause dinámico.
       final sets = <String>[];
       final params = <Object?>[];

@@ -720,6 +720,79 @@ void main() {
       expect(num2(cuota['monto_pagado']), 500);
       expect(cuota['estado'], 'pagada');
     });
+
+    test('editar pago por ENCIMA del saldo de la cuota → lanza y no muta '
+        '(M2: el typo 500→5000 inflaba el recaudado en silencio)', () async {
+      final contratoId = await seedContrato();
+      final cuotaId = await seedCuota(contratoId: contratoId, monto: 500);
+
+      final res = await repo.registrarCobro(
+        tenantId: tenantId,
+        cobradorId: cobradorId,
+        prefijoRecibo: prefijo,
+        cuotaId: cuotaId,
+        montoCordobas: 300,
+        moneda: Moneda.nio,
+        montoOriginal: 300,
+        tasaConversion: 1,
+        metodo: MetodoPago.efectivo,
+      );
+
+      // 5000 > total (500) − pagado por otros (0) → rechazado.
+      await expectLater(
+        repo.editarPago(pagoId: res.pagoId, montoCordobas: 5000),
+        throwsA(isA<Exception>()),
+      );
+      // Nada mutó.
+      expect(num2((await getPago(res.pagoId))['monto_cordobas']), 300);
+      expect(num2((await getCuota(cuotaId))['monto_pagado']), 300);
+
+      // El máximo exacto (500) SÍ pasa: completa la cuota.
+      await repo.editarPago(pagoId: res.pagoId, montoCordobas: 500);
+      expect((await getCuota(cuotaId))['estado'], 'pagada');
+    });
+
+    test('tope de edición considera cargos_neto y otros pagos de la cuota',
+        () async {
+      final contratoId = await seedContrato();
+      // Cuota 500 + reconexión 100 → total 600.
+      final cuotaId = await seedCuota(contratoId: contratoId, monto: 500);
+      await seedCargo(cuotaId: cuotaId, tipo: 'reconexion', monto: 100);
+
+      final p1 = await repo.registrarCobro(
+        tenantId: tenantId,
+        cobradorId: cobradorId,
+        prefijoRecibo: prefijo,
+        cuotaId: cuotaId,
+        montoCordobas: 200,
+        moneda: Moneda.nio,
+        montoOriginal: 200,
+        tasaConversion: 1,
+        metodo: MetodoPago.efectivo,
+      );
+      final p2 = await repo.registrarCobro(
+        tenantId: tenantId,
+        cobradorId: cobradorId,
+        prefijoRecibo: prefijo,
+        cuotaId: cuotaId,
+        montoCordobas: 100,
+        moneda: Moneda.nio,
+        montoOriginal: 100,
+        tasaConversion: 1,
+        metodo: MetodoPago.efectivo,
+      );
+
+      // Editar p2: máximo = 600 − (300 − 100 de p2... = 200 de p1) = 400.
+      await expectLater(
+        repo.editarPago(pagoId: p2.pagoId, montoCordobas: 401),
+        throwsA(isA<Exception>()),
+      );
+      await repo.editarPago(pagoId: p2.pagoId, montoCordobas: 400);
+      final cuota = await getCuota(cuotaId);
+      expect(num2(cuota['monto_pagado']), 600); // 200 + 400 = total
+      expect(cuota['estado'], 'pagada');
+      expect(p1.pagoId, isNot(p2.pagoId));
+    });
   });
 
   // ─────────────────────────────────────────────────────────────────────
