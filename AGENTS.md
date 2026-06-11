@@ -18,7 +18,8 @@ leen este archivo directo por el estándar AGENTS.md.)
 | 4 | **`ARQUITECTURA.md`** | Cómo está construida: módulos, conexiones, settings y **RECETAS de cambios** | Si cambia un módulo/tabla/setting/ruta/conexión |
 | 5 | `TESTING.md` §0 | Loop de testing manual con Rubén | Si un feature nuevo trae flujo de testing |
 | 6 | `Install Steps/` | Build, release, versionado e instalación | Si cambia el flujo de build |
-| 7 | `CLAUDE.md` | Shim de 1 línea (`@AGENTS.md`) para que Claude Code cargue este archivo automáticamente | NUNCA — las reglas se editan ACÁ |
+| 7 | `Troubleshooting SQL/` | Corregir DATA de un tenant en producción vía SQL (guía para AI: acoplamiento de tablas, triggers que recalculan solos, recetario de fixes seguros) | Si cambia un trigger/cascada/invariante de dinero |
+| 8 | `CLAUDE.md` | Shim de 1 línea (`@AGENTS.md`) para que Claude Code cargue este archivo automáticamente | NUNCA — las reglas se editan ACÁ |
 
 **Para hacer un CAMBIO en el código**: buscá tu caso en `ARQUITECTURA.md` §0
 (índice de cambios → recetas R1-R12). Eso evita escanear el repo.
