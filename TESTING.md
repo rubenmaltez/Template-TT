@@ -48,6 +48,15 @@ AGENTS.md):
 > Plantilla: **qué hacer → qué deberías ver → si falla**. Rubén: corregí/ampliá
 > estos pasos con tu flujo real cuando algo no coincida.
 
+- **Rechazos de sync visibles (Sprint 1, audit 2026-06-11):** desde el admin,
+  editá un cliente y asignale un código que YA usa otro cliente del tenant.
+  *Ver:* al sincronizar, SnackBar en español ("Código de cliente duplicado…")
+  — ya no el error crudo de Postgres en inglés. En cobrador/técnico, cualquier
+  cambio rechazado por el server muestra además la card ámbar **"Cambios sin
+  sincronizar"** en Perfil (mensaje en español + hora local); la X descarta el
+  aviso y la card desaparece sola al quedar vacía.
+  *Si falla:* el detalle técnico con el contenido del cambio (opData) queda en
+  `/super/logs` (error_logs).
 - **Cobro de campo (cobrador):** abrir una cuota pendiente → cargar monto, método,
   moneda (probar **USD con vuelto** y **C$**), foto → imprimir/guardar recibo.
   *Ver:* recibo correcto, recaudado = aplicado (no lo entregado), vuelto siempre en C$.

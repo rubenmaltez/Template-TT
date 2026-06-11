@@ -80,7 +80,8 @@ provider global que toca `ps.db` lleva `ref.watch(dbEpochProvider)`.
 **Regla general de quién habla con quién:** la UI nunca llama a Supabase
 directo para data operativa (pasa por providers → repos → `ps.db`).
 Excepciones legítimas: `SuperAdminRepo` (RPC/Edge, cross-tenant),
-`ImpersonationService`, el piso del correlativo de recibo (MAX server), y
+`ImpersonationService`, el piso del correlativo de recibo (MAX server con
+timeout 5s + high-water mark local `CorrelativoStore` que nunca decrece), y
 Storage (fotos/logos/documentos).
 
 ---
@@ -102,10 +103,15 @@ error_logs, caché del logo. Telemetría `[SYNC-DIAG]` en consola.
   nombre del archivo SQLite → bumpearlo fuerza DB fresca para todos.
 - **`schema.dart`**: TODA columna de Postgres que la app usa DEBE estar acá.
 - **`connector.dart`** (`SupabaseConnector`): drena la CRUD queue con
-  upsert/update/delete genéricos vía PostgREST. `_isNonRetryable`: descarta
-  con aviso `23xxx`/`42xxx`/`P0001` (errores de cliente); la **clase 40**
-  (serialization/deadlock) ES retryable. Errores → `uploadErrorsController`
-  → SnackBar en los shells.
+  upsert/update/delete genéricos vía PostgREST. `esCodigoNoRetryable`
+  (pública, testeada — audit 2026-06-11 #1): **ALLOWLIST** de permanentes —
+  descarta con aviso SOLO `23xxx`/`42xxx`/`22xxx` (SQLSTATE de 5 chars) y
+  `P0001`; TODO lo demás (PGRST*, códigos HTTP, clase 40, desconocidos) se
+  **REINTENTA** (un permanente raro bloquea la cola a propósito: preserva el
+  dato hasta que se corrija server-side). Cada descarte deja TRIPLE rastro:
+  `uploadErrorsController` → SnackBar humanizado en los 4 shells ·
+  `RechazosSyncService` → card "Cambios sin sincronizar" del Perfil ·
+  `error_logs` con el `opData` completo (forense).
 
 ### `lib/config/router.dart` — navegación por rol + gates (EN ORDEN)
 1. Sin sesión → `/login` · flow recovery/invite → `/set-password`.
@@ -130,7 +136,8 @@ error_logs, caché del logo. Telemetría `[SYNC-DIAG]` en consola.
 | `syncStatusProvider` / `syncReadyProvider` | estado PowerSync / gate listo | shells, router, OfflineBanner |
 | `modulosHabilitadosProvider` | set de módulos ON | menú admin, router, inventario/tickets |
 | `impersonatedTenantIdProvider` / `estaImpersonandoProvider` | impersonación | banner, guards de acciones de campo |
-| `crudUploadErrorProvider` | errores de upload | SnackBars en shells |
+| `crudUploadErrorProvider` | errores de upload | SnackBars en shells (humanizados; VER → Perfil en cobrador/técnico) |
+| `rechazosSyncProvider` | rechazos de sync persistidos (`RechazosSyncService`, SharedPreferences) | card "Cambios sin sincronizar" del Perfil |
 
 ---
 
@@ -245,8 +252,10 @@ propósito — NO normalizarla a UTC!). → **Receta R8.**
 
 ### Historial / Home / Perfil (cobrador) — `lib/features/historial/`, `settings/perfil_screen.dart`
 **[AI]** `historial_screen.dart` (sus cobros; anular si
-`cobranza.cobrador_anula_cobros`) · perfil con config de impresora y cambio de
-password. La landing del cobrador es la lista de Cobros (no hay home aparte).
+`cobranza.cobrador_anula_cobros`) · perfil con config de impresora, cambio de
+password y card "Cambios sin sincronizar" (`_RechazosSyncCard`: rechazos de
+sync persistidos por `RechazosSyncService`; también en el perfil del técnico).
+La landing del cobrador es la lista de Cobros (no hay home aparte).
 
 ### Settings — `lib/features/admin/settings/` + `data/repositories/settings_repo.dart`
 **[H]** El panel de configuración del tenant (tabs Empresa/Cobranza/Pagos/

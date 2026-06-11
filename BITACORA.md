@@ -20,23 +20,63 @@
 
 - **Branch viva: `main`** (única rama permanente; default del repo en GitHub).
   Checkpoints históricos = **tags**: `pre-mvp-v2` (estado auditado 2026-06-09)
-  y `pre-mvp-v1` (checkpoint previo).
+  y `pre-mvp-v1` (checkpoint previo). **Rama de trabajo ABIERTA:
+  `claude/jolly-albattani-09axxa`** (audit integral 2026-06-11 + Sprint 1 de
+  fixes) — tras el testing de Rubén: merge a `main` y BORRAR la rama.
 - **Modelo de branching:** cada sesión de trabajo crea su rama efímera
   (`claude/*` o feature) DESDE `main` → al terminar se mergea a `main` y la
   rama se BORRA. Hitos importantes se marcan con tag, no con rama.
 - **App:** v0.10.0 · schema PowerSync **v26** · migraciones **0001→0114
   TODAS corridas** en Supabase (verificado 2026-06-09) · sync rules v26 activas.
-- **Edge Functions:** las 6 deployadas al día (incl. `eliminar-cobrador` con
-  conteos extendidos y `_shared/passwords.ts` sin sesgo, redeployadas 2026-06-09).
-- **Qué falta (testing/release — lo único pendiente):** smoke tests B.2–B.6
-  (lista en la entrada 2026-06-10) → publicar release nuevo `v0.11.0` con
-  `build-release.ps1` (1ª firma con el keystore → reinstalar apps una vez,
-  sincronizando antes) → probar el updater in-app → borrar release `v0.9.0`.
+- **Edge Functions:** las 6 deployadas al día (redeployadas 2026-06-09).
+- **Audit integral 2026-06-11** (8 agentes; reporte completo + plan de 4
+  sprints en `docs/archive/AUDIT-INTEGRAL-2026-06-11.md`): 1 CRITICAL +
+  9 HIGH + ~26 MEDIUM. **Sprint 1 IMPLEMENTADO y auditado** en la rama de
+  trabajo (ver entrada 2026-06-11). Sprints 2-4 pendientes de decisión.
+- **Qué falta:**
+  1. **Sprint 1**: `flutter analyze` + `flutter test` + smoke manual
+     (TESTING §0.3 "Rechazos de sync") → merge a `main` → borrar la rama.
+  2. Smoke tests B.2–B.6 (entrada 2026-06-10) → release `v0.11.0` con
+     `build-release.ps1` (1ª firma con el keystore → reinstalar apps una vez,
+     sincronizando antes) → probar el updater in-app → borrar release `v0.9.0`.
 - **Hecho recién (2026-06-10):** lock con `open_filex` commiteado (`092a51a`) ·
-  keystore `sitecsa-release.jks` + `key.properties` generados y verificados
-  fuera de git (Rubén tiene backup pendiente de confirmar).
-- **Salud:** audit integral 2026-06-09 → **sin CRITICAL/HIGH abiertos**;
-  14/14 findings resueltos o aceptados con justificación.
+  keystore generado y verificado fuera de git (backup pendiente de confirmar).
+- **Salud:** del audit 2026-06-09 no queda nada abierto; del audit 2026-06-11
+  quedan **7 HIGH sin atacar** (priorizados en el reporte, Sprints 2-3).
+
+---
+
+## 2026-06-11 — Audit integral profundo (8 agentes) + Sprint 1 de fixes
+
+**Por qué:** pedido de Rubén: audit completo de la app (módulos, entidades,
+interacciones) con agentes especializados en UI/UX/lógica buscando bugs no
+encontrados antes; luego aprobó implementar la recomendación (Sprint 1).
+
+**Audit:** 8 agentes en paralelo + re-verificación manual de cada HIGH →
+1 CRITICAL + 9 HIGH + ~26 MEDIUM + ~20 LOW. Reporte completo con plan de
+4 sprints: `docs/archive/AUDIT-INTEGRAL-2026-06-11.md` (commit `87a277d`).
+Veredicto: dinero/multi-tenant/SQL/TZ sólidos; el riesgo real está en la
+divergencia silenciosa y en escrituras offline sin guard server-side.
+
+**Sprint 1 — "ningún cobro se pierde en silencio"** (commits `c9175d1` ·
+`c6c5293` · `3436466` + commit de cierre con los fixes de Fase 4):
+- `connector.dart`: **allowlist** SQLSTATE (P0001/23/42/22 de 5 chars) —
+  PGRST301 (JWT expirado), 429 y desconocidos ahora REINTENTAN; antes se
+  descartaba el cobro de la cola para siempre (CRITICAL #1).
+- **`CorrelativoStore`** (nuevo): high-water mark monotónico del correlativo
+  por cobrador+prefijo (SharedPreferences) + `.timeout(5s)` del piso server —
+  no se reusa un número impreso tras anulación+offline (HIGH #2 + M6).
+- **`RechazosSyncService`** (nuevo) + card "Cambios sin sincronizar" en el
+  Perfil (cobrador/técnico) + SnackBars humanizados en los 4 shells con VER +
+  `opData` en error_logs (HIGH #5). Dedupe por retry de batch + writes
+  serializados (fixes del audit Fase 4: Code+QA+Regresión, 3 aprobados).
+- Tests nuevos: clasificador del connector · monotonicidad del hwm · 2
+  regresiones en `pagos_repo_test` (sync borra recibo anulado) · rechazos.
+
+**Pendiente:** analyze+test+manual (TESTING §0.3) → merge. **Backlog nuevo:**
+avisos de rechazo invisibles para admin/súper (sin pantalla Perfil; decidir
+si darles vista) · surfacear el retry-loop de una op envenenada en `_SyncCard`
+· `rechazos_sync_v1` es per-device, no per-user (aceptado: equipos personales).
 
 ---
 
