@@ -48,7 +48,10 @@ final contratoCuotasProvider = StreamProvider.autoDispose
     SELECT cu.id, cu.monto, cu.monto_pagado, cu.cargos_neto,
            cu.fecha_vencimiento,
            cu.periodo, cu.estado, cu.contrato_id,
-           cu.descripcion, cu.tipo_cargo_manual, ct.dia_pago
+           cu.descripcion, cu.tipo_cargo_manual, ct.dia_pago,
+           (SELECT COUNT(*) FROM cargos_extra ce
+             WHERE ce.cuota_id = cu.id AND ce.origen = 'ajuste'
+           ) AS ajustes_count
       FROM cuotas cu
       LEFT JOIN contratos ct ON ct.id = cu.contrato_id
      WHERE cu.contrato_id = ?
