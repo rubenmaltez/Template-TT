@@ -485,11 +485,13 @@ class PagosRepo {
       );
 
       // Mirror del trigger server trg_pagos_revertir_descuentos (0115, M3):
-      // los DESCUENTOS que ESTE cobro insertó (pronto pago / manual del
-      // flujo de cobro con pago_id) se borran — sin esto, la cuota quedaba
+      // los DESCUENTOS AUTOMÁTICOS que ESTE cobro insertó (pronto pago,
+      // identificados por pago_id) se borran — sin esto, la cuota quedaba
       // con el total rebajado para siempre. La reconexión se preserva a
-      // propósito (se sigue debiendo). Cargos históricos (pago_id NULL)
-      // no se tocan.
+      // propósito (se sigue debiendo). Sin pago_id no se toca nada: cargos
+      // históricos pre-0115 y el descuento MANUAL del dialog del cobro
+      // (que se inserta ANTES de que exista el pago — limitación
+      // documentada en backlog).
       await tx.execute(
         '''
         DELETE FROM cargos_extra

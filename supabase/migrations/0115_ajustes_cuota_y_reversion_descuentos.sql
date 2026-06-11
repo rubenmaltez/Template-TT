@@ -96,16 +96,30 @@ begin
   end loop;
 end $$;
 
--- Tenant nuevo: encadenar el seed (redefine la versión de 0085).
+-- Tenant nuevo: encadenar el seed. OJO (audit Fase 4): se parte del cuerpo
+-- VIGENTE (0113 — incluye recibo_layout, el default 5 de dias_cuotas_visibles
+-- y la promoción super-only de las 4 claves sensibles), NO del de 0085.
 create or replace function public.tenants_seed_settings_trg()
-returns trigger
-language plpgsql as $$
+returns trigger language plpgsql as $$
 begin
   perform public.seed_settings_default(new.id);
   perform public.seed_settings_super_only(new.id);
+  perform public.seed_settings_recibo_layout(new.id);
+  -- Default nuevo: 5 días de cuotas próximas (el seed aún inserta 30; se
+  -- normaliza acá para no recrear la función completa). [0113]
+  update public.settings set valor = '5'::jsonb
+    where tenant_id = new.id and clave = 'cobranza.dias_cuotas_visibles';
+  -- Reglas/permisos sensibles → super_admin-only. [0113]
+  update public.settings set editable_por = 'super_admin'
+    where tenant_id = new.id
+      and clave in ('cobranza.pago_parcial', 'cobranza.pago_adelantado',
+                    'cobranza.cobrador_anula_cobros',
+                    'cobranza.cobrador_edita_cobros');
+  -- Ajustes de cuota (0115).
   perform public.seed_settings_ajustes(new.id);
   return new;
-end $$;
+end;
+$$;
 
 -- =========================================================================
 -- 4. Guard server-side de ajustes (el control REAL, no solo UI — lección
@@ -123,6 +137,19 @@ declare
   v_max_pct numeric;
   v_max_monto numeric;
 begin
+  -- Cascadas y re-upserts NO se re-validan (audit Fase 4): un UPDATE que no
+  -- toca los campos gobernados (p.ej. la reasignación de cobrador de 0068,
+  -- o el re-upsert idéntico de un retry de batch de PowerSync) pasa de
+  -- largo — sin esto, deshabilitar el feature o bajar topes REBOTABA
+  -- cascadas sobre ajustes históricos legítimos.
+  if tg_op = 'UPDATE'
+     and new.tipo = old.tipo
+     and new.monto = old.monto
+     and coalesce(new.porcentaje, -1) = coalesce(old.porcentaje, -1)
+     and coalesce(new.descripcion, '') = coalesce(old.descripcion, '')
+     and new.origen = old.origen then
+    return new;
+  end if;
   if not public.setting_bool(
       new.tenant_id, 'cobranza.ajustes_habilitados', false) then
     raise exception
@@ -152,6 +179,10 @@ begin
   if v_max_monto > 0 and new.monto > v_max_monto + 0.01 then
     raise exception 'El ajuste excede el tope de C$% configurado', v_max_monto;
   end if;
+  -- Limitación documentada (audit Fase 4, BAJA): el guard NO valida
+  -- monto ≤ saldo (carrera offline cobro+ajuste puede sobrepagar; el repo
+  -- lo valida con su snapshot local e INV4 lo detecta a posteriori) —
+  -- misma clase aceptada que el cobro concurrente multi-dispositivo.
   return new;
 end $$;
 

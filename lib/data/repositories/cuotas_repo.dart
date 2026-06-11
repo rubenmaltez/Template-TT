@@ -49,9 +49,11 @@ class CuotasRepo {
   // ─────────────────────────────────────────────────────────────────────
   // AJUSTES de cuota (Sprint 2, audit 2026-06-11 + migración 0115).
   // Principio rector: un ajuste es una fila de cargos_extra con
-  // origen='ajuste' — NUNCA se muta cuotas.monto. El guard REAL vive
-  // server-side (trg_cargos_ajuste_guard: habilitado + rol + motivo +
-  // topes); acá se valida lo mismo para feedback inmediato offline.
+  // origen='ajuste' — NUNCA se muta cuotas.monto. Capas de validación:
+  // acá lo básico offline-first (motivo/valor/estado/saldo); los TOPES del
+  // súper viven en el dialog (feedback inmediato) y en el guard server
+  // trg_cargos_ajuste_guard (el control REAL: habilitado + rol + motivo +
+  // tipo + topes).
   // ─────────────────────────────────────────────────────────────────────
 
   /// Aplica un ajuste (descuento con motivo) a una cuota pendiente/parcial.

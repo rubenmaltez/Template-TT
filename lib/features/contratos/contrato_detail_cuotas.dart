@@ -236,9 +236,13 @@ class _CuotasSectionState extends ConsumerState<_CuotasSection> {
                             verHistorial: verHistorial,
                             onHistorial: () =>
                                 _showCuotaChangeLog(context, cuotaId),
-                            // Ajustes: solo cuotas abiertas (sobre pagada o
-                            // anulada no tiene sentido contable).
-                            onAjustes: puedeAjustar && esPendiente
+                            // Ajustes: cuotas abiertas (aplicar) o con
+                            // ajustes existentes (poder QUITAR aunque el
+                            // ajuste la haya dejado 'pagada' — audit F4).
+                            onAjustes: puedeAjustar &&
+                                    (esPendiente ||
+                                        ((row['ajustes_count'] as num? ?? 0) >
+                                            0))
                                 ? () => _showAjustesCuota(context, row)
                                 : null,
                             onTap: () {
@@ -310,6 +314,10 @@ class _CuotasSectionState extends ConsumerState<_CuotasSection> {
   void _showAjustesCuota(BuildContext context, Map<String, dynamic> row) {
     final cuotaId = row['id'] as String;
     final montoCuota = (row['monto'] as num? ?? 0).toDouble();
+    // "Aplicar" solo en cuotas abiertas; sobre una pagada el sheet sirve
+    // para VER/QUITAR los ajustes existentes (quitar la reabre).
+    final estadoRow = row['estado'] as String? ?? '';
+    final puedeAplicar = estadoRow == 'pendiente' || estadoRow == 'parcial';
     final repo = ref.read(cuotasRepoProvider);
     Future<List<Map<String, dynamic>>>? futuro;
 
@@ -436,14 +444,15 @@ class _CuotasSectionState extends ConsumerState<_CuotasSection> {
                     },
                   ),
                   const SizedBox(height: 8),
-                  Align(
-                    alignment: Alignment.centerRight,
-                    child: FilledButton.icon(
-                      icon: const Icon(Icons.percent, size: 18),
-                      label: const Text('Aplicar ajuste'),
-                      onPressed: aplicarNuevo,
+                  if (puedeAplicar)
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: FilledButton.icon(
+                        icon: const Icon(Icons.percent, size: 18),
+                        label: const Text('Aplicar ajuste'),
+                        onPressed: aplicarNuevo,
+                      ),
                     ),
-                  ),
                 ],
               ),
             ),
