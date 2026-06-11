@@ -158,11 +158,17 @@ reportes y contratos leen lo que esto escribe).
 persistencia en `data/repositories/pagos_repo.dart`
 (`registrarCobro`/`registrarCobroMultiple`: una `writeTransaction` con
 `cargos_extra`→`pagos`→`recibos`→mirror de `cuotas` vía `calcularEstadoCuota`).
-Correlativo: MAX del server como piso + recalculo en tx. Rutas: `/cobro/:ids`
-(ids = `id1,id2,...`). Settings: `cobranza.pago_parcial/pago_adelantado/
+Correlativo: MAX del server como piso (timeout 5s) + hwm `CorrelativoStore`
++ recálculo en tx. Rutas: `/cobro/:ids` (ids = `id1,id2,...`). Settings:
+`cobranza.pago_parcial/pago_adelantado/
 descuentos_*/cargo_reconexion_*/comprobante_*/foto_obligatoria`,
 `pagos.usd_habilitado/tasa_usd_cordoba/metodo_*`. Tablas: escribe `pagos`,
 `recibos`, `cargos_extra`, `cuotas` (mirror). Guard: bloqueado impersonando.
+Desde el mega-sprint 2026-06-11: montos con `parseMonto` (coma decimal, M8) ·
+PopScope con confirmación de descarte (#6) · al aplicar cargo manual se
+re-deduplican los `_cargosAuto` (#3) · `trg_pagos_guard_cobrador` (0116)
+enforcea server-side `cobrador_anula_cobros`/`cobrador_edita_cobros` (#4) ·
+anular un pago revierte SUS descuentos automáticos (`pago_id`, 0115/M3).
 **⚠️ Ver Receta R11 + invariantes de dinero en `AGENTS.md` antes de tocar.**
 
 ### Cuotas — `lib/features/cuotas/` (cobrador+admin) · `lib/features/admin/cuotas/`
@@ -308,6 +314,9 @@ puerto del cliente). Consumidor principal: **incidentes** (derivación de
 afectados) y tickets (`puerto_id`).
 
 ### Inventario (módulo opcional) — `lib/features/admin/inventario/`
+> 0116 (#10): `trg_inv_seriales_guard_transicion` — instalar exige venir de
+> `en_stock` y un instalado no cambia de cliente sin pasar por stock (cierra
+> la doble asignación offline). `inv_movimientos.ocurrido_en` ahora en UTC.
 **[H]** Stock del ISP: catálogo, ubicaciones (bodega/custodia del técnico),
 seriales cuna-a-tumba y ledger de movimientos. El stock NO es un contador:
 se DERIVA (serializado = COUNT de seriales `en_stock`; granel = Σdestino−Σorigen).
@@ -319,6 +328,9 @@ Gate: módulo `inventario` (menú+router+**RLS 0114**). Historial:
 `HistorialSerialWidget` (serial + movimientos + ticket_materiales).
 
 ### Tickets + Técnico + Incidentes (módulo opcional) — `lib/features/admin/tickets/`, `lib/features/tecnico/`, `lib/features/admin/incidentes/`
+> 0116 (M18): el correlativo local del ticket es PROVISORIO — en conflicto el
+> server lo re-asigna (`trg_tickets_correlativo`); el ticket ya no se descarta.
+> M16: las transiciones terminales por rol confirman antes de ejecutar.
 **[H]** El ciclo de trabajo de campo: admin crea/asigna → técnico resuelve
 offline (avanzar/pausar/resolver, checklist, fotos, comentarios) y consume
 materiales de su custodia (descuenta inventario e instala el equipo en el
@@ -341,6 +353,10 @@ eventos excluidos — la bitácora ya los narra). Rol `admin_tickets`: DIFERIDO
 (no se ofrece). Gate: módulo `tickets` (menú+router+RLS 0114).
 
 ### Audit / Change log — `lib/features/admin/audit/` + `shared/widgets/historial_cambios_widget.dart`
+> 0116: `cobradores` ya tiene changelog (#9 — botón Historial en Personal) ·
+> `audit_log` es append-only TAMBIÉN para el súper (M23) · la función genérica
+> ignora UPDATEs no-op (sin filas fantasma por retries) · los agregadores leen
+> `$.padre_id` del snapshot (M22).
 **[H]** Toda entidad editable tiene su historial (quién/cuándo/qué) accesible
 desde su pantalla. Lo genera el SERVER (trigger genérico), nunca el cliente.
 **[AI]** Trigger `audit_changelog_trg` (AFTER I/U/D, guard
