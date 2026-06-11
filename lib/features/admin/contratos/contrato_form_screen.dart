@@ -210,6 +210,15 @@ class _ContratoFormScreenState extends ConsumerState<ContratoFormScreen> {
       setState(() => _error = 'Seleccioná un plan');
       return;
     }
+    // Doble-submit (fix audit #7): _guardando se setea ANTES del primer
+    // await — con el botón habilitado durante los pre-chequeos async, un
+    // doble-click en Windows creaba DOS contratos locales (el server
+    // rechazaba el 2º recién al sync; offline persistían). Cada early-return
+    // de acá en adelante debe revertirlo.
+    setState(() {
+      _guardando = true;
+      _error = null;
+    });
     // Guard: el trigger contratos_check_cliente_con_cobrador en Postgres
     // requiere que el cliente tenga cobrador asignado. Validamos acá
     // para dar feedback claro en vez de una CRUD rejection silenciosa.
@@ -217,10 +226,13 @@ class _ContratoFormScreenState extends ConsumerState<ContratoFormScreen> {
       'SELECT cobrador_id FROM clientes WHERE id = ?',
       [_clienteId],
     );
+    if (!mounted) return;
     if (clienteRows.isNotEmpty && clienteRows.first['cobrador_id'] == null) {
-      setState(() => _error =
-          'El cliente no tiene cobrador asignado. '
-          'Asigná uno desde Clientes → Editar antes de crear el contrato.');
+      setState(() {
+        _guardando = false;
+        _error = 'El cliente no tiene cobrador asignado. '
+            'Asigná uno desde Clientes → Editar antes de crear el contrato.';
+      });
       return;
     }
     // Guard: el índice único contratos_unique_activo_por_cliente_plan
@@ -236,15 +248,21 @@ class _ContratoFormScreenState extends ConsumerState<ContratoFormScreen> {
       ''',
       [_clienteId, _planId],
     );
+    if (!mounted) return;
     if (dup.isNotEmpty) {
-      setState(() => _error =
-          'Este cliente ya tiene un contrato activo con ese plan. '
-          'Cancelá el contrato anterior o elegí otro plan.');
+      setState(() {
+        _guardando = false;
+        _error = 'Este cliente ya tiene un contrato activo con ese plan. '
+            'Cancelá el contrato anterior o elegí otro plan.';
+      });
       return;
     }
     final tenantId = ref.read(tenantIdProvider);
     if (tenantId == null) {
-      setState(() => _error = 'No se pudo determinar el tenant');
+      setState(() {
+        _guardando = false;
+        _error = 'No se pudo determinar el tenant';
+      });
       return;
     }
 
@@ -255,17 +273,15 @@ class _ContratoFormScreenState extends ConsumerState<ContratoFormScreen> {
     if (!(_codigoYaAsignado && !esSuper)) {
       if (await _verificarCodigoDuplicado()) {
         if (!mounted) return;
-        setState(() => _error =
-            'Ya existe un contrato con el código "${_codigoCtrl.text.trim()}"'
-            '${_codigoDupInfo != null ? ' (cliente $_codigoDupInfo)' : ''}.');
+        setState(() {
+          _guardando = false;
+          _error =
+              'Ya existe un contrato con el código "${_codigoCtrl.text.trim()}"'
+              '${_codigoDupInfo != null ? ' (cliente $_codigoDupInfo)' : ''}.';
+        });
         return;
       }
     }
-
-    setState(() {
-      _guardando = true;
-      _error = null;
-    });
 
     try {
       final fechaFin = _fechaFin();

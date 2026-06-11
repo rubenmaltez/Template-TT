@@ -153,6 +153,14 @@ class _ClienteFormScreenState extends ConsumerState<ClienteFormScreen> {
       setState(() => _error = 'No se pudo determinar el tenant');
       return;
     }
+    // Doble-submit (fix audit #7): _guardando ANTES del primer await — con
+    // el botón habilitado durante los guards async, un doble-click creaba
+    // DOS clientes locales con el mismo código (el UNIQUE server rechazaba
+    // el 2º recién al sync). Los early-returns de abajo lo revierten.
+    setState(() {
+      _guardando = true;
+      _error = null;
+    });
 
     // Guard de código duplicado (hard stop con mensaje claro; el UNIQUE de la
     // DB es la red final). El super_admin puede corregir un código asignado,
@@ -162,10 +170,14 @@ class _ClienteFormScreenState extends ConsumerState<ClienteFormScreen> {
     final codigoBloqueado = _codigoYaAsignado && !esSuper;
     if (!codigoBloqueado) {
       await _verificarCodigoDuplicado();
+      if (!mounted) return;
       if (_codigoDupNombre != null) {
-        setState(() => _error =
-            'Ya existe un cliente con el código "${_codigo.text.trim()}": '
-            '$_codigoDupNombre');
+        setState(() {
+          _guardando = false;
+          _error =
+              'Ya existe un cliente con el código "${_codigo.text.trim()}": '
+              '$_codigoDupNombre';
+        });
         return;
       }
     }
@@ -178,19 +190,18 @@ class _ClienteFormScreenState extends ConsumerState<ClienteFormScreen> {
         "SELECT COUNT(*) AS n FROM contratos WHERE cliente_id = ? AND estado = 'activo'",
         [widget.clienteId],
       );
+      if (!mounted) return;
       final n = (activos.first['n'] as int? ?? 0);
       if (n > 0) {
-        setState(() => _error =
-            'No se puede desasignar el cobrador: el cliente tiene $n contrato(s) activo(s). '
-            'Reasigne primero a otro cobrador.');
+        setState(() {
+          _guardando = false;
+          _error =
+              'No se puede desasignar el cobrador: el cliente tiene $n contrato(s) activo(s). '
+              'Reasigne primero a otro cobrador.';
+        });
         return;
       }
     }
-
-    setState(() {
-      _guardando = true;
-      _error = null;
-    });
 
     try {
       final now = DateTime.now().toIso8601String();

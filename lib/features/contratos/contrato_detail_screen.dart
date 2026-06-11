@@ -100,6 +100,37 @@ class _ContratoDetailScreenState extends ConsumerState<ContratoDetailScreen> {
     // System del super_admin, no bajo el admin real. El dropdown además se oculta
     // del header al impersonar (esto es defensa en profundidad).
     if (bloqueadoPorImpersonacion(context, ref)) return;
+    // Confirmación (fix audit #8): 'cancelado' es TERMINAL y toca dinero
+    // (anula pendientes + inserta descuentos liquidadores). Un tap
+    // equivocado en el PopupMenu no puede ejecutarlo directo — anular UN
+    // pago exige motivo; cancelar el contrato entero no pedía nada.
+    if (nuevoEstado == 'cancelado') {
+      final ok = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('¿Cancelar este contrato?'),
+          content: const Text(
+              'Es una acción TERMINAL: las cuotas pendientes se anulan y '
+              'las parciales se liquidan con descuento (lo ya cobrado se '
+              'preserva). El contrato no se puede reactivar.'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Volver'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              style: FilledButton.styleFrom(
+                backgroundColor: Theme.of(ctx).colorScheme.error,
+                foregroundColor: Theme.of(ctx).colorScheme.onError,
+              ),
+              child: const Text('Cancelar contrato'),
+            ),
+          ],
+        ),
+      );
+      if (ok != true || !mounted) return;
+    }
     _procesandoEstado = true;
     // Hora REAL del dispositivo (UTC) para el change log — offline-first.
     final ocurridoEn = DateTime.now().toUtc().toIso8601String();
