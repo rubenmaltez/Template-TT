@@ -37,18 +37,18 @@ class DropdownFiltro extends StatelessWidget {
     final seleccion =
         activo ? opciones.firstWhere((o) => o.id == valido).label : todosLabel;
 
-    return PopupMenuButton<String?>(
+    return PopupMenuButton<String>(
       tooltip: hint,
       position: PopupMenuPosition.under,
-      onSelected: onChanged,
+      onSelected: (val) => onChanged(val == '__TODOS__' ? null : val),
       itemBuilder: (context) => [
-        PopupMenuItem<String?>(
-          value: null,
+        PopupMenuItem<String>(
+          value: '__TODOS__',
           child: _MenuRow(label: todosLabel, seleccionado: !activo),
         ),
         if (opciones.isNotEmpty) const PopupMenuDivider(),
         for (final o in opciones)
-          PopupMenuItem<String?>(
+          PopupMenuItem<String>(
             value: o.id,
             child: _MenuRow(label: o.label, seleccionado: o.id == valido),
           ),

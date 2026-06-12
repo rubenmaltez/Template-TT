@@ -19,16 +19,26 @@
 ## ⭐ ESTADO ACTUAL (refrescar al cerrar cada sesión)
 
 - **Branch viva: `main`** (todas las ramas efímeras fusionadas y borradas).
-  **Único tag/release en GitHub: `v0.11.3`**. Limpieza 2026-06-12 por decisión de Rubén: releases/tags
+  **Único tag/release en GitHub: `v0.11.5`**. Limpieza 2026-06-12 por decisión de Rubén: releases/tags
   viejos (v0.9.0→v0.11.2) y checkpoints `pre-mvp-v1/v2` BORRADOS.
 - **Modelo de branching:** cada sesión de trabajo desarrolla en rama efímera, al terminar se mergea a `main` y se borra.
-- **App:** v0.11.4 · schema PowerSync **v27** · migraciones **0001→0118 TODAS corridas** · **sync rules v8 "Active"**.
+- **App:** v0.11.5 · schema PowerSync **v27** · migraciones **0001→0118 TODAS corridas** · **sync rules v8 "Active"**.
 - **Edge Functions:** las 6 deployadas al día (redeployadas 2026-06-09).
 - **Audit integral 2026-06-11**: Sprint 1 mergeado a main. Sprint 2 implementado. **Sprint 4 (Opción A + Opción B) IMPLEMENTADOS**.
 - **Qué falta:**
   1. Testing manual de Rubén para los cambios de la 0118 (baja terminal, transferencias tardías, auto-eventos de ticket) y motivo de cancelación obligatorio en contratos.
-  2. Testing manual de la v0.11.4 instalada (compresión/branding, entrada (e)).
-- **Hecho recién (2026-06-12):** Implementados y validados los cambios de la Opción A y Opción B (Sprint 4). Pruebas estáticas (`flutter analyze` limpia con 4 deprecaciones conocidas) y unitarias (`flutter test` 275/275 exitosas). Mapeada la versión a v0.11.4.
+  2. Testing manual de la v0.11.5 instalada (compresión/branding + fix de filtros congelados).
+- **Hecho recién (2026-06-12):** Corregido bug de filtros congelados mediante cambio de tipo en `DropdownFiltro` para evitar la interpretación errónea de `null` en Flutter. Pruebas estáticas (`flutter analyze`) y unitarias (`flutter test` 275/275 exitosas). Mapeada la versión a v0.11.5.
+
+---
+
+## 2026-06-12 (h) — Fix de filtros congelados + Release v0.11.5 (Filtros de Cobrador/Zona/Nodo)
+
+**Qué se pidió:** Corregir bug donde al seleccionar "Todas" o "Todos" en los filtros desplegables de cobrador, zona o nodo en el mapa y lista de cuotas, el filtro se quedaba congelado en el valor anterior.
+
+**Qué se hizo:**
+- **Shared widgets**: Modificado `dropdown_filtro.dart` para cambiar el tipo genérico del `PopupMenuButton` de `String?` a `String`, utilizando `'__TODOS__'` como valor interno para la opción general. Esto previene que Flutter interprete la selección de `null` como una cancelación del menú y descarte el trigger de selección.
+- **Verificación**: `flutter analyze` exitoso (0 errores, 4 deprecaciones conocidas) y `flutter test` (275 exitosos). Bump a `v0.11.5+115`.
 
 ---
 

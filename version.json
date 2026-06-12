@@ -1,6 +1,6 @@
 {
-  "version": "0.11.4",
-  "release_notes": "Restricciones de transiciones de inventario, motivo de cancelación obligatorio en contratos y auto-eventos de ticket en el servidor.",
+  "version": "0.11.5",
+  "release_notes": "Corrección de filtros de cobrador, zona y nodo que se quedaban congelados al intentar limpiar la selección ('Todas' / 'Todos').",
   "download_url_windows": "https://github.com/rubenmaltez/Template-TT/releases/latest/download/SITECSA-CRM.msix",
   "download_url_android": "https://github.com/rubenmaltez/Template-TT/releases/latest/download/SITECSA-CRM.apk",
   "download_url": "https://github.com/rubenmaltez/Template-TT/releases/latest/download/SITECSA-CRM.msix"
