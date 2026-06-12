@@ -274,9 +274,9 @@ const _adminMenu = [
   _MenuItem(Icons.admin_panel_settings, 'Administración', '/admin/cobradores',
       adminOnly: true, children: [
     _MenuItem(Icons.groups, 'Personal', '/admin/cobradores', adminOnly: true),
-    // Re-linkeada (M25 del audit: quedó huérfana en BULK 12 y era la única
-    // pantalla con "Anular cuota" — inalcanzable sin barra de URL).
-    _MenuItem(Icons.receipt_long, 'Cuotas', '/admin/cuotas', adminOnly: true),
+    // 'Cuotas' RETIRADA (decisión Rubén 2026-06-11; deshace el re-link M25):
+    // anular cuota era terminal-peligroso (arrastra pagos/recibos) y las
+    // cuotas manuales no se usan. Las cuotas viven en el detalle del contrato.
     _MenuItem(Icons.wifi, 'Planes', '/admin/planes', adminOnly: true),
     _MenuItem(Icons.location_city, 'Geografía', '/admin/geografia',
         adminOnly: true),

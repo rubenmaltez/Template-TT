@@ -120,6 +120,10 @@ const _hidden = {
   // cuotas.monto sin recalcular estado ni motivo. Reemplazado por los
   // AJUSTES (cargos_extra origen='ajuste'). El seed histórico se preserva.
   'cuotas.editar_monto',
+  // "Cuotas manuales" RETIRADO junto con la pantalla /admin/cuotas
+  // (decisión Rubén 2026-06-11): no se usan; un cobro extra puntual se
+  // resuelve con "+ Cargo" sobre una cuota existente. Seed preservado.
+  'cuotas.manuales',
   // Legacy duplicados — la app ya usa los metodo_* de 0040.
   'pagos.transferencia_habilitada',
   'pagos.tarjeta_habilitada',

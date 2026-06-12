@@ -11,7 +11,6 @@ import '../features/admin/clientes/clientes_admin_screen.dart';
 import '../features/admin/cobradores/cobradores_admin_screen.dart';
 import '../features/admin/contratos/contratos_admin_screen.dart';
 import '../features/contratos/contrato_detail_screen.dart';
-import '../features/admin/cuotas/cuotas_admin_screen.dart';
 import '../features/admin/dashboard/dashboard_admin_screen.dart';
 import '../features/admin/geografia/geografia_admin_screen.dart';
 import '../features/admin/incidentes/incidente_detail_screen.dart';
@@ -417,8 +416,9 @@ final routerProvider = Provider<GoRouter>((ref) {
               pageBuilder: (_, s) => _fadePage(s, _titled('Planes', const PlanesAdminScreen()))),
           GoRoute(path: '/admin/cobradores',
               pageBuilder: (_, s) => _fadePage(s, _titled('Cobradores', const CobradoresAdminScreen()))),
-          GoRoute(path: '/admin/cuotas',
-              pageBuilder: (_, s) => _fadePage(s, _titled('Cuotas', const CuotasAdminScreen()))),
+          // /admin/cuotas RETIRADA (decisión Rubén 2026-06-11): anular cuota
+          // era terminal-peligroso y las cuotas manuales no se usan. Las
+          // cuotas se gestionan desde el detalle del contrato.
           GoRoute(path: '/admin/pagos',
               pageBuilder: (_, s) => _fadePage(s, _titled('Pagos', const PagosAdminScreen()))),
           GoRoute(path: '/admin/mapa',

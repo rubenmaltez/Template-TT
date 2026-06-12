@@ -174,9 +174,7 @@ class AppSettings {
   double get tasaUsd =>
       settingValue<num>(_map, 'pagos.tasa_usd_cordoba', 36.5).toDouble();
 
-  // Cuotas: permisos del admin.
-  bool get cuotasManuales =>
-      settingValue<bool>(_map, 'cuotas.manuales', false);
+  // (cuotasManuales se retiró con la pantalla /admin/cuotas — 2026-06-11.)
 
   // Ajustes de cuota (Sprint 2, 0115): habilitación + topes super-only.
   bool get ajustesHabilitados =>
