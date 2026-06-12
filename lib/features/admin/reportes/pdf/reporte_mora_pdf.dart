@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 
@@ -20,9 +22,11 @@ Future<pw.Document> buildReporteMora({
   required String empresaNombre,
   required String periodo,
   required List<Map<String, dynamic>> rows,
+  Uint8List? logoBytes,
 }) async {
   final pdf = pw.Document();
   final theme = await pdfTheme();
+  final logo = logoBytes == null ? null : pw.MemoryImage(logoBytes);
 
   pdf.addPage(
     pw.MultiPage(
@@ -33,6 +37,7 @@ Future<pw.Document> buildReporteMora({
         empresaNombre: empresaNombre,
         titulo: titulo,
         periodo: periodo,
+        logo: logo,
       ),
       footer: (context) => buildFooterEstandar(context),
       build: (context) => [

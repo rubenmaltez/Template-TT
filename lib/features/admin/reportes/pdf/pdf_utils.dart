@@ -88,18 +88,42 @@ const colorFilaImpar = PdfColors.white;
 // Helpers de layout
 // ---------------------------------------------------------------------------
 
-/// Construye el header estándar de reportes (empresa + título + período + fecha).
+/// Construye el header estándar de reportes (logo del tenant + empresa +
+/// título + período + fecha). [logo] es opcional: sin logo configurado el
+/// header queda igual que antes (solo texto). El caller crea el
+/// `pw.MemoryImage` UNA vez por documento (el header corre por página).
 pw.Widget buildHeaderEstandar({
   required String empresaNombre,
   required String titulo,
   required String periodo,
+  pw.ImageProvider? logo,
 }) {
-  return pw.Column(
+  final textos = pw.Column(
     crossAxisAlignment: pw.CrossAxisAlignment.start,
     children: [
       pw.Text(empresaNombre, style: estiloEmpresa),
       pw.SizedBox(height: 4),
       pw.Text(titulo, style: estiloTitulo),
+    ],
+  );
+  return pw.Column(
+    crossAxisAlignment: pw.CrossAxisAlignment.start,
+    children: [
+      if (logo == null)
+        textos
+      else
+        pw.Row(
+          crossAxisAlignment: pw.CrossAxisAlignment.center,
+          children: [
+            pw.Container(
+              height: 44,
+              constraints: const pw.BoxConstraints(maxWidth: 130),
+              child: pw.Image(logo, fit: pw.BoxFit.contain),
+            ),
+            pw.SizedBox(width: 14),
+            pw.Expanded(child: textos),
+          ],
+        ),
       pw.SizedBox(height: 2),
       pw.Row(
         mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,

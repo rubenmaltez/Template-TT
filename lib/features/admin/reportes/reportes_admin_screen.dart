@@ -1,8 +1,11 @@
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../config/router.dart';
 import '../../../data/models/pago.dart';
+import '../../../data/providers/logo_empresa_provider.dart';
 import '../../../data/repositories/settings_repo.dart';
 import '../../../data/utils/errores.dart';
 import '../../../data/utils/formatters.dart';
@@ -20,6 +23,17 @@ import 'pdf/reporte_fiscal_pdf.dart';
 import 'pdf/reporte_inactivos_pdf.dart';
 import 'pdf/reporte_mora_pdf.dart';
 import 'pdf/reporte_por_cobrador_pdf.dart';
+
+/// Bytes del logo del tenant para los headers de los PDF (cache
+/// offline-first, el mismo del recibo). Nunca lanza: sin logo configurado o
+/// sin cache+red devuelve null y el header sale solo texto.
+Future<Uint8List?> _logoParaReportes(WidgetRef ref) async {
+  try {
+    return await ref.read(logoEmpresaBytesProvider.future);
+  } catch (_) {
+    return null;
+  }
+}
 
 /// Rango de fechas para los reportes DESCARGABLES (#3). Filtra por `fecha_pago`
 /// (la "fecha de cobro"). NO afecta las tarjetas analíticas en pantalla —esas
@@ -333,6 +347,7 @@ class _ArqueoCajaCard extends ConsumerWidget {
     try {
       final empresaNombre =
           ref.read(empresaNombreProvider).valueOrNull ?? 'ISP';
+      final logoBytes = await _logoParaReportes(ref);
       final rows =
           await ps.db.getAll(_arqueoSql, [rango.desdeSql, rango.hastaSql]);
 
@@ -342,6 +357,7 @@ class _ArqueoCajaCard extends ConsumerWidget {
         empresaNombre: empresaNombre,
         periodo: rango.periodoLabel,
         rows: rows,
+        logoBytes: logoBytes,
       );
       final ruta = await guardarArchivo(
         fileName: 'arqueo_${now.year}_${now.month}_${now.day}.pdf',
@@ -513,6 +529,8 @@ class _DescargarPdfMenu extends ConsumerWidget {
       return;
     }
 
+    final logoBytes = await _logoParaReportes(ref);
+
     try {
       if (tipo == 'cobros') {
         final rows = await ps.db.getAll('''
@@ -540,6 +558,7 @@ class _DescargarPdfMenu extends ConsumerWidget {
           empresaNombre: empresaNombre,
           periodo: periodo,
           rows: rows,
+          logoBytes: logoBytes,
         );
 
         await guardarPdfConAviso(
@@ -574,6 +593,7 @@ class _DescargarPdfMenu extends ConsumerWidget {
           empresaNombre: empresaNombre,
           periodo: periodoMora,
           rows: rows,
+          logoBytes: logoBytes,
         );
         await guardarPdfConAviso(
           context,
@@ -623,6 +643,7 @@ class _DescargarPdfMenu extends ConsumerWidget {
           periodo: rango.periodoLabel,
           cobradorNombre: seleccionado['nombre'] as String,
           rows: rows,
+          logoBytes: logoBytes,
         );
         await guardarPdfConAviso(
           context,
@@ -654,6 +675,7 @@ class _DescargarPdfMenu extends ConsumerWidget {
           empresaNombre: empresaNombre,
           periodo: Fmt.mes(now),
           rows: rows,
+          logoBytes: logoBytes,
         );
         await guardarPdfConAviso(
           context,
@@ -661,13 +683,13 @@ class _DescargarPdfMenu extends ConsumerWidget {
           bytes: await doc.save(),
         );
       } else if (tipo == 'fiscal') {
-        await _generarFiscal(context, empresaNombre, rango);
+        await _generarFiscal(context, empresaNombre, rango, logoBytes);
       } else if (tipo == 'eficiencia') {
-        await _generarEficiencia(context, empresaNombre, rango);
+        await _generarEficiencia(context, empresaNombre, rango, logoBytes);
       } else if (tipo == 'inactivos') {
-        await _generarInactivos(context, empresaNombre);
+        await _generarInactivos(context, empresaNombre, logoBytes);
       } else if (tipo == 'anulaciones') {
-        await _generarAnulaciones(context, empresaNombre, rango);
+        await _generarAnulaciones(context, empresaNombre, rango, logoBytes);
       }
     } catch (e) {
       if (context.mounted) {
@@ -685,8 +707,8 @@ class _DescargarPdfMenu extends ConsumerWidget {
   // E1: Reporte fiscal — ingresos por mes, plan y método de pago
   // ---------------------------------------------------------------------------
 
-  Future<void> _generarFiscal(
-      BuildContext context, String empresaNombre, RangoReporte rango) async {
+  Future<void> _generarFiscal(BuildContext context, String empresaNombre,
+      RangoReporte rango, Uint8List? logoBytes) async {
     final rows = await ps.db.getAll('''
       SELECT strftime('%Y-%m', p.fecha_pago) AS mes,
              COALESCE(pl.nombre, 'Sin plan') AS plan_nombre,
@@ -710,6 +732,7 @@ class _DescargarPdfMenu extends ConsumerWidget {
       empresaNombre: empresaNombre,
       periodo: rango.periodoLabel,
       rows: rows,
+      logoBytes: logoBytes,
     );
     await guardarPdfConAviso(
       context,
@@ -722,8 +745,8 @@ class _DescargarPdfMenu extends ConsumerWidget {
   // E2: Reporte eficiencia por cobrador
   // ---------------------------------------------------------------------------
 
-  Future<void> _generarEficiencia(
-      BuildContext context, String empresaNombre, RangoReporte rango) async {
+  Future<void> _generarEficiencia(BuildContext context, String empresaNombre,
+      RangoReporte rango, Uint8List? logoBytes) async {
     final rows = await ps.db.getAll('''
       SELECT cb.nombre AS cobrador_nombre,
              COUNT(p.id) AS total_cobros,
@@ -751,6 +774,7 @@ class _DescargarPdfMenu extends ConsumerWidget {
       empresaNombre: empresaNombre,
       periodo: rango.periodoLabel,
       rows: rows,
+      logoBytes: logoBytes,
     );
     await guardarPdfConAviso(
       context,
@@ -763,8 +787,8 @@ class _DescargarPdfMenu extends ConsumerWidget {
   // E3: Reporte clientes inactivos
   // ---------------------------------------------------------------------------
 
-  Future<void> _generarInactivos(
-      BuildContext context, String empresaNombre) async {
+  Future<void> _generarInactivos(BuildContext context, String empresaNombre,
+      Uint8List? logoBytes) async {
     const mesesInactividad = 3;
     final rows = await ps.db.getAll('''
       SELECT c.nombre, co.nombre AS comunidad,
@@ -790,6 +814,7 @@ class _DescargarPdfMenu extends ConsumerWidget {
       periodo: Fmt.mes(now),
       rows: rows,
       mesesInactividad: mesesInactividad,
+      logoBytes: logoBytes,
     );
     await guardarPdfConAviso(
       context,
@@ -802,8 +827,8 @@ class _DescargarPdfMenu extends ConsumerWidget {
   // E4: Reporte de anulaciones
   // ---------------------------------------------------------------------------
 
-  Future<void> _generarAnulaciones(
-      BuildContext context, String empresaNombre, RangoReporte rango) async {
+  Future<void> _generarAnulaciones(BuildContext context, String empresaNombre,
+      RangoReporte rango, Uint8List? logoBytes) async {
     final rows = await ps.db.getAll('''
       SELECT p.fecha_pago,
              c.nombre AS cliente_nombre,
@@ -827,6 +852,7 @@ class _DescargarPdfMenu extends ConsumerWidget {
       empresaNombre: empresaNombre,
       periodo: rango.periodoLabel,
       rows: rows,
+      logoBytes: logoBytes,
     );
     await guardarPdfConAviso(
       context,
