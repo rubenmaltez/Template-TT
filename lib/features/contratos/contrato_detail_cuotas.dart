@@ -308,9 +308,10 @@ class _CuotasSectionState extends ConsumerState<_CuotasSection> {
         _CuotaFiltro.manuales => 'Manuales',
       };
 
-  // Sheet "Ajustes de la cuota" (Sprint 2, 0115): lista los ajustes con
-  // quitar individual + aplicar uno nuevo. El future se cachea en el closure
-  // y se recrea SOLO al recargar (no inline en cada rebuild).
+  // Sheet "Descuentos de la cuota" (Sprint 2 0115 + rediseño 2026-06-11):
+  // lista ajustes Y promos con quitar individual + aplicar uno nuevo. El
+  // future se cachea en el closure y se recrea SOLO al recargar (no inline
+  // en cada rebuild).
   void _showAjustesCuota(BuildContext context, Map<String, dynamic> row) {
     final cuotaId = row['id'] as String;
     final montoCuota = (row['monto'] as num? ?? 0).toDouble();
@@ -339,7 +340,8 @@ class _CuotasSectionState extends ConsumerState<_CuotasSection> {
             final saldo = c.saldo; // getter canónico del modelo
             final ok = await showDialog<bool>(
               context: sheetCtx,
-              builder: (_) => AjustarCuotaDialog(
+              builder: (_) => DescuentoDialog(
+                contexto: DescuentoContexto.contrato,
                 cuotaId: cuotaId,
                 montoCuota: montoCuota,
                 saldoActual: saldo,
@@ -352,10 +354,10 @@ class _CuotasSectionState extends ConsumerState<_CuotasSection> {
             final ok = await showDialog<bool>(
               context: sheetCtx,
               builder: (dCtx) => AlertDialog(
-                title: const Text('¿Quitar este ajuste?'),
+                title: const Text('¿Quitar este descuento?'),
                 content: Text(
                     'El saldo de la cuota vuelve a subir ${Fmt.cordobas(monto)}. '
-                    'El ajuste queda registrado en el historial.'),
+                    'El descuento queda registrado en el historial.'),
                 actions: [
                   TextButton(
                     onPressed: () => Navigator.pop(dCtx, false),
@@ -381,12 +383,12 @@ class _CuotasSectionState extends ConsumerState<_CuotasSection> {
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text('Ajustes de la cuota',
+                  Text('Descuentos de la cuota',
                       style: Theme.of(sheetCtx).textTheme.titleMedium),
                   const SizedBox(height: 4),
                   Text(
-                    'Un ajuste descuenta del saldo con motivo obligatorio y '
-                    'queda en el historial de la cuota.',
+                    'Un descuento (ajuste o promo) rebaja el saldo con motivo '
+                    'obligatorio y queda en el historial de la cuota.',
                     style: Theme.of(sheetCtx)
                         .textTheme
                         .bodySmall
@@ -406,7 +408,7 @@ class _CuotasSectionState extends ConsumerState<_CuotasSection> {
                       if (items.isEmpty) {
                         return Padding(
                           padding: const EdgeInsets.symmetric(vertical: 16),
-                          child: Text('Sin ajustes aplicados.',
+                          child: Text('Sin descuentos aplicados.',
                               style: TextStyle(color: scheme.outline)),
                         );
                       }
@@ -416,9 +418,16 @@ class _CuotasSectionState extends ConsumerState<_CuotasSection> {
                             ListTile(
                               dense: true,
                               contentPadding: EdgeInsets.zero,
-                              leading: Icon(Icons.percent,
-                                  size: 20, color: scheme.primary),
+                              leading: Icon(
+                                  a['origen'] == 'promo'
+                                      ? Icons.local_offer
+                                      : Icons.percent,
+                                  size: 20,
+                                  color: scheme.primary),
                               title: Text(
+                                // Etiqueta de semántica (decisión Rubén):
+                                // Ajuste = corrección, Promo = beneficio.
+                                '${a['origen'] == 'promo' ? 'Promo' : 'Ajuste'} '
                                 '−${Fmt.cordobas((a['monto'] as num).toDouble())}'
                                 '${a['porcentaje'] != null ? ' (${(a['porcentaje'] as num).toStringAsFixed(0)}%)' : ''}',
                                 style: const TextStyle(
@@ -432,7 +441,7 @@ class _CuotasSectionState extends ConsumerState<_CuotasSection> {
                               isThreeLine: true,
                               trailing: IconButton(
                                 icon: const Icon(Icons.delete_outline),
-                                tooltip: 'Quitar ajuste',
+                                tooltip: 'Quitar descuento',
                                 onPressed: () => quitar(
                                   a['id'] as String,
                                   (a['monto'] as num).toDouble(),
@@ -449,7 +458,7 @@ class _CuotasSectionState extends ConsumerState<_CuotasSection> {
                       alignment: Alignment.centerRight,
                       child: FilledButton.icon(
                         icon: const Icon(Icons.percent, size: 18),
-                        label: const Text('Aplicar ajuste'),
+                        label: const Text('Aplicar descuento'),
                         onPressed: aplicarNuevo,
                       ),
                     ),
@@ -695,8 +704,8 @@ class _CuotaRow extends ConsumerWidget {
               IconButton(
                 icon: const Icon(Icons.percent, size: 18),
                 tooltip: ((row['ajustes_count'] as num? ?? 0) > 0)
-                    ? 'Ajustes aplicados'
-                    : 'Ajustar cuota',
+                    ? 'Descuentos aplicados'
+                    : 'Descontar cuota',
                 visualDensity: VisualDensity.compact,
                 constraints: const BoxConstraints(),
                 padding: const EdgeInsets.only(left: 8),

@@ -47,17 +47,19 @@ class CuotasRepo {
   }
 
   // ─────────────────────────────────────────────────────────────────────
-  // AJUSTES de cuota (Sprint 2, audit 2026-06-11 + migración 0115).
-  // Principio rector: un ajuste es una fila de cargos_extra con
-  // origen='ajuste' — NUNCA se muta cuotas.monto. Capas de validación:
-  // acá lo básico offline-first (motivo/valor/estado/saldo); los TOPES del
-  // súper viven en el dialog (feedback inmediato) y en el guard server
-  // trg_cargos_ajuste_guard (el control REAL: habilitado + rol + motivo +
-  // tipo + topes).
+  // DESCUENTOS del admin: AJUSTES y PROMOS (Sprint 2 0115 + rediseño
+  // 2026-06-11: las promos van por el MISMO riel con origen='promo' —
+  // misma mecánica, etiqueta distinta en historial/recibo/reportes).
+  // Principio rector: un descuento es una fila de cargos_extra — NUNCA se
+  // muta cuotas.monto. Capas de validación: acá lo básico offline-first
+  // (motivo/valor/estado/saldo); los TOPES del súper viven en el dialog
+  // (feedback inmediato) y en el guard server trg_cargos_ajuste_guard
+  // (el control REAL: habilitado + rol + motivo + tipo + topes; cubre
+  // 'ajuste' y 'promo' desde 0117).
   // ─────────────────────────────────────────────────────────────────────
 
-  /// Aplica un ajuste (descuento con motivo) a una cuota pendiente/parcial.
-  /// [valor] es % (0-100] si [esPorcentaje], o C$ si no.
+  /// Aplica un descuento de admin (ajuste o promo, con motivo) a una cuota
+  /// pendiente/parcial. [valor] es % (0-100] si [esPorcentaje], o C$ si no.
   Future<void> aplicarAjuste({
     required String tenantId,
     required String cuotaId,
@@ -65,7 +67,11 @@ class CuotasRepo {
     required double valor,
     required String motivo,
     required String aplicadoPorId,
+    String origen = 'ajuste',
   }) async {
+    if (origen != 'ajuste' && origen != 'promo') {
+      throw Exception('Origen inválido: solo ajuste o promo.');
+    }
     if (motivo.trim().isEmpty) {
       throw Exception('El ajuste requiere un motivo.');
     }
@@ -111,7 +117,7 @@ class CuotasRepo {
           id, tenant_id, cuota_id, cobrador_id, tipo, monto, porcentaje,
           descripcion, aplicado_por, aplicado_en, client_local_id, ocurrido_en,
           origen
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'ajuste')
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ''',
         [
           const Uuid().v4(),
@@ -128,37 +134,39 @@ class CuotasRepo {
           ocurridoEn,
           const Uuid().v4(),
           ocurridoEn,
+          origen,
         ],
       );
       await _recalcularCuotaLocal(tx, cuotaId, ocurridoEn: ocurridoEn);
     });
   }
 
-  /// Ajustes aplicados a una cuota (más nuevo primero), con el nombre de
-  /// quién lo aplicó.
+  /// Descuentos de admin (ajustes y promos) aplicados a una cuota (más
+  /// nuevo primero), con el origen y el nombre de quién lo aplicó.
   Future<List<Map<String, dynamic>>> ajustesDeCuota(String cuotaId) {
     return _dbOrGlobal.getAll(
       '''
       SELECT ce.id, ce.tipo, ce.monto, ce.porcentaje, ce.descripcion,
-             ce.ocurrido_en, ce.aplicado_en, co.nombre AS aplicado_por_nombre
+             ce.origen, ce.ocurrido_en, ce.aplicado_en,
+             co.nombre AS aplicado_por_nombre
         FROM cargos_extra ce
    LEFT JOIN cobradores co ON co.id = ce.aplicado_por
-       WHERE ce.cuota_id = ? AND ce.origen = 'ajuste'
+       WHERE ce.cuota_id = ? AND ce.origen IN ('ajuste', 'promo')
        ORDER BY COALESCE(ce.ocurrido_en, ce.aplicado_en) DESC
       ''',
       [cuotaId],
     );
   }
 
-  /// Revierte un ajuste: DELETE físico del cargo. El rastro queda en el
-  /// change log (el agregador de la cuota lee el \$.cuota_id del snapshot —
-  /// fix M22). Server: trg_cargos_extra_actualizar_neto + recalcular_cuota
+  /// Revierte un ajuste/promo: DELETE físico del cargo. El rastro queda en
+  /// el change log (el agregador de la cuota lee el \$.cuota_id del snapshot
+  /// — fix M22). Server: trg_cargos_extra_actualizar_neto + recalcular_cuota
   /// rehacen neto/estado; acá los espejamos.
   Future<void> quitarAjuste({required String cargoId}) async {
     final ocurridoEn = DateTime.now().toUtc().toIso8601String();
     await _dbOrGlobal.writeTransaction((tx) async {
       final rows = await tx.getAll(
-        "SELECT cuota_id FROM cargos_extra WHERE id = ? AND origen = 'ajuste'",
+        "SELECT cuota_id FROM cargos_extra WHERE id = ? AND origen IN ('ajuste', 'promo')",
         [cargoId],
       );
       if (rows.isEmpty) return; // ya quitado: no-op idempotente
