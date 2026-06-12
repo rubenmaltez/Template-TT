@@ -34,23 +34,51 @@
   Sprint 2 IMPLEMENTADO en la rama `claude/jolly-albattani-09axxa`** (ver
   entrada 2026-06-11 b): ajustes de cuota + M2/M3/M22 + retiro Editar monto.
 - **Qué falta:**
-  1. **Rama abierta — testing 1-6 VERDE, manual INTERRUMPIDO con feedback:**
-     0115 y 0116 corridas y VERIFICADAS · sync rules v8 Active · invariantes
-     14/14 en cero · pub get OK · analyze = 4 infos diferidos · tests 254 ✓.
-     El manual (paso 7) se cortó: Rubén pidió REDISEÑAR el feature de
-     Ajustes antes de mergear (ver entrada 2026-06-11 d — ES LO PRÓXIMO).
-     NO mergear hasta resolver. pubspec.lock local de Rubén sin commitear.
+  1. **Rama abierta `claude/adoring-carson-w6l6rj` — REDISEÑO de descuentos
+     IMPLEMENTADO + AUDITADO (Fase 4: 3 agentes, fixes aplicados), falta el
+     loop de Rubén:** (a) deploy **0117** en Dashboard (guards promo/motivo +
+     condonación; SIN bump de schema ni sync rules), (b) `flutter analyze` +
+     `flutter test` en Windows, (c) invariantes en cero, (d) testing manual
+     §0.3 "Descuentos rediseñados", (e) SQL de des-anular la cuota de Byr,
+     (f) merge a `main` y borrar rama. Incluye lo del Sprint 2 sin mergear.
   2. Smoke tests B.2–B.6 (entrada 2026-06-10) → release `v0.11.0` con
      `build-release.ps1` (1ª firma con el keystore → reinstalar apps una vez,
      sincronizando antes) → probar el updater in-app → borrar release `v0.9.0`.
-  3. Decidir Sprint 3 (promos opción A, ya aprobada en diseño) y resto de
-     HIGH del audit.
+  3. ~~Sprint 3 promos~~ CUBIERTO por el rediseño (selector Ajuste/Promo).
+     Quedan los HIGH restantes del audit integral según el reporte.
   (El preview multi-cuota al cobrar desde el MAPA fue pedido y CANCELADO por
   Rubén el mismo 2026-06-11 — queda como está; no re-proponer.)
 - **Hecho recién (2026-06-10):** lock con `open_filex` commiteado (`092a51a`) ·
   keystore generado y verificado fuera de git (backup pendiente de confirmar).
 - **Salud:** del audit 2026-06-09 no queda nada abierto; del audit 2026-06-11
   quedan **7 HIGH sin atacar** (priorizados en el reporte, Sprints 2-3).
+
+---
+
+## 2026-06-12 — Rediseño de descuentos (cierra el feedback 2026-06-11 d)
+
+**Qué se pidió:** unificar los DOS diálogos de descuento, semántica
+ajuste/promo, recibo con desglose, settings descubribles, y retirar
+`/admin/cuotas` (decisiones de Rubén vía AskUserQuestion; multi-cuota NO).
+
+**Qué se hizo** (rama `claude/adoring-carson-w6l6rj`, 9 commits `16337be`→
+`5d2f169`): `DescuentoDialog` ÚNICO (contrato: selector Ajuste/Promo →
+`aplicarAjuste(origen:)`; cobro: devuelve `CargoPendiente` DIFERIDO — nada
+se graba hasta confirmar, viaja con `pago_id` → anular revierte; fin del
+"descuento fantasma") · `CargoDialog` aparte (reconexión/otro, diferido) ·
+recibo: desglose en el bloque `cuota` con sub-toggles (3 renderers) ·
+settings: grupos Ajustes/Descuentos del cobrador/Pronto pago en Avanzado ·
+`/admin/cuotas` RETIRADA (anular cuota y cuotas manuales fuera del
+producto) · **migración 0117** (guard promo + motivo server del cobro +
+CONDONACIÓN: descuento 100% → cuota `pagada`, espejo en `cuota_estado`).
+**Audit Fase 4:** 3 agentes (Code/QA dinero/UX) — 2 ALTOS (USD pisado en
+C$, condonación) + 7 menores, TODOS fixeados (`5d2f169`). Tests nuevos:
+promos, condonación, descuento manual diferido.
+
+**Pendiente:** deploy 0117 → analyze/test/invariantes → manual §0.3 →
+SQL Byr → merge a main. Backlog nuevo: tope ajuste default 50 cliente vs
+0 server (pre-0115) · "ANULADO" en recibo de pago anulado · reimpresión
+lee cargos vivos (sin corte temporal).
 
 ---
 
