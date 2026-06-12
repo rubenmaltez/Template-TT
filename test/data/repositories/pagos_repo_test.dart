@@ -974,6 +974,69 @@ void main() {
       expect(cuota['estado'], 'pendiente');
     });
 
+    test('descuento MANUAL diferido del cobro (rediseño 2026-06-11): viaja '
+        'con pago_id + motivo, se revierte al anular; el cargo otro queda',
+        () async {
+      final contratoId = await seedContrato();
+      final cuotaId = await seedCuota(contratoId: contratoId, monto: 500);
+
+      // El cobro inserta los pendientes de la pantalla: descuento manual
+      // (con motivo) + cargo 'otro'. Total: 500 − 50 + 80 = 530.
+      final res = await repo.registrarCobro(
+        tenantId: tenantId,
+        cobradorId: cobradorId,
+        prefijoRecibo: prefijo,
+        cuotaId: cuotaId,
+        montoCordobas: 530,
+        moneda: Moneda.nio,
+        montoOriginal: 530,
+        tasaConversion: 1,
+        metodo: MetodoPago.efectivo,
+        cargosAuto: [
+          CargoAutoInfo(
+            cuotaId: cuotaId,
+            tipo: 'descuento_monto',
+            monto: 50,
+            descripcion: 'Acuerdo con el cliente',
+          ),
+          CargoAutoInfo(
+            cuotaId: cuotaId,
+            tipo: 'otro',
+            monto: 80,
+            descripcion: 'Cambio de conector',
+          ),
+        ],
+      );
+      var cuota = await getCuota(cuotaId);
+      expect(cuota['estado'], 'pagada');
+      expect(num2(cuota['cargos_neto']), 30); // +80 − 50
+
+      // Ambos quedaron ligados al pago, con su motivo.
+      final cargos = await db.getAll(
+          'SELECT tipo, origen, pago_id, descripcion FROM cargos_extra '
+          'WHERE cuota_id = ? ORDER BY tipo',
+          [cuotaId]);
+      expect(cargos, hasLength(2));
+      for (final c in cargos) {
+        expect(c['origen'], 'cobro');
+        expect(c['pago_id'], res.pagoId);
+        expect((c['descripcion'] as String).isNotEmpty, isTrue);
+      }
+
+      // Anular: el descuento manual se revierte (ya no hay "fantasma");
+      // el cargo 'otro' se preserva (se sigue debiendo, como reconexión).
+      await repo.anularPago(
+          pagoId: res.pagoId, anuladoPorId: cobradorId, motivo: 'error');
+      final restantes = await db.getAll(
+          'SELECT tipo FROM cargos_extra WHERE cuota_id = ?', [cuotaId]);
+      expect(restantes, hasLength(1));
+      expect(restantes.first['tipo'], 'otro');
+      cuota = await getCuota(cuotaId);
+      expect(num2(cuota['monto_pagado']), 0);
+      expect(num2(cuota['cargos_neto']), 80);
+      expect(cuota['estado'], 'pendiente');
+    });
+
     test('descuento histórico SIN pago_id no se toca al anular', () async {
       final contratoId = await seedContrato();
       final cuotaId = await seedCuota(contratoId: contratoId, monto: 500);

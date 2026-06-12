@@ -209,6 +209,70 @@ void main() {
     // Idempotente: quitar de nuevo es no-op.
     await repo.quitarAjuste(cargoId: ajustes.first['id'] as String);
   });
+
+  // ── PROMOS (rediseño 2026-06-11): mismo riel que los ajustes, con
+  // origen='promo'. Blindan que la etiqueta viaja a la DB, que el sheet
+  // las lista junto a los ajustes y que quitar también las cubre. ──
+
+  test('promo: inserta cargo origen=promo y ajustesDeCuota la lista con su '
+      'origen', () async {
+    final cuotaId = await seedCuota(monto: 800);
+    await repo.aplicarAjuste(
+      tenantId: tenantId,
+      cuotaId: cuotaId,
+      esPorcentaje: true,
+      valor: 50,
+      motivo: 'Promo 3 meses a mitad de precio',
+      aplicadoPorId: adminId,
+      origen: 'promo',
+    );
+
+    final cuota = await getCuota(cuotaId);
+    expect(num2(cuota['monto']), 800, reason: 'el monto NUNCA se muta');
+    expect(num2(cuota['cargos_neto']), -400);
+
+    final items = await repo.ajustesDeCuota(cuotaId);
+    expect(items, hasLength(1));
+    expect(items.first['origen'], 'promo');
+    expect(num2(items.first['monto'] as num), 400);
+  });
+
+  test('quitarAjuste también revierte promos (origen IN ajuste/promo)',
+      () async {
+    final cuotaId = await seedCuota(monto: 500);
+    await repo.aplicarAjuste(
+      tenantId: tenantId,
+      cuotaId: cuotaId,
+      esPorcentaje: false,
+      valor: 250,
+      motivo: 'Promo aniversario',
+      aplicadoPorId: adminId,
+      origen: 'promo',
+    );
+    final items = await repo.ajustesDeCuota(cuotaId);
+    await repo.quitarAjuste(cargoId: items.first['id'] as String);
+    expect(await repo.ajustesDeCuota(cuotaId), isEmpty);
+    expect(num2((await getCuota(cuotaId))['cargos_neto']), 0);
+  });
+
+  test('origen inválido (ni ajuste ni promo) lanza y no muta', () async {
+    final cuotaId = await seedCuota(monto: 500);
+    await expectLater(
+        repo.aplicarAjuste(
+          tenantId: tenantId,
+          cuotaId: cuotaId,
+          esPorcentaje: false,
+          valor: 100,
+          motivo: 'x',
+          aplicadoPorId: adminId,
+          origen: 'cobro',
+        ),
+        throwsA(isA<Exception>()));
+    expect(
+        await db.getAll('SELECT id FROM cargos_extra WHERE cuota_id = ?',
+            [cuotaId]),
+        isEmpty);
+  });
 }
 
 String _now() => DateTime.now().toUtc().toIso8601String();
