@@ -19,9 +19,10 @@
 ## ⭐ ESTADO ACTUAL (refrescar al cerrar cada sesión)
 
 - **Branch viva: `main`** (todas las ramas efímeras fusionadas y borradas).
-  Checkpoints históricos = **tags**: `v0.11.3` (versión actual: compresión de
-  media + branding de reportes), `v0.11.2` (GPS y exportación), `pre-mvp-v2`
-  (estado auditado 2026-06-09) y `pre-mvp-v1` (checkpoint previo).
+  **Único tag/release en GitHub: `v0.11.3`** (compresión de media + branding
+  de reportes). Limpieza 2026-06-12 por decisión de Rubén: releases/tags
+  viejos (v0.9.0→v0.11.2) y checkpoints `pre-mvp-v1/v2` BORRADOS — de acá en
+  más solo se conserva la versión vigente.
 - **Modelo de branching:** cada sesión de trabajo crea su rama efímera
   (`claude/*` o feature) DESDE `main` → al terminar se mergea a `main` y la
   rama se BORRA. Hitos importantes se marcan con tag, no con rama.
@@ -38,6 +39,8 @@
 - **Hecho recién (2026-06-12):** mergeada `compress-media-and-report-ui` a
   `main` (fast-forward, rama borrada), bump a `0.11.3+113` y release
   `v0.11.3` publicado con `build-release.ps1` (instaladores en el Escritorio).
+  Después: limpieza total de GitHub — borrados los releases v0.9.0→v0.11.2
+  (con sus tags) y los tags `pre-mvp-v1/v2`; queda solo `v0.11.3`.
 - **Salud:** del audit 2026-06-09 no queda nada abierto; del audit 2026-06-11
   quedan **7 HIGH sin atacar** (priorizados en el reporte, Sprints 2-3).
 

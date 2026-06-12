@@ -257,7 +257,11 @@ cualquier cambio mergeado que Rubén quiera distribuir, guiarlo ahí.
   `main`** (la que asigne el entorno, p.ej. `claude/*`). Al cerrar el
   trabajo aprobado: **merge a `main` y BORRAR la rama** — no acumular ramas.
 - **Hitos/checkpoints = TAGS, nunca ramas** (`git tag <nombre>` + push del
-  tag). Existentes: `pre-mvp-v1`, `pre-mvp-v2`.
+  tag). Política de limpieza (decisión Rubén 2026-06-12): en GitHub se
+  conserva SOLO el tag/release de la versión vigente — al publicar una
+  versión nueva se borran el release y el tag anteriores
+  (`gh release delete vX --cleanup-tag`). Los checkpoints `pre-mvp-v1/v2`
+  fueron eliminados (el historial de `main` los contiene igual).
 - No reescribir historia de `main` (sin force-push).
 
 ## Reglas de comunicación con Rubén
