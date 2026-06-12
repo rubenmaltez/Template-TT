@@ -1,6 +1,6 @@
 {
-  "version": "0.11.2",
-  "release_notes": "Agrega ubicacion GPS en vivo en el mapa y exportacion de clientes a Excel",
+  "version": "0.11.3",
+  "release_notes": "Fotos mas livianas al subir (ahorran datos y espacio) y reportes PDF/Excel con el logo de tu empresa.",
   "download_url_windows": "https://github.com/rubenmaltez/Template-TT/releases/latest/download/SITECSA-CRM.msix",
   "download_url_android": "https://github.com/rubenmaltez/Template-TT/releases/latest/download/SITECSA-CRM.apk",
   "download_url": "https://github.com/rubenmaltez/Template-TT/releases/latest/download/SITECSA-CRM.msix"
