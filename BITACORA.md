@@ -42,7 +42,11 @@
   Después: limpieza total de GitHub — borrados los releases v0.9.0→v0.11.2
   (con sus tags) y los tags `pre-mvp-v1/v2`; queda solo `v0.11.3`.
 - **Salud:** del audit 2026-06-09 no queda nada abierto; del audit 2026-06-11
-  quedan **7 HIGH sin atacar** (priorizados en el reporte, Sprints 2-3).
+  quedan **6 HIGH sin atacar** (= Sprint 3 del reporte: #4 RLS de pagos
+  burlable por REST · #6 PopScope del cobro · #7 doble-submit en forms ·
+  #8 cancelar contrato sin confirmación · #9 changelog de `cobradores` ·
+  #10 guard server de seriales). El "7" anterior era pre-Sprint 2 (#3 cargos
+  auto ya quedó resuelto por el rediseño de descuentos).
 
 ---
 
