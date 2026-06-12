@@ -18,7 +18,7 @@
 
 ## ⭐ ESTADO ACTUAL (refrescar al cerrar cada sesión)
 
-- **Branch viva: `main`** (única rama permanente; default del repo en GitHub).
+- **Branch viva: `test-receipt`** (rama efímera de desarrollo para pruebas del recibo; `main` es la única rama permanente y default del repo).
   Checkpoints históricos = **tags**: `pre-mvp-v2` (estado auditado 2026-06-09)
   y `pre-mvp-v1` (checkpoint previo). La rama del Sprint 1
   (`claude/jolly-albattani-09axxa`) se mergeó a `main` y se borró (2026-06-11).
@@ -47,10 +47,20 @@
      Quedan los HIGH restantes del audit integral según el reporte.
   (El preview multi-cuota al cobrar desde el MAPA fue pedido y CANCELADO por
   Rubén el mismo 2026-06-11 — queda como está; no re-proponer.)
-- **Hecho recién (2026-06-10):** lock con `open_filex` commiteado (`092a51a`) ·
-  keystore generado y verificado fuera de git (backup pendiente de confirmar).
+- **Hecho recién (2026-06-12):** vista previa dinámica del recibo en settings según `ajustesHabilitados` y `reconexionHabilitada` en la rama `test-receipt` (commit `fe1dfa2`).
 - **Salud:** del audit 2026-06-09 no queda nada abierto; del audit 2026-06-11
   quedan **7 HIGH sin atacar** (priorizados en el reporte, Sprints 2-3).
+
+---
+
+## 2026-06-12 (b) — Vista previa dinámica del recibo (Rama test-receipt)
+
+**Qué se pidió:** hacer que los cargos/descuentos de ejemplo de la vista previa del recibo en Configuración -> Recibos sean dinámicos según el estado de la configuración (ajustes y reconexión), para que no se muestren si están desactivados y la matemática cierre siempre. Cambios en la rama `test-receipt`.
+
+**Qué se hizo:**
+- Creada rama `test-receipt` y hecho checkout (`fe1dfa2`).
+- Modificado `lib/features/admin/settings/recibo_preview.dart` para recibir `AppSettings` en `_sampleCargos` y `_sampleRow`. Los cargos de ejemplo y la matemática (cargos_neto, monto_cordobas) ahora se recalculan dinámicamente.
+- Verificación: `flutter analyze` exitoso (0 errores/warnings, 4 deprecaciones conocidas) y `flutter test` (263 exitosos). Pushed a GitHub.
 
 ---
 
