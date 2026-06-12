@@ -19,34 +19,53 @@
 ## ⭐ ESTADO ACTUAL (refrescar al cerrar cada sesión)
 
 - **Branch viva: `main`** (todas las ramas efímeras fusionadas y borradas).
-  Checkpoints históricos = **tags**: `v0.11.2` (versión actual con GPS y exportación),
-  `pre-mvp-v2` (estado auditado 2026-06-09) y `pre-mvp-v1` (checkpoint previo).
+  Checkpoints históricos = **tags**: `v0.11.3` (versión actual: compresión de
+  media + branding de reportes), `v0.11.2` (GPS y exportación), `pre-mvp-v2`
+  (estado auditado 2026-06-09) y `pre-mvp-v1` (checkpoint previo).
 - **Modelo de branching:** cada sesión de trabajo crea su rama efímera
   (`claude/*` o feature) DESDE `main` → al terminar se mergea a `main` y la
   rama se BORRA. Hitos importantes se marcan con tag, no con rama.
-- **App:** v0.11.2 · schema PowerSync **v27** · migraciones **0001→0117
+- **App:** v0.11.3 · schema PowerSync **v27** · migraciones **0001→0117
   TODAS corridas** (0117 corrida y VERIFICADA 2026-06-12) · **sync rules v8 "Active"**.
 - **Edge Functions:** las 6 deployadas al día (redeployadas 2026-06-09).
 - **Audit integral 2026-06-11** (8 agentes; reporte + plan de 4 sprints en
   `docs/archive/AUDIT-INTEGRAL-2026-06-11.md`). **Sprint 1 mergeado a main.
   Sprint 2 IMPLEMENTADO**.
-- **Rama efímera ABIERTA: `compress-media-and-report-ui`** (6 commits desde
-  `7899a29`, pusheada a GitHub) — compresión de imágenes al subir + logo del
-  tenant en reportes PDF + header corporativo en Excel. Implementada y
-  AUDITADA (3 agentes, fixes aplicados); **pendiente del testing manual de
-  Rubén** → al aprobar: merge a `main` y borrar la rama.
 - **Qué falta:**
-  1. Testing manual de la rama `compress-media-and-report-ui` (pasos en la
-     entrada 2026-06-12 (e) de abajo).
-  2. Pasada de testing manual del §0.3 de TESTING.md con la nueva versión v0.11.2.
-  3. Quedan los HIGH restantes del audit integral según el reporte (Sprints 3-4).
-- **Hecho recién (2026-06-12):** Fusionada la rama `mapa-lista-clientes` a `main`, bumped version a `0.11.2+112`, y ejecutado `build-release.ps1` publicando el tag `v0.11.2` en GitHub con instaladores en el Escritorio.
+  1. Testing manual de v0.11.3 instalada: los 9 pasos de compresión/branding
+     (entrada 2026-06-12 (e)) + pasada del §0.3 de TESTING.md.
+  2. Quedan los HIGH restantes del audit integral según el reporte (Sprints 3-4).
+- **Hecho recién (2026-06-12):** mergeada `compress-media-and-report-ui` a
+  `main` (fast-forward, rama borrada), bump a `0.11.3+113` y release
+  `v0.11.3` publicado con `build-release.ps1` (instaladores en el Escritorio).
 - **Salud:** del audit 2026-06-09 no queda nada abierto; del audit 2026-06-11
   quedan **7 HIGH sin atacar** (priorizados en el reporte, Sprints 2-3).
 
 ---
 
-## 2026-06-12 (e) — Compresión de media + branding de reportes (rama compress-media-and-report-ui, SIN mergear)
+## 2026-06-12 (f) — Release v0.11.3 (compresión de media + branding de reportes)
+
+**Qué se pidió:** dejar la carpeta local al día, correr analyze/tests y
+publicar la build v0.11.3 con el sprint de compresión + branding (Rubén
+decidió testear directo con la versión instalada, sin pasada previa en rama).
+
+**Qué se hizo:**
+- Merge fast-forward de `compress-media-and-report-ui` a `main` (6 commits,
+  `2ead790`→`be6453d`) y rama efímera BORRADA (local + GitHub).
+- Bump `pubspec.yaml` a `0.11.3+113`. Sin migraciones SQL ni cambios de
+  schema/sync rules (sprint 100% client-side).
+- Verificación sobre `main`: `flutter analyze` (solo las 4 deprecaciones
+  conocidas) y `flutter test` (275 pasan).
+- `build-release.ps1` con notas de versión → instaladores versionados en
+  `Releases\v0.11.3\` + Escritorio, release `v0.11.3` en GitHub con assets
+  fijos y `version.json` actualizado.
+
+**Pendiente:** testing manual de Rubén con la v0.11.3 instalada (los 9 pasos
+de la entrada (e) + §0.3 de TESTING.md).
+
+---
+
+## 2026-06-12 (e) — Compresión de media + branding de reportes (rama compress-media-and-report-ui, MERGEADA en (f))
 
 **Qué se pidió:** 1) comprimir fotos/documentos al subir a Storage sin
 degradar calidad visible (el storage se llenaba rápido); 2) reportes PDF y
