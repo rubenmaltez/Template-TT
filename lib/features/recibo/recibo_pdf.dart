@@ -9,6 +9,7 @@ import '../../data/utils/formatters.dart';
 import '../../data/utils/monto_a_letras.dart';
 import '../../data/models/pago.dart';
 import '../shared/pdf/pdf_theme.dart';
+import 'recibo_cargos.dart' show cargoEtiquetaRecibo;
 
 // ---------------------------------------------------------------------------
 // PDF generator del recibo — replica el ticket térmico (80mm o 58mm)
@@ -40,6 +41,7 @@ Future<pw.Document> buildReciboPdf({
   required AppSettings settings,
   Uint8List? logoBytes,
   List<Map<String, dynamic>> moraRows = const [],
+  List<Map<String, dynamic>> cargosRows = const [],
 }) async {
   final doc = pw.Document();
   final theme = await pdfTheme();
@@ -56,7 +58,7 @@ Future<pw.Document> buildReciboPdf({
   for (final b in settings.reciboLayout) {
     if (!b.visible) continue;
     final contenido = _pdfBloqueSingle(b.id, _pdfScale(b.size), row, settings,
-        logoBytes: logoBytes, moraRows: moraRows);
+        logoBytes: logoBytes, moraRows: moraRows, cargosRows: cargosRows);
     if (contenido.isEmpty) continue;
     final zona = zonaEfectiva(b);
     if (children.isNotEmpty) {
@@ -93,6 +95,29 @@ double _pdfScale(ReciboTextoSize s) => switch (s) {
       ReciboTextoSize.normal => 1.0,
     };
 
+/// Líneas de descuentos/cargos de UNA cuota para el bloque `cuota` (single y
+/// multi). Sub-toggles `mostrar_descuentos` / `mostrar_motivo_descuentos`.
+/// Mismo contenido que `_lineasCargos` del ticket (paridad de renderers).
+List<pw.Widget> _pdfLineasCargos(
+  List<Map<String, dynamic>> cargosRows,
+  Object? cuotaId,
+  AppSettings settings,
+  double k,
+) {
+  if (!settings.reciboMostrarDescuentos || cuotaId == null) return const [];
+  final conMotivo = settings.reciboMostrarMotivoDescuentos;
+  return [
+    for (final c in cargosRows)
+      if (c['cuota_id'] == cuotaId)
+        _pdfRow(
+          cargoEtiquetaRecibo(c, conMotivo: conMotivo),
+          '${(c['tipo'] as String? ?? '').startsWith('descuento') ? '-' : '+'}'
+          '${Fmt.cordobas(c['monto'] as num? ?? 0)}',
+          k,
+        ),
+  ];
+}
+
 /// Construye las líneas de UN bloque del recibo single en PDF. Devuelve [] si
 /// el bloque no tiene nada que mostrar (logo null, empresa vacía, pie vacío…).
 List<pw.Widget> _pdfBloqueSingle(
@@ -102,6 +127,7 @@ List<pw.Widget> _pdfBloqueSingle(
   AppSettings settings, {
   Uint8List? logoBytes,
   List<Map<String, dynamic>> moraRows = const [],
+  List<Map<String, dynamic>> cargosRows = const [],
 }) {
   switch (id) {
     case 'logo':
@@ -181,6 +207,9 @@ List<pw.Widget> _pdfBloqueSingle(
               .toDouble();
       return [
         _pdfRow('Cuota base', Fmt.cordobas(row['cuota_monto'] as num), k),
+        // Desglose de descuentos/cargos (rediseño 2026-06-11) — informativo,
+        // el dinero del recibo no cambia.
+        ..._pdfLineasCargos(cargosRows, row['cuota_id'], settings, k),
         if (settings.reciboMostrarAdeudado && saldoCuota > 0.01)
           _pdfRow('Saldo cuota', Fmt.cordobas(saldoCuota), k),
       ];
@@ -272,6 +301,7 @@ Future<pw.Document> buildMultiReciboPdf({
   required AppSettings settings,
   Uint8List? logoBytes,
   List<Map<String, dynamic>> moraRows = const [],
+  List<Map<String, dynamic>> cargosRows = const [],
 }) async {
   final doc = pw.Document();
   final theme = await pdfTheme();
@@ -286,7 +316,7 @@ Future<pw.Document> buildMultiReciboPdf({
   for (final b in settings.reciboLayout) {
     if (!b.visible) continue;
     final contenido = _pdfBloqueMulti(b.id, _pdfScale(b.size), rows, settings,
-        logoBytes: logoBytes, moraRows: moraRows);
+        logoBytes: logoBytes, moraRows: moraRows, cargosRows: cargosRows);
     if (contenido.isEmpty) continue;
     final zona = zonaEfectiva(b);
     if (children.isNotEmpty) {
@@ -325,6 +355,7 @@ List<pw.Widget> _pdfBloqueMulti(
   AppSettings settings, {
   Uint8List? logoBytes,
   List<Map<String, dynamic>> moraRows = const [],
+  List<Map<String, dynamic>> cargosRows = const [],
 }) {
   final first = rows.first;
   switch (id) {
@@ -390,9 +421,10 @@ List<pw.Widget> _pdfBloqueMulti(
       // En multi la lista de cuotas (bloque `cuota`) ya cubre el servicio.
       return const [];
     case 'cuota':
-      // La LISTA de N cuotas: período → monto aplicado de cada una.
+      // La LISTA de N cuotas: período → monto aplicado de cada una, con sus
+      // descuentos/cargos desgranados debajo (sub-toggle).
       return [
-        for (final r in rows)
+        for (final r in rows) ...[
           pw.Padding(
             padding: const pw.EdgeInsets.only(bottom: 2),
             child: pw.Row(
@@ -414,6 +446,8 @@ List<pw.Widget> _pdfBloqueMulti(
               ],
             ),
           ),
+          ..._pdfLineasCargos(cargosRows, r['cuota_id'], settings, k),
+        ],
       ];
     case 'metodo':
       final totalOriginal = _multiTotalOriginal(rows);

@@ -285,6 +285,17 @@ class AppSettings {
   bool get reciboMostrarCedula =>
       settingValue<bool>(_map, 'recibo.mostrar_cedula', true);
 
+  /// Desglose de descuentos/cargos de la cuota en el recibo (rediseño
+  /// 2026-06-11): línea por cada cargo_extra vigente, dentro del bloque
+  /// `cuota`. Sub-toggle del bloque en el diseñador de recibo.
+  bool get reciboMostrarDescuentos =>
+      settingValue<bool>(_map, 'recibo.mostrar_descuentos', true);
+
+  /// Mostrar el MOTIVO en cada línea de descuento/cargo del recibo (apagado
+  /// queda solo la etiqueta: Ajuste / Promo / Descuento / Cargo).
+  bool get reciboMostrarMotivoDescuentos =>
+      settingValue<bool>(_map, 'recibo.mostrar_motivo_descuentos', true);
+
   /// Layout configurable del recibo (rework "diseñador de recibo"): lista
   /// ORDENADA de bloques, cada uno con visibilidad + tamaño de letra. Default =
   /// orden del catálogo, todo visible, normal. Parseo robusto: ver

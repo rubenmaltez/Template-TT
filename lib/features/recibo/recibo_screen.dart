@@ -15,6 +15,7 @@ import '../../powersync/db.dart' as ps;
 import '../shared/widgets/empty_state.dart';
 import '../shared/widgets/foto_comprobante_view.dart';
 import '../shared/widgets/impersonation_banner.dart';
+import 'recibo_cargos.dart';
 import 'recibo_mora.dart';
 import 'recibo_pdf.dart';
 import 'recibo_ticket.dart';
@@ -33,6 +34,12 @@ class ReciboScreen extends ConsumerStatefulWidget {
 
 class _ReciboScreenState extends ConsumerState<ReciboScreen> {
   late final Stream<List<Map<String, dynamic>>> _reciboStream;
+
+  // Cargos/descuentos vigentes de la(s) cuota(s) del recibo, para el
+  // desglose del bloque `cuota` (rediseño 2026-06-11). Stream propio (no se
+  // puede joinear N cargos en la fila única del recibo); reactivo: si el
+  // admin quita un ajuste, el preview se actualiza solo.
+  late final Stream<List<Map<String, dynamic>>> _cargosStream;
 
   // Vista preview: si está activa, el body del recibo se constraine al
   // ancho visual de la tira térmica (según `cobranza.formato_recibo_mm`).
@@ -110,6 +117,34 @@ class _ReciboScreenState extends ConsumerState<ReciboScreen> {
         parameters: [widget.reciboId],
       );
     }
+    // Cargos de la(s) cuota(s) cobrada(s). El IN (SELECT) acá es válido:
+    // lee data viva (no snapshots de change log como los agregadores M22).
+    _cargosStream = _esMultiCuota
+        ? ps.db.watch(
+            '''
+            SELECT ce.cuota_id, ce.tipo, ce.monto, ce.porcentaje,
+                   ce.descripcion, ce.origen, ce.aplicado_en
+              FROM cargos_extra ce
+             WHERE ce.cuota_id IN (
+                     SELECT cuota_id FROM pagos
+                      WHERE grupo_cobro = ? AND anulado = 0)
+             ORDER BY ce.aplicado_en ASC
+            ''',
+            parameters: [widget.grupoCobro],
+          )
+        : ps.db.watch(
+            '''
+            SELECT ce.cuota_id, ce.tipo, ce.monto, ce.porcentaje,
+                   ce.descripcion, ce.origen, ce.aplicado_en
+              FROM cargos_extra ce
+             WHERE ce.cuota_id IN (
+                     SELECT p.cuota_id FROM pagos p
+                       JOIN recibos r ON r.pago_id = p.id
+                      WHERE r.id = ?)
+             ORDER BY ce.aplicado_en ASC
+            ''',
+            parameters: [widget.reciboId],
+          );
   }
 
   @override
@@ -176,7 +211,15 @@ class _ReciboScreenState extends ConsumerState<ReciboScreen> {
           // Cuota manual (contrato_id null) → mora vacía.
           final moraRows = _moraParaPreview(rows, esMulti, settings);
 
-          return Center(
+          return StreamBuilder<List<Map<String, dynamic>>>(
+            stream: _cargosStream,
+            builder: (context, cargosSnap) {
+              // El desglose es informativo: mientras carga (o si el toggle
+              // está apagado) el recibo se muestra igual, sin esas líneas.
+              final cargosRows = settings.reciboMostrarDescuentos
+                  ? (cargosSnap.data ?? const <Map<String, dynamic>>[])
+                  : const <Map<String, dynamic>>[];
+              return Center(
             child: ConstrainedBox(
               constraints: BoxConstraints(maxWidth: maxWidth),
               child: ListView(
@@ -200,6 +243,7 @@ class _ReciboScreenState extends ConsumerState<ReciboScreen> {
                         settings: settings,
                         logoBytes: logoBytes,
                         moraRows: moraRows,
+                        cargosRows: cargosRows,
                       ),
                     ),
                   ),
@@ -223,6 +267,8 @@ class _ReciboScreenState extends ConsumerState<ReciboScreen> {
                 ],
               ),
             ),
+              );
+            },
           );
         },
       ),
@@ -306,7 +352,9 @@ class _AccionesImpresionState extends ConsumerState<_AccionesImpresion> {
             .toList();
 
     final doc = await _construirReciboDoc(
-        logoBytes: logoBytes, moraRows: moraRows);
+        logoBytes: logoBytes,
+        moraRows: moraRows,
+        cargosRows: await _cargosParaRecibo());
     final bytes = await doc.save();
     final numero =
         (widget.recibo['numero_completo'] as String?) ?? widget.reciboId;
@@ -367,6 +415,7 @@ class _AccionesImpresionState extends ConsumerState<_AccionesImpresion> {
   Future<pw.Document> _construirReciboDoc({
     required Uint8List? logoBytes,
     required List<Map<String, dynamic>> moraRows,
+    List<Map<String, dynamic>> cargosRows = const [],
   }) {
     final multiRows = widget.multiRows;
     return multiRows != null
@@ -374,12 +423,29 @@ class _AccionesImpresionState extends ConsumerState<_AccionesImpresion> {
             rows: multiRows,
             settings: widget.settings,
             logoBytes: logoBytes,
-            moraRows: moraRows)
+            moraRows: moraRows,
+            cargosRows: cargosRows)
         : buildReciboPdf(
             row: widget.recibo,
             settings: widget.settings,
             logoBytes: logoBytes,
-            moraRows: moraRows);
+            moraRows: moraRows,
+            cargosRows: cargosRows);
+  }
+
+  /// Cargos/descuentos de la(s) cuota(s) del recibo para el desglose del
+  /// bloque `cuota` en los paths de impresión (PDF + térmica). 100% offline.
+  /// Con el sub-toggle apagado no se busca nada (los renderers igual lo
+  /// re-chequean — doble seguridad).
+  Future<List<Map<String, dynamic>>> _cargosParaRecibo() async {
+    if (!widget.settings.reciboMostrarDescuentos) return const [];
+    final multiRows = widget.multiRows;
+    final cuotaIds = (multiRows != null
+            ? multiRows.map((r) => r['cuota_id'])
+            : [widget.recibo['cuota_id']])
+        .whereType<String>()
+        .toList();
+    return fetchCargosCuotas(cuotaIds);
   }
 
   /// Calcula la mora del contrato para el bloque `mora` (mismo cálculo que
@@ -431,6 +497,7 @@ class _AccionesImpresionState extends ConsumerState<_AccionesImpresion> {
       settings: widget.settings,
       logoBytes: logoBytes,
       moraRows: moraRows,
+      cargosRows: await _cargosParaRecibo(),
     );
     final ticketCapturable = Directionality(
       textDirection: TextDirection.ltr,

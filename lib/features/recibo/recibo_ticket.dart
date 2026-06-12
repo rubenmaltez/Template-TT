@@ -7,6 +7,7 @@ import '../../data/models/recibo_layout.dart';
 import '../../data/repositories/settings_repo.dart';
 import '../../data/utils/formatters.dart';
 import '../../data/utils/monto_a_letras.dart';
+import 'recibo_cargos.dart' show cargoEtiquetaRecibo;
 
 // ---------------------------------------------------------------------------
 // ReciboTicket — UN solo widget Flutter para el recibo, que se usa TANTO para
@@ -42,6 +43,7 @@ class ReciboTicket extends StatelessWidget {
     required this.settings,
     this.logoBytes,
     this.moraRows = const [],
+    this.cargosRows = const [],
   }) : assert(row != null || rows != null,
             'ReciboTicket requiere row (single) o rows (multi)');
 
@@ -62,6 +64,12 @@ class ReciboTicket extends StatelessWidget {
   /// cuota(s) cobrada(s)). Vacío → el bloque `mora` no se muestra. No toca la
   /// matemática del dinero del recibo.
   final List<Map<String, dynamic>> moraRows;
+
+  /// Cargos/descuentos vigentes de la(s) cuota(s) cobrada(s), ya buscados por
+  /// el call-site (`fetchCargosCuotas`). Se desgranan dentro del bloque
+  /// `cuota` (sub-toggle `mostrar_descuentos`). Informativo: el dinero del
+  /// recibo NO cambia (los netos ya viven en cargos_neto/saldo).
+  final List<Map<String, dynamic>> cargosRows;
 
   /// True si hay que renderizar el modo multi-cuota.
   bool get _esMulti => rows != null && rows!.length > 1;
@@ -234,9 +242,10 @@ class ReciboTicket extends StatelessWidget {
         ];
       case 'cuota':
         if (_esMulti) {
-          // La LISTA de N cuotas: período → monto aplicado de cada una.
+          // La LISTA de N cuotas: período → monto aplicado de cada una, con
+          // sus descuentos/cargos desgranados debajo (sub-toggle).
           return [
-            for (final cu in rows!)
+            for (final cu in rows!) ...[
               Padding(
                 padding: EdgeInsets.only(bottom: 2 * k),
                 child: Row(
@@ -260,6 +269,8 @@ class ReciboTicket extends StatelessWidget {
                   ],
                 ),
               ),
+              ..._lineasCargos(cu['cuota_id'], k),
+            ],
           ];
         }
         // Saldo de la cuota tras este pago (sub-toggle `mostrar_adeudado`).
@@ -269,6 +280,9 @@ class ReciboTicket extends StatelessWidget {
                 .toDouble();
         return [
           _ticketRow('Cuota base', Fmt.cordobas(r['cuota_monto'] as num), k),
+          // Desglose de descuentos/cargos (rediseño 2026-06-11): el cliente
+          // ve POR QUÉ el saldo es el que es. Informativo, no toca el dinero.
+          ..._lineasCargos(r['cuota_id'], k),
           if (settings.reciboMostrarAdeudado && saldoCuota > 0.01)
             _ticketRow('Saldo cuota', Fmt.cordobas(saldoCuota), k),
         ];
@@ -384,6 +398,24 @@ class ReciboTicket extends StatelessWidget {
           bold: true,
         ),
       ],
+    ];
+  }
+
+  /// Líneas de descuentos/cargos de UNA cuota para el bloque `cuota`
+  /// (sub-toggles `mostrar_descuentos` y `mostrar_motivo_descuentos`).
+  /// Los descuentos van con "-" y los cargos con "+", igual que en la app.
+  List<Widget> _lineasCargos(Object? cuotaId, double k) {
+    if (!settings.reciboMostrarDescuentos || cuotaId == null) return const [];
+    final conMotivo = settings.reciboMostrarMotivoDescuentos;
+    return [
+      for (final c in cargosRows)
+        if (c['cuota_id'] == cuotaId)
+          _ticketRow(
+            cargoEtiquetaRecibo(c, conMotivo: conMotivo),
+            '${(c['tipo'] as String? ?? '').startsWith('descuento') ? '-' : '+'}'
+            '${Fmt.cordobas(c['monto'] as num? ?? 0)}',
+            k,
+          ),
     ];
   }
 

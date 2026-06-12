@@ -19,7 +19,9 @@ class ReciboPreview extends ConsumerWidget {
   static double _previewWidthPx(int formatoMm) => formatoMm != 80 ? 215 : 300;
 
   /// Fila de ejemplo con TODOS los campos que lee `ReciboTicket`. Cobro en
-  /// efectivo de una cuota mensual, sin vuelto. Datos ficticios.
+  /// efectivo de una cuota mensual con un ajuste y una reconexión (para que
+  /// los sub-toggles de descuentos se vean en vivo), sin vuelto. La
+  /// matemática cierra: 500 − 50 + 100 = 550 cobrados, saldo 0.
   Map<String, dynamic> _sampleRow() {
     final ahora = DateTime.now();
     final periodo = DateTime(ahora.year, ahora.month, 1);
@@ -27,18 +29,19 @@ class ReciboPreview extends ConsumerWidget {
       'numero_completo': 'A-000123',
       'reimpresiones': 0,
       'impreso_en': null,
-      'monto_cordobas': 500.0,
+      'monto_cordobas': 550.0,
       'vuelto_cordobas': 0.0,
       'moneda': 'NIO',
-      'monto_original': 500.0,
+      'monto_original': 550.0,
       'tasa_conversion': 1.0,
       'metodo': 'efectivo',
       'referencia': null,
       'fecha_pago': ahora.toIso8601String(),
       'periodo': periodo.toIso8601String(),
+      'cuota_id': 'cuota-ejemplo',
       'cuota_monto': 500.0,
-      'monto_pagado_cuota': 500.0,
-      'cargos_neto': 0.0,
+      'monto_pagado_cuota': 550.0,
+      'cargos_neto': 50.0,
       'dia_pago': 15,
       'cliente_nombre': 'Cliente de Ejemplo',
       'cliente_cedula': '001-010190-0001A',
@@ -47,6 +50,27 @@ class ReciboPreview extends ConsumerWidget {
       'cobrador_nombre': 'Cobrador de Ejemplo',
     };
   }
+
+  /// Cargos de ejemplo para el desglose del bloque `cuota` (un ajuste y una
+  /// reconexión). El ticket los oculta solo si el sub-toggle está apagado.
+  List<Map<String, dynamic>> _sampleCargos() => const [
+        {
+          'cuota_id': 'cuota-ejemplo',
+          'tipo': 'descuento_monto',
+          'monto': 50.0,
+          'porcentaje': null,
+          'descripcion': 'Sin servicio 3 días',
+          'origen': 'ajuste',
+        },
+        {
+          'cuota_id': 'cuota-ejemplo',
+          'tipo': 'reconexion',
+          'monto': 100.0,
+          'porcentaje': null,
+          'descripcion': 'Cargo por reconexión',
+          'origen': 'cobro',
+        },
+      ];
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -109,6 +133,7 @@ class ReciboPreview extends ConsumerWidget {
                     row: _sampleRow(),
                     settings: settings,
                     logoBytes: logoBytes,
+                    cargosRows: _sampleCargos(),
                   ),
                 ),
               ),

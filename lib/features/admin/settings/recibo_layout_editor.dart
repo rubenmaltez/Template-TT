@@ -390,22 +390,24 @@ class _BloqueRow extends ConsumerWidget {
   final ValueChanged<ReciboTextoSize> onSize;
   final ValueChanged<ReciboZona> onMover;
 
-  // Sub-opción de un bloque (cédula del cliente, saldo de la cuota): clave del
-  // setting booleano que vive DENTRO del bloque.
-  String? get _subClave => switch (bloque.id) {
-        'cliente' => 'recibo.mostrar_cedula',
-        'cuota' => 'recibo.mostrar_adeudado',
-        _ => null,
+  // Sub-opciones de un bloque (settings booleanos que viven DENTRO del
+  // bloque): cédula en `cliente`; saldo + desglose de descuentos/cargos
+  // (+ motivos) en `cuota` (rediseño 2026-06-11).
+  List<(String, String)> get _subOpciones => switch (bloque.id) {
+        'cliente' => const [('recibo.mostrar_cedula', 'Mostrar cédula')],
+        'cuota' => const [
+            ('recibo.mostrar_adeudado', 'Mostrar saldo pendiente'),
+            ('recibo.mostrar_descuentos', 'Mostrar descuentos y cargos'),
+            ('recibo.mostrar_motivo_descuentos', 'Mostrar motivos'),
+          ],
+        _ => const [],
       };
-  String get _subLabel =>
-      bloque.id == 'cliente' ? 'Mostrar cédula' : 'Mostrar saldo pendiente';
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final scheme = Theme.of(context).colorScheme;
     final hideable = info?.hideable ?? true;
     final off = !bloque.visible;
-    final subClave = _subClave;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -463,36 +465,42 @@ class _BloqueRow extends ConsumerWidget {
             ],
           ),
         ),
-        // Sub-toggle dentro del bloque (cédula / saldo), indentado.
-        if (subClave != null && !off)
-          Padding(
-            padding: const EdgeInsets.only(left: 42, bottom: 4),
-            child: Row(
-              children: [
-                Icon(Icons.subdirectory_arrow_right,
-                    size: 16, color: scheme.outline),
-                const SizedBox(width: 4),
-                Text(_subLabel,
-                    style: TextStyle(fontSize: 12.5, color: scheme.onSurfaceVariant)),
-                const Spacer(),
-                Transform.scale(
-                  scale: 0.8,
-                  child: Switch(
-                    value: _subValor(ref, subClave),
-                    // upsert: el sub-toggle (cédula/saldo) también puede no
-                    // tener su fila en tenants nuevos. Lo crea si falta.
-                    onChanged: (v) => ref.read(settingsRepoProvider).upsert(
-                          tenantId,
-                          subClave,
-                          v,
-                          tipo: 'boolean',
-                          categoria: 'recibos',
-                        ),
-                  ),
+        // Sub-toggles dentro del bloque (cédula / saldo / descuentos),
+        // indentados. "Mostrar motivos" solo aparece con el desglose ON.
+        if (!off)
+          for (final (subClave, subLabel) in _subOpciones)
+            if (subClave != 'recibo.mostrar_motivo_descuentos' ||
+                _subValor(ref, 'recibo.mostrar_descuentos'))
+              Padding(
+                padding: const EdgeInsets.only(left: 42, bottom: 4),
+                child: Row(
+                  children: [
+                    Icon(Icons.subdirectory_arrow_right,
+                        size: 16, color: scheme.outline),
+                    const SizedBox(width: 4),
+                    Text(subLabel,
+                        style: TextStyle(
+                            fontSize: 12.5, color: scheme.onSurfaceVariant)),
+                    const Spacer(),
+                    Transform.scale(
+                      scale: 0.8,
+                      child: Switch(
+                        value: _subValor(ref, subClave),
+                        // upsert: el sub-toggle puede no tener su fila en
+                        // tenants nuevos. Lo crea si falta.
+                        onChanged: (v) =>
+                            ref.read(settingsRepoProvider).upsert(
+                                  tenantId,
+                                  subClave,
+                                  v,
+                                  tipo: 'boolean',
+                                  categoria: 'recibos',
+                                ),
+                      ),
+                    ),
+                  ],
                 ),
-              ],
-            ),
-          ),
+              ),
         Divider(height: 1, color: scheme.outlineVariant.withValues(alpha: 0.4)),
       ],
     );
@@ -500,9 +508,12 @@ class _BloqueRow extends ConsumerWidget {
 
   bool _subValor(WidgetRef ref, String clave) {
     final s = ref.watch(appSettingsProvider);
-    return clave == 'recibo.mostrar_cedula'
-        ? s.reciboMostrarCedula
-        : s.reciboMostrarAdeudado;
+    return switch (clave) {
+      'recibo.mostrar_cedula' => s.reciboMostrarCedula,
+      'recibo.mostrar_descuentos' => s.reciboMostrarDescuentos,
+      'recibo.mostrar_motivo_descuentos' => s.reciboMostrarMotivoDescuentos,
+      _ => s.reciboMostrarAdeudado,
+    };
   }
 }
 
