@@ -1,6 +1,9 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <!-- Cámara: escaneo de código de barras de seriales (mobile_scanner). -->
     <uses-permission android:name="android.permission.CAMERA" />
+    <!-- Ubicación GPS: para mostrar la posición en el mapa. -->
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <!-- Auto-update in-app: permite lanzar el instalador del APK descargado
          (la 1ª vez Android pide el toggle "instalar apps de esta fuente"
          para SITECSA CRM; lo gestiona permission_handler en runtime). -->

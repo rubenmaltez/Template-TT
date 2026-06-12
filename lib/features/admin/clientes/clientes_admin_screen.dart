@@ -11,6 +11,7 @@ import '../../../powersync/db.dart' as ps;
 import '../../shared/widgets/cargar_mas_button.dart';
 import '../../shared/widgets/empty_state.dart';
 import '../../../data/utils/errores.dart';
+import '../reportes/excel/reporte_excel.dart';
 
 class ClientesAdminScreen extends ConsumerStatefulWidget {
   const ClientesAdminScreen({super.key});
@@ -137,6 +138,34 @@ class _ClientesAdminScreenState extends ConsumerState<ClientesAdminScreen> {
                 label: const Text('Nuevo cliente'),
                 onPressed: () => context.push('/admin/clientes/nuevo'),
               ),
+              const SizedBox(width: 8),
+              PopupMenuButton<String>(
+                icon: const Icon(Icons.download),
+                tooltip: 'Exportar a Excel',
+                onSelected: (val) => _exportarAExcel(val, diasGracia),
+                itemBuilder: (_) => [
+                  const PopupMenuItem(
+                    value: 'actual',
+                    child: Row(
+                      children: [
+                        Icon(Icons.filter_list, size: 20),
+                        SizedBox(width: 8),
+                        Text('Vista filtrada actual'),
+                      ],
+                    ),
+                  ),
+                  const PopupMenuItem(
+                    value: 'todos',
+                    child: Row(
+                      children: [
+                        Icon(Icons.people, size: 20),
+                        SizedBox(width: 8),
+                        Text('Todos los clientes'),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
             ],
           ),
         ),
@@ -249,6 +278,122 @@ class _ClientesAdminScreenState extends ConsumerState<ClientesAdminScreen> {
         SnackBar(content: Text('${ids.length} cliente(s) actualizados')),
       );
       setState(() => _seleccionados.clear());
+    }
+  }
+
+  Future<void> _exportarAExcel(String tipo, int diasGracia) async {
+    try {
+      final where = <String>[];
+      final params = <Object?>[];
+
+      if (tipo == 'actual') {
+        if (_filtroEstado == _FiltroEstado.activos) where.add('c.activo = 1');
+        if (_filtroEstado == _FiltroEstado.inactivos) where.add('c.activo = 0');
+
+        if (_query.isNotEmpty) {
+          where.add(
+              '(lower(c.nombre) LIKE ? OR lower(coalesce(c.cedula,\'\')) LIKE ? OR coalesce(c.telefono,\'\') LIKE ? OR lower(coalesce(c.codigo,\'\')) LIKE ? OR c.id IN (SELECT cliente_id FROM contratos WHERE lower(coalesce(codigo,\'\')) LIKE ?))');
+          final like = '%$_query%';
+          final digits = sanitizePhoneForWhatsApp(_query);
+          final likeTelefono = digits.isEmpty ? like : '%$digits%';
+          params..add(like)..add(like)..add(likeTelefono)..add('%${_query.toLowerCase()}%')..add(like);
+        }
+        if (_cobradorFilter != null) {
+          where.add('c.cobrador_id = ?');
+          params.add(_cobradorFilter);
+        }
+        if (_comunidadFilter != null) {
+          where.add('c.comunidad_id = ?');
+          params.add(_comunidadFilter);
+        }
+        if (_nodoFilter != null) {
+          where.add('c.puerto_id IN (SELECT p.id FROM red_puertos p '
+              'JOIN red_hubs h ON h.id = p.hub_id WHERE h.nodo_id = ?)');
+          params.add(_nodoFilter);
+        }
+        if (_soloSinCobrador) {
+          where.add('c.cobrador_id IS NULL');
+        }
+        if (_soloMora) {
+          where.add("c.id IN (SELECT cu2.cliente_id FROM cuotas cu2 WHERE cu2.estado IN ('pendiente','parcial') AND date(cu2.fecha_vencimiento, '+' || ? || ' days') < date('now', '-6 hours'))");
+          params.add(diasGracia);
+        }
+      }
+
+      final whereSql = where.isEmpty ? '' : 'WHERE ${where.join(' AND ')}';
+      final sql = '''
+        SELECT c.codigo, c.nombre, c.cedula, c.telefono, c.direccion,
+               c.direccion_referencia, c.activo, c.created_at,
+               co.nombre AS comunidad,
+               cb.nombre AS cobrador,
+               (SELECT GROUP_CONCAT(DISTINCT pl.nombre)
+                  FROM contratos ct JOIN planes pl ON pl.id = ct.plan_id
+                 WHERE ct.cliente_id = c.id) AS planes,
+               (SELECT GROUP_CONCAT(DISTINCT ct.dia_pago)
+                  FROM contratos ct WHERE ct.cliente_id = c.id) AS dias_pago,
+               COALESCE((SELECT SUM(cu.monto + COALESCE(cu.cargos_neto, 0) - cu.monto_pagado)
+                  FROM cuotas cu
+                 WHERE cu.cliente_id = c.id
+                   AND cu.estado IN ('pendiente','parcial')), 0) AS saldo
+          FROM clientes c
+     LEFT JOIN comunidades co ON co.id = c.comunidad_id
+     LEFT JOIN cobradores cb ON cb.id = c.cobrador_id
+        $whereSql
+        ORDER BY c.activo DESC, c.nombre
+      ''';
+
+      final rows = await ps.db.getAll(sql, params);
+
+      final headers = [
+        'Código', 'Nombre', 'Cédula', 'Teléfono', 'Dirección', 'Referencia',
+        'Comunidad', 'Cobrador', 'Plan(es)', 'Día de pago',
+        'Saldo pendiente (C\$)', 'Estado', 'Fecha de alta',
+      ];
+
+      final filas = rows.map((r) {
+        return <Object?>[
+          r['codigo']?.toString() ?? '',
+          r['nombre']?.toString() ?? '',
+          r['cedula']?.toString() ?? '',
+          r['telefono']?.toString() ?? '',
+          r['direccion']?.toString() ?? '',
+          r['direccion_referencia']?.toString() ?? '',
+          r['comunidad']?.toString() ?? '',
+          r['cobrador']?.toString() ?? '',
+          r['planes']?.toString() ?? '',
+          r['dias_pago']?.toString() ?? '',
+          (r['saldo'] as num?) ?? 0,
+          (r['activo'] as int? ?? 1) == 1 ? 'Activo' : 'Inactivo',
+          r['created_at'] == null ? '' : Fmt.fechaNi(r['created_at'] as String),
+        ];
+      }).toList();
+
+      final now = DateTime.now();
+      final mm = now.month.toString().padLeft(2, '0');
+      final dd = now.day.toString().padLeft(2, '0');
+      final fileName = '${tipo == 'actual' ? 'clientes_filtrados' : 'todos_los_clientes'}_${now.year}_${mm}_$dd.xlsx';
+
+      final ruta = await descargarExcel(
+        fileName: fileName,
+        hojaNombre: tipo == 'actual' ? 'Clientes Filtrados' : 'Todos los Clientes',
+        headers: headers,
+        filas: filas,
+      );
+
+      if (mounted && ruta != null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Reporte Excel guardado')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        final msg = e is UnsupportedError
+            ? (e.message?.toString() ?? 'Exportación no soportada')
+            : mensajeErrorHumano(e, contexto: 'generar el Excel');
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(msg)),
+        );
+      }
     }
   }
 }

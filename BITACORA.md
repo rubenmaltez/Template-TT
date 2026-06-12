@@ -18,7 +18,7 @@
 
 ## ⭐ ESTADO ACTUAL (refrescar al cerrar cada sesión)
 
-- **Branch viva: `main`** (única rama permanente; default del repo en GitHub).
+- **Branch viva: `mapa-lista-clientes`** (rama efímera para geolocalización y exportación).
   Checkpoints históricos = **tags**: `pre-mvp-v2` (estado auditado 2026-06-09)
   y `pre-mvp-v1` (checkpoint previo). La rama del Sprint 1
   (`claude/jolly-albattani-09axxa`) se mergeó a `main` y se borró (2026-06-11).
@@ -47,9 +47,21 @@
      Quedan los HIGH restantes del audit integral según el reporte.
   (El preview multi-cuota al cobrar desde el MAPA fue pedido y CANCELADO por
   Rubén el mismo 2026-06-11 — queda como está; no re-proponer.)
-- **Hecho recién (2026-06-12):** vista previa dinámica del recibo en settings según `ajustesHabilitados` y `reconexionHabilitada` (release `v0.11.1`).
+- **Hecho recién (2026-06-12):** Ubicación GPS en vivo en el mapa (online/offline) y botón de exportar clientes en ClientesAdminScreen (con filtros y todos) en la rama `mapa-lista-clientes`.
 - **Salud:** del audit 2026-06-09 no queda nada abierto; del audit 2026-06-11
   quedan **7 HIGH sin atacar** (priorizados en el reporte, Sprints 2-3).
+
+---
+
+## 2026-06-12 (c) — Ubicación GPS y Exportación de Clientes (Rama mapa-lista-clientes)
+
+**Qué se pidió:** 1) Mostrar la ubicación actual con un pin estilo Google Maps en el mapa que funcione online/offline con un botón de centrado rápido. 2) Añadir un botón de exportar clientes a Excel directamente en la vista de clientes (admin/admin_cobranza) con soporte para exportar todos o con la vista filtrada actual.
+
+**Qué se hizo:**
+- Agregada dependencia `geolocator: ^13.0.2` en `pubspec.yaml` + permisos en `AndroidManifest.xml` (Android) y capabilities de `location` en `pubspec.yaml` (Windows MSIX).
+- Modificado `lib/features/mapa/mapa_screen.dart` para integrar Geolocator en tiempo real, agregando el marcador animado pulsante `_UbicacionActualMarker` y el botón flotante de centrado rápido (`my_location`).
+- Modificado `lib/features/admin/clientes/clientes_admin_screen.dart` para agregar un `PopupMenuButton` de exportación. Soporta exportar todos los clientes o la vista actual, clonando dinámicamente las condiciones del filtro en la consulta SQL.
+- Verificación: `flutter analyze` exitoso (0 errores, 4 deprecaciones conocidas) y `flutter test` (263 exitosos).
 
 ---
 
@@ -59,7 +71,7 @@
 
 **Qué se hizo:**
 - Creada rama `test-receipt` y hecho checkout (`fe1dfa2`).
-- Modificado `lib/features/admin/settings/recibo_preview.dart` para recibir `AppSettings` en `_sampleCargos` y `_sampleRow`. Los cargos de ejemplo y la matemática (cargos_neto, monto_cordobas) ahora se recalculan dinámicamente.
+- Modificado `lib/features/admin/settings/recibo_preview.dart` para recibir `AppSettings` en `_sampleCargos` and `_sampleRow`. Los cargos de ejemplo y la matemática (cargos_neto, monto_cordobas) ahora se recalculan dinámicamente.
 - Verificación: `flutter analyze` exitoso (0 errores/warnings, 4 deprecaciones conocidas) y `flutter test` (263 exitosos). Pushed a GitHub.
 
 ---

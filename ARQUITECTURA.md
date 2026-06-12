@@ -224,7 +224,7 @@ tocan. El descuento de origen 'cobro' exige motivo server-side
 contratos, visitas, fotos, equipos instalados, historial. Conecta con
 **contratos**, **geografía** (picker), **red** (puerto del cliente), **mapa**.
 **[AI]** Lista cobrador `clientes_list_screen.dart` · admin
-`clientes_admin_screen.dart` (paginada) · detalle compartido
+`clientes_admin_screen.dart` (paginada, incluye botón de exportación Excel de todos o filtrados usando `descargarExcel`) · detalle compartido
 `cliente_detail_screen.dart` (role detection) · form `cliente_form_screen.dart`
 (PopScope guard + `formDirtyProvider`) · `widgets/geo_picker.dart` +
 `red_picker.dart`. Tablas: `clientes`, `fotos_cliente` (max 10), `visitas`;
@@ -263,11 +263,14 @@ formato_default_mm/mostrar_*`, `empresa.*`. → **Receta R3/R9.**
 ### Mapa — `lib/features/mapa/mapa_screen.dart` (compartido 3 shells)
 **[H]** Clientes geolocalizados coloreados por estado de cuota (6 estados).
 El cobrador queda limitado al rango; el admin tiene "Ver todo". Tiles con
-caché en disco → funciona offline.
+caché en disco → funciona offline. Geolocalización en vivo del usuario en
+tiempo real (online/offline) con marcador pulsante y botón de centrado rápido.
 **[AI]** `MapTileCache` (`data/services/map_tile_cache.dart`, OSM + 
 flutter_map_cache, web cae a red). Colores: `cobranza.colores_estados` vía
 `estadoVisualCuota()`. Rutas: `/mapa`, `/admin/mapa`, `/tecnico/mapa`.
-Búsqueda multi-campo. La geo del cobro NO existe (lat/lng null by-design).
+Búsqueda multi-campo. Ubicación actual vía `geolocator` con marcador
+custom (`_UbicacionActualMarker`) y centrado en cámara. La geo del cobro
+NO existe (lat/lng null by-design).
 
 ### Dashboard admin — `lib/features/admin/dashboard/`
 **[H]** El "cómo viene el negocio" del admin: cobros hoy/semana/mes, mora,

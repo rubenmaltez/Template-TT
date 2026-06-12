@@ -1,6 +1,9 @@
+import 'dart:async';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:go_router/go_router.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -70,11 +73,105 @@ class _MapaScreenState extends ConsumerState<MapaScreen> {
   // pin (ignora los demás filtros) y centra/zoom en él. La X lo limpia.
   String? _clienteSeleccionadoId;
   final _mapController = MapController();
+  Position? _currentPosition;
+  StreamSubscription<Position>? _positionSubscription;
 
   @override
   void dispose() {
+    _positionSubscription?.cancel();
     _mapController.dispose();
     super.dispose();
+  }
+
+  Future<void> _initLocation() async {
+    try {
+      final serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!serviceEnabled) return;
+
+      var permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+        if (permission == LocationPermission.denied) return;
+      }
+      if (permission == LocationPermission.deniedForever) return;
+
+      _positionSubscription = Geolocator.getPositionStream(
+        locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.high,
+          distanceFilter: 5,
+        ),
+      ).listen(
+        (position) {
+          if (mounted) {
+            setState(() => _currentPosition = position);
+          }
+        },
+        onError: (e) {
+          if (kDebugMode) debugPrint('Error en stream de ubicación: $e');
+        },
+      );
+
+      final lastPos = await Geolocator.getLastKnownPosition();
+      if (lastPos != null && mounted && _currentPosition == null) {
+        setState(() => _currentPosition = lastPos);
+      }
+    } catch (e) {
+      if (kDebugMode) debugPrint('Error _initLocation: $e');
+    }
+  }
+
+  Future<void> _centrarEnUbicacion() async {
+    try {
+      final serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!serviceEnabled) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('El servicio de GPS está desactivado.')),
+          );
+        }
+        return;
+      }
+
+      var permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+        if (permission == LocationPermission.denied) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Permiso de ubicación denegado.')),
+            );
+          }
+          return;
+        }
+      }
+
+      if (permission == LocationPermission.deniedForever) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Permiso de ubicación denegado permanentemente.')),
+          );
+        }
+        return;
+      }
+
+      if (_positionSubscription == null) {
+        _initLocation();
+      }
+
+      final pos = await Geolocator.getCurrentPosition(
+        locationSettings: const LocationSettings(accuracy: LocationAccuracy.high),
+      );
+      if (mounted) {
+        setState(() => _currentPosition = pos);
+        _mapController.move(LatLng(pos.latitude, pos.longitude), 16.0);
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('No se pudo obtener la ubicación: ${mensajeErrorHumano(e)}')),
+        );
+      }
+    }
   }
 
   void _seleccionarCliente(Map<String, dynamic> r) {
@@ -156,9 +253,7 @@ class _MapaScreenState extends ConsumerState<MapaScreen> {
   @override
   void initState() {
     super.initState();
-    // Inicialización diferida: diasGracia viene de Riverpod, no está
-    // disponible en initState. Se setea en el primer build via el
-    // listener de abajo.
+    _initLocation();
   }
 
   @override
@@ -301,9 +396,16 @@ class _MapaScreenState extends ConsumerState<MapaScreen> {
                   tileProvider: MapTileCache.instance.tileProvider(),
                 ),
                 MarkerLayer(
-                  markers: visibles
-                      .map((r) => _markerFor(context, r, colores))
-                      .toList(),
+                  markers: [
+                    ...visibles.map((r) => _markerFor(context, r, colores)),
+                    if (_currentPosition != null)
+                      Marker(
+                        point: LatLng(_currentPosition!.latitude, _currentPosition!.longitude),
+                        width: 40,
+                        height: 40,
+                        child: const _UbicacionActualMarker(),
+                      ),
+                  ],
                 ),
                 _AttributionBanner(satelite: _satelite),
               ],
@@ -355,19 +457,32 @@ class _MapaScreenState extends ConsumerState<MapaScreen> {
             ),
             // Botón de búsqueda de cliente (centra/zoom en su pin). Oculto
             // mientras hay uno enfocado — el X del banner vuelve a todos.
-            if (seleccionado == null)
-              Positioned(
-                bottom: 16,
-                right: 16,
-                child: SafeArea(
-                  child: FloatingActionButton(
-                    heroTag: 'mapa_buscar',
-                    tooltip: 'Buscar cliente',
-                    onPressed: () => _abrirBuscador(rows),
-                    child: const Icon(Icons.search),
-                  ),
+            Positioned(
+              bottom: 16,
+              right: 16,
+              child: SafeArea(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    FloatingActionButton.small(
+                      heroTag: 'mapa_mi_ubicacion',
+                      tooltip: 'Centrar en mi ubicación',
+                      onPressed: _centrarEnUbicacion,
+                      child: const Icon(Icons.my_location),
+                    ),
+                    if (seleccionado == null) ...[
+                      const SizedBox(height: 12),
+                      FloatingActionButton(
+                        heroTag: 'mapa_buscar',
+                        tooltip: 'Buscar cliente',
+                        onPressed: () => _abrirBuscador(rows),
+                        child: const Icon(Icons.search),
+                      ),
+                    ],
+                  ],
                 ),
               ),
+            ),
             // Botón flotante para alternar calle ↔ satélite.
             Positioned(
               top: 8,
@@ -1061,6 +1176,72 @@ class _BuscadorClientesState extends State<_BuscadorClientes> {
             ),
         ],
       ),
+    );
+  }
+}
+
+class _UbicacionActualMarker extends StatefulWidget {
+  const _UbicacionActualMarker();
+
+  @override
+  State<_UbicacionActualMarker> createState() => _UbicacionActualMarkerState();
+}
+
+class _UbicacionActualMarkerState extends State<_UbicacionActualMarker>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: 2),
+    )..repeat();
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _controller,
+      builder: (context, child) {
+        final value = _controller.value;
+        return Stack(
+          alignment: Alignment.center,
+          children: [
+            Container(
+              width: 14 + (26 * value),
+              height: 14 + (26 * value),
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: Colors.blue.withValues(alpha: 0.4 * (1.0 - value)),
+              ),
+            ),
+            Container(
+              width: 16,
+              height: 16,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: Colors.blue.shade600,
+                border: Border.all(color: Colors.white, width: 2),
+                boxShadow: const [
+                  BoxShadow(
+                    color: Colors.black26,
+                    blurRadius: 3,
+                    offset: Offset(0, 1.5),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        );
+      },
     );
   }
 }

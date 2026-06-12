@@ -39,9 +39,9 @@ dependencies:
   uuid: ^4.4.0
   collection: ^1.18.0
 
-  # Mapas (flutter_map + OSM, gratis sin API key). geolocator se QUITO
-  # (audit: 0 imports — la geo del cobro esta parqueada; el plugin nativo
-  # se compilaba en cada APK/MSIX sin uso). Volver a agregarlo con la feature.
+  # Mapas (flutter_map + OSM, gratis sin API key). geolocator se reinstala para
+  # la feature de ubicación actual del cobrador en tiempo real.
+  geolocator: ^13.0.2
   flutter_map: ^7.0.2
   latlong2: ^0.9.1
 
@@ -137,7 +137,7 @@ msix_config:
   publisher_display_name: SITECSA
   identity_name: com.sitecsa.crm
   logo_path: assets/icon/app_icon.png
-  capabilities: internetClient
+  capabilities: internetClient, location
   languages: es
   # Certificado self-signed para distribución B2B (no Microsoft Store).
   # Para producción: reemplazar con certificado comprado.

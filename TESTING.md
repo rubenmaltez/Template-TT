@@ -219,7 +219,23 @@ AGENTS.md):
   tiene un menú **⋮ "Mover a zona"** (Encabezado/Cuerpo/Pie) → moverlo se refleja en la vista previa y en
   el recibo impreso; el botón **"Restaurar layout por defecto"** vuelve al orden base (con confirmación).
   *Si falla:* si WhatsApp sigue en el pie, usá "Restaurar layout por defecto" o el menú ⋮.
-- **⟨agregar acá los features nuevos a medida que se entregan⟩**
+- **Ubicación GPS en el mapa (2026-06-12, rama mapa-lista-clientes):**
+  1. Abrí el mapa como cobrador, técnico o admin.
+  2. *Ver:* Si tenés los permisos de ubicación otorgados y el GPS encendido, aparecerá un pin circular azul pulsante en tu ubicación actual (diseño de burbuja concéntrica interactiva).
+  3. Tocá el botón de la mira (`Icons.my_location`) ubicado arriba de la lupa de búsqueda en la parte inferior derecha.
+  4. *Ver:* El mapa se centra suavemente en tu ubicación con un nivel de zoom 16.0.
+  5. Desactivá los permisos de ubicación o el servicio GPS y tocá el botón de la mira.
+  6. *Ver:* SnackBar descriptivo en español indicando el estado del permiso o servicio. Funciona correctamente offline.
+- **Exportación de clientes a Excel (2026-06-12, rama mapa-lista-clientes):**
+  1. Ingresá a la vista de Clientes como `admin` o `admin_cobranza`.
+  2. *Ver:* Al lado del botón "Nuevo cliente", aparece un botón de descarga (`Icons.download`).
+  3. Aplicá filtros en la lista de clientes (por ejemplo, buscar por nombre, filtrar por comunidad o nodo, o activar "Solo en mora").
+  4. Tocá el botón de descarga y elegí la opción **"Vista filtrada actual"**.
+  5. *Ver:* Se genera y guarda un archivo Excel con el nombre `clientes_filtrados_AAAA_MM_DD.xlsx` en el dispositivo. Las columnas incluyen código, nombre, cédula, teléfono, dirección, comunidad, cobrador, planes, días de pago, saldo pendiente, estado y fecha de alta.
+  6. Tocá el botón de descarga y elegí la opción **"Todos los clientes"**.
+  7. *Ver:* Se genera y guarda el Excel de todos los clientes sin importar el filtro activo (`todos_los_clientes_AAAA_MM_DD.xlsx`).
+  *Si falla:* Verificar que la base de datos local contenga información válida y que el formato de fecha se renderice con `Fmt.fechaNi` (sin warnings de parsed Null).
+- ⟨agregar acá los features nuevos a medida que se entregan⟩
 
 ---
 
