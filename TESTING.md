@@ -57,17 +57,37 @@ AGENTS.md):
   aviso y la card desaparece sola al quedar vacía.
   *Si falla:* el detalle técnico con el contenido del cambio (opData) queda en
   `/super/logs` (error_logs).
-- **Ajustes de cuota (Sprint 2, 0115):** como súper, en Configuración →
-  Avanzado activá "Ajustes de cuota (admin)". Como admin, abrí un contrato →
-  icono **%** en una cuota pendiente → "Aplicar ajuste" (probá monto Y
-  porcentaje, con coma decimal "120,50") con motivo.
-  *Ver:* preview "Saldo: X → Y" antes de confirmar; el saldo de la cuota baja
-  en el contrato, en Cobros y en el mapa (mismo número); el historial de la
-  cuota registra el cargo; quitar el ajuste restaura el saldo Y deja rastro
-  en el historial. Con el setting OFF el icono % no aparece, y un ajuste por
-  encima del tope configurado se rechaza con mensaje claro.
-  *Si falla:* correr `invariantes_dinero.sql` (INV13) y revisar que 0115
-  esté corrida (queries de verificación al pie de la migración).
+- **Descuentos rediseñados (2026-06-11, 0115+0117):**
+  1. *Settings:* como súper, Configuración → Avanzado. *Ver:* TRES grupos
+     hermanos con subtítulo: "Ajustes de cuota (admin)", "Descuentos del
+     cobrador" y "Pronto pago" — nada de esto en "Otros". Activá el primero
+     (y el segundo para probar el cobro).
+  2. *Admin desde el contrato:* icono **%** en una cuota pendiente → sheet
+     "Descuentos de la cuota" → "Aplicar descuento". *Ver:* selector
+     **Ajuste/Promo**, chips de motivo (un toque lo carga), preview
+     "Saldo: X → Y". Aplicá una PROMO con % → en el sheet aparece con
+     etiqueta "Promo"; quitar restaura el saldo y deja rastro en historial.
+     Probá exceder el tope → mensaje claro. Con el setting OFF, el % no está.
+  3. *Cobrador en el cobro (single cuota):* botones **"Descuento"** y
+     **"Cargo extra"** separados (cada uno solo si su feature está ON).
+     Agregá un descuento con motivo → aparece como card con **X** para
+     quitar y el total baja; agregá un cargo (reconexión prellenada u
+     "otro" con descripción) → el total sube. **Salí SIN confirmar** (back)
+     → avisa; descartá → reabrí la cuota: el saldo quedó INTACTO (nada se
+     grabó). Cobrá confirmando → recibo; **anulá el pago** → el descuento
+     manual se revierte (saldo restaurado), el cargo queda debiéndose.
+  4. *Recibo:* el recibo del cobro del paso 3 muestra dentro de los montos
+     de la cuota una línea por descuento/cargo con su motivo (pantalla, PDF
+     y térmica iguales). En Configuración → Recibos, bloque "Montos de la
+     cuota": sub-toggles "Mostrar descuentos y cargos" y "Mostrar motivos"
+     — apagalos y la preview en vivo (que trae un ajuste y una reconexión
+     de ejemplo) los oculta al instante.
+  5. *Pronto pago:* con valor > 0 y una cuota NO vencida, al cobrar aparece
+     el descuento automático; si además agregás un descuento manual, el
+     automático desaparece (anti doble-descuento) y vuelve si quitás el
+     manual.
+  *Si falla:* correr `invariantes_dinero.sql` (INV13/INV14) y verificar
+  0117 (queries al pie de la migración).
 - **Mega-sprint 2026-06-11 (smokes rápidos):** (1) en COBRO: tipeá "500,50"
   → el monto vale 500.50; back de Android con datos cargados → pide
   confirmación; aplicá un descuento manual con un cargo de reconexión
@@ -76,7 +96,8 @@ AGENTS.md):
   "Crear cliente/contrato" → una sola entidad. (4) Como admin, filtrá "En
   mora" en /admin/cobros → el badge del cobrador NO se borra; tocá un
   cliente → abre la vista /admin con el menú lateral. (5) Menú →
-  Administración → Cuotas existe y permite anular. (6) Personal → ícono 🕐
+  Administración: "Cuotas" YA NO está (pantalla retirada 2026-06-11; las
+  cuotas viven en el detalle del contrato). (6) Personal → ícono 🕐
   → historial del miembro. (7) Provocá un error cualquiera → mensaje en
   español, no "Exception:". (8) Historial de cobros → "Cargar más" al fondo.
 - **Cobro de campo (cobrador):** abrir una cuota pendiente → cargar monto, método,
@@ -131,7 +152,7 @@ AGENTS.md):
   migraciones `0111` + `0112`. En `/admin/contratos/:id` (o `/contratos/:id`), tocá el badge
   de estado → **Cancelado**.
   - *Contrato con cuotas pendientes (sin pagar):* tras cancelar → **desaparecen** de "por
-    cobrar" (lista del cobrador, `/admin/cuotas`, dashboard, mapa); el resumen muestra **"Total
+    cobrar" (lista del cobrador, dashboard, mapa); el resumen muestra **"Total
     recaudado" / Pendiente 0**; en la lista de cuotas del contrato quedan **anuladas** (tachadas).
   - *Contrato con una cuota PARCIAL (cobrá parte de una cuota primero):* tras cancelar → el
     pago **sigue contado** en Recaudado (resumen + `/admin/pagos`); la cuota pasa a **pagada**
@@ -342,7 +363,6 @@ Loguear como `admin@test.com` en la app web.
 - [ ] `/admin/contratos/:id/editar`: cambiar día de pago → cuotas futuras se actualizan
 - [ ] `/admin/planes`: ver los 3 planes, crear uno nuevo
 - [ ] `/admin/cobradores`: ver los 3 cobradores, editar prefijo
-- [ ] `/admin/cuotas`: filtrar por estado, anular una cuota con motivo
 - [ ] `/admin/pagos`: anular un pago, ver que la cuota baja a `parcial`
 - [ ] `/admin/notificaciones`: ver mora pendiente, marcar como vista
 - [ ] `/admin/settings`: cambiar tasa USD, ver que se guarda

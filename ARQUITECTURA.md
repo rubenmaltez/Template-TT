@@ -165,19 +165,29 @@ descuentos_*/cargo_reconexion_*/comprobante_*/foto_obligatoria`,
 `pagos.usd_habilitado/tasa_usd_cordoba/metodo_*`. Tablas: escribe `pagos`,
 `recibos`, `cargos_extra`, `cuotas` (mirror). Guard: bloqueado impersonando.
 Desde el mega-sprint 2026-06-11: montos con `parseMonto` (coma decimal, M8) ·
-PopScope con confirmación de descarte (#6) · al aplicar cargo manual se
-re-deduplican los `_cargosAuto` (#3) · `trg_pagos_guard_cobrador` (0116)
-enforcea server-side `cobrador_anula_cobros`/`cobrador_edita_cobros` (#4) ·
-anular un pago revierte SUS descuentos automáticos (`pago_id`, 0115/M3).
+PopScope con confirmación de descarte (#6, incluye cargos pendientes) ·
+`trg_pagos_guard_cobrador` (0116) enforcea server-side
+`cobrador_anula_cobros`/`cobrador_edita_cobros` (#4) · anular un pago
+revierte SUS descuentos (`pago_id`, 0115/M3 — cubre TAMBIÉN los manuales).
+**Rediseño descuentos 2026-06-11:** botones separados "Descuento"
+(`DescuentoDialog` contexto cobro) y "Cargo extra" (`CargoDialog`), cada uno
+gateado por SU feature flag; los manuales quedan PENDIENTES en memoria
+(`_cargosManuales`, quitable con X) y se insertan recién al confirmar vía
+`cargosAuto` (con `pago_id`) — abandonar el cobro no deja rastro (fin del
+"descuento fantasma"). Anti doble-descuento: un descuento manual suprime el
+pronto-pago automático de su cuota (`_cargosEfectivos`); totales derivados
+de `_totalesBase` + pendientes (`_recalcularTotales`).
 **⚠️ Ver Receta R11 + invariantes de dinero en `AGENTS.md` antes de tocar.**
 
-### Cuotas — `lib/features/cuotas/` (cobrador+admin) · `lib/features/admin/cuotas/`
+### Cuotas — `lib/features/cuotas/` (cobrador+admin)
 **[H]** La lista de qué hay que cobrar. El cobrador ve SUS cuotas (mora
-primero, gate de rango para las futuras); el admin ve todas con filtros y
-puede anular. Alimenta a **cobro** (multi-select → batch).
+primero, gate de rango para las futuras). Alimenta a **cobro** (multi-select
+→ batch). La pantalla admin `/admin/cuotas` se RETIRÓ (2026-06-11, decisión
+Rubén): "anular cuota" salió del producto (terminal-peligroso; la única
+anulación masiva es Cancelar contrato) y las cuotas manuales también
+(`cuotas.manuales` → `_hidden`; un cobro puntual = "+ Cargo" en el cobro).
 **[AI]** `cuotas_list_screen.dart` (tabs por cobrar/por cliente, filtros,
-multi-select → `/cobro/...`) · `cuotas_admin_screen.dart` (filtros + anular
-con mirror local de la cascada). Estados PERSISTIDOS:
+multi-select → `/cobro/...`). Estados PERSISTIDOS:
 `pendiente/parcial/pagada/anulada` (CHECK en DB); `en_gracia/vencida/hoy/
 proxima` son DERIVADOS en Dart (`data/utils/cuota_estado_visual.dart`
 `estadoVisualCuota()`: >gracia→mora · 1..gracia→gracia · 0→hoy ·
@@ -186,15 +196,22 @@ NUNCA escribir `estado='vencida'` (choca el CHECK). Settings:
 `cobranza.dias_gracia` (10) / `dias_cuotas_visibles` (5) / `colores_estados`.
 Saldo canónico: `monto + COALESCE(cargos_neto,0) − monto_pagado` (igual en
 TODAS las pantallas — invariante #10).
-**AJUSTES de cuota (Sprint 2, 0115):** la variación legítima de una cuota es
-un cargo `origen='ajuste'` (descuento con motivo) — `cuotas.monto` NO se muta
-("Editar monto" se RETIRÓ). UI: icono % por cuota en el detalle del contrato
-(`AjustarCuotaDialog` + sheet) → `CuotasRepo.aplicarAjuste/quitarAjuste`
-(mirrors de neto/estado). Guard REAL server-side `trg_cargos_ajuste_guard`:
-setting super-only `cobranza.ajustes_habilitados` + topes
-`ajuste_max_porcentaje/_monto` + motivo + solo descuento_*. Al anular un
-pago, sus descuentos (`cargos_extra.pago_id`) se borran — trigger
-`trg_pagos_revertir_descuentos` + mirror en `anularPago` (M3).
+**DESCUENTOS del admin: AJUSTES y PROMOS (0115 + rediseño 0117):** la
+variación legítima de una cuota es un cargo `origen='ajuste'|'promo'`
+(descuento con motivo) — `cuotas.monto` NO se muta ("Editar monto" se
+RETIRÓ). UI: icono % por cuota en el detalle del contrato → sheet
+"Descuentos de la cuota" → `DescuentoDialog` contexto contrato (selector
+Ajuste/Promo + chips de motivo + preview) → `CuotasRepo.aplicarAjuste(origen:)`
+/`quitarAjuste` (mirrors de neto/estado; ambos cubren ajuste Y promo, ídem
+`ajustes_count`). Guard REAL server-side `trg_cargos_ajuste_guard` (0117:
+`origen IN ('ajuste','promo')`): setting super-only
+`cobranza.ajustes_habilitados` + topes `ajuste_max_porcentaje/_monto` +
+motivo + solo descuento_*. Una promo multi-mes se aplica cuota por cuota
+(sin multi-select, decisión 2026-06-11; `grupo_promo` queda reservado). Al
+anular un pago, sus descuentos (`cargos_extra.pago_id`) se borran — trigger
+`trg_pagos_revertir_descuentos` + mirror en `anularPago` (M3). El descuento
+del COBRO exige motivo también server-side (`trg_cargos_cobro_motivo_guard`,
+0117).
 
 ### Clientes — `lib/features/clientes/` · `lib/features/admin/clientes/`
 **[H]** El catálogo de clientes del ISP. Detalle COMPARTIDO admin+cobrador:
@@ -377,7 +394,9 @@ inestable), `sync_gate_screen`, `impersonation_banner`, `update_banner`
 (auto-update IN-APP: descarga con progreso vía `update_service` + instalador
 del sistema con open_filex; GitHub Releases `latest` es el endpoint; la firma
 del APK usa el keystore local `sitecsa-release.jks` — ver 0-Setup §3b),
-`aplicar_cargo_dialog` (cargo manual CON mirror local de `cargos_neto`),
+`descuento_dialog` (EL diálogo de descuento de toda la app: contexto
+contrato graba ajuste/promo, contexto cobro devuelve `CargoPendiente`
+diferido) · `cargo_dialog` (reconexión/otro, también diferido),
 `historial_cambios_widget`, `empty_state`, `skeleton`, etc.
 Shells: `features/shell/app_shell.dart` (cobrador, bottom-nav) ·
 `features/admin/shell/admin_shell.dart` (rail/drawer + `_MenuItem` con gates
@@ -436,7 +455,8 @@ descuenta inventario e instala en el cliente → admin cierra.
 | `cobranza.pago_parcial` / `pago_adelantado` | true | reglas de cobro (súper-only) | cobro |
 | `cobranza.cobrador_anula_cobros` / `cobrador_edita_cobros` | false | permisos campo (súper-only) | historial, pagos |
 | `cobranza.cobrador_edita_fecha` | false | fecha editable en cobro | cobro |
-| `cobranza.descuentos_habilitados` + `descuento_tipo/max_monto/max_porcentaje` | false | descuentos manuales (súper-only) | AplicarCargoDialog |
+| `cobranza.descuentos_habilitados` + `descuento_tipo/max_monto/max_porcentaje` | false | descuento del cobrador al cobrar (súper-only; grupo "Descuentos del cobrador") | DescuentoDialog contexto cobro |
+| `cobranza.ajustes_habilitados` + `ajuste_max_porcentaje/_monto` | false / 50 / 0 | ajustes y promos del admin (súper-only; grupo "Ajustes de cuota (admin)"; guard 0115/0117) | DescuentoDialog contexto contrato |
 | `cobranza.cargo_reconexion_habilitado` + `monto_reconexion` | false | cargo auto reconexión (súper-only) | cobro |
 | `cobranza.comprobante_habilitado` + `foto_obligatoria` | false | foto del comprobante (súper-only) | cobro |
 | `cobranza.pantalla_pagos` | false | habilita `/admin/pagos` (súper-only; el súper TAMBIÉN la respeta) | menú+router |
@@ -445,13 +465,16 @@ descuenta inventario e instala en el cliente → admin cierra.
 | `pagos.usd_habilitado` + `tasa_usd_cordoba` | true / 36.50 | USD y tasa | cobro, arqueo |
 | `recibo.layout` | catálogo | bloques/zonas/tamaños del recibo | recibo (pantalla/PDF/térmica) (R3) |
 | `recibo.titulo/pie_libre/formato_default_mm/mostrar_adeudado/mostrar_cedula` | varios | textos/formato del recibo | recibo |
-| `cuotas.manuales/editar_monto/descuento_pronto_pago(+_tipo)` | false/0 | cuotas manuales y pronto-pago | cuotas, cobro |
+| `recibo.mostrar_descuentos` + `mostrar_motivo_descuentos` | true | desglose de descuentos/cargos en el bloque `cuota` (sub-toggles del diseñador) | recibo (pantalla/PDF/térmica) |
+| `cuotas.descuento_pronto_pago(+_tipo)` | 0 | descuento automático por pago antes del vencimiento (grupo "Pronto pago" en Avanzado) | cobro |
 | `tickets.sla_horas_por_prioridad` | {urgente:1,alta:2,media:6,baja:12} | SLA por prioridad | tickets (SLA efectivo = min con el del tipo) |
 | `tickets.auto_cierre_dias` | 0 (off) | auto-cierre de resueltos | cron 0109 |
 | `audit.campos_visibles` | {} | campos visibles del historial por tabla | historial widgets |
 
 Ocultos/aspiracionales (NO implementados): `cobranza.modo_ruta`,
 `caja_chica`, `pantalla_notificaciones` (parqueados por decisión).
+Retirados (seed preservado, en `_hidden`): `cuotas.editar_monto` (Sprint 2)
+· `cuotas.manuales` (2026-06-11, junto con `/admin/cuotas`).
 
 ---
 
