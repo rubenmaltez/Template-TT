@@ -30,7 +30,7 @@ Future<pw.Document> buildReporteInactivos({
       header: (context) => buildHeaderEstandar(
         empresaNombre: empresaNombre,
         titulo: titulo,
-        periodo: 'Sin pagos en los ultimos $mesesInactividad meses',
+        periodo: 'Sin pagos en los últimos $mesesInactividad meses',
         logo: logo,
       ),
       footer: (context) => buildFooterEstandar(context),

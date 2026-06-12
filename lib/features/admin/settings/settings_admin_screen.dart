@@ -8,6 +8,8 @@ import '../../../data/models/setting.dart';
 import '../../../data/providers/cobrador_provider.dart';
 import '../../../data/providers/logo_empresa_provider.dart';
 import '../../../data/repositories/settings_repo.dart';
+import '../../../data/services/logo_cache_service.dart';
+import '../../../data/services/logo_local_storage.dart';
 import '../../../data/utils/cuota_estado_visual.dart';
 import '../../../data/utils/montos.dart';
 import '../../shared/widgets/empty_state.dart';
@@ -1225,15 +1227,25 @@ class _LogoUploadWidgetState extends ConsumerState<_LogoUploadWidget> {
             'empresa.logo_path',
             path,
           );
-      // C7: ídem tras el segundo await (ref.invalidate exige State vivo).
+      // Refrescar el cache de DISCO con el logo recién subido (hay red
+      // garantizada: el upload acaba de pasar). Sin esto, el provider de
+      // bytes (cache-first) seguiría sirviendo el logo VIEJO a recibos y
+      // reportes PDF hasta el próximo reconnect. Nunca lanza.
+      await LogoCacheService()
+          .refrescarLogo(tenantId: widget.tenantId, logoPath: path);
+      // C7: ídem tras los awaits (ref.invalidate exige State vivo).
       if (!mounted) return;
-      // Invalidar el provider para refrescar la URL firmada.
+      // Invalidar AMBOS providers: URL firmada (preview) y bytes (recibo +
+      // headers de reportes).
       ref.invalidate(logoEmpresaUrlProvider);
+      ref.invalidate(logoEmpresaBytesProvider);
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Logo actualizado')),
       );
     } catch (e) {
-      if (mounted) setState(() => _error = e.toString());
+      if (mounted) {
+        setState(() => _error = mensajeErrorHumano(e, contexto: 'subir'));
+      }
     } finally {
       if (mounted) setState(() => _subiendo = false);
     }
@@ -1276,14 +1288,19 @@ class _LogoUploadWidgetState extends ConsumerState<_LogoUploadWidget> {
             'empresa.logo_path',
             null,
           );
+      // Borrar también el cache de disco (higiene: que un futuro logo no
+      // conviva con bytes viejos) e invalidar ambos providers.
+      await LogoLocalStorage.delete(widget.tenantId);
+      if (!mounted) return;
       ref.invalidate(logoEmpresaUrlProvider);
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Logo eliminado')),
-        );
-      }
+      ref.invalidate(logoEmpresaBytesProvider);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Logo eliminado')),
+      );
     } catch (e) {
-      setState(() => _error = e.toString());
+      if (mounted) {
+        setState(() => _error = mensajeErrorHumano(e, contexto: 'eliminar'));
+      }
     } finally {
       if (mounted) setState(() => _subiendo = false);
     }

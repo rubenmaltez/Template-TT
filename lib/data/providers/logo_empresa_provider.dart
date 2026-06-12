@@ -54,10 +54,13 @@ final logoEmpresaBytesProvider = FutureProvider<Uint8List?>((ref) async {
   }
 
   // 2) Fallback online: bajar del bucket y refrescar el cache local.
+  // Timeout corto: sin él, una red "zombie" (wifi sin internet que no
+  // resetea la conexión) dejaría colgada la generación del reporte/recibo.
   try {
     final bytes = await Supabase.instance.client.storage
         .from('logos-empresa')
-        .download(path);
+        .download(path)
+        .timeout(const Duration(seconds: 8));
     if (bytes.isEmpty) return null;
     if (tenantId != null) {
       await cache.refrescarLogo(tenantId: tenantId, logoPath: path);

@@ -8,6 +8,7 @@ import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:uuid/uuid.dart';
 
+import '../../../config/theme.dart';
 import '../../../data/providers/cobrador_provider.dart';
 import '../../../data/providers/form_dirty_provider.dart';
 import '../../../data/services/imagen_compresion.dart';
@@ -65,6 +66,9 @@ class _ContratoFormScreenState extends ConsumerState<ContratoFormScreen> {
   Uint8List? _docBytes;
   String? _docExt;
   String? _docNombre;
+  // Procesando el documento elegido (compresión de fotos, 0.5-3 s): muestra
+  // spinner en el botón y bloquea un segundo picker.
+  bool _eligiendoDoc = false;
 
   @override
   void initState() {
@@ -110,6 +114,7 @@ class _ContratoFormScreenState extends ConsumerState<ContratoFormScreen> {
   /// Solo guarda los bytes en memoria; la subida real ocurre en _guardar
   /// tras crear el contrato (necesita el contrato_id).
   Future<void> _elegirDocumento() async {
+    if (_eligiendoDoc) return;
     final picked = await FilePicker.platform.pickFiles(
       type: FileType.custom,
       allowedExtensions: ['pdf', 'jpg', 'jpeg', 'png', 'doc', 'docx'],
@@ -119,7 +124,12 @@ class _ContratoFormScreenState extends ConsumerState<ContratoFormScreen> {
     final file = picked.files.single;
     var bytes = file.bytes;
     if (bytes == null) return;
-    if (bytes.length > _docMaxBytes) {
+
+    var ext = (file.extension ?? 'bin').toLowerCase();
+    final esImagen = ext == 'jpg' || ext == 'jpeg' || ext == 'png';
+    // PDF/Word: límite duro ANTES (no se pueden comprimir). Las fotos se
+    // validan DESPUÉS de comprimir: una de 12 MB entra sobrada comprimida.
+    if (!esImagen && bytes.length > _docMaxBytes) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
@@ -129,22 +139,39 @@ class _ContratoFormScreenState extends ConsumerState<ContratoFormScreen> {
       }
       return;
     }
-    var ext = (file.extension ?? 'bin').toLowerCase();
-    // Foto elegida como documento → mismo pipeline de compresión que las
-    // fotos de cliente. PDF/Word van tal cual (no hay recompresión razonable
-    // client-side); el peso se muestra en el ListTile con aviso si es pesado.
-    if (ext == 'jpg' || ext == 'jpeg' || ext == 'png') {
-      final comp = await comprimirImagen(bytes,
-          maxLado: 1920, calidad: 85, maxBytes: 9 * 1024 * 1024);
-      bytes = comp.bytes;
-      ext = comp.ext;
+
+    if (!mounted) return;
+    setState(() => _eligiendoDoc = true);
+    try {
+      // Foto elegida como documento → mismo pipeline de compresión que las
+      // fotos de cliente. PDF/Word van tal cual (no hay recompresión
+      // razonable client-side); el peso se muestra en el ListTile con aviso
+      // si es pesado.
+      if (esImagen) {
+        final comp = await comprimirImagen(bytes,
+            maxLado: 1920, calidad: 85, maxBytes: 9 * 1024 * 1024);
+        if (!mounted) return;
+        bytes = comp.bytes;
+        ext = comp.ext;
+        // Red de seguridad: imagen indecodificable que excede el bucket.
+        if (bytes.length > _docMaxBytes) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+                content: Text(
+                    'El archivo supera el límite de ${_docMaxBytes ~/ (1024 * 1024)} MB')),
+          );
+          return;
+        }
+      }
+      setState(() {
+        _docBytes = bytes;
+        _docExt = ext;
+        _docNombre = file.name;
+        _dirty = true;
+      });
+    } finally {
+      if (mounted) setState(() => _eligiendoDoc = false);
     }
-    setState(() {
-      _docBytes = bytes;
-      _docExt = ext;
-      _docNombre = file.name;
-      _dirty = true;
-    });
   }
 
   /// Sube el documento adjunto al bucket y actualiza documento_path.
@@ -639,9 +666,20 @@ class _ContratoFormScreenState extends ConsumerState<ContratoFormScreen> {
                     const SizedBox(height: 12),
                     if (_docBytes == null)
                       OutlinedButton.icon(
-                        icon: const Icon(Icons.upload_file),
-                        label: const Text('Adjuntar documento'),
-                        onPressed: _guardando ? null : _elegirDocumento,
+                        icon: _eligiendoDoc
+                            ? const SizedBox(
+                                width: 16,
+                                height: 16,
+                                child:
+                                    CircularProgressIndicator(strokeWidth: 2),
+                              )
+                            : const Icon(Icons.upload_file),
+                        label: Text(_eligiendoDoc
+                            ? 'Procesando...'
+                            : 'Adjuntar documento'),
+                        onPressed: (_guardando || _eligiendoDoc)
+                            ? null
+                            : _elegirDocumento,
                       )
                     else
                       ListTile(
@@ -655,8 +693,8 @@ class _ContratoFormScreenState extends ConsumerState<ContratoFormScreen> {
                                   'archivo pesado, puede tardar en subir'
                               : Fmt.pesoArchivo(_docBytes!.length),
                           style: _docBytes!.length > _docAvisoBytes
-                              ? TextStyle(
-                                  color: Theme.of(context).colorScheme.error)
+                              // Aviso informativo, no error: naranja warning.
+                              ? const TextStyle(color: AppColors.warning)
                               : null,
                         ),
                         trailing: IconButton(

@@ -29,7 +29,15 @@ import 'pdf/reporte_por_cobrador_pdf.dart';
 /// sin cache+red devuelve null y el header sale solo texto.
 Future<Uint8List?> _logoParaReportes(WidgetRef ref) async {
   try {
-    return await ref.read(logoEmpresaBytesProvider.future);
+    final bytes = await ref.read(logoEmpresaBytesProvider.future);
+    if (bytes == null &&
+        ref.read(appSettingsProvider).empresaLogoPath.isNotEmpty) {
+      // Hay logo configurado pero no se pudo resolver (ej. arranque offline
+      // sin cache): invalidar para que el PRÓXIMO reporte reintente en vez
+      // de quedarse con el null cacheado toda la sesión.
+      ref.invalidate(logoEmpresaBytesProvider);
+    }
+    return bytes;
   } catch (_) {
     return null;
   }
@@ -978,7 +986,7 @@ class _DescargarPdfMenu extends ConsumerWidget {
         'anulaciones' ||
         'arqueo' =>
           rango.periodoLabel,
-        'inactivos' => 'Sin pagos en los ultimos 3 meses',
+        'inactivos' => 'Sin pagos en los últimos 3 meses',
         _ => 'Al ${Fmt.fechaCorta(DateTime.now())}',
       };
 

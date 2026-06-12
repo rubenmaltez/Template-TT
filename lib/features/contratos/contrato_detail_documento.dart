@@ -47,56 +47,71 @@ class _DocumentoContratoSectionState extends State<_DocumentoContratoSection> {
     var bytes = file.bytes;
     if (bytes == null) return;
 
-    // Guard de tamaño: el bucket también lo enforza server-side, pero
-    // hacemos check local para dar feedback inmediato + evitar carga
-    // grande a memoria/red.
-    if (bytes.length > _maxSizeBytes) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-              content: Text(
-                  'El archivo supera el límite de ${_maxSizeBytes ~/ (1024 * 1024)} MB')),
-        );
-      }
-      return;
-    }
-
     var ext = (file.extension ?? 'bin').toLowerCase();
     final esImagen = ext == 'jpg' || ext == 'jpeg' || ext == 'png';
 
-    // Foto elegida como documento → mismo pipeline de compresión que las
-    // fotos de cliente. PDF/Word no se recomprimen: si son pesados, se
-    // muestra el peso y se confirma antes de subir.
-    if (esImagen) {
-      final comp = await comprimirImagen(bytes,
-          maxLado: 1920, calidad: 85, maxBytes: 9 * 1024 * 1024);
-      bytes = comp.bytes;
-      ext = comp.ext;
-    } else if (bytes.length > _avisoBytes) {
-      if (!mounted) return;
-      final seguir = await showDialog<bool>(
-        context: context,
-        builder: (ctx) => AlertDialog(
-          title: const Text('Archivo pesado'),
-          content: Text(
-              '"${file.name}" pesa ${Fmt.pesoArchivo(file.bytes!.length)}. '
-              'Puede tardar en subir y en abrirse con datos móviles. '
-              '¿Subirlo igual?'),
-          actions: [
-            TextButton(
-                onPressed: () => Navigator.pop(ctx, false),
-                child: const Text('Cancelar')),
-            FilledButton(
-                onPressed: () => Navigator.pop(ctx, true),
-                child: const Text('Subir igual')),
-          ],
-        ),
-      );
-      if (seguir != true || !mounted) return;
+    // PDF/Word: límite duro ANTES (no se pueden comprimir) + confirmación
+    // si son pesados. Las imágenes se validan DESPUÉS de comprimir: una
+    // foto de 12 MB del contrato firmado entra sobrada una vez comprimida.
+    if (!esImagen) {
+      if (bytes.length > _maxSizeBytes) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+                content: Text(
+                    'El archivo supera el límite de ${_maxSizeBytes ~/ (1024 * 1024)} MB')),
+          );
+        }
+        return;
+      }
+      if (bytes.length > _avisoBytes) {
+        if (!mounted) return;
+        final seguir = await showDialog<bool>(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            title: const Text('Archivo pesado'),
+            content: Text(
+                '"${file.name}" pesa ${Fmt.pesoArchivo(file.bytes!.length)}. '
+                'Puede tardar en subir y en abrirse con datos móviles. '
+                '¿Subirlo igual?'),
+            actions: [
+              TextButton(
+                  onPressed: () => Navigator.pop(ctx, false),
+                  child: const Text('Cancelar')),
+              FilledButton(
+                  onPressed: () => Navigator.pop(ctx, true),
+                  child: const Text('Subir igual')),
+            ],
+          ),
+        );
+        if (seguir != true || !mounted) return;
+      }
     }
 
+    if (!mounted) return;
+    // "Subiendo..." visible también durante la compresión (puede tomar
+    // segundos con fotos grandes), no solo durante el upload.
     setState(() => _trabajando = true);
     try {
+      if (esImagen) {
+        // Foto elegida como documento → mismo pipeline que las fotos de
+        // cliente.
+        final comp = await comprimirImagen(bytes,
+            maxLado: 1920, calidad: 85, maxBytes: 9 * 1024 * 1024);
+        if (!mounted) return;
+        bytes = comp.bytes;
+        ext = comp.ext;
+        // Red de seguridad: imagen indecodificable (vuelve sin comprimir)
+        // que excede el bucket.
+        if (bytes.length > _maxSizeBytes) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+                content: Text(
+                    'El archivo supera el límite de ${_maxSizeBytes ~/ (1024 * 1024)} MB')),
+          );
+          return;
+        }
+      }
       final mime = _mimeFor(ext);
       final storagePath =
           '${widget.tenantId}/${widget.contratoId}/${DateTime.now().millisecondsSinceEpoch}.$ext';

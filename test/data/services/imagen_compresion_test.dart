@@ -109,6 +109,26 @@ void main() {
       expect(decoded.width, 1000);
     });
 
+    test('mantenerPng convierte un JPEG chico a PNG REAL (logo)', () async {
+      // Logo JPEG 400x400: el PNG re-encodeado pesa MÁS que el JPEG, pero el
+      // contrato de mantenerPng es PNG real (se sube como logo.png con
+      // contentType image/png) — el fallback "preferir original" no aplica.
+      final original = _jpegSintetico(400, 400, quality: 80);
+      final out = await comprimirImagen(
+        original,
+        maxLado: 800,
+        calidad: 85,
+        mantenerPng: true,
+        maxBytes: 950 * 1024,
+      );
+
+      expect(out.ext, 'png');
+      expect(out.mime, 'image/png');
+      // Magic bytes PNG (\x89PNG).
+      expect(out.bytes[0], 0x89);
+      expect(out.bytes[1], 0x50);
+    });
+
     test('mantenerPng conserva formato PNG y redimensiona', () async {
       final original = _pngConAlpha(1200, 1200);
       final out = await comprimirImagen(

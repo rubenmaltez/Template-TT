@@ -1214,7 +1214,13 @@ class _FotoComprobantePickerState
     if (mounted) setState(() => _bytes = b);
   }
 
+  // Capturando/comprimiendo la foto (0.3-3 s tras cerrar la cámara): muestra
+  // spinner y bloquea reabrir el sheet en pleno cobro.
+  bool _procesando = false;
+
   Future<void> _elegir(ImageSource source) async {
+    if (_procesando) return;
+    setState(() => _procesando = true);
     try {
       final p = await ref
           .read(fotoComprobanteServiceProvider)
@@ -1223,9 +1229,12 @@ class _FotoComprobantePickerState
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('No se pudo capturar: $e')),
+          SnackBar(
+              content: Text(mensajeErrorHumano(e, contexto: 'capturar'))),
         );
       }
+    } finally {
+      if (mounted) setState(() => _procesando = false);
     }
   }
 
@@ -1250,7 +1259,7 @@ class _FotoComprobantePickerState
                 child: OutlinedButton.icon(
                   icon: const Icon(Icons.refresh),
                   label: const Text('Cambiar'),
-                  onPressed: () => _mostrarFuente(),
+                  onPressed: _procesando ? null : () => _mostrarFuente(),
                 ),
               ),
               const SizedBox(width: 8),
@@ -1268,9 +1277,16 @@ class _FotoComprobantePickerState
     }
 
     return OutlinedButton.icon(
-      icon: const Icon(Icons.camera_alt),
-      label: const Text('Adjuntar foto del comprobante'),
-      onPressed: _mostrarFuente,
+      icon: _procesando
+          ? const SizedBox(
+              width: 16,
+              height: 16,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            )
+          : const Icon(Icons.camera_alt),
+      label: Text(
+          _procesando ? 'Procesando...' : 'Adjuntar foto del comprobante'),
+      onPressed: _procesando ? null : _mostrarFuente,
     );
   }
 

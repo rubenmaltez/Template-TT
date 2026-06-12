@@ -90,6 +90,13 @@ const _umbralPassthroughBytes = 800 * 1024;
 
 bool _esJpeg(Uint8List b) => b.length > 2 && b[0] == 0xFF && b[1] == 0xD8;
 
+bool _esPng(Uint8List b) =>
+    b.length > 4 &&
+    b[0] == 0x89 &&
+    b[1] == 0x50 &&
+    b[2] == 0x4E &&
+    b[3] == 0x47;
+
 /// Hay rotación EXIF sin aplicar (orientation distinta de 1/normal).
 bool _necesitaBake(img.Image image) {
   final o = image.exif.imageIfd.orientation;
@@ -98,11 +105,7 @@ bool _necesitaBake(img.Image image) {
 
 ImagenComprimida _original(Uint8List bytes) {
   // Conservamos el formato real del archivo para ext/mime.
-  final esPng = bytes.length > 4 &&
-      bytes[0] == 0x89 &&
-      bytes[1] == 0x50 &&
-      bytes[2] == 0x4E &&
-      bytes[3] == 0x47;
+  final esPng = _esPng(bytes);
   return ImagenComprimida(
     bytes: bytes,
     ext: esPng ? 'png' : 'jpg',
@@ -134,8 +137,9 @@ ImagenComprimida _comprimirSync(_ParamsCompresion p) {
   }
 
   // EXIF: la orientación se "hornea" en los píxeles (los reportes/visores
-  // sin soporte EXIF la mostrarían rotada). No-op si no hay EXIF.
-  final image = img.bakeOrientation(decoded);
+  // sin soporte EXIF la mostrarían rotada). Solo cuando hace falta:
+  // bakeOrientation copia la imagen entera aun sin EXIF (RAM 2× al cuete).
+  final image = _necesitaBake(decoded) ? img.bakeOrientation(decoded) : decoded;
 
   final ladoMayor =
       image.width > image.height ? image.width : image.height;
@@ -168,12 +172,15 @@ ImagenComprimida _comprimirSync(_ParamsCompresion p) {
   }
 
   // Si el re-encode salió MÁS pesado que el original (imagen ya óptima) y el
-  // original igual cumple los límites, preferir el original.
+  // original igual cumple los límites, preferir el original — pero SOLO si
+  // ya viene en el formato de salida garantizado (mantenerPng promete PNG
+  // real: un logo JPEG chico debe re-encodearse igual, no volver como JPEG
+  // que después se sube etiquetado image/png).
   if (mejor == null ||
       (mejor.length >= p.bytes.length &&
           ladoMayor <= p.maxLado &&
           (p.maxBytes == null || p.bytes.length <= p.maxBytes!) &&
-          (p.mantenerPng || _esJpeg(p.bytes)))) {
+          (p.mantenerPng ? _esPng(p.bytes) : _esJpeg(p.bytes)))) {
     return _original(p.bytes);
   }
 

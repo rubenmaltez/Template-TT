@@ -14,9 +14,8 @@ import '../descarga_archivo.dart';
 ///
 /// Con [empresaNombre]/[titulo]/[periodo] agrega un header corporativo arriba
 /// de la tabla (nombre de la empresa, título del reporte y período/fecha de
-/// generación, mergeados a lo ancho) — la librería `excel` no soporta
-/// imágenes embebidas, así que el branding acá es tipográfico; el logo del
-/// tenant va en los reportes PDF.
+/// generación) — la librería `excel` no soporta imágenes embebidas, así que
+/// el branding acá es tipográfico; el logo del tenant va en los reportes PDF.
 ///
 /// [filas] es una lista de filas; cada celda puede ser `num` (→ celda numérica
 /// con formato) o `String` (→ texto) o `null` (→ celda vacía). Los `int` se
@@ -81,7 +80,10 @@ List<int> construirExcelBytes({
   );
 
   // Header corporativo (mismo orden que el header de los PDF): empresa,
-  // título, período + fecha de generación, fila en blanco.
+  // título, período + fecha de generación, fila en blanco. SIN merge a
+  // propósito: una celda suelta desborda naturalmente sobre las vacías de
+  // la derecha (texto completo visible); mergeada, Excel RECORTA lo que no
+  // entra en el ancho de la tabla.
   var filaActual = 0;
   if (empresaNombre != null && empresaNombre.isNotEmpty) {
     void filaBranding(String texto, CellStyle estilo) {
@@ -89,13 +91,6 @@ List<int> construirExcelBytes({
           CellIndex.indexByColumnRow(columnIndex: 0, rowIndex: filaActual));
       cell.value = TextCellValue(texto);
       cell.cellStyle = estilo;
-      if (headers.length > 1) {
-        sheet.merge(
-          CellIndex.indexByColumnRow(columnIndex: 0, rowIndex: filaActual),
-          CellIndex.indexByColumnRow(
-              columnIndex: headers.length - 1, rowIndex: filaActual),
-        );
-      }
       filaActual++;
     }
 

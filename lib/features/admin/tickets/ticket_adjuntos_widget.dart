@@ -54,12 +54,20 @@ class _TicketAdjuntosWidgetState extends ConsumerState<TicketAdjuntosWidget> {
       maxWidth: 1920, maxHeight: 1920, imageQuality: 80,
     );
     if (picked == null || !mounted) return;
-    final bytes = await picked.readAsBytes();
-    // Compresión client-side (Windows ignora imageQuality/maxWidth del
-    // picker; bucket de 5 MB).
-    final comp = await comprimirImagen(bytes,
-        maxLado: 1920, calidad: 85, maxBytes: 4800 * 1024);
-    await _subir(comp.bytes, comp.ext, comp.mime);
+    // Spinner visible DESDE acá: la compresión (0.5-3 s) con el botón activo
+    // invita al doble tap → adjunto + evento de bitácora duplicados.
+    setState(() => _uploading = true);
+    try {
+      final bytes = await picked.readAsBytes();
+      // Compresión client-side (Windows ignora imageQuality/maxWidth del
+      // picker; bucket de 5 MB).
+      final comp = await comprimirImagen(bytes,
+          maxLado: 1920, calidad: 85, maxBytes: 4800 * 1024);
+      if (!mounted) return;
+      await _subir(comp.bytes, comp.ext, comp.mime);
+    } finally {
+      if (mounted) setState(() => _uploading = false);
+    }
   }
 
   // Firma del cliente: pad propio → PNG → mismo upload que un adjunto, con

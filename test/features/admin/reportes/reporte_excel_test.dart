@@ -64,8 +64,9 @@ void main() {
       expect(_texto(sheet, 1, 4), 'Monto');
       expect(_texto(sheet, 0, 5), 'Juan');
       expect(_texto(sheet, 1, 5), '100.5');
-      // Las filas de branding quedan mergeadas a lo ancho de la tabla.
-      expect(sheet.spannedItems, contains('A1:B1'));
+      // Sin merges: las celdas de branding desbordan naturalmente (un
+      // título mergeado se recorta al ancho de la tabla en Excel).
+      expect(sheet.spannedItems, isEmpty);
     });
 
     test('branding sin período usa solo la fecha de generación', () {
@@ -82,7 +83,6 @@ void main() {
       final excel = Excel.decodeBytes(bytes);
       final sheet = excel['Clientes'];
       expect(_texto(sheet, 0, 2), startsWith('Generado:'));
-      // Con una sola columna no hay merge (no hay ancho que cubrir).
       expect(sheet.spannedItems, isEmpty);
       expect(_texto(sheet, 0, 4), 'Nombre');
       expect(_texto(sheet, 0, 5), 'Ana');
