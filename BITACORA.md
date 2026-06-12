@@ -25,7 +25,7 @@
 - **Modelo de branching:** cada sesión de trabajo crea su rama efímera
   (`claude/*` o feature) DESDE `main` → al terminar se mergea a `main` y la
   rama se BORRA. Hitos importantes se marcan con tag, no con rama.
-- **App:** v0.10.0 · schema PowerSync **v27** · migraciones **0001→0117
+- **App:** v0.11.1 · schema PowerSync **v27** · migraciones **0001→0117
   TODAS corridas** (0117 corrida y VERIFICADA 2026-06-12: 2 triggers +
   WHEN promo + condonación ✓) · **sync rules v8 "Active"**.
 - **Edge Functions:** las 6 deployadas al día (redeployadas 2026-06-09).
