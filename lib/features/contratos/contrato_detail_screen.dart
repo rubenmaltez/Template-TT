@@ -14,6 +14,7 @@ import '../../data/providers/modulos_provider.dart';
 import '../../data/repositories/cuotas_repo.dart';
 import '../../data/repositories/pagos_repo.dart';
 import '../../data/repositories/settings_repo.dart';
+import '../../data/services/imagen_compresion.dart';
 import '../../data/utils/cuota_estado.dart';
 import '../../data/utils/cuota_estado_visual.dart';
 import '../../data/utils/formatters.dart';

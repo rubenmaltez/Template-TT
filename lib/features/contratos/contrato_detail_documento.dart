@@ -20,6 +20,8 @@ class _DocumentoContratoSection extends StatefulWidget {
 class _DocumentoContratoSectionState extends State<_DocumentoContratoSection> {
   static const _bucket = 'contratos-documentos';
   static const _maxSizeBytes = 10 * 1024 * 1024; // 10 MB
+  // Por encima de esto se muestra el peso y se pide confirmar (sin bloquear).
+  static const _avisoBytes = 5 * 1024 * 1024;
   bool _trabajando = false;
 
   @override
@@ -42,7 +44,7 @@ class _DocumentoContratoSectionState extends State<_DocumentoContratoSection> {
     );
     if (picked == null || picked.files.isEmpty) return;
     final file = picked.files.single;
-    final bytes = file.bytes;
+    var bytes = file.bytes;
     if (bytes == null) return;
 
     // Guard de tamaño: el bucket también lo enforza server-side, pero
@@ -59,9 +61,42 @@ class _DocumentoContratoSectionState extends State<_DocumentoContratoSection> {
       return;
     }
 
+    var ext = (file.extension ?? 'bin').toLowerCase();
+    final esImagen = ext == 'jpg' || ext == 'jpeg' || ext == 'png';
+
+    // Foto elegida como documento → mismo pipeline de compresión que las
+    // fotos de cliente. PDF/Word no se recomprimen: si son pesados, se
+    // muestra el peso y se confirma antes de subir.
+    if (esImagen) {
+      final comp = await comprimirImagen(bytes,
+          maxLado: 1920, calidad: 85, maxBytes: 9 * 1024 * 1024);
+      bytes = comp.bytes;
+      ext = comp.ext;
+    } else if (bytes.length > _avisoBytes) {
+      if (!mounted) return;
+      final seguir = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('Archivo pesado'),
+          content: Text(
+              '"${file.name}" pesa ${Fmt.pesoArchivo(file.bytes!.length)}. '
+              'Puede tardar en subir y en abrirse con datos móviles. '
+              '¿Subirlo igual?'),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: const Text('Cancelar')),
+            FilledButton(
+                onPressed: () => Navigator.pop(ctx, true),
+                child: const Text('Subir igual')),
+          ],
+        ),
+      );
+      if (seguir != true || !mounted) return;
+    }
+
     setState(() => _trabajando = true);
     try {
-      final ext = (file.extension ?? 'bin').toLowerCase();
       final mime = _mimeFor(ext);
       final storagePath =
           '${widget.tenantId}/${widget.contratoId}/${DateTime.now().millisecondsSinceEpoch}.$ext';

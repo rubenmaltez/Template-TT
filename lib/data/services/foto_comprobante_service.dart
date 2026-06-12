@@ -9,6 +9,7 @@ import 'package:uuid/uuid.dart';
 
 import '../../powersync/db.dart' as ps;
 import 'foto_local_storage.dart';
+import 'imagen_compresion.dart';
 
 /// Resumen de una corrida de `sincronizarPendientes`. Emitido por el
 /// stream `FotoComprobanteService.results` para que la UI surface
@@ -141,8 +142,13 @@ class FotoComprobanteService {
     if (raw == null) return null;
 
     final bytes = await raw.readAsBytes();
+    // En Android el picker ya comprimió (1600/70) → passthrough sin doble
+    // pérdida; en Windows el picker ignora esos parámetros y acá se
+    // comprime de verdad (bucket de 2 MB).
+    final comp = await comprimirImagen(bytes,
+        maxLado: 1600, calidad: 75, maxBytes: 1900 * 1024);
     final nombre = '${const Uuid().v4()}.jpg';
-    final ok = await FotoLocalStorage.save(bytes, nombre);
+    final ok = await FotoLocalStorage.save(comp.bytes, nombre);
     if (!ok) return null;
 
     return '$_prefijoLocal$nombre';

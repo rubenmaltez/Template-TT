@@ -2,6 +2,8 @@ import 'package:flutter/foundation.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import 'imagen_compresion.dart';
+
 /// Servicio para subir y obtener el logo de la empresa (tenant).
 ///
 /// Bucket: `logos-empresa`, path `{tenant_id}/logo.{ext}`.
@@ -38,11 +40,16 @@ class LogoEmpresaService {
     required Uint8List bytes,
     required String tenantId,
   }) async {
+    // Compresión client-side: garantiza 800px máx también en Windows (el
+    // picker ahí ignora maxWidth/imageQuality) y que el archivo sea PNG
+    // REAL (antes un JPEG elegido subía con nombre .png). Bucket de 1 MB.
+    final comp = await comprimirImagen(bytes,
+        maxLado: 800, calidad: 85, mantenerPng: true, maxBytes: 950 * 1024);
     // Siempre guardamos como .png para consistencia.
     final path = '$tenantId/logo.png';
     await _supabase.storage.from(_bucket).uploadBinary(
           path,
-          bytes,
+          comp.bytes,
           fileOptions:
               const FileOptions(upsert: true, contentType: 'image/png'),
         );

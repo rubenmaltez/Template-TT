@@ -7,6 +7,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../../data/providers/cobrador_provider.dart';
+import '../../../data/services/imagen_compresion.dart';
 import '../../../powersync/db.dart' as ps;
 import '../../shared/widgets/signature_pad.dart';
 import '../../../data/utils/errores.dart';
@@ -54,9 +55,11 @@ class _TicketAdjuntosWidgetState extends ConsumerState<TicketAdjuntosWidget> {
     );
     if (picked == null || !mounted) return;
     final bytes = await picked.readAsBytes();
-    final ext = picked.name.split('.').last.toLowerCase();
-    final mime = ext == 'jpg' ? 'image/jpeg' : 'image/$ext';
-    await _subir(bytes, ext, mime);
+    // Compresión client-side (Windows ignora imageQuality/maxWidth del
+    // picker; bucket de 5 MB).
+    final comp = await comprimirImagen(bytes,
+        maxLado: 1920, calidad: 85, maxBytes: 4800 * 1024);
+    await _subir(comp.bytes, comp.ext, comp.mime);
   }
 
   // Firma del cliente: pad propio → PNG → mismo upload que un adjunto, con

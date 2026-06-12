@@ -5,6 +5,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../../powersync/db.dart' as ps;
+import '../../../data/services/imagen_compresion.dart';
 import '../../../data/utils/errores.dart';
 
 const _maxFotos = 10;
@@ -66,15 +67,18 @@ class _FotoGalleryWidgetState extends ConsumerState<FotoGalleryWidget> {
     setState(() => _uploading = true);
     try {
       final bytes = await picked.readAsBytes();
-      final ext = picked.name.split('.').last.toLowerCase();
-      final mime = ext == 'jpg' ? 'image/jpeg' : 'image/$ext';
+      // Compresión client-side: image_picker NO aplica imageQuality/maxWidth
+      // en Windows — sin esto, la foto del admin sube cruda (o el bucket de
+      // 2 MB la rechaza).
+      final comp = await comprimirImagen(bytes,
+          maxLado: 1920, calidad: 85, maxBytes: 1900 * 1024);
       final storagePath =
-          '${widget.tenantId}/${widget.clienteId}/${DateTime.now().millisecondsSinceEpoch}.$ext';
+          '${widget.tenantId}/${widget.clienteId}/${DateTime.now().millisecondsSinceEpoch}.${comp.ext}';
 
       await Supabase.instance.client.storage
           .from(_bucket)
-          .uploadBinary(storagePath, bytes,
-              fileOptions: FileOptions(contentType: mime));
+          .uploadBinary(storagePath, comp.bytes,
+              fileOptions: FileOptions(contentType: comp.mime));
 
       final user = Supabase.instance.client.auth.currentUser;
       final now = DateTime.now().toUtc().toIso8601String();

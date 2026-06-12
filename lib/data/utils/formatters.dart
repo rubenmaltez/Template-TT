@@ -40,6 +40,12 @@ class Fmt {
       _diaSemana.format(d)[0].toUpperCase() + _diaSemana.format(d).substring(1);
   static String hora(DateTime d) => _hora.format(d);
 
+  /// Peso de archivo legible: "850 KB" / "7.3 MB".
+  static String pesoArchivo(int bytes) {
+    if (bytes < 1024 * 1024) return '${(bytes / 1024).round()} KB';
+    return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
+  }
+
   /// Formatea un timestamp `fecha_pago` (string crudo de SQLite) a
   /// dd/MM/yyyy HH:mm. `fecha_pago` se guarda como hora LOCAL de Nicaragua
   /// (wall-clock, sin `Z`), así que se formatea DIRECTO: `DateTime.parse` toma

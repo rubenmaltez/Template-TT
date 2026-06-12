@@ -10,6 +10,7 @@ import 'package:uuid/uuid.dart';
 
 import '../../../data/providers/cobrador_provider.dart';
 import '../../../data/providers/form_dirty_provider.dart';
+import '../../../data/services/imagen_compresion.dart';
 import '../../../data/utils/errores.dart';
 import '../../../data/utils/formatters.dart';
 import '../../../data/utils/montos.dart';
@@ -59,6 +60,8 @@ class _ContratoFormScreenState extends ConsumerState<ContratoFormScreen> {
   // ahí el detalle ya tiene su propia sección de documento).
   static const _docBucket = 'contratos-documentos';
   static const _docMaxBytes = 10 * 1024 * 1024; // 10 MB
+  // Por encima de esto se avisa "archivo pesado" (sin bloquear).
+  static const _docAvisoBytes = 5 * 1024 * 1024;
   Uint8List? _docBytes;
   String? _docExt;
   String? _docNombre;
@@ -114,7 +117,7 @@ class _ContratoFormScreenState extends ConsumerState<ContratoFormScreen> {
     );
     if (picked == null || picked.files.isEmpty) return;
     final file = picked.files.single;
-    final bytes = file.bytes;
+    var bytes = file.bytes;
     if (bytes == null) return;
     if (bytes.length > _docMaxBytes) {
       if (mounted) {
@@ -126,9 +129,19 @@ class _ContratoFormScreenState extends ConsumerState<ContratoFormScreen> {
       }
       return;
     }
+    var ext = (file.extension ?? 'bin').toLowerCase();
+    // Foto elegida como documento → mismo pipeline de compresión que las
+    // fotos de cliente. PDF/Word van tal cual (no hay recompresión razonable
+    // client-side); el peso se muestra en el ListTile con aviso si es pesado.
+    if (ext == 'jpg' || ext == 'jpeg' || ext == 'png') {
+      final comp = await comprimirImagen(bytes,
+          maxLado: 1920, calidad: 85, maxBytes: 9 * 1024 * 1024);
+      bytes = comp.bytes;
+      ext = comp.ext;
+    }
     setState(() {
       _docBytes = bytes;
-      _docExt = (file.extension ?? 'bin').toLowerCase();
+      _docExt = ext;
       _docNombre = file.name;
       _dirty = true;
     });
@@ -637,7 +650,15 @@ class _ContratoFormScreenState extends ConsumerState<ContratoFormScreen> {
                         title: Text(_docNombre ?? 'Documento',
                             maxLines: 1, overflow: TextOverflow.ellipsis),
                         subtitle: Text(
-                            '${(_docBytes!.length / 1024).toStringAsFixed(0)} KB'),
+                          _docBytes!.length > _docAvisoBytes
+                              ? '${Fmt.pesoArchivo(_docBytes!.length)} — '
+                                  'archivo pesado, puede tardar en subir'
+                              : Fmt.pesoArchivo(_docBytes!.length),
+                          style: _docBytes!.length > _docAvisoBytes
+                              ? TextStyle(
+                                  color: Theme.of(context).colorScheme.error)
+                              : null,
+                        ),
                         trailing: IconButton(
                           icon: const Icon(Icons.close),
                           tooltip: 'Quitar',
