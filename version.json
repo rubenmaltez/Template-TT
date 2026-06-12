@@ -1,6 +1,6 @@
 {
-  "version": "0.8.1",
-  "release_notes": "Limpieza: se quito el boton de diagnostico de impresion y los metodos B/C de prueba (ya cumplieron su funcion). El metodo GS v 0 (confirmado en la PT-210) queda como el unico/definitivo. Sin cambios en como imprime. Incluye todo lo de 0.8.0 (recibo justificado, recibo emitido dentro de 'Pago registrado', notas completas).",
+  "version": "0.11.1",
+  "release_notes": "Vista previa del recibo dinamica segun settings",
   "download_url_windows": "https://github.com/rubenmaltez/Template-TT/releases/latest/download/SITECSA-CRM.msix",
   "download_url_android": "https://github.com/rubenmaltez/Template-TT/releases/latest/download/SITECSA-CRM.apk",
   "download_url": "https://github.com/rubenmaltez/Template-TT/releases/latest/download/SITECSA-CRM.msix"

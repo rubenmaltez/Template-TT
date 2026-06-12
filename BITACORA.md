@@ -18,7 +18,7 @@
 
 ## ⭐ ESTADO ACTUAL (refrescar al cerrar cada sesión)
 
-- **Branch viva: `test-receipt`** (rama efímera de desarrollo para pruebas del recibo; `main` es la única rama permanente y default del repo).
+- **Branch viva: `main`** (única rama permanente; default del repo en GitHub).
   Checkpoints históricos = **tags**: `pre-mvp-v2` (estado auditado 2026-06-09)
   y `pre-mvp-v1` (checkpoint previo). La rama del Sprint 1
   (`claude/jolly-albattani-09axxa`) se mergeó a `main` y se borró (2026-06-11).
@@ -40,14 +40,14 @@
      actualizado (iteración 2: cargo extra desde contrato + cobro
      referencia) y, si Rubén quiere, el SQL de des-anular la cuota de
      prueba de Byr (opcional — era data de testing).
-  2. Smoke tests B.2–B.6 (entrada 2026-06-10) → release `v0.11.0` con
+  2. Smoke tests B.2–B.6 (entrada 2026-06-10) → release `v0.11.1` con
      `build-release.ps1` (1ª firma con el keystore → reinstalar apps una vez,
      sincronizando antes) → probar el updater in-app → borrar release `v0.9.0`.
   3. ~~Sprint 3 promos~~ CUBIERTO por el rediseño (selector Ajuste/Promo).
      Quedan los HIGH restantes del audit integral según el reporte.
   (El preview multi-cuota al cobrar desde el MAPA fue pedido y CANCELADO por
   Rubén el mismo 2026-06-11 — queda como está; no re-proponer.)
-- **Hecho recién (2026-06-12):** vista previa dinámica del recibo en settings según `ajustesHabilitados` y `reconexionHabilitada` en la rama `test-receipt` (commit `fe1dfa2`).
+- **Hecho recién (2026-06-12):** vista previa dinámica del recibo en settings según `ajustesHabilitados` y `reconexionHabilitada` (release `v0.11.1`).
 - **Salud:** del audit 2026-06-09 no queda nada abierto; del audit 2026-06-11
   quedan **7 HIGH sin atacar** (priorizados en el reporte, Sprints 2-3).
 
