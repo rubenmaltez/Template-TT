@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../config/router.dart';
 import '../../../data/repositories/settings_repo.dart';
 import '../../../data/utils/formatters.dart';
 import '../../../data/utils/validators.dart';
@@ -378,6 +379,11 @@ class _ClientesAdminScreenState extends ConsumerState<ClientesAdminScreen> {
         hojaNombre: tipo == 'actual' ? 'Clientes Filtrados' : 'Todos los Clientes',
         headers: headers,
         filas: filas,
+        empresaNombre: ref.read(empresaNombreProvider).valueOrNull ?? 'ISP',
+        titulo: tipo == 'actual'
+            ? 'Listado de clientes — vista filtrada'
+            : 'Listado de clientes',
+        periodo: 'Al ${Fmt.fechaCorta(now)}',
       );
 
       if (mounted && ruta != null) {

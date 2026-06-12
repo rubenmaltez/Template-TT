@@ -891,6 +891,8 @@ class _DescargarPdfMenu extends ConsumerWidget {
           ? ref.read(reporteArqueoRangoProvider)
           : ref.read(reporteRangoProvider);
       final datos = await _extraerDatos(tipo, rango);
+      final empresaNombre =
+          ref.read(empresaNombreProvider).valueOrNull ?? 'ISP';
 
       final now = DateTime.now();
       final mm = now.month.toString().padLeft(2, '0');
@@ -900,6 +902,9 @@ class _DescargarPdfMenu extends ConsumerWidget {
         hojaNombre: _hojaNombre(tipo),
         headers: datos.headers,
         filas: datos.filas,
+        empresaNombre: empresaNombre,
+        titulo: _tituloReporte(tipo),
+        periodo: _periodoExcel(tipo, rango),
       );
       // ruta == null cuando el usuario cancela el diálogo de guardado.
       if (context.mounted && ruta != null) {
@@ -947,6 +952,34 @@ class _DescargarPdfMenu extends ConsumerWidget {
         'anulaciones' => 'Anulaciones',
         'arqueo' => 'Arqueo',
         _ => 'Reporte',
+      };
+
+  /// Título del header corporativo del .xlsx — mismos nombres que los PDF.
+  String _tituloReporte(String tipo) => switch (tipo) {
+        'cobros' => 'Reporte de cobros',
+        'mora' => 'Reporte de mora',
+        'clientes' => 'Estado de clientes',
+        'padron' => 'Listado de clientes',
+        'fiscal' => 'Reporte fiscal / contable',
+        'eficiencia' => 'Eficiencia por cobrador',
+        'inactivos' => 'Clientes inactivos',
+        'anulaciones' => 'Reporte de anulaciones',
+        'arqueo' => 'Arqueo / cierre por cobrador',
+        _ => 'Reporte',
+      };
+
+  /// Período a mostrar en el header del .xlsx. Los reportes SIN rango global
+  /// (mora/clientes/padrón = foto del estado actual) muestran la fecha de
+  /// corte; inactivos describe su ventana fija.
+  String _periodoExcel(String tipo, RangoReporte rango) => switch (tipo) {
+        'cobros' ||
+        'fiscal' ||
+        'eficiencia' ||
+        'anulaciones' ||
+        'arqueo' =>
+          rango.periodoLabel,
+        'inactivos' => 'Sin pagos en los ultimos 3 meses',
+        _ => 'Al ${Fmt.fechaCorta(DateTime.now())}',
       };
 
   /// Extrae los datos de un reporte como headers + filas tipadas. Los montos y
