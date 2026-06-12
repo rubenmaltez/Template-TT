@@ -8,58 +8,22 @@ import '../../../data/repositories/settings_repo.dart';
 import '../../../data/utils/formatters.dart';
 import '../../../data/utils/montos.dart';
 
-/// Un descuento o cargo elegido durante el COBRO que todavía NO está en la
-/// DB: el cobro lo inserta recién al confirmar (PagosRepo, con `pago_id`).
-/// Si el cobrador abandona la pantalla no queda rastro, y anular el pago lo
-/// revierte solo (cierra el backlog del "descuento fantasma": antes el
-/// diálogo insertaba al toque, sin pago_id y aunque el cobro no se hiciera).
-class CargoPendiente {
-  const CargoPendiente({
-    required this.tipo,
-    required this.monto,
-    this.porcentaje,
-    required this.descripcion,
-  });
-
-  /// 'descuento_monto' | 'descuento_porcentaje' | 'reconexion' | 'otro'.
-  final String tipo;
-
-  /// C$ siempre positivo — el signo lo da el tipo (mismo contrato que
-  /// cargos_extra.monto).
-  final double monto;
-  final double? porcentaje;
-  final String descripcion;
-
-  bool get esDescuento => tipo.startsWith('descuento');
-}
-
-/// Desde dónde se abre el diálogo — define topes, reglas y persistencia.
-enum DescuentoContexto {
-  /// Admin desde el detalle del contrato: graba YA vía CuotasRepo con
-  /// origen 'ajuste' o 'promo' (selector). Topes `ajuste_max_*`.
-  contrato,
-
-  /// Pantalla de cobro (cobrador o admin): NO graba — devuelve un
-  /// [CargoPendiente] que el cobro inserta al confirmar. Topes
-  /// `descuento_max_*` y modos según `descuento_tipo`.
-  cobro,
-}
-
-/// EL diálogo de descuento de toda la app (rediseño 2026-06-11): mismo look
-/// y mismas reglas en ambos contextos — motivo SIEMPRE obligatorio (con
-/// chips rápidos), preview del saldo antes de confirmar, topes por rol.
-/// El guard real de ajustes/promos es server-side (trg_cargos_ajuste_guard);
-/// acá se valida lo mismo para feedback inmediato offline.
+/// EL diálogo de descuento de la app (rediseño 2026-06-11/12): el ADMIN lo
+/// abre desde el detalle del contrato (sheet de la cuota) y graba un
+/// cargos_extra origen 'ajuste' o 'promo' vía CuotasRepo. Motivo SIEMPRE
+/// obligatorio (con chips rápidos), preview del saldo antes de confirmar,
+/// topes `ajuste_max_*`. El cobrador NO descuenta (decisión 2026-06-12: el
+/// cobro solo referencia lo aplicado). El guard real es server-side
+/// (trg_cargos_ajuste_guard, 0115/0117); acá se valida lo mismo para
+/// feedback inmediato offline.
 class DescuentoDialog extends ConsumerStatefulWidget {
   const DescuentoDialog({
     super.key,
-    required this.contexto,
     required this.cuotaId,
     required this.montoCuota,
     required this.saldoActual,
   });
 
-  final DescuentoContexto contexto;
   final String cuotaId;
   final double montoCuota;
   final double saldoActual;
@@ -86,40 +50,17 @@ class _DescuentoDialogState extends ConsumerState<DescuentoDialog> {
       _esPromo ? _motivosPromo : _motivosAjuste;
 
   bool _esPorcentaje = false;
-  bool _esPromo = false; // solo contexto contrato
+  bool _esPromo = false;
   final _valor = TextEditingController();
   final _motivo = TextEditingController();
   bool _guardando = false;
   String? _error;
-
-  bool get _esCobro => widget.contexto == DescuentoContexto.cobro;
-
-  @override
-  void initState() {
-    super.initState();
-    // En el cobro, `descuento_tipo` puede restringir a un solo modo.
-    if (_esCobro) {
-      final tipo = ref.read(appSettingsProvider).descuentoTipo;
-      if (tipo == 'porcentaje') _esPorcentaje = true;
-    }
-  }
 
   @override
   void dispose() {
     _valor.dispose();
     _motivo.dispose();
     super.dispose();
-  }
-
-  /// Modos habilitados: en contrato siempre ambos; en cobro según el
-  /// setting `descuento_tipo` (monto | porcentaje | ambos).
-  ({bool monto, bool porcentaje}) _modos(AppSettings s) {
-    if (!_esCobro) return (monto: true, porcentaje: true);
-    return switch (s.descuentoTipo) {
-      'monto' => (monto: true, porcentaje: false),
-      'porcentaje' => (monto: false, porcentaje: true),
-      _ => (monto: true, porcentaje: true),
-    };
   }
 
   double? _parseValor() {
@@ -153,19 +94,16 @@ class _DescuentoDialogState extends ConsumerState<DescuentoDialog> {
       setState(() => _error = 'El porcentaje no puede exceder 100');
       return;
     }
-    // Topes del súper (0 = sin tope): ajuste_max_* en el contrato,
-    // descuento_max_* en el cobro — espejo de los guards server.
-    final maxPct = _esCobro ? s.descuentoMaxPorcentaje : s.ajusteMaxPorcentaje;
-    final maxMonto = _esCobro ? s.descuentoMaxMonto : s.ajusteMaxMonto;
-    if (_esPorcentaje && maxPct > 0 && v > maxPct) {
+    // Topes del súper (0 = sin tope) — espejo del guard server 0115/0117.
+    if (_esPorcentaje && s.ajusteMaxPorcentaje > 0 && v > s.ajusteMaxPorcentaje) {
       setState(() => _error =
-          'Excede el tope de ${maxPct.toStringAsFixed(0)}% configurado');
+          'Excede el tope de ${s.ajusteMaxPorcentaje.toStringAsFixed(0)}% configurado');
       return;
     }
     final monto = _montoDescuento!;
-    if (maxMonto > 0 && monto > maxMonto) {
+    if (s.ajusteMaxMonto > 0 && monto > s.ajusteMaxMonto) {
       setState(() => _error =
-          'Excede el tope de ${Fmt.cordobas(maxMonto)} configurado');
+          'Excede el tope de ${Fmt.cordobas(s.ajusteMaxMonto)} configurado');
       return;
     }
     if (monto > widget.saldoActual + 0.01) {
@@ -177,22 +115,6 @@ class _DescuentoDialogState extends ConsumerState<DescuentoDialog> {
       setState(() => _error = 'El motivo es obligatorio');
       return;
     }
-
-    // Contexto COBRO: devolver el descuento pendiente — lo graba el cobro.
-    if (_esCobro) {
-      Navigator.pop(
-        context,
-        CargoPendiente(
-          tipo: _esPorcentaje ? 'descuento_porcentaje' : 'descuento_monto',
-          monto: monto,
-          porcentaje: _esPorcentaje ? v : null,
-          descripcion: _motivo.text.trim(),
-        ),
-      );
-      return;
-    }
-
-    // Contexto CONTRATO: grabar ya (ajuste o promo).
     final me = ref.read(cobradorActualProvider).valueOrNull;
     if (me == null) {
       // Audit F4: antes el return silencioso dejaba el botón "muerto".
@@ -200,6 +122,7 @@ class _DescuentoDialogState extends ConsumerState<DescuentoDialog> {
           'Tus datos de usuario todavía no cargaron. Probá de nuevo en unos segundos.');
       return;
     }
+
     setState(() {
       _guardando = true;
       _error = null;
@@ -227,8 +150,6 @@ class _DescuentoDialogState extends ConsumerState<DescuentoDialog> {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    final s = ref.watch(appSettingsProvider);
-    final modos = _modos(s);
     final screenW = MediaQuery.sizeOf(context).width;
     final dialogW = screenW < 460 ? screenW * 0.9 : 400.0;
 
@@ -238,7 +159,7 @@ class _DescuentoDialogState extends ConsumerState<DescuentoDialog> {
         : (widget.saldoActual - monto).clamp(0.0, double.infinity);
 
     return AlertDialog(
-      title: Text(_esCobro ? 'Descuento en este cobro' : 'Descontar cuota'),
+      title: const Text('Descontar cuota'),
       content: SizedBox(
         width: dialogW,
         child: SingleChildScrollView(
@@ -248,42 +169,38 @@ class _DescuentoDialogState extends ConsumerState<DescuentoDialog> {
             children: [
               // Semántica clara ajuste vs promo (decisión Rubén 2026-06-11):
               // mismo flujo, etiqueta distinta en historial/recibo/reportes.
-              if (!_esCobro) ...[
-                SegmentedButton<bool>(
-                  showSelectedIcon: false,
-                  segments: const [
-                    ButtonSegment(value: false, label: Text('Ajuste')),
-                    ButtonSegment(value: true, label: Text('Promo')),
-                  ],
-                  selected: {_esPromo},
-                  onSelectionChanged: (sel) =>
-                      setState(() => _esPromo = sel.first),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  _esPromo
-                      ? 'Beneficio comercial — queda etiquetado como promoción.'
-                      : 'Corrección puntual: días sin servicio, error, acuerdo.',
-                  style: Theme.of(context)
-                      .textTheme
-                      .bodySmall
-                      ?.copyWith(color: scheme.outline),
-                ),
-                const SizedBox(height: 12),
-              ],
-              if (modos.monto && modos.porcentaje) ...[
-                SegmentedButton<bool>(
-                  showSelectedIcon: false,
-                  segments: const [
-                    ButtonSegment(value: false, label: Text('Monto C\$')),
-                    ButtonSegment(value: true, label: Text('Porcentaje %')),
-                  ],
-                  selected: {_esPorcentaje},
-                  onSelectionChanged: (sel) =>
-                      setState(() => _esPorcentaje = sel.first),
-                ),
-                const SizedBox(height: 12),
-              ],
+              SegmentedButton<bool>(
+                showSelectedIcon: false,
+                segments: const [
+                  ButtonSegment(value: false, label: Text('Ajuste')),
+                  ButtonSegment(value: true, label: Text('Promo')),
+                ],
+                selected: {_esPromo},
+                onSelectionChanged: (sel) =>
+                    setState(() => _esPromo = sel.first),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                _esPromo
+                    ? 'Beneficio comercial — queda etiquetado como promoción.'
+                    : 'Corrección puntual: días sin servicio, error, acuerdo.',
+                style: Theme.of(context)
+                    .textTheme
+                    .bodySmall
+                    ?.copyWith(color: scheme.outline),
+              ),
+              const SizedBox(height: 12),
+              SegmentedButton<bool>(
+                showSelectedIcon: false,
+                segments: const [
+                  ButtonSegment(value: false, label: Text('Monto C\$')),
+                  ButtonSegment(value: true, label: Text('Porcentaje %')),
+                ],
+                selected: {_esPorcentaje},
+                onSelectionChanged: (sel) =>
+                    setState(() => _esPorcentaje = sel.first),
+              ),
+              const SizedBox(height: 12),
               TextField(
                 controller: _valor,
                 autofocus: true,
@@ -309,8 +226,8 @@ class _DescuentoDialogState extends ConsumerState<DescuentoDialog> {
                 maxLines: 2,
                 onChanged: (_) => setState(() {}),
               ),
-              // Chips de motivos comunes: un toque y listo (no frenan al
-              // cobrador en campo; el texto sigue siendo editable).
+              // Chips de motivos comunes: un toque y listo (el texto sigue
+              // siendo editable).
               const SizedBox(height: 8),
               Wrap(
                 spacing: 6,

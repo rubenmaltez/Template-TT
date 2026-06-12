@@ -141,14 +141,9 @@ class AppSettings {
   final Map<String, Setting>? _map;
 
   int get diasGracia => settingValue<num>(_map, 'cobranza.dias_gracia', 10).toInt();
-  bool get descuentosHabilitados =>
-      settingValue<bool>(_map, 'cobranza.descuentos_habilitados', false);
-  String get descuentoTipo =>
-      settingValue<String>(_map, 'cobranza.descuento_tipo', 'monto');
-  double get descuentoMaxMonto =>
-      settingValue<num>(_map, 'cobranza.descuento_max_monto', 0).toDouble();
-  double get descuentoMaxPorcentaje =>
-      settingValue<num>(_map, 'cobranza.descuento_max_porcentaje', 0).toDouble();
+  // (Los getters descuentosHabilitados/descuentoTipo/descuentoMax* se
+  // retiraron con el rediseño 2026-06-12: el cobrador no descuenta — todo
+  // descuento lo aplica el admin desde el contrato. Settings en _hidden.)
 
   bool get reconexionHabilitada =>
       settingValue<bool>(_map, 'cobranza.cargo_reconexion_habilitado', false);

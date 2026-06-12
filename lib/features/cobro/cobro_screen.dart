@@ -18,8 +18,7 @@ import '../../data/utils/errores.dart';
 import '../../data/utils/formatters.dart';
 import '../../data/utils/montos.dart';
 import '../../powersync/db.dart' as ps;
-import '../shared/widgets/cargo_dialog.dart';
-import '../shared/widgets/descuento_dialog.dart';
+import '../recibo/recibo_cargos.dart' show cargoEtiquetaRecibo;
 import '../shared/widgets/empty_state.dart';
 import '../shared/widgets/impersonation_banner.dart';
 
@@ -57,13 +56,14 @@ class _CobroScreenState extends ConsumerState<CobroScreen> {
   String? _fotoPath;
   DateTime _fechaCobro = DateTime.now();
 
-  // C3/C4: cargos automáticos detectados (reconexión / pronto pago).
+  // C3/C4: cargos automáticos detectados (reconexión / pronto pago). Se
+  // insertan recién al confirmar el cobro (con pago_id) — abandonar la
+  // pantalla no deja rastro.
   final List<_CargoAutoPreview> _cargosAuto = [];
-  // Descuentos/cargos MANUALES agregados en esta pantalla (rediseño
-  // 2026-06-11): pendientes en memoria, se insertan recién al confirmar el
-  // cobro junto con el pago (pago_id) — si el cobrador abandona no queda
-  // rastro, y anular el pago los revierte solos (fix "descuento fantasma").
-  final List<_CargoAutoPreview> _cargosManuales = [];
+  // Cargos/descuentos YA aplicados a la cuota (DB) — el cobro los muestra
+  // como REFERENCIA (rediseño 2026-06-12: acá no se crea nada; descuentos
+  // y cargos los gestiona el admin desde el detalle del contrato).
+  final List<Map<String, dynamic>> _cargosExistentes = [];
 
   bool _cargaFallida = false;
   bool get _esMultiCuota => widget.cuotaIds.length > 1;
@@ -182,6 +182,12 @@ class _CobroScreenState extends ConsumerState<CobroScreen> {
       }
     }
 
+    // Cargos YA aplicados (referencia, single-cuota): el cobrador los ve
+    // con motivo en un sheet de solo-lectura.
+    final existentes = widget.cuotaIds.length == 1
+        ? await ref.read(cuotasRepoProvider).cargosDeCuota(widget.cuotaIds.first)
+        : const <Map<String, dynamic>>[];
+
     if (!mounted) return;
     setState(() {
       _cuotas.addAll(cuotas);
@@ -190,47 +196,21 @@ class _CobroScreenState extends ConsumerState<CobroScreen> {
       _diasPago.addAll(dias);
       _clienteRow = cliRows.isEmpty ? null : cliRows.first;
       _cargosAuto.addAll(cargos);
-      // Aplica los cargos pendientes sobre los totales base y deja el monto
-      // default = saldo completo de todas las cuotas.
+      _cargosExistentes.addAll(existentes);
+      // Aplica los cargos automáticos sobre los totales base y deja el
+      // monto default = saldo completo de todas las cuotas.
       _recalcularTotales();
     });
   }
 
-  /// Cargos que se van a insertar al confirmar: los automáticos + los
-  /// manuales de la pantalla. Anti-duplicación (decisión Rubén + audit F4):
-  /// un descuento MANUAL suprime el pronto-pago automático de la misma
-  /// cuota, y una reconexión MANUAL suprime la reconexión automática (sin
-  /// esto se cobraba 2× — paridad con el re-dedupe del flujo viejo). Si el
-  /// manual se quita, el automático reaparece solo (no se muta _cargosAuto).
-  List<_CargoAutoPreview> get _cargosEfectivos {
-    final cuotasConDescManual = <String>{};
-    final cuotasConReconexManual = <String>{};
-    for (final c in _cargosManuales) {
-      if (c.tipo.startsWith('descuento')) cuotasConDescManual.add(c.cuotaId);
-      if (c.tipo == 'reconexion') cuotasConReconexManual.add(c.cuotaId);
-    }
-    return [
-      for (final c in _cargosAuto)
-        if (!(c.tipo.startsWith('descuento') &&
-                cuotasConDescManual.contains(c.cuotaId)) &&
-            !(c.tipo == 'reconexion' &&
-                cuotasConReconexManual.contains(c.cuotaId)))
-          c,
-      ..._cargosManuales,
-    ];
-  }
-
   /// Re-deriva `_totalesACobrar` desde los totales base de DB + cargos
-  /// pendientes, y resetea el monto sugerido al saldo completo EN LA MONEDA
-  /// ACTIVA (audit F4: pisarlo siempre en C$ con USD elegido convertía el
-  /// saldo en un monto US$ ~36× — vuelto fantasma gigante). Reemplaza al
-  /// viejo `_refrescarTotalConCargosAuto` (fix #3): como los manuales ya NO
-  /// se insertan al toque, no hay nada que re-deduplicar contra la DB.
+  /// automáticos pendientes, y resetea el monto sugerido al saldo completo
+  /// EN LA MONEDA ACTIVA (audit F4: pisarlo siempre en C$ con USD elegido
+  /// convertía el saldo en un monto US$ ~36× — vuelto fantasma gigante).
   void _recalcularTotales() {
-    final efectivos = _cargosEfectivos;
     for (var i = 0; i < _cuotas.length; i++) {
       var t = _totalesBase[i];
-      for (final c in efectivos) {
+      for (final c in _cargosAuto) {
         if (c.cuotaId != _cuotas[i].id) continue;
         if (c.tipo == 'reconexion' || c.tipo == 'otro') {
           t += c.monto;
@@ -251,28 +231,6 @@ class _CobroScreenState extends ConsumerState<CobroScreen> {
     _montoCtrl.text = (saldo / (tasa <= 0 ? 1.0 : tasa)).toStringAsFixed(2);
   }
 
-  /// Saldo contra el que se valida un descuento manual NUEVO: excluye los
-  /// descuentos automáticos suprimibles (al confirmar, el manual los
-  /// reemplaza — audit F4: sin esto el preview del diálogo mostraba un
-  /// saldo menor al real en ese borde).
-  double _saldoParaDescuentoManual() {
-    final cuota = _cuotas.first;
-    var t = _totalesBase.first;
-    for (final c in _cargosEfectivos) {
-      if (c.cuotaId != cuota.id) continue;
-      // Los descuentos automáticos (pronto pago) quedarán suprimidos.
-      final esAutoDescuento =
-          c.tipo.startsWith('descuento') && !_cargosManuales.contains(c);
-      if (esAutoDescuento) continue;
-      if (c.tipo == 'reconexion' || c.tipo == 'otro') {
-        t += c.monto;
-      } else {
-        t = (t - c.monto).clamp(0.0, double.infinity);
-      }
-    }
-    return (t - cuota.montoPagado).clamp(0.0, double.infinity).toDouble();
-  }
-
   @override
   void dispose() {
     _montoCtrl.dispose();
@@ -281,59 +239,80 @@ class _CobroScreenState extends ConsumerState<CobroScreen> {
     super.dispose();
   }
 
-  /// Abre el diálogo unificado de descuento (mismo look que el del admin en
-  /// el contrato). El resultado queda PENDIENTE: se inserta al confirmar.
-  Future<void> _agregarDescuento() async {
-    final cuota = _cuotas.first;
-    final res = await showDialog<CargoPendiente>(
+  /// Sheet de REFERENCIA (solo lectura, rediseño 2026-06-12): muestra los
+  /// descuentos/cargos que la cuota ya tiene aplicados (con su motivo) y
+  /// los automáticos que se van a aplicar al confirmar este cobro. Acá no
+  /// se crea nada — descuentos y cargos los gestiona el admin desde el
+  /// detalle del contrato.
+  void _verCargosCuota() {
+    showModalBottomSheet(
       context: context,
-      builder: (_) => DescuentoDialog(
-        contexto: DescuentoContexto.cobro,
-        cuotaId: cuota.id,
-        montoCuota: cuota.monto,
-        saldoActual: _saldoParaDescuentoManual(),
-      ),
-    );
-    if (res == null || !mounted) return;
-    setState(() {
-      _cargosManuales.add(_CargoAutoPreview(
-        cuotaId: cuota.id,
-        tipo: res.tipo,
-        monto: res.monto,
-        porcentaje: res.porcentaje,
-        descripcion: res.descripcion,
-      ));
-      _recalcularTotales();
-    });
-  }
+      showDragHandle: true,
+      isScrollControlled: true,
+      builder: (sheetCtx) {
+        final scheme = Theme.of(sheetCtx).colorScheme;
+        Widget linea(String etiqueta, double monto, bool esDescuento,
+            {String? nota}) {
+          return ListTile(
+            dense: true,
+            contentPadding: EdgeInsets.zero,
+            leading: Icon(
+              esDescuento ? Icons.discount : Icons.add_circle_outline,
+              size: 20,
+              color: scheme.primary,
+            ),
+            title: Text(
+              '$etiqueta  ${esDescuento ? '−' : '+'}${Fmt.cordobas(monto)}',
+              style: const TextStyle(fontWeight: FontWeight.w600),
+            ),
+            subtitle: nota == null ? null : Text(nota),
+          );
+        }
 
-  /// Abre el diálogo de cargo extra (reconexión / otro). Ídem: pendiente.
-  Future<void> _agregarCargo() async {
-    final cuota = _cuotas.first;
-    final saldoActual = (_totalesACobrar.first - cuota.montoPagado)
-        .clamp(0.0, double.infinity);
-    final res = await showDialog<CargoPendiente>(
-      context: context,
-      builder: (_) => CargoDialog(saldoActual: saldoActual),
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Descuentos y cargos de la cuota',
+                    style: Theme.of(sheetCtx).textTheme.titleMedium),
+                const SizedBox(height: 4),
+                Text(
+                  'Referencia de lo aplicado al cliente. Los descuentos y '
+                  'cargos los gestiona el admin desde el contrato.',
+                  style: Theme.of(sheetCtx)
+                      .textTheme
+                      .bodySmall
+                      ?.copyWith(color: scheme.outline),
+                ),
+                const SizedBox(height: 8),
+                if (_cargosExistentes.isEmpty && _cargosAuto.isEmpty)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    child: Text('Sin descuentos ni cargos.',
+                        style: TextStyle(color: scheme.outline)),
+                  ),
+                for (final c in _cargosExistentes)
+                  linea(
+                    cargoEtiquetaRecibo(c, conMotivo: true),
+                    (c['monto'] as num? ?? 0).toDouble(),
+                    (c['tipo'] as String? ?? '').startsWith('descuento'),
+                  ),
+                for (final c in _cargosAuto)
+                  linea(
+                    c.descripcion,
+                    c.monto,
+                    c.tipo.startsWith('descuento'),
+                    nota: 'Se aplica al confirmar este cobro',
+                  ),
+              ],
+            ),
+          ),
+        );
+      },
     );
-    if (res == null || !mounted) return;
-    setState(() {
-      _cargosManuales.add(_CargoAutoPreview(
-        cuotaId: cuota.id,
-        tipo: res.tipo,
-        monto: res.monto,
-        porcentaje: res.porcentaje,
-        descripcion: res.descripcion,
-      ));
-      _recalcularTotales();
-    });
-  }
-
-  void _quitarCargoManual(_CargoAutoPreview cargo) {
-    setState(() {
-      _cargosManuales.remove(cargo);
-      _recalcularTotales();
-    });
   }
 
   /// Confirma el descarte si hay datos cargados. Devuelve true si se puede
@@ -343,15 +322,13 @@ class _CobroScreenState extends ConsumerState<CobroScreen> {
     final hayDatos = v != null && v > 0;
     final tieneFoto = _fotoPath != null;
     final tieneRef = _referenciaCtrl.text.trim().isNotEmpty;
-    final tieneCargos = _cargosManuales.isNotEmpty;
-    if (!hayDatos && !tieneFoto && !tieneRef && !tieneCargos) return true;
+    if (!hayDatos && !tieneFoto && !tieneRef) return true;
     // El aviso enumera SOLO lo que de verdad se pierde (audit F4: el texto
-    // fijo mencionaba descuentos/foto que no existían y desgastaba el aviso).
+    // fijo mencionaba pérdidas que no existían y desgastaba el aviso).
     final perdidas = [
       if (hayDatos) 'el monto',
       if (tieneFoto) 'la foto',
       if (tieneRef) 'la referencia',
-      if (tieneCargos) 'los descuentos/cargos agregados',
     ];
     final lista = perdidas.length == 1
         ? perdidas.first
@@ -478,7 +455,7 @@ class _CobroScreenState extends ConsumerState<CobroScreen> {
           tasa: tasa,
         );
 
-        final cargosInfo = _cargosEfectivos
+        final cargosInfo = _cargosAuto
             .map((c) => CargoAutoInfo(
                   cuotaId: c.cuotaId,
                   tipo: c.tipo,
@@ -532,7 +509,7 @@ class _CobroScreenState extends ConsumerState<CobroScreen> {
         // Invariante: monto_original * tasa ≈ monto_cordobas + vuelto_cordobas.
         final montoOriginalEntregado = entregado;
 
-        final cargosInfo = _cargosEfectivos
+        final cargosInfo = _cargosAuto
             .map((c) => CargoAutoInfo(
                   cuotaId: c.cuotaId,
                   tipo: c.tipo,
@@ -693,11 +670,11 @@ class _CobroScreenState extends ConsumerState<CobroScreen> {
                 cuota: cuota,
                 totalACobrar: _totalesACobrar.first,
                 diaPago: _diasPago.first),
-          // Cargos pendientes de esta pantalla: automáticos (C3/C4) +
-          // manuales (con quitar). Se insertan recién al confirmar el cobro.
-          if (_cargosEfectivos.isNotEmpty) ...[
+          // Cargos automáticos que ESTE cobro va a insertar al confirmar
+          // (reconexión / pronto pago).
+          if (_cargosAuto.isNotEmpty) ...[
             const SizedBox(height: 8),
-            for (final cargo in _cargosEfectivos)
+            for (final cargo in _cargosAuto)
               Card(
                 color: cargo.tipo.startsWith('descuento')
                     ? Theme.of(context).colorScheme.tertiaryContainer
@@ -721,56 +698,21 @@ class _CobroScreenState extends ConsumerState<CobroScreen> {
                         '${cargo.tipo.startsWith('descuento') ? '-' : '+'}${Fmt.cordobas(cargo.monto)}',
                         style: const TextStyle(fontWeight: FontWeight.w600),
                       ),
-                      // Solo los manuales se pueden quitar antes de confirmar
-                      // (los automáticos los gobiernan los settings). Target
-                      // táctil ≥40px: es la única vía de quitar (audit F4).
-                      if (_cargosManuales.contains(cargo))
-                        IconButton(
-                          icon: const Icon(Icons.close, size: 18),
-                          tooltip: 'Quitar',
-                          visualDensity: VisualDensity.compact,
-                          constraints: const BoxConstraints(
-                              minWidth: 40, minHeight: 40),
-                          padding: EdgeInsets.zero,
-                          onPressed: () => _quitarCargoManual(cargo),
-                        ),
                     ],
                   ),
                 ),
               ),
           ],
-          // Rediseño 2026-06-11 (decisión Rubén): descuento y cargo son DOS
-          // acciones con nombre claro — el dropdown que los mezclaba era poco
-          // intuitivo. Cada botón responde a SU feature flag.
-          if (!impersonando &&
-              !_esMultiCuota &&
-              (settings.descuentosHabilitados ||
-                  settings.reconexionHabilitada)) ...[
+          // Rediseño 2026-06-12 (decisión Rubén): el cobro NO crea
+          // descuentos ni cargos — solo referencia lo aplicado. La gestión
+          // vive en el detalle del contrato (sheet de la cuota).
+          if (!_esMultiCuota &&
+              (_cargosExistentes.isNotEmpty || _cargosAuto.isNotEmpty)) ...[
             const SizedBox(height: 8),
-            Row(
-              children: [
-                if (settings.descuentosHabilitados)
-                  Expanded(
-                    child: OutlinedButton.icon(
-                      icon: const Icon(Icons.discount),
-                      label: const Text('Descuento'),
-                      onPressed: _agregarDescuento,
-                    ),
-                  ),
-                if (settings.descuentosHabilitados) const SizedBox(width: 8),
-                // "Cargo extra" con el MISMO gate combinado que el botón
-                // viejo (audit F4): "otro cargo" no tiene flag propio y con
-                // descuentos ON ya estaba disponible — solo-reconexión lo
-                // dejaba inaccesible. El diálogo esconde el modo reconexión
-                // si su flag está OFF.
-                Expanded(
-                  child: OutlinedButton.icon(
-                    icon: const Icon(Icons.add_circle_outline),
-                    label: const Text('Cargo extra'),
-                    onPressed: _agregarCargo,
-                  ),
-                ),
-              ],
+            OutlinedButton.icon(
+              icon: const Icon(Icons.discount),
+              label: const Text('Ver descuentos y cargos'),
+              onPressed: _verCargosCuota,
             ),
           ],
 

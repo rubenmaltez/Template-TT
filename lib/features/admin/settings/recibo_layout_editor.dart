@@ -466,11 +466,14 @@ class _BloqueRow extends ConsumerWidget {
           ),
         ),
         // Sub-toggles dentro del bloque (cédula / saldo / descuentos),
-        // indentados. "Mostrar motivos" solo aparece con el desglose ON.
+        // indentados. Los de descuentos solo aparecen si algún feature de
+        // descuentos/cargos está prendido (decisión Rubén 2026-06-12: no
+        // configurar lo que no está habilitado; la data YA aplicada se
+        // sigue mostrando en el recibo — queda como historial visible).
+        // "Mostrar motivos" además exige el desglose ON.
         if (!off)
           for (final (subClave, subLabel) in _subOpciones)
-            if (subClave != 'recibo.mostrar_motivo_descuentos' ||
-                _subValor(ref, 'recibo.mostrar_descuentos'))
+            if (_subVisible(ref, subClave))
               Padding(
                 padding: const EdgeInsets.only(left: 42, bottom: 4),
                 child: Row(
@@ -514,6 +517,21 @@ class _BloqueRow extends ConsumerWidget {
       'recibo.mostrar_motivo_descuentos' => s.reciboMostrarMotivoDescuentos,
       _ => s.reciboMostrarAdeudado,
     };
+  }
+
+  bool _subVisible(WidgetRef ref, String clave) {
+    if (clave == 'recibo.mostrar_descuentos' ||
+        clave == 'recibo.mostrar_motivo_descuentos') {
+      final s = ref.watch(appSettingsProvider);
+      final featuresOn = s.ajustesHabilitados ||
+          s.reconexionHabilitada ||
+          s.descuentoProntoPago > 0;
+      if (!featuresOn) return false;
+      if (clave == 'recibo.mostrar_motivo_descuentos') {
+        return _subValor(ref, 'recibo.mostrar_descuentos');
+      }
+    }
+    return true;
   }
 }
 

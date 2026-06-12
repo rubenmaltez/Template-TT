@@ -236,12 +236,12 @@ class _CuotasSectionState extends ConsumerState<_CuotasSection> {
                             verHistorial: verHistorial,
                             onHistorial: () =>
                                 _showCuotaChangeLog(context, cuotaId),
-                            // Ajustes: cuotas abiertas (aplicar) o con
-                            // ajustes existentes (poder QUITAR aunque el
-                            // ajuste la haya dejado 'pagada' — audit F4).
+                            // Descuentos/cargos: cuotas abiertas (aplicar) o
+                            // con cargos existentes (poder VER/QUITAR aunque
+                            // un descuento la haya dejado 'pagada').
                             onAjustes: puedeAjustar &&
                                     (esPendiente ||
-                                        ((row['ajustes_count'] as num? ?? 0) >
+                                        ((row['cargos_count'] as num? ?? 0) >
                                             0))
                                 ? () => _showAjustesCuota(context, row)
                                 : null,
@@ -308,15 +308,17 @@ class _CuotasSectionState extends ConsumerState<_CuotasSection> {
         _CuotaFiltro.manuales => 'Manuales',
       };
 
-  // Sheet "Descuentos de la cuota" (Sprint 2 0115 + rediseño 2026-06-11):
-  // lista ajustes Y promos con quitar individual + aplicar uno nuevo. El
-  // future se cachea en el closure y se recrea SOLO al recargar (no inline
-  // en cada rebuild).
+  // Sheet "Descuentos y cargos de la cuota" (rediseño 2026-06-12): lista
+  // TODOS los cargos_extra de la cuota — los gestionables por el admin
+  // (ajustes, promos, cargos manuales sin pago) con quitar; los nacidos de
+  // un pago, solo-lectura (se revierten anulando el pago). Acá también se
+  // CREAN los cargos extra (el cobro quedó solo como referencia). El
+  // future se cachea en el closure y se recrea SOLO al recargar.
   void _showAjustesCuota(BuildContext context, Map<String, dynamic> row) {
     final cuotaId = row['id'] as String;
     final montoCuota = (row['monto'] as num? ?? 0).toDouble();
     // "Aplicar" solo en cuotas abiertas; sobre una pagada el sheet sirve
-    // para VER/QUITAR los ajustes existentes (quitar la reabre).
+    // para VER/QUITAR lo existente (quitar un descuento la reabre).
     final estadoRow = row['estado'] as String? ?? '';
     final puedeAplicar = estadoRow == 'pendiente' || estadoRow == 'parcial';
     final repo = ref.read(cuotasRepoProvider);
@@ -328,36 +330,52 @@ class _CuotasSectionState extends ConsumerState<_CuotasSection> {
       isScrollControlled: true,
       builder: (sheetCtx) => StatefulBuilder(
         builder: (sheetCtx, setSheetState) {
-          futuro ??= repo.ajustesDeCuota(cuotaId);
+          futuro ??= repo.cargosDeCuota(cuotaId);
           void recargar() =>
-              setSheetState(() => futuro = repo.ajustesDeCuota(cuotaId));
+              setSheetState(() => futuro = repo.cargosDeCuota(cuotaId));
 
-          Future<void> aplicarNuevo() async {
-            // Saldo FRESCO al momento de abrir el dialog (la cuota pudo
-            // cambiar por otro ajuste/cobro desde que se abrió el sheet).
+          // Saldo FRESCO al momento de abrir cada dialog (la cuota pudo
+          // cambiar por otro cargo/cobro desde que se abrió el sheet).
+          Future<void> aplicarDescuento() async {
             final c = await repo.getById(cuotaId);
             if (c == null || !sheetCtx.mounted) return;
-            final saldo = c.saldo; // getter canónico del modelo
             final ok = await showDialog<bool>(
               context: sheetCtx,
               builder: (_) => DescuentoDialog(
-                contexto: DescuentoContexto.contrato,
                 cuotaId: cuotaId,
                 montoCuota: montoCuota,
-                saldoActual: saldo,
+                saldoActual: c.saldo,
               ),
             );
             if (ok == true && sheetCtx.mounted) recargar();
           }
 
-          Future<void> quitar(String cargoId, double monto) async {
+          Future<void> aplicarCargoExtra() async {
+            final c = await repo.getById(cuotaId);
+            if (c == null || !sheetCtx.mounted) return;
+            final ok = await showDialog<bool>(
+              context: sheetCtx,
+              builder: (_) => CargoDialog(
+                cuotaId: cuotaId,
+                saldoActual: c.saldo,
+              ),
+            );
+            if (ok == true && sheetCtx.mounted) recargar();
+          }
+
+          Future<void> quitar(Map<String, dynamic> a) async {
+            final esDescuento =
+                (a['tipo'] as String? ?? '').startsWith('descuento');
+            final monto = (a['monto'] as num).toDouble();
             final ok = await showDialog<bool>(
               context: sheetCtx,
               builder: (dCtx) => AlertDialog(
-                title: const Text('¿Quitar este descuento?'),
+                title: Text(esDescuento
+                    ? '¿Quitar este descuento?'
+                    : '¿Quitar este cargo?'),
                 content: Text(
-                    'El saldo de la cuota vuelve a subir ${Fmt.cordobas(monto)}. '
-                    'El descuento queda registrado en el historial.'),
+                    '${esDescuento ? 'El saldo de la cuota vuelve a subir' : 'El saldo de la cuota baja'} '
+                    '${Fmt.cordobas(monto)}. Queda registrado en el historial.'),
                 actions: [
                   TextButton(
                     onPressed: () => Navigator.pop(dCtx, false),
@@ -371,8 +389,23 @@ class _CuotasSectionState extends ConsumerState<_CuotasSection> {
               ),
             );
             if (ok != true) return;
-            await repo.quitarAjuste(cargoId: cargoId);
+            await repo.quitarCargo(cargoId: a['id'] as String);
             if (sheetCtx.mounted) recargar();
+          }
+
+          // Etiqueta + ícono según tipo/origen (misma semántica que el
+          // recibo y el historial).
+          (String, IconData) etiquetaDe(Map<String, dynamic> a) {
+            final tipo = a['tipo'] as String? ?? '';
+            final origen = a['origen'] as String? ?? 'cobro';
+            if (tipo == 'reconexion') return ('Reconexión', Icons.power);
+            if (tipo == 'otro') return ('Cargo', Icons.add_circle_outline);
+            return switch (origen) {
+              'promo' => ('Promo', Icons.local_offer),
+              'ajuste' => ('Ajuste', Icons.percent),
+              'liquidacion' => ('Cancelación', Icons.cancel_outlined),
+              _ => ('Descuento del cobro', Icons.discount),
+            };
           }
 
           final scheme = Theme.of(sheetCtx).colorScheme;
@@ -383,14 +416,13 @@ class _CuotasSectionState extends ConsumerState<_CuotasSection> {
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text('Descuentos de la cuota',
+                  Text('Descuentos y cargos de la cuota',
                       style: Theme.of(sheetCtx).textTheme.titleMedium),
                   const SizedBox(height: 4),
                   Text(
-                    'Ajustes y promos aplicados por el admin (rebajan el '
-                    'saldo con motivo obligatorio y quedan en el historial). '
-                    'Los descuentos hechos durante un cobro se ven en el '
-                    'recibo y en el historial de la cuota.',
+                    'Los aplica el admin con motivo y quedan en el '
+                    'historial. Los nacidos de un cobro se muestran como '
+                    'referencia: se revierten anulando el pago.',
                     style: Theme.of(sheetCtx)
                         .textTheme
                         .bodySmall
@@ -410,59 +442,74 @@ class _CuotasSectionState extends ConsumerState<_CuotasSection> {
                       if (items.isEmpty) {
                         return Padding(
                           padding: const EdgeInsets.symmetric(vertical: 16),
-                          child: Text('Sin ajustes ni promos del admin.',
+                          child: Text('Sin descuentos ni cargos.',
                               style: TextStyle(color: scheme.outline)),
                         );
                       }
                       return Column(
                         children: [
                           for (final a in items)
-                            ListTile(
-                              dense: true,
-                              contentPadding: EdgeInsets.zero,
-                              leading: Icon(
-                                  a['origen'] == 'promo'
-                                      ? Icons.local_offer
-                                      : Icons.percent,
-                                  size: 20,
-                                  color: scheme.primary),
-                              title: Text(
-                                // Etiqueta de semántica (decisión Rubén):
-                                // Ajuste = corrección, Promo = beneficio.
-                                '${a['origen'] == 'promo' ? 'Promo' : 'Ajuste'} '
-                                '−${Fmt.cordobas((a['monto'] as num).toDouble())}'
-                                '${a['porcentaje'] != null ? ' (${(a['porcentaje'] as num).toStringAsFixed(0)}%)' : ''}',
-                                style: const TextStyle(
-                                    fontWeight: FontWeight.w600),
-                              ),
-                              subtitle: Text(
-                                '${a['descripcion'] ?? ''}\n'
-                                '${_fechaNiCorta(a['ocurrido_en'] as String?)}'
-                                '${a['aplicado_por_nombre'] != null ? ' · ${a['aplicado_por_nombre']}' : ''}',
-                              ),
-                              isThreeLine: true,
-                              trailing: IconButton(
-                                icon: const Icon(Icons.delete_outline),
-                                tooltip: 'Quitar descuento',
-                                onPressed: () => quitar(
-                                  a['id'] as String,
-                                  (a['monto'] as num).toDouble(),
+                            Builder(builder: (_) {
+                              final (etiqueta, icono) = etiquetaDe(a);
+                              final esDesc = (a['tipo'] as String? ?? '')
+                                  .startsWith('descuento');
+                              final quitable = a['pago_id'] == null &&
+                                  a['origen'] != 'liquidacion';
+                              return ListTile(
+                                dense: true,
+                                contentPadding: EdgeInsets.zero,
+                                leading: Icon(icono,
+                                    size: 20, color: scheme.primary),
+                                title: Text(
+                                  '$etiqueta '
+                                  '${esDesc ? '−' : '+'}${Fmt.cordobas((a['monto'] as num).toDouble())}'
+                                  '${a['porcentaje'] != null ? ' (${(a['porcentaje'] as num).toStringAsFixed(0)}%)' : ''}',
+                                  style: const TextStyle(
+                                      fontWeight: FontWeight.w600),
                                 ),
-                              ),
-                            ),
+                                subtitle: Text(
+                                  '${a['descripcion'] ?? ''}\n'
+                                  '${_fechaNiCorta(a['ocurrido_en'] as String?)}'
+                                  '${a['aplicado_por_nombre'] != null ? ' · ${a['aplicado_por_nombre']}' : ''}',
+                                ),
+                                isThreeLine: true,
+                                trailing: quitable
+                                    ? IconButton(
+                                        icon:
+                                            const Icon(Icons.delete_outline),
+                                        tooltip: 'Quitar',
+                                        onPressed: () => quitar(a),
+                                      )
+                                    : Tooltip(
+                                        message:
+                                            'Nació de un cobro: se revierte anulando el pago',
+                                        child: Icon(Icons.lock_outline,
+                                            size: 18, color: scheme.outline),
+                                      ),
+                              );
+                            }),
                         ],
                       );
                     },
                   ),
                   const SizedBox(height: 8),
                   if (puedeAplicar)
-                    Align(
-                      alignment: Alignment.centerRight,
-                      child: FilledButton.icon(
-                        icon: const Icon(Icons.percent, size: 18),
-                        label: const Text('Aplicar descuento'),
-                        onPressed: aplicarNuevo,
-                      ),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.end,
+                      children: [
+                        OutlinedButton.icon(
+                          icon: const Icon(Icons.add_circle_outline,
+                              size: 18),
+                          label: const Text('Cargo extra'),
+                          onPressed: aplicarCargoExtra,
+                        ),
+                        const SizedBox(width: 8),
+                        FilledButton.icon(
+                          icon: const Icon(Icons.percent, size: 18),
+                          label: const Text('Aplicar descuento'),
+                          onPressed: aplicarDescuento,
+                        ),
+                      ],
                     ),
                 ],
               ),
@@ -700,18 +747,18 @@ class _CuotaRow extends ConsumerWidget {
                   ),
               ],
             ),
-            // Ajustes de la cuota (Sprint 2): el ícono se pinta primary si
-            // ya tiene ajustes aplicados (ajustes_count del provider).
+            // Descuentos y cargos de la cuota: el ícono se pinta primary si
+            // ya tiene alguno aplicado (cargos_count del provider).
             if (onAjustes != null)
               IconButton(
                 icon: const Icon(Icons.percent, size: 18),
-                tooltip: ((row['ajustes_count'] as num? ?? 0) > 0)
-                    ? 'Descuentos aplicados'
-                    : 'Descontar cuota',
+                tooltip: ((row['cargos_count'] as num? ?? 0) > 0)
+                    ? 'Descuentos y cargos aplicados'
+                    : 'Descuentos y cargos',
                 visualDensity: VisualDensity.compact,
                 constraints: const BoxConstraints(),
                 padding: const EdgeInsets.only(left: 8),
-                color: ((row['ajustes_count'] as num? ?? 0) > 0)
+                color: ((row['cargos_count'] as num? ?? 0) > 0)
                     ? scheme.primary
                     : scheme.outline,
                 onPressed: onAjustes,

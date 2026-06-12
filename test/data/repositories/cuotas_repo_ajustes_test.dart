@@ -1,14 +1,15 @@
 @TestOn('vm')
 library;
 
-/// Tests de los AJUSTES de cuota (`CuotasRepo.aplicarAjuste/quitarAjuste`,
-/// Sprint 2 del audit 2026-06-11 + migración 0115) contra una
-/// PowerSyncDatabase REAL. Mismo harness que `pagos_repo_test.dart` (ver
-/// instrucciones del core nativo en la cabecera de ese archivo).
+/// Tests de los DESCUENTOS y CARGOS del admin
+/// (`CuotasRepo.aplicarAjuste/aplicarCargo/cargosDeCuota/quitarCargo`,
+/// Sprint 2 0115 + rediseño 0117) contra una PowerSyncDatabase REAL. Mismo
+/// harness que `pagos_repo_test.dart` (ver instrucciones del core nativo
+/// en la cabecera de ese archivo).
 ///
 /// Qué blindan: el principio rector "un ajuste es una fila de cargos_extra,
 /// NUNCA se muta cuotas.monto" + el mirror local de neto/estado + la
-/// reversión con rastro.
+/// reversión con rastro + la protección de los cargos nacidos de un pago.
 import 'dart:ffi';
 import 'dart:io';
 
@@ -183,7 +184,7 @@ void main() {
         isEmpty);
   });
 
-  test('quitarAjuste revierte: borra el cargo y restaura neto/estado',
+  test('quitarCargo revierte: borra el cargo y restaura neto/estado',
       () async {
     final cuotaId =
         await seedCuota(monto: 500, montoPagado: 300, estado: 'parcial');
@@ -197,24 +198,24 @@ void main() {
     );
     expect((await getCuota(cuotaId))['estado'], 'pagada');
 
-    final ajustes = await repo.ajustesDeCuota(cuotaId);
+    final ajustes = await repo.cargosDeCuota(cuotaId);
     expect(ajustes, hasLength(1));
 
-    await repo.quitarAjuste(cargoId: ajustes.first['id'] as String);
+    await repo.quitarCargo(cargoId: ajustes.first['id'] as String);
     final cuota = await getCuota(cuotaId);
     expect(num2(cuota['cargos_neto']), 0);
     expect(cuota['estado'], 'parcial'); // vuelve a deber 200
-    expect(await repo.ajustesDeCuota(cuotaId), isEmpty);
+    expect(await repo.cargosDeCuota(cuotaId), isEmpty);
 
     // Idempotente: quitar de nuevo es no-op.
-    await repo.quitarAjuste(cargoId: ajustes.first['id'] as String);
+    await repo.quitarCargo(cargoId: ajustes.first['id'] as String);
   });
 
   // ── PROMOS (rediseño 2026-06-11): mismo riel que los ajustes, con
   // origen='promo'. Blindan que la etiqueta viaja a la DB, que el sheet
   // las lista junto a los ajustes y que quitar también las cubre. ──
 
-  test('promo: inserta cargo origen=promo y ajustesDeCuota la lista con su '
+  test('promo: inserta cargo origen=promo y cargosDeCuota la lista con su '
       'origen', () async {
     final cuotaId = await seedCuota(monto: 800);
     await repo.aplicarAjuste(
@@ -231,13 +232,13 @@ void main() {
     expect(num2(cuota['monto']), 800, reason: 'el monto NUNCA se muta');
     expect(num2(cuota['cargos_neto']), -400);
 
-    final items = await repo.ajustesDeCuota(cuotaId);
+    final items = await repo.cargosDeCuota(cuotaId);
     expect(items, hasLength(1));
     expect(items.first['origen'], 'promo');
     expect(num2(items.first['monto'] as num), 400);
   });
 
-  test('quitarAjuste también revierte promos (origen IN ajuste/promo)',
+  test('quitarCargo también revierte promos (origen IN ajuste/promo)',
       () async {
     final cuotaId = await seedCuota(monto: 500);
     await repo.aplicarAjuste(
@@ -249,9 +250,9 @@ void main() {
       aplicadoPorId: adminId,
       origen: 'promo',
     );
-    final items = await repo.ajustesDeCuota(cuotaId);
-    await repo.quitarAjuste(cargoId: items.first['id'] as String);
-    expect(await repo.ajustesDeCuota(cuotaId), isEmpty);
+    final items = await repo.cargosDeCuota(cuotaId);
+    await repo.quitarCargo(cargoId: items.first['id'] as String);
+    expect(await repo.cargosDeCuota(cuotaId), isEmpty);
     expect(num2((await getCuota(cuotaId))['cargos_neto']), 0);
   });
 
@@ -275,8 +276,8 @@ void main() {
     expect(num2(cuota['cargos_neto']), -800);
 
     // Quitar la promo revierte la condonación.
-    final items = await repo.ajustesDeCuota(cuotaId);
-    await repo.quitarAjuste(cargoId: items.first['id'] as String);
+    final items = await repo.cargosDeCuota(cuotaId);
+    await repo.quitarCargo(cargoId: items.first['id'] as String);
     cuota = await getCuota(cuotaId);
     expect(cuota['estado'], 'pendiente');
     expect(num2(cuota['cargos_neto']), 0);
@@ -299,6 +300,93 @@ void main() {
         await db.getAll('SELECT id FROM cargos_extra WHERE cuota_id = ?',
             [cuotaId]),
         isEmpty);
+  });
+
+  // ── CARGOS del admin (rediseño 2026-06-12): reconexión/otro se aplican
+  // desde el sheet del contrato, sin pago_id, y se pueden quitar. ──
+
+  test('aplicarCargo reconexión: sube cargos_neto, sin pago_id, y '
+      'quitarCargo lo revierte', () async {
+    final cuotaId = await seedCuota(monto: 500);
+    await repo.aplicarCargo(
+      tenantId: tenantId,
+      cuotaId: cuotaId,
+      tipo: 'reconexion',
+      monto: 100,
+      aplicadoPorId: adminId,
+    );
+    var cuota = await getCuota(cuotaId);
+    expect(num2(cuota['cargos_neto']), 100);
+    expect(cuota['estado'], 'pendiente');
+
+    final cargos = await repo.cargosDeCuota(cuotaId);
+    expect(cargos, hasLength(1));
+    expect(cargos.first['tipo'], 'reconexion');
+    expect(cargos.first['origen'], 'cobro');
+    expect(cargos.first['pago_id'], isNull);
+    expect(cargos.first['descripcion'], 'Cargo por reconexión');
+
+    await repo.quitarCargo(cargoId: cargos.first['id'] as String);
+    cuota = await getCuota(cuotaId);
+    expect(num2(cuota['cargos_neto']), 0);
+    expect(await repo.cargosDeCuota(cuotaId), isEmpty);
+  });
+
+  test('aplicarCargo valida: tipo inválido, monto 0, otro sin descripción, '
+      'cuota pagada → lanzan', () async {
+    final cuotaId = await seedCuota(monto: 500);
+    Future<void> esperaError(Future<void> Function() fn) =>
+        expectLater(fn(), throwsA(isA<Exception>()));
+
+    await esperaError(() => repo.aplicarCargo(
+        tenantId: tenantId, cuotaId: cuotaId, tipo: 'descuento_monto',
+        monto: 50, aplicadoPorId: adminId));
+    await esperaError(() => repo.aplicarCargo(
+        tenantId: tenantId, cuotaId: cuotaId, tipo: 'otro',
+        monto: 0, descripcion: 'x', aplicadoPorId: adminId));
+    await esperaError(() => repo.aplicarCargo(
+        tenantId: tenantId, cuotaId: cuotaId, tipo: 'otro',
+        monto: 50, aplicadoPorId: adminId));
+    final pagada =
+        await seedCuota(monto: 500, montoPagado: 500, estado: 'pagada');
+    await esperaError(() => repo.aplicarCargo(
+        tenantId: tenantId, cuotaId: pagada, tipo: 'reconexion',
+        monto: 50, aplicadoPorId: adminId));
+
+    expect(await db.getAll('SELECT id FROM cargos_extra'), isEmpty);
+  });
+
+  test('quitarCargo NO toca cargos nacidos de un pago (pago_id) ni de '
+      'liquidación', () async {
+    final cuotaId = await seedCuota(monto: 500, montoPagado: 100,
+        estado: 'parcial');
+    // Descuento nacido de un cobro (pago_id) — protegido.
+    final delCobro = uuid.v4();
+    await db.execute(
+      "INSERT INTO cargos_extra (id, tenant_id, cuota_id, cobrador_id, "
+      "tipo, monto, descripcion, aplicado_por, aplicado_en, "
+      "client_local_id, ocurrido_en, origen, pago_id) "
+      "VALUES (?, ?, ?, ?, 'descuento_monto', 25, 'Descuento pronto pago', "
+      "?, ?, ?, ?, 'cobro', ?)",
+      [delCobro, tenantId, cuotaId, cobradorId, cobradorId, _now(),
+          uuid.v4(), _now(), uuid.v4()],
+    );
+    // Descuento de liquidación — protegido.
+    final deLiquidacion = uuid.v4();
+    await db.execute(
+      "INSERT INTO cargos_extra (id, tenant_id, cuota_id, cobrador_id, "
+      "tipo, monto, descripcion, aplicado_por, aplicado_en, "
+      "client_local_id, ocurrido_en, origen) "
+      "VALUES (?, ?, ?, ?, 'descuento_monto', 30, 'Saldo cancelado', "
+      "?, ?, ?, ?, 'liquidacion')",
+      [deLiquidacion, tenantId, cuotaId, cobradorId, cobradorId, _now(),
+          uuid.v4(), _now()],
+    );
+
+    await repo.quitarCargo(cargoId: delCobro);
+    await repo.quitarCargo(cargoId: deLiquidacion);
+    expect(await repo.cargosDeCuota(cuotaId), hasLength(2),
+        reason: 'ambos protegidos: se revierten anulando el pago / nunca');
   });
 }
 

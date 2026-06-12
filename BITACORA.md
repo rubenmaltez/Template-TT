@@ -75,10 +75,19 @@ CONDONACIÓN: descuento 100% → cuota `pagada`, espejo en `cuota_estado`).
 C$, condonación) + 7 menores, TODOS fixeados (`5d2f169`). Tests nuevos:
 promos, condonación, descuento manual diferido.
 
-**Pendiente:** deploy 0117 → analyze/test/invariantes → manual §0.3 →
-SQL Byr → merge a main. Backlog nuevo: tope ajuste default 50 cliente vs
-0 server (pre-0115) · "ANULADO" en recibo de pago anulado · reimpresión
-lee cargos vivos (sin corte temporal).
+**Iteración 2 (mismo día, feedback de Rubén en el manual):** el COBRADOR
+NO descuenta — gestión centralizada en el contrato: sheet "Descuentos y
+cargos de la cuota" (lista TODOS los orígenes; pago_id = solo-lectura) con
+"Aplicar descuento" + "Cargo extra" (`aplicarCargo` origen='cobro' sin
+pago_id, `quitarCargo` protege pago_id/liquidación); el cobro solo
+REFERENCIA ("Ver descuentos y cargos"); settings descuento_* del cobrador
+a `_hidden`; sub-toggles del recibo visibles solo con features ON (la data
+aplicada se sigue imprimiendo). 0117 NO cambió (ya estaba deployada).
+
+**Pendiente:** analyze/test/invariantes → manual §0.3 (deploy 0117 ✓
+2026-06-12) → SQL Byr → merge a main. Backlog nuevo: tope ajuste default
+50 cliente vs 0 server (pre-0115) · "ANULADO" en recibo de pago anulado ·
+reimpresión lee cargos vivos (sin corte temporal).
 
 ---
 

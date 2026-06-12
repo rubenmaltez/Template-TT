@@ -57,35 +57,43 @@ AGENTS.md):
   aviso y la card desaparece sola al quedar vacía.
   *Si falla:* el detalle técnico con el contenido del cambio (opData) queda en
   `/super/logs` (error_logs).
-- **Descuentos rediseñados (2026-06-11, 0115+0117):**
-  1. *Settings:* como súper, Configuración → Avanzado. *Ver:* TRES grupos
-     hermanos con subtítulo: "Ajustes de cuota (admin)", "Descuentos del
-     cobrador" y "Pronto pago" — nada de esto en "Otros". Activá el primero
-     (y el segundo para probar el cobro).
-  2. *Admin desde el contrato:* icono **%** en una cuota pendiente → sheet
-     "Descuentos de la cuota" → "Aplicar descuento". *Ver:* selector
-     **Ajuste/Promo**, chips de motivo (un toque lo carga), preview
-     "Saldo: X → Y". Aplicá una PROMO con % → en el sheet aparece con
-     etiqueta "Promo"; quitar restaura el saldo y deja rastro en historial.
-     Probá exceder el tope → mensaje claro. Con el setting OFF, el % no está.
-  3. *Cobrador en el cobro (single cuota):* botones **"Descuento"** y
-     **"Cargo extra"** separados (cada uno solo si su feature está ON).
-     Agregá un descuento con motivo → aparece como card con **X** para
-     quitar y el total baja; agregá un cargo (reconexión prellenada u
-     "otro" con descripción) → el total sube. **Salí SIN confirmar** (back)
-     → avisa; descartá → reabrí la cuota: el saldo quedó INTACTO (nada se
-     grabó). Cobrá confirmando → recibo; **anulá el pago** → el descuento
-     manual se revierte (saldo restaurado), el cargo queda debiéndose.
-  4. *Recibo:* el recibo del cobro del paso 3 muestra dentro de los montos
-     de la cuota una línea por descuento/cargo con su motivo (pantalla, PDF
-     y térmica iguales). En Configuración → Recibos, bloque "Montos de la
-     cuota": sub-toggles "Mostrar descuentos y cargos" y "Mostrar motivos"
-     — apagalos y la preview en vivo (que trae un ajuste y una reconexión
-     de ejemplo) los oculta al instante.
-  5. *Pronto pago:* con valor > 0 y una cuota NO vencida, al cobrar aparece
-     el descuento automático; si además agregás un descuento manual, el
-     automático desaparece (anti doble-descuento) y vuelve si quitás el
-     manual.
+- **Descuentos rediseñados (2026-06-12, 0115+0117 — el admin gestiona
+  desde el contrato, el cobro solo referencia):**
+  1. *Settings:* como súper, Configuración → Avanzado. *Ver:* DOS grupos
+     con subtítulo: "Ajustes de cuota (admin)" y "Pronto pago" — nada en
+     "Otros" (los settings del descuento del cobrador quedaron retirados).
+     Activá "Permitir ajustes de cuota".
+  2. *Descuento desde el contrato (admin):* icono **%** en una cuota
+     pendiente → sheet "Descuentos y cargos de la cuota" → "Aplicar
+     descuento". *Ver:* selector **Ajuste/Promo**, chips de motivo (con
+     Promo cambian), preview "Saldo: X → Y". Aplicá una PROMO con % → en
+     el sheet aparece "Promo"; quitar restaura el saldo y deja rastro en
+     el historial. Tope excedido → mensaje claro. Setting OFF → sin %.
+     **Condonación:** promo del 100% → la cuota pasa a **Pagada** al
+     instante; quitala → vuelve a Pendiente.
+  3. *Cargo extra desde el contrato (admin):* mismo sheet → "Cargo extra"
+     → selector **Reconexión/Otro** (reconexión prellenada con su monto;
+     "otro" exige descripción), preview "+C$". *Ver:* el saldo de la cuota
+     SUBE en todas las pantallas; en el sheet aparece con su etiqueta y se
+     puede quitar. Los nacidos de un cobro (pronto pago, reconexión
+     automática) se ven con candado: solo se revierten anulando el pago.
+  4. *Cobro (referencia):* abrí a cobrar una cuota con descuentos/cargos.
+     *Ver:* NO hay botones de crear — solo **"Ver descuentos y cargos"**
+     (sheet solo-lectura con etiqueta y motivo de cada uno; los
+     automáticos dicen "Se aplica al confirmar este cobro"). El total ya
+     viene neto. Cobrá → recibo; anulá el pago desde Historial de pagos →
+     el pronto-pago del cobro se revierte; los cargos del admin quedan.
+  5. *Recibo:* muestra dentro de los montos de la cuota una línea por
+     descuento/cargo con su motivo (pantalla, PDF y térmica iguales). En
+     Configuración → Recibos, bloque "Montos de la cuota": sub-toggles
+     "Mostrar descuentos y cargos" y "Mostrar motivos" — visibles SOLO si
+     algún feature de descuentos/cargos está prendido en Avanzado
+     (ajustes, reconexión o pronto pago); apagalos y la preview en vivo
+     los oculta al instante. Con los features OFF, la data ya aplicada se
+     sigue mostrando en el recibo (historial visible).
+  6. *Pronto pago:* con valor > 0 y una cuota NO vencida, al cobrar
+     aparece el descuento automático como card y en "Ver descuentos y
+     cargos".
   *Si falla:* correr `invariantes_dinero.sql` (INV13/INV14) y verificar
   0117 (queries al pie de la migración).
 - **Mega-sprint 2026-06-11 (smokes rápidos):** (1) en COBRO: tipeá "500,50"

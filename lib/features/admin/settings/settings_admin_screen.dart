@@ -122,8 +122,15 @@ const _hidden = {
   'cuotas.editar_monto',
   // "Cuotas manuales" RETIRADO junto con la pantalla /admin/cuotas
   // (decisión Rubén 2026-06-11): no se usan; un cobro extra puntual se
-  // resuelve con "+ Cargo" sobre una cuota existente. Seed preservado.
+  // resuelve con "Cargo extra" sobre una cuota existente. Seed preservado.
   'cuotas.manuales',
+  // Descuentos del COBRADOR retirados (rediseño 2026-06-12): el cobrador
+  // no descuenta — todo descuento/cargo lo aplica el admin desde el
+  // contrato (ajustes/promos, topes ajuste_max_*). Seeds preservados.
+  'cobranza.descuentos_habilitados',
+  'cobranza.descuento_tipo',
+  'cobranza.descuento_max_monto',
+  'cobranza.descuento_max_porcentaje',
   // Legacy duplicados — la app ya usa los metodo_* de 0040.
   'pagos.transferencia_habilitada',
   'pagos.tarjeta_habilitada',
@@ -1106,10 +1113,6 @@ class _SettingTileState extends State<_SettingTile> {
       'empresa.whatsapp': 'WhatsApp',
       'cobranza.dias_gracia': 'Días de gracia',
       'cobranza.modo_ruta': 'Modo de ruta',
-      'cobranza.descuentos_habilitados': 'Permitir descuentos al cobrar',
-      'cobranza.descuento_tipo': 'Tipo de descuento',
-      'cobranza.descuento_max_porcentaje': 'Tope % por descuento (0 = sin tope)',
-      'cobranza.descuento_max_monto': 'Tope C\$ por descuento (0 = sin tope)',
       'cobranza.cargo_reconexion_habilitado': 'Cobrar reconexión',
       'cobranza.cargo_reconexion': 'Monto reconexión automática',
       'cobranza.monto_reconexion': 'Monto de reconexión',
@@ -1164,11 +1167,6 @@ class _SettingTileState extends State<_SettingTile> {
       'cuotas.descuento_pronto_pago_tipo' => [
         ('porcentaje', 'Porcentaje (%)'),
         ('monto', 'Monto fijo (C\$)'),
-      ],
-      'cobranza.descuento_tipo' => [
-        ('monto', 'Monto fijo'),
-        ('porcentaje', 'Porcentaje'),
-        ('ambos', 'Ambos'),
       ],
       'cobranza.modo_ruta' => [
         ('libre', 'Libre'),

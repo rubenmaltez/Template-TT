@@ -19,6 +19,7 @@ import '../../data/utils/cuota_estado_visual.dart';
 import '../../data/utils/formatters.dart';
 import '../../powersync/db.dart' as ps;
 import '../admin/inventario/equipos_en_baja.dart';
+import '../shared/widgets/cargo_dialog.dart';
 import '../shared/widgets/descuento_dialog.dart';
 import '../shared/widgets/empty_state.dart';
 import '../shared/widgets/foto_comprobante_view.dart';

@@ -1,23 +1,26 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../data/providers/cobrador_provider.dart';
 import '../../../data/providers/impersonation_provider.dart';
+import '../../../data/repositories/cuotas_repo.dart';
 import '../../../data/repositories/settings_repo.dart';
 import '../../../data/utils/formatters.dart';
 import '../../../data/utils/montos.dart';
-import 'descuento_dialog.dart' show CargoPendiente;
 
-/// Diálogo de CARGO extra del cobro (lo que SUMA: reconexión / otro).
-/// Separado del descuento a pedido de Rubén (2026-06-11): el dropdown que
-/// mezclaba descuentos con cargos era poco intuitivo. Igual que el
-/// descuento, NO graba: devuelve un [CargoPendiente] que el cobro inserta
-/// recién al confirmar (con pago_id) — abandonar el cobro no deja rastro.
+/// Diálogo de CARGO extra (lo que SUMA: reconexión / otro). El ADMIN lo
+/// abre desde el sheet de la cuota en el detalle del contrato (rediseño
+/// 2026-06-12: el cobro quedó solo como referencia) y graba un cargos_extra
+/// vía CuotasRepo.aplicarCargo — sin pago_id, así anular un cobro no lo
+/// toca y se puede quitar desde el mismo sheet.
 class CargoDialog extends ConsumerStatefulWidget {
   const CargoDialog({
     super.key,
+    required this.cuotaId,
     required this.saldoActual,
   });
 
+  final String cuotaId;
   final double saldoActual;
 
   @override
@@ -29,6 +32,7 @@ class _CargoDialogState extends ConsumerState<CargoDialog> {
   bool _esReconexion = false;
   final _valor = TextEditingController();
   final _descripcion = TextEditingController();
+  bool _guardando = false;
   String? _error;
   bool _prefillHecho = false;
 
@@ -57,7 +61,7 @@ class _CargoDialogState extends ConsumerState<CargoDialog> {
     }
   }
 
-  void _aplicar() {
+  Future<void> _aplicar() async {
     if (ref.read(estaImpersonandoProvider)) {
       setState(() => _error =
           'No se pueden aplicar cargos mientras gestionás un tenant como super_admin.');
@@ -73,16 +77,34 @@ class _CargoDialogState extends ConsumerState<CargoDialog> {
       setState(() => _error = 'Describí el cargo (qué se está cobrando)');
       return;
     }
-    Navigator.pop(
-      context,
-      CargoPendiente(
-        tipo: _esReconexion ? 'reconexion' : 'otro',
-        monto: v,
-        descripcion: _esReconexion
-            ? (descripcion.isEmpty ? 'Cargo por reconexión' : descripcion)
-            : descripcion,
-      ),
-    );
+    final me = ref.read(cobradorActualProvider).valueOrNull;
+    if (me == null) {
+      setState(() => _error =
+          'Tus datos de usuario todavía no cargaron. Probá de nuevo en unos segundos.');
+      return;
+    }
+
+    setState(() {
+      _guardando = true;
+      _error = null;
+    });
+    try {
+      await ref.read(cuotasRepoProvider).aplicarCargo(
+            tenantId: me.tenantId,
+            cuotaId: widget.cuotaId,
+            tipo: _esReconexion ? 'reconexion' : 'otro',
+            monto: v,
+            descripcion: descripcion.isEmpty ? null : descripcion,
+            aplicadoPorId: me.id,
+          );
+      if (mounted) Navigator.pop(context, true);
+    } catch (e) {
+      if (mounted) {
+        setState(() => _error = e.toString().replaceFirst('Exception: ', ''));
+      }
+    } finally {
+      if (mounted) setState(() => _guardando = false);
+    }
   }
 
   @override
@@ -103,82 +125,82 @@ class _CargoDialogState extends ConsumerState<CargoDialog> {
         // (audit F4 — mismo patrón que DescuentoDialog).
         child: SingleChildScrollView(
           child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            if (s.reconexionHabilitada) ...[
-              SegmentedButton<bool>(
-                showSelectedIcon: false,
-                segments: const [
-                  ButtonSegment(value: true, label: Text('Reconexión')),
-                  ButtonSegment(value: false, label: Text('Otro cargo')),
-                ],
-                selected: {_esReconexion},
-                onSelectionChanged: (sel) => setState(() {
-                  _esReconexion = sel.first;
-                  if (_esReconexion) _prefillReconexion(s);
-                }),
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              if (s.reconexionHabilitada) ...[
+                SegmentedButton<bool>(
+                  showSelectedIcon: false,
+                  segments: const [
+                    ButtonSegment(value: true, label: Text('Reconexión')),
+                    ButtonSegment(value: false, label: Text('Otro cargo')),
+                  ],
+                  selected: {_esReconexion},
+                  onSelectionChanged: (sel) => setState(() {
+                    _esReconexion = sel.first;
+                    if (_esReconexion) _prefillReconexion(s);
+                  }),
+                ),
+                const SizedBox(height: 12),
+              ],
+              TextField(
+                controller: _valor,
+                autofocus: true,
+                decoration: InputDecoration(
+                  labelText: 'Monto (C\$)',
+                  helperText: _esReconexion && s.montoReconexion > 0
+                      ? 'Default: ${Fmt.cordobas(s.montoReconexion)}'
+                      : null,
+                ),
+                keyboardType:
+                    const TextInputType.numberWithOptions(decimal: true),
+                inputFormatters: [montoInputFormatter],
+                onChanged: (_) => setState(() {}),
               ),
               const SizedBox(height: 12),
+              TextField(
+                controller: _descripcion,
+                decoration: InputDecoration(
+                  labelText: _esReconexion ? 'Descripción' : 'Descripción *',
+                  hintText: _esReconexion
+                      ? 'Default: Cargo por reconexión'
+                      : 'Ej. Cambio de equipo, instalación, etc.',
+                ),
+                maxLines: 2,
+              ),
+              // Preview: el cargo SUBE el saldo (en espejo del descuento).
+              const SizedBox(height: 12),
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: scheme.surfaceContainerHighest,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(
+                  monto == null
+                      ? 'Saldo actual: ${Fmt.cordobas(widget.saldoActual)}'
+                      : 'Cargo: +${Fmt.cordobas(monto)}\n'
+                          'Saldo: ${Fmt.cordobas(widget.saldoActual)} → '
+                          '${Fmt.cordobas(widget.saldoActual + monto)}',
+                  style: Theme.of(context).textTheme.bodyMedium,
+                ),
+              ),
+              if (_error != null) ...[
+                const SizedBox(height: 8),
+                Text(_error!, style: TextStyle(color: scheme.error)),
+              ],
             ],
-            TextField(
-              controller: _valor,
-              autofocus: true,
-              decoration: InputDecoration(
-                labelText: 'Monto (C\$)',
-                helperText: _esReconexion && s.montoReconexion > 0
-                    ? 'Default: ${Fmt.cordobas(s.montoReconexion)}'
-                    : null,
-              ),
-              keyboardType:
-                  const TextInputType.numberWithOptions(decimal: true),
-              inputFormatters: [montoInputFormatter],
-              onChanged: (_) => setState(() {}),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: _descripcion,
-              decoration: InputDecoration(
-                labelText: _esReconexion ? 'Descripción' : 'Descripción *',
-                hintText: _esReconexion
-                    ? 'Default: Cargo por reconexión'
-                    : 'Ej. Cambio de equipo, instalación, etc.',
-              ),
-              maxLines: 2,
-            ),
-            // Preview: el cargo SUBE el saldo (en espejo del descuento).
-            const SizedBox(height: 12),
-            Container(
-              padding: const EdgeInsets.all(10),
-              decoration: BoxDecoration(
-                color: scheme.surfaceContainerHighest,
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Text(
-                monto == null
-                    ? 'Saldo actual: ${Fmt.cordobas(widget.saldoActual)}'
-                    : 'Cargo: +${Fmt.cordobas(monto)}\n'
-                        'Saldo: ${Fmt.cordobas(widget.saldoActual)} → '
-                        '${Fmt.cordobas(widget.saldoActual + monto)}',
-                style: Theme.of(context).textTheme.bodyMedium,
-              ),
-            ),
-            if (_error != null) ...[
-              const SizedBox(height: 8),
-              Text(_error!, style: TextStyle(color: scheme.error)),
-            ],
-          ],
           ),
         ),
       ),
       actions: [
         TextButton(
-          onPressed: () => Navigator.pop(context),
+          onPressed: _guardando ? null : () => Navigator.pop(context),
           child: const Text('Cancelar'),
         ),
         FilledButton(
-          onPressed: _aplicar,
-          child: const Text('Aplicar cargo'),
+          onPressed: _guardando ? null : _aplicar,
+          child: Text(_guardando ? 'Aplicando...' : 'Aplicar cargo'),
         ),
       ],
     );

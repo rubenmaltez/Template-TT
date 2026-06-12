@@ -141,35 +141,103 @@ class CuotasRepo {
     });
   }
 
-  /// Descuentos de admin (ajustes y promos) aplicados a una cuota (más
-  /// nuevo primero), con el origen y el nombre de quién lo aplicó.
-  Future<List<Map<String, dynamic>>> ajustesDeCuota(String cuotaId) {
+  /// TODOS los cargos/descuentos de una cuota (cualquier origen), más
+  /// nuevo primero, con quién lo aplicó. El sheet del contrato los lista
+  /// completos (rediseño 2026-06-12): los nacidos de un pago (`pago_id`)
+  /// van solo-lectura — se revierten anulando el pago, no desde acá.
+  Future<List<Map<String, dynamic>>> cargosDeCuota(String cuotaId) {
     return _dbOrGlobal.getAll(
       '''
       SELECT ce.id, ce.tipo, ce.monto, ce.porcentaje, ce.descripcion,
-             ce.origen, ce.ocurrido_en, ce.aplicado_en,
+             ce.origen, ce.pago_id, ce.ocurrido_en, ce.aplicado_en,
              co.nombre AS aplicado_por_nombre
         FROM cargos_extra ce
    LEFT JOIN cobradores co ON co.id = ce.aplicado_por
-       WHERE ce.cuota_id = ? AND ce.origen IN ('ajuste', 'promo')
+       WHERE ce.cuota_id = ?
        ORDER BY COALESCE(ce.ocurrido_en, ce.aplicado_en) DESC
       ''',
       [cuotaId],
     );
   }
 
-  /// Revierte un ajuste/promo: DELETE físico del cargo. El rastro queda en
-  /// el change log (el agregador de la cuota lee el \$.cuota_id del snapshot
-  /// — fix M22). Server: trg_cargos_extra_actualizar_neto + recalcular_cuota
-  /// rehacen neto/estado; acá los espejamos.
-  Future<void> quitarAjuste({required String cargoId}) async {
+  /// Aplica un CARGO manual del admin (reconexión / otro) a una cuota
+  /// abierta, desde el detalle del contrato (rediseño 2026-06-12: los
+  /// cargos también se gestionan acá; el cobro solo referencia).
+  /// origen='cobro' — el valor histórico de los cargos manuales: el CHECK
+  /// de 0115 no tiene un origen 'admin' y el guard de ajustes solo admite
+  /// descuentos. SIN pago_id: no nace de un pago, así que anular un cobro
+  /// no lo toca y el admin lo puede quitar con [quitarCargo].
+  Future<void> aplicarCargo({
+    required String tenantId,
+    required String cuotaId,
+    required String tipo, // 'reconexion' | 'otro'
+    required double monto,
+    String? descripcion,
+    required String aplicadoPorId,
+  }) async {
+    if (tipo != 'reconexion' && tipo != 'otro') {
+      throw Exception('Tipo de cargo inválido.');
+    }
+    if (monto <= 0) {
+      throw Exception('El monto del cargo debe ser mayor a cero.');
+    }
+    final desc = descripcion?.trim() ?? '';
+    if (tipo == 'otro' && desc.isEmpty) {
+      throw Exception('Describí el cargo (qué se está cobrando).');
+    }
     final ocurridoEn = DateTime.now().toUtc().toIso8601String();
     await _dbOrGlobal.writeTransaction((tx) async {
       final rows = await tx.getAll(
-        "SELECT cuota_id FROM cargos_extra WHERE id = ? AND origen IN ('ajuste', 'promo')",
+        'SELECT estado, cobrador_id FROM cuotas WHERE id = ?',
+        [cuotaId],
+      );
+      if (rows.isEmpty) throw Exception('Cuota no encontrada.');
+      final estado = rows.first['estado'] as String? ?? '';
+      if (estado != 'pendiente' && estado != 'parcial') {
+        throw Exception('Solo se cargan cuotas pendientes o parciales.');
+      }
+      await tx.execute(
+        '''
+        INSERT INTO cargos_extra (
+          id, tenant_id, cuota_id, cobrador_id, tipo, monto, porcentaje,
+          descripcion, aplicado_por, aplicado_en, client_local_id, ocurrido_en,
+          origen
+        ) VALUES (?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, 'cobro')
+        ''',
+        [
+          const Uuid().v4(),
+          tenantId,
+          cuotaId,
+          // Denormalizado para las sync rules del cobrador (mismo patrón
+          // que todo INSERT de cargos).
+          (rows.first['cobrador_id'] as String?) ?? aplicadoPorId,
+          tipo,
+          monto,
+          desc.isEmpty ? 'Cargo por reconexión' : desc,
+          aplicadoPorId,
+          ocurridoEn,
+          const Uuid().v4(),
+          ocurridoEn,
+        ],
+      );
+      await _recalcularCuotaLocal(tx, cuotaId, ocurridoEn: ocurridoEn);
+    });
+  }
+
+  /// Quita un cargo/descuento gestionable por el admin: DELETE físico del
+  /// cargo (el rastro queda en el change log — el agregador de la cuota lee
+  /// el \$.cuota_id del snapshot, fix M22). Protegidos: los nacidos de un
+  /// pago (`pago_id` — se revierten anulando el pago) y los de liquidación
+  /// (cancelación terminal). Server: trg_cargos_extra_actualizar_neto +
+  /// recalcular_cuota rehacen neto/estado; acá los espejamos.
+  Future<void> quitarCargo({required String cargoId}) async {
+    final ocurridoEn = DateTime.now().toUtc().toIso8601String();
+    await _dbOrGlobal.writeTransaction((tx) async {
+      final rows = await tx.getAll(
+        "SELECT cuota_id FROM cargos_extra WHERE id = ? AND pago_id IS NULL AND origen != 'liquidacion'",
         [cargoId],
       );
-      if (rows.isEmpty) return; // ya quitado: no-op idempotente
+      if (rows.isEmpty) return; // ya quitado o protegido: no-op idempotente
       final cuotaId = rows.first['cuota_id'] as String;
       await tx.execute('DELETE FROM cargos_extra WHERE id = ?', [cargoId]);
       await _recalcularCuotaLocal(tx, cuotaId, ocurridoEn: ocurridoEn);
