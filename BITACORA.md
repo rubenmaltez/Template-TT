@@ -18,40 +18,36 @@
 
 ## ⭐ ESTADO ACTUAL (refrescar al cerrar cada sesión)
 
-- **Branch viva: `mapa-lista-clientes`** (rama efímera para geolocalización y exportación).
-  Checkpoints históricos = **tags**: `pre-mvp-v2` (estado auditado 2026-06-09)
-  y `pre-mvp-v1` (checkpoint previo). La rama del Sprint 1
-  (`claude/jolly-albattani-09axxa`) se mergeó a `main` y se borró (2026-06-11).
+- **Branch viva: `main`** (todas las ramas efímeras fusionadas y borradas).
+  Checkpoints históricos = **tags**: `v0.11.2` (versión actual con GPS y exportación),
+  `pre-mvp-v2` (estado auditado 2026-06-09) y `pre-mvp-v1` (checkpoint previo).
 - **Modelo de branching:** cada sesión de trabajo crea su rama efímera
   (`claude/*` o feature) DESDE `main` → al terminar se mergea a `main` y la
   rama se BORRA. Hitos importantes se marcan con tag, no con rama.
-- **App:** v0.11.1 · schema PowerSync **v27** · migraciones **0001→0117
-  TODAS corridas** (0117 corrida y VERIFICADA 2026-06-12: 2 triggers +
-  WHEN promo + condonación ✓) · **sync rules v8 "Active"**.
+- **App:** v0.11.2 · schema PowerSync **v27** · migraciones **0001→0117
+  TODAS corridas** (0117 corrida y VERIFICADA 2026-06-12) · **sync rules v8 "Active"**.
 - **Edge Functions:** las 6 deployadas al día (redeployadas 2026-06-09).
 - **Audit integral 2026-06-11** (8 agentes; reporte + plan de 4 sprints en
   `docs/archive/AUDIT-INTEGRAL-2026-06-11.md`). **Sprint 1 mergeado a main.
-  Sprint 2 IMPLEMENTADO en la rama `claude/jolly-albattani-09axxa`** (ver
-  entrada 2026-06-11 b): ajustes de cuota + M2/M3/M22 + retiro Editar monto.
+  Sprint 2 IMPLEMENTADO**.
 - **Qué falta:**
-  1. **Rediseño de descuentos MERGEADO a main 2026-06-12** (0117 deployada
-     y verificada · analyze 4 infos · tests 263 ✓ · invariantes 14/14 en 0 ·
-     ramas efímeras borradas). Resta del loop: pasada manual fina del §0.3
-     actualizado (iteración 2: cargo extra desde contrato + cobro
-     referencia) y, si Rubén quiere, el SQL de des-anular la cuota de
-     prueba de Byr (opcional — era data de testing).
-  2. Smoke tests B.2–B.6 (entrada 2026-06-10) → release `v0.11.1` con
-     `build-release.ps1` (1ª firma con el keystore → reinstalar apps una vez,
-     sincronizando antes) → probar el updater in-app → borrar release `v0.9.0`.
-  3. ~~Sprint 3 promos~~ CUBIERTO por el rediseño (selector Ajuste/Promo).
-     Quedan los HIGH restantes del audit integral según el reporte.
-  (El preview multi-cuota al cobrar desde el MAPA fue pedido y CANCELADO por
-  Rubén el mismo 2026-06-11 — queda como está; no re-proponer.)
-- **Hecho recién (2026-06-12):** Ubicación GPS en vivo en el mapa (online/offline) y botón de exportar clientes en ClientesAdminScreen (con filtros y todos) en la rama `mapa-lista-clientes`.
+  1. Pasada de testing manual del §0.3 de TESTING.md con la nueva versión v0.11.2.
+  2. Quedan los HIGH restantes del audit integral según el reporte (Sprints 3-4).
+- **Hecho recién (2026-06-12):** Fusionada la rama `mapa-lista-clientes` a `main`, bumped version a `0.11.2+112`, y ejecutado `build-release.ps1` publicando el tag `v0.11.2` en GitHub con instaladores en el Escritorio.
 - **Salud:** del audit 2026-06-09 no queda nada abierto; del audit 2026-06-11
   quedan **7 HIGH sin atacar** (priorizados en el reporte, Sprints 2-3).
 
 ---
+
+## 2026-06-12 (d) — Release v0.11.2 (Ubicación GPS y Exportación de Clientes)
+
+**Qué se pidió:** Merge de la rama `mapa-lista-clientes` a `main`, bump de versión a `0.11.2` y publicación de la build para probar el banner de actualización en dispositivos de campo.
+
+**Qué se hizo:**
+- Fusionada la rama `mapa-lista-clientes` a `main` sin conflictos. Pushed a GitHub y eliminada la rama efímera.
+- Incrementada la versión en `pubspec.yaml` a `0.11.2+112`.
+- Ejecutado el script `build-release.ps1` con notas de versión. Generados instaladores versionados para Windows (`.msix`) y Android (`.apk`), copiados automáticamente al Escritorio.
+- Actualizado `version.json` y cargado el nuevo release en el repositorio de GitHub con el tag `v0.11.2`.
 
 ## 2026-06-12 (c) — Ubicación GPS y Exportación de Clientes (Rama mapa-lista-clientes)
 
