@@ -123,11 +123,11 @@ void main() {
         );
       });
 
-      test('total cero (cuota gratis) con pago cero → pendiente NO pagada',
-          () {
-        // pagado=0 corta primero — antes de evaluar pagado>=total.
-        // Regla: una cuota sin pagos jamás está "pagada" aunque el
-        // total sea 0 por un descuento total.
+      test('total cero (cuota gratis) con pago cero → pagada (CONDONADA, '
+          '0117)', () {
+        // Regla 0117: total real 0 → no queda nada que cobrar → 'pagada'.
+        // (Antes era 'pendiente' eterna con saldo 0, que bloqueaba el orden
+        // de cobro del contrato — finding ALTO del audit del rediseño.)
         expect(
           calcularEstadoCuota(
             estadoActual: 'pendiente',
@@ -135,7 +135,7 @@ void main() {
             pagadoNuevo: 0.0,
             deltaCargosExtra: 0.0,
           ),
-          'pendiente',
+          'pagada',
         );
       });
 
@@ -245,15 +245,30 @@ void main() {
         );
       });
 
-      test('descuento total exacto + pago cero → pendiente NO pagada', () {
-        // Same lógica que test "total cero con pago cero": pagado=0
-        // corta antes.
+      test('descuento total exacto + pago cero → pagada (condonada, 0117)',
+          () {
+        // Promo/ajuste del 100%: el total real queda en 0 → la cuota está
+        // saldada sin plata. Espejo de recalcular_cuota_desde_pagos (0117).
         expect(
           calcularEstadoCuota(
             estadoActual: 'pendiente',
             montoCuota: 750.0,
             pagadoNuevo: 0.0,
             deltaCargosExtra: -750.0,
+          ),
+          'pagada',
+        );
+      });
+
+      test('quitar el descuento total revierte la condonación → pendiente',
+          () {
+        // El delta vuelve a 0 con pagado 0: la cuota reabre.
+        expect(
+          calcularEstadoCuota(
+            estadoActual: 'pagada',
+            montoCuota: 750.0,
+            pagadoNuevo: 0.0,
+            deltaCargosExtra: 0.0,
           ),
           'pendiente',
         );

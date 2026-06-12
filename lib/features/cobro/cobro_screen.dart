@@ -197,26 +197,33 @@ class _CobroScreenState extends ConsumerState<CobroScreen> {
   }
 
   /// Cargos que se van a insertar al confirmar: los automáticos + los
-  /// manuales de la pantalla. Anti doble-descuento (decisión Rubén): un
-  /// descuento MANUAL suprime el pronto-pago automático de la misma cuota
-  /// (la reconexión automática no se toca). Si el manual se quita, el
-  /// automático reaparece solo (no se muta _cargosAuto).
+  /// manuales de la pantalla. Anti-duplicación (decisión Rubén + audit F4):
+  /// un descuento MANUAL suprime el pronto-pago automático de la misma
+  /// cuota, y una reconexión MANUAL suprime la reconexión automática (sin
+  /// esto se cobraba 2× — paridad con el re-dedupe del flujo viejo). Si el
+  /// manual se quita, el automático reaparece solo (no se muta _cargosAuto).
   List<_CargoAutoPreview> get _cargosEfectivos {
-    final cuotasConDescManual = {
-      for (final c in _cargosManuales)
-        if (c.tipo.startsWith('descuento')) c.cuotaId,
-    };
+    final cuotasConDescManual = <String>{};
+    final cuotasConReconexManual = <String>{};
+    for (final c in _cargosManuales) {
+      if (c.tipo.startsWith('descuento')) cuotasConDescManual.add(c.cuotaId);
+      if (c.tipo == 'reconexion') cuotasConReconexManual.add(c.cuotaId);
+    }
     return [
       for (final c in _cargosAuto)
         if (!(c.tipo.startsWith('descuento') &&
-            cuotasConDescManual.contains(c.cuotaId)))
+                cuotasConDescManual.contains(c.cuotaId)) &&
+            !(c.tipo == 'reconexion' &&
+                cuotasConReconexManual.contains(c.cuotaId)))
           c,
       ..._cargosManuales,
     ];
   }
 
   /// Re-deriva `_totalesACobrar` desde los totales base de DB + cargos
-  /// pendientes, y resetea el monto sugerido al saldo completo. Reemplaza al
+  /// pendientes, y resetea el monto sugerido al saldo completo EN LA MONEDA
+  /// ACTIVA (audit F4: pisarlo siempre en C$ con USD elegido convertía el
+  /// saldo en un monto US$ ~36× — vuelto fantasma gigante). Reemplaza al
   /// viejo `_refrescarTotalConCargosAuto` (fix #3): como los manuales ya NO
   /// se insertan al toque, no hay nada que re-deduplicar contra la DB.
   void _recalcularTotales() {
@@ -238,7 +245,32 @@ class _CobroScreenState extends ConsumerState<CobroScreen> {
       saldo +=
           (_totalesACobrar[i] - _cuotas[i].montoPagado).clamp(0.0, double.infinity);
     }
-    _montoCtrl.text = saldo.toStringAsFixed(2);
+    final tasa = _moneda == Moneda.usd
+        ? (_tasaSnapshot ?? ref.read(appSettingsProvider).tasaUsd)
+        : 1.0;
+    _montoCtrl.text = (saldo / (tasa <= 0 ? 1.0 : tasa)).toStringAsFixed(2);
+  }
+
+  /// Saldo contra el que se valida un descuento manual NUEVO: excluye los
+  /// descuentos automáticos suprimibles (al confirmar, el manual los
+  /// reemplaza — audit F4: sin esto el preview del diálogo mostraba un
+  /// saldo menor al real en ese borde).
+  double _saldoParaDescuentoManual() {
+    final cuota = _cuotas.first;
+    var t = _totalesBase.first;
+    for (final c in _cargosEfectivos) {
+      if (c.cuotaId != cuota.id) continue;
+      // Los descuentos automáticos (pronto pago) quedarán suprimidos.
+      final esAutoDescuento =
+          c.tipo.startsWith('descuento') && !_cargosManuales.contains(c);
+      if (esAutoDescuento) continue;
+      if (c.tipo == 'reconexion' || c.tipo == 'otro') {
+        t += c.monto;
+      } else {
+        t = (t - c.monto).clamp(0.0, double.infinity);
+      }
+    }
+    return (t - cuota.montoPagado).clamp(0.0, double.infinity).toDouble();
   }
 
   @override
@@ -253,15 +285,13 @@ class _CobroScreenState extends ConsumerState<CobroScreen> {
   /// el contrato). El resultado queda PENDIENTE: se inserta al confirmar.
   Future<void> _agregarDescuento() async {
     final cuota = _cuotas.first;
-    final saldoActual = (_totalesACobrar.first - cuota.montoPagado)
-        .clamp(0.0, double.infinity);
     final res = await showDialog<CargoPendiente>(
       context: context,
       builder: (_) => DescuentoDialog(
         contexto: DescuentoContexto.cobro,
         cuotaId: cuota.id,
         montoCuota: cuota.monto,
-        saldoActual: saldoActual,
+        saldoActual: _saldoParaDescuentoManual(),
       ),
     );
     if (res == null || !mounted) return;
@@ -315,12 +345,23 @@ class _CobroScreenState extends ConsumerState<CobroScreen> {
     final tieneRef = _referenciaCtrl.text.trim().isNotEmpty;
     final tieneCargos = _cargosManuales.isNotEmpty;
     if (!hayDatos && !tieneFoto && !tieneRef && !tieneCargos) return true;
+    // El aviso enumera SOLO lo que de verdad se pierde (audit F4: el texto
+    // fijo mencionaba descuentos/foto que no existían y desgastaba el aviso).
+    final perdidas = [
+      if (hayDatos) 'el monto',
+      if (tieneFoto) 'la foto',
+      if (tieneRef) 'la referencia',
+      if (tieneCargos) 'los descuentos/cargos agregados',
+    ];
+    final lista = perdidas.length == 1
+        ? perdidas.first
+        : '${perdidas.sublist(0, perdidas.length - 1).join(', ')} y ${perdidas.last}';
     final descartar = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('¿Descartar cobro?'),
-        content: const Text('Vas a perder el monto/foto/referencia y los '
-            'descuentos o cargos agregados. Esta cuota queda sin cobrar.'),
+        content:
+            Text('Vas a perder $lista. Esta cuota queda sin cobrar.'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
@@ -681,14 +722,16 @@ class _CobroScreenState extends ConsumerState<CobroScreen> {
                         style: const TextStyle(fontWeight: FontWeight.w600),
                       ),
                       // Solo los manuales se pueden quitar antes de confirmar
-                      // (los automáticos los gobiernan los settings).
+                      // (los automáticos los gobiernan los settings). Target
+                      // táctil ≥40px: es la única vía de quitar (audit F4).
                       if (_cargosManuales.contains(cargo))
                         IconButton(
                           icon: const Icon(Icons.close, size: 18),
                           tooltip: 'Quitar',
                           visualDensity: VisualDensity.compact,
-                          constraints: const BoxConstraints(),
-                          padding: const EdgeInsets.only(left: 8),
+                          constraints: const BoxConstraints(
+                              minWidth: 40, minHeight: 40),
+                          padding: EdgeInsets.zero,
                           onPressed: () => _quitarCargoManual(cargo),
                         ),
                     ],
@@ -714,17 +757,19 @@ class _CobroScreenState extends ConsumerState<CobroScreen> {
                       onPressed: _agregarDescuento,
                     ),
                   ),
-                if (settings.descuentosHabilitados &&
-                    settings.reconexionHabilitada)
-                  const SizedBox(width: 8),
-                if (settings.reconexionHabilitada)
-                  Expanded(
-                    child: OutlinedButton.icon(
-                      icon: const Icon(Icons.add_circle_outline),
-                      label: const Text('Cargo extra'),
-                      onPressed: _agregarCargo,
-                    ),
+                if (settings.descuentosHabilitados) const SizedBox(width: 8),
+                // "Cargo extra" con el MISMO gate combinado que el botón
+                // viejo (audit F4): "otro cargo" no tiene flag propio y con
+                // descuentos ON ya estaba disponible — solo-reconexión lo
+                // dejaba inaccesible. El diálogo esconde el modo reconexión
+                // si su flag está OFF.
+                Expanded(
+                  child: OutlinedButton.icon(
+                    icon: const Icon(Icons.add_circle_outline),
+                    label: const Text('Cargo extra'),
+                    onPressed: _agregarCargo,
                   ),
+                ),
               ],
             ),
           ],

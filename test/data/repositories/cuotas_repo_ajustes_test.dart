@@ -255,6 +255,33 @@ void main() {
     expect(num2((await getCuota(cuotaId))['cargos_neto']), 0);
   });
 
+  test('promo del 100% CONDONA: la cuota queda pagada (saldo 0, sin plata) '
+      'y quitarla la reabre — espejo de 0117', () async {
+    final cuotaId = await seedCuota(monto: 800);
+    await repo.aplicarAjuste(
+      tenantId: tenantId,
+      cuotaId: cuotaId,
+      esPorcentaje: true,
+      valor: 100,
+      motivo: 'Mes gratis por promo',
+      aplicadoPorId: adminId,
+      origen: 'promo',
+    );
+    var cuota = await getCuota(cuotaId);
+    expect(cuota['estado'], 'pagada',
+        reason: 'total real 0 → condonada; si quedara pendiente con saldo 0 '
+            'bloquearía el orden de cobro del contrato');
+    expect(num2(cuota['monto_pagado']), 0, reason: 'no entró plata');
+    expect(num2(cuota['cargos_neto']), -800);
+
+    // Quitar la promo revierte la condonación.
+    final items = await repo.ajustesDeCuota(cuotaId);
+    await repo.quitarAjuste(cargoId: items.first['id'] as String);
+    cuota = await getCuota(cuotaId);
+    expect(cuota['estado'], 'pendiente');
+    expect(num2(cuota['cargos_neto']), 0);
+  });
+
   test('origen inválido (ni ajuste ni promo) lanza y no muta', () async {
     final cuotaId = await seedCuota(monto: 500);
     await expectLater(

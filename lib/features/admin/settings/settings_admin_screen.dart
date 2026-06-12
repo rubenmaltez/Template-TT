@@ -1144,7 +1144,6 @@ class _SettingTileState extends State<_SettingTile> {
       'recibo.mostrar_adeudado': 'Mostrar saldo de la cuota',
       'recibo.mostrar_empresa': 'Mostrar datos de empresa',
       'recibo.mostrar_cedula': 'Mostrar cédula del cliente',
-      'cuotas.manuales': 'Cuotas manuales',
       'cobranza.ajustes_habilitados': 'Permitir ajustes de cuota',
       'cobranza.ajuste_max_porcentaje': 'Tope % por ajuste (0 = sin tope)',
       'cobranza.ajuste_max_monto': 'Tope C\$ por ajuste (0 = sin tope)',

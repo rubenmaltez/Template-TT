@@ -5,7 +5,8 @@
 -- (paridad real de reglas: "admin y cobrador, mismas reglas").
 --
 -- Server-side NO cambia el modelo: cero columnas nuevas (origen='promo' ya
--- existía en el CHECK de 0115 reservado para Sprint 3). Solo guards:
+-- existía en el CHECK de 0115 reservado para Sprint 3). Guards + una regla
+-- de estado (§3, condonación). Cambios:
 --   1. trg_cargos_ajuste_guard ahora también gobierna origen='promo'
 --      (mismas validaciones: feature ON, rol admin, solo descuento, motivo,
 --      topes ajuste_max_*).
@@ -136,6 +137,72 @@ create trigger trg_cargos_cobro_motivo_guard
   when (new.origen = 'cobro')
   execute function public.cargos_cobro_motivo_guard_trg();
 
+-- =========================================================================
+-- 3. CONDONACIÓN (audit Fase 4 del rediseño, finding ALTO): una promo o
+--    ajuste del 100% dejaba la cuota 'pendiente' con saldo 0 — nunca
+--    'pagada' (la regla v_total_pagado <= 0 → 'pendiente' corría primero)
+--    y esa cuota BLOQUEABA el orden de cobro del contrato (es la más
+--    antigua pendiente y un cobro de C$0 es inválido). Regla nueva, ANTES
+--    del resto: total a cobrar <= 0 → 'pagada' (saldada sin plata).
+--    Quitar el descuento revierte: el total vuelve a >0 y el recálculo la
+--    devuelve a 'pendiente'. ESPEJO EXACTO del cliente
+--    (lib/data/utils/cuota_estado.dart) — cambiar uno = cambiar el otro.
+--    Cuerpo base: 0083 (guard polimórfico de tg_table_name intacto).
+-- =========================================================================
+create or replace function public.recalcular_cuota_desde_pagos()
+returns trigger
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  v_cuota_id uuid;
+  v_total_pagado numeric(10,2);
+  v_total_a_cobrar numeric(10,2);
+  v_estado_actual text;
+  v_nuevo_estado text;
+begin
+  -- Guard polimórfico (lección de 0078, blindado en 0083): operar SOLO
+  -- sobre las 2 tablas conocidas, que tienen cuota_id + ocurrido_en.
+  if tg_table_name not in ('pagos', 'cargos_extra') then
+    return coalesce(new, old);
+  end if;
+
+  v_cuota_id := coalesce(new.cuota_id, old.cuota_id);
+
+  select coalesce(sum(monto_cordobas), 0)
+    into v_total_pagado
+    from public.pagos
+   where cuota_id = v_cuota_id and anulado = false;
+
+  select estado into v_estado_actual from public.cuotas where id = v_cuota_id;
+  if v_estado_actual = 'anulada' then
+    return coalesce(new, old);
+  end if;
+
+  v_total_a_cobrar := public.cuota_total_a_cobrar(v_cuota_id);
+
+  if v_total_a_cobrar <= 0 then
+    -- Condonada (0117): descuento del 100% → no queda nada que cobrar.
+    v_nuevo_estado := 'pagada';
+  elsif v_total_pagado <= 0 then
+    v_nuevo_estado := 'pendiente';
+  elsif v_total_pagado < v_total_a_cobrar then
+    v_nuevo_estado := 'parcial';
+  else
+    v_nuevo_estado := 'pagada';
+  end if;
+
+  update public.cuotas
+     set monto_pagado = v_total_pagado,
+         estado = v_nuevo_estado,
+         ocurrido_en = coalesce(new.ocurrido_en, old.ocurrido_en, now())
+   where id = v_cuota_id;
+
+  return coalesce(new, old);
+end;
+$$;
+
 COMMIT;
 
 -- Verificación post-deploy (correr a mano):
@@ -147,3 +214,6 @@ COMMIT;
 --   select pg_get_triggerdef(oid) from pg_trigger
 --    where tgrelid = 'public.cargos_extra'::regclass
 --      and tgname = 'trg_cargos_ajuste_guard';  -- ... IN ('ajuste','promo')
+--   -- La condonación quedó en la función de recálculo:
+--   select prosrc like '%Condonada (0117)%' from pg_proc
+--    where proname = 'recalcular_cuota_desde_pagos';             -- true

@@ -99,12 +99,16 @@ class _CargoDialogState extends ConsumerState<CargoDialog> {
       title: const Text('Cargo extra'),
       content: SizedBox(
         width: dialogW,
-        child: Column(
+        // Scroll: en 360px con teclado abierto el contenido no entra
+        // (audit F4 — mismo patrón que DescuentoDialog).
+        child: SingleChildScrollView(
+          child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             if (s.reconexionHabilitada) ...[
               SegmentedButton<bool>(
+                showSelectedIcon: false,
                 segments: const [
                   ButtonSegment(value: true, label: Text('Reconexión')),
                   ButtonSegment(value: false, label: Text('Otro cargo')),
@@ -164,6 +168,7 @@ class _CargoDialogState extends ConsumerState<CargoDialog> {
               Text(_error!, style: TextStyle(color: scheme.error)),
             ],
           ],
+          ),
         ),
       ),
       actions: [

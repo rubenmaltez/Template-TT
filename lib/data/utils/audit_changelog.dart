@@ -76,6 +76,9 @@ const Map<String, Set<String>> kAuditCamposVisiblesDefault = {
     'monto',
     'tipo',
     'descripcion',
+    // Rediseño 2026-06-11: sin el origen, una Promo era indistinguible de
+    // un Ajuste o de un descuento del cobro en el historial.
+    'origen',
   },
   'visitas': {
     'estado',
@@ -219,6 +222,7 @@ const Map<String, List<String>> kAuditCamposCatalogo = {
     'monto',
     'tipo',
     'descripcion',
+    'origen',
   ],
   'visitas': [
     'estado',
@@ -265,7 +269,7 @@ const Map<String, String> kAuditEntidadLabel = {
   'cuotas': 'Cuotas',
   'pagos': 'Pagos',
   'recibos': 'Recibos',
-  'cargos_extra': 'Cargos manuales',
+  'cargos_extra': 'Cargos y descuentos',
   'visitas': 'Visitas',
   'fotos_cliente': 'Fotos',
   'planes': 'Planes',
@@ -561,6 +565,11 @@ String _fmtField(String key, dynamic v, {String? tabla, AuditLookups? lookups}) 
   if (key == 'tipo' && v is String && v.isNotEmpty) {
     return _tipoCargoExtraLabel(v);
   }
+  // cargos_extra.origen: de qué flujo nació el cargo (la etiqueta
+  // Ajuste/Promo del rediseño 2026-06-11). Columna exclusiva de esa tabla.
+  if (key == 'origen' && v is String && v.isNotEmpty) {
+    return _origenCargoExtraLabel(v);
+  }
   // FKs: resolver UUID a nombre humano. Si el lookup no encontró match
   // (entidad eliminada o aún no sincronizada), mostramos "(eliminado)" en
   // lugar de exponer el UUID crudo.
@@ -588,6 +597,14 @@ String _tipoCargoExtraLabel(String t) => switch (t) {
       'reconexion' => 'Reconexión',
       'otro' => 'Otro',
       _ => t,
+    };
+
+String _origenCargoExtraLabel(String o) => switch (o) {
+      'ajuste' => 'Ajuste del admin',
+      'promo' => 'Promo',
+      'cobro' => 'Cobro',
+      'liquidacion' => 'Cancelación de contrato',
+      _ => o,
     };
 
 String _tipoCargoLabel(String t) => switch (t) {
@@ -714,6 +731,7 @@ String auditFieldLabel(String raw) {
     'documento_path': 'Documento adjunto',
     'precio_mensual': 'Precio mensual',
     'tipo_cargo_manual': 'Tipo de cargo',
+    'origen': 'Origen',
     'pago_id': 'Pago',
     'recibo_id': 'Recibo',
     'numero': 'Número',

@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../data/providers/cobrador_provider.dart';
@@ -70,11 +69,21 @@ class DescuentoDialog extends ConsumerStatefulWidget {
 }
 
 class _DescuentoDialogState extends ConsumerState<DescuentoDialog> {
-  static const _motivosRapidos = [
+  // Chips por semántica (audit F4): un ajuste es una corrección; una promo,
+  // un beneficio — sugerir "Sin servicio" para una promo era contradictorio.
+  static const _motivosAjuste = [
     'Sin servicio',
     'Promesa de pago',
     'Acuerdo con el cliente',
   ];
+  static const _motivosPromo = [
+    'Promo de temporada',
+    'Cliente referido',
+    'Acuerdo comercial',
+  ];
+
+  List<String> get _motivosRapidos =>
+      _esPromo ? _motivosPromo : _motivosAjuste;
 
   bool _esPorcentaje = false;
   bool _esPromo = false; // solo contexto contrato
@@ -133,8 +142,6 @@ class _DescuentoDialogState extends ConsumerState<DescuentoDialog> {
           'No se pueden aplicar descuentos mientras gestionás un tenant como super_admin.');
       return;
     }
-    final me = ref.read(cobradorActualProvider).valueOrNull;
-    if (me == null) return;
     final s = ref.read(appSettingsProvider);
 
     final v = _parseValor();
@@ -186,6 +193,13 @@ class _DescuentoDialogState extends ConsumerState<DescuentoDialog> {
     }
 
     // Contexto CONTRATO: grabar ya (ajuste o promo).
+    final me = ref.read(cobradorActualProvider).valueOrNull;
+    if (me == null) {
+      // Audit F4: antes el return silencioso dejaba el botón "muerto".
+      setState(() => _error =
+          'Tus datos de usuario todavía no cargaron. Probá de nuevo en unos segundos.');
+      return;
+    }
     setState(() {
       _guardando = true;
       _error = null;
@@ -236,6 +250,7 @@ class _DescuentoDialogState extends ConsumerState<DescuentoDialog> {
               // mismo flujo, etiqueta distinta en historial/recibo/reportes.
               if (!_esCobro) ...[
                 SegmentedButton<bool>(
+                  showSelectedIcon: false,
                   segments: const [
                     ButtonSegment(value: false, label: Text('Ajuste')),
                     ButtonSegment(value: true, label: Text('Promo')),
@@ -258,6 +273,7 @@ class _DescuentoDialogState extends ConsumerState<DescuentoDialog> {
               ],
               if (modos.monto && modos.porcentaje) ...[
                 SegmentedButton<bool>(
+                  showSelectedIcon: false,
                   segments: const [
                     ButtonSegment(value: false, label: Text('Monto C\$')),
                     ButtonSegment(value: true, label: Text('Porcentaje %')),
@@ -278,9 +294,7 @@ class _DescuentoDialogState extends ConsumerState<DescuentoDialog> {
                 ),
                 keyboardType:
                     const TextInputType.numberWithOptions(decimal: true),
-                inputFormatters: [
-                  FilteringTextInputFormatter.allow(RegExp(r'[0-9.,]')),
-                ],
+                inputFormatters: [montoInputFormatter],
                 onChanged: (_) => setState(() {}),
               ),
               const SizedBox(height: 12),

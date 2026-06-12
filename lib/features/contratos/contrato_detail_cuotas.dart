@@ -387,8 +387,10 @@ class _CuotasSectionState extends ConsumerState<_CuotasSection> {
                       style: Theme.of(sheetCtx).textTheme.titleMedium),
                   const SizedBox(height: 4),
                   Text(
-                    'Un descuento (ajuste o promo) rebaja el saldo con motivo '
-                    'obligatorio y queda en el historial de la cuota.',
+                    'Ajustes y promos aplicados por el admin (rebajan el '
+                    'saldo con motivo obligatorio y quedan en el historial). '
+                    'Los descuentos hechos durante un cobro se ven en el '
+                    'recibo y en el historial de la cuota.',
                     style: Theme.of(sheetCtx)
                         .textTheme
                         .bodySmall
@@ -408,7 +410,7 @@ class _CuotasSectionState extends ConsumerState<_CuotasSection> {
                       if (items.isEmpty) {
                         return Padding(
                           padding: const EdgeInsets.symmetric(vertical: 16),
-                          child: Text('Sin descuentos aplicados.',
+                          child: Text('Sin ajustes ni promos del admin.',
                               style: TextStyle(color: scheme.outline)),
                         );
                       }
