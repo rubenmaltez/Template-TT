@@ -151,9 +151,30 @@ const kGruposAvanzado = <SettingGroup>[
       SettingEntry('cobranza.audit_visible_admin'),
     ],
   ),
+  // Los DOS flujos de descuento son features distintas y se confundían
+  // (feedback Rubén 2026-06-11): grupos hermanos con subtítulo que dice
+  // QUIÉN usa cada uno. Pronto pago se expone acá también (antes era
+  // huérfano: categoría 'cuotas' sin tab → invisible).
   SettingGroup(
-    titulo: 'Descuentos',
+    titulo: 'Ajustes de cuota (admin)',
     icono: Icons.percent,
+    subtitulo: 'Descuentos con motivo que el admin aplica a una cuota desde '
+        'el detalle del contrato (correcciones y promos).',
+    entradas: [
+      SettingEntry(
+        'cobranza.ajustes_habilitados',
+        hijos: [
+          'cobranza.ajuste_max_porcentaje',
+          'cobranza.ajuste_max_monto',
+        ],
+      ),
+    ],
+  ),
+  SettingGroup(
+    titulo: 'Descuentos del cobrador',
+    icono: Icons.discount,
+    subtitulo: 'Lo que el cobrador puede descontar al momento de cobrar, '
+        'siempre con motivo.',
     entradas: [
       SettingEntry(
         'cobranza.descuentos_habilitados',
@@ -163,6 +184,16 @@ const kGruposAvanzado = <SettingGroup>[
           'cobranza.descuento_max_porcentaje',
         ],
       ),
+    ],
+  ),
+  SettingGroup(
+    titulo: 'Pronto pago',
+    icono: Icons.event_available,
+    subtitulo: 'Descuento automático cuando el cliente paga antes del '
+        'vencimiento (0 = apagado).',
+    entradas: [
+      SettingEntry('cuotas.descuento_pronto_pago'),
+      SettingEntry('cuotas.descuento_pronto_pago_tipo'),
     ],
   ),
   SettingGroup(
