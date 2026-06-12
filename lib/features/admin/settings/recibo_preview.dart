@@ -21,27 +21,33 @@ class ReciboPreview extends ConsumerWidget {
   /// Fila de ejemplo con TODOS los campos que lee `ReciboTicket`. Cobro en
   /// efectivo de una cuota mensual con un ajuste y una reconexión (para que
   /// los sub-toggles de descuentos se vean en vivo), sin vuelto. La
-  /// matemática cierra: 500 − 50 + 100 = 550 cobrados, saldo 0.
-  Map<String, dynamic> _sampleRow() {
+  /// matemática cierra: 500 − descuento + reconexión = cobrados, saldo 0.
+  Map<String, dynamic> _sampleRow(AppSettings settings) {
     final ahora = DateTime.now();
     final periodo = DateTime(ahora.year, ahora.month, 1);
+    final cuotaMonto = 500.0;
+    final descuento = settings.ajustesHabilitados ? 50.0 : 0.0;
+    final reconexion = settings.reconexionHabilitada ? 100.0 : 0.0;
+    final cargosNeto = reconexion - descuento;
+    final montoCordobas = cuotaMonto + cargosNeto;
+
     return {
       'numero_completo': 'A-000123',
       'reimpresiones': 0,
       'impreso_en': null,
-      'monto_cordobas': 550.0,
+      'monto_cordobas': montoCordobas,
       'vuelto_cordobas': 0.0,
       'moneda': 'NIO',
-      'monto_original': 550.0,
+      'monto_original': montoCordobas,
       'tasa_conversion': 1.0,
       'metodo': 'efectivo',
       'referencia': null,
       'fecha_pago': ahora.toIso8601String(),
       'periodo': periodo.toIso8601String(),
       'cuota_id': 'cuota-ejemplo',
-      'cuota_monto': 500.0,
-      'monto_pagado_cuota': 550.0,
-      'cargos_neto': 50.0,
+      'cuota_monto': cuotaMonto,
+      'monto_pagado_cuota': montoCordobas,
+      'cargos_neto': cargosNeto,
       'dia_pago': 15,
       'cliente_nombre': 'Cliente de Ejemplo',
       'cliente_cedula': '001-010190-0001A',
@@ -52,24 +58,27 @@ class ReciboPreview extends ConsumerWidget {
   }
 
   /// Cargos de ejemplo para el desglose del bloque `cuota` (un ajuste y una
-  /// reconexión). El ticket los oculta solo si el sub-toggle está apagado.
-  List<Map<String, dynamic>> _sampleCargos() => const [
-        {
-          'cuota_id': 'cuota-ejemplo',
-          'tipo': 'descuento_monto',
-          'monto': 50.0,
-          'porcentaje': null,
-          'descripcion': 'Sin servicio 3 días',
-          'origen': 'ajuste',
-        },
-        {
-          'cuota_id': 'cuota-ejemplo',
-          'tipo': 'reconexion',
-          'monto': 100.0,
-          'porcentaje': null,
-          'descripcion': 'Cargo por reconexión',
-          'origen': 'cobro',
-        },
+  /// reconexión). El ticket los oculta si el sub-toggle está apagado, o si la
+  /// opción correspondiente está deshabilitada en los settings de la empresa.
+  List<Map<String, dynamic>> _sampleCargos(AppSettings settings) => [
+        if (settings.ajustesHabilitados)
+          const {
+            'cuota_id': 'cuota-ejemplo',
+            'tipo': 'descuento_monto',
+            'monto': 50.0,
+            'porcentaje': null,
+            'descripcion': 'Sin servicio 3 días',
+            'origen': 'ajuste',
+          },
+        if (settings.reconexionHabilitada)
+          const {
+            'cuota_id': 'cuota-ejemplo',
+            'tipo': 'reconexion',
+            'monto': 100.0,
+            'porcentaje': null,
+            'descripcion': 'Cargo por reconexión',
+            'origen': 'cobro',
+          },
       ];
 
   @override
@@ -130,10 +139,10 @@ class ReciboPreview extends ConsumerWidget {
                   fit: BoxFit.contain,
                   alignment: Alignment.topCenter,
                   child: ReciboTicket(
-                    row: _sampleRow(),
+                    row: _sampleRow(settings),
                     settings: settings,
                     logoBytes: logoBytes,
-                    cargosRows: _sampleCargos(),
+                    cargosRows: _sampleCargos(settings),
                   ),
                 ),
               ),

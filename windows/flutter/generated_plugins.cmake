@@ -5,7 +5,6 @@
 list(APPEND FLUTTER_PLUGIN_LIST
   app_links
   file_selector_windows
-  geolocator_windows
   permission_handler_windows
   powersync_flutter_libs
   print_bluetooth_thermal
