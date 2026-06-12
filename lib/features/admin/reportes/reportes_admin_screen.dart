@@ -579,8 +579,8 @@ class _DescargarPdfMenu extends ConsumerWidget {
           SELECT c.nombre AS cliente_nombre,
                  co.nombre AS comunidad,
                  COUNT(cu.id) AS cuotas_vencidas,
-                 COALESCE(SUM(cu.monto + COALESCE(cu.cargos_neto, 0)
-                   - cu.monto_pagado), 0) AS monto_adeudado,
+                 COALESCE(SUM(max(cu.monto + COALESCE(cu.cargos_neto, 0)
+                   - cu.monto_pagado, 0)), 0) AS monto_adeudado,
                  CAST(julianday('now', '-6 hours') - julianday(MIN(cu.fecha_vencimiento))
                    AS INTEGER) AS dias_mora
             FROM cuotas cu
@@ -664,7 +664,7 @@ class _DescargarPdfMenu extends ConsumerWidget {
                  (SELECT COUNT(*) FROM cuotas cu
                    WHERE cu.cliente_id = c.id
                      AND cu.estado IN ('pendiente','parcial')) AS pendientes,
-                 COALESCE((SELECT SUM(cu.monto + COALESCE(cu.cargos_neto, 0) - cu.monto_pagado)
+                 COALESCE((SELECT SUM(max(cu.monto + COALESCE(cu.cargos_neto, 0) - cu.monto_pagado, 0))
                     FROM cuotas cu
                    WHERE cu.cliente_id = c.id
                      AND cu.estado IN ('pendiente','parcial')), 0) AS saldo,
@@ -1047,8 +1047,8 @@ class _DescargarPdfMenu extends ConsumerWidget {
           SELECT c.nombre AS cliente_nombre,
                  co.nombre AS comunidad,
                  COUNT(cu.id) AS cuotas_vencidas,
-                 COALESCE(SUM(cu.monto + COALESCE(cu.cargos_neto, 0)
-                   - cu.monto_pagado), 0) AS monto_adeudado,
+                 COALESCE(SUM(max(cu.monto + COALESCE(cu.cargos_neto, 0)
+                   - cu.monto_pagado, 0)), 0) AS monto_adeudado,
                  CAST(julianday('now', '-6 hours') - julianday(MIN(cu.fecha_vencimiento))
                    AS INTEGER) AS dias_mora
             FROM cuotas cu
@@ -1088,7 +1088,7 @@ class _DescargarPdfMenu extends ConsumerWidget {
                    WHERE ct.cliente_id = c.id) AS planes,
                  (SELECT GROUP_CONCAT(DISTINCT ct.dia_pago)
                     FROM contratos ct WHERE ct.cliente_id = c.id) AS dias_pago,
-                 COALESCE((SELECT SUM(cu.monto + COALESCE(cu.cargos_neto, 0) - cu.monto_pagado)
+                 COALESCE((SELECT SUM(max(cu.monto + COALESCE(cu.cargos_neto, 0) - cu.monto_pagado, 0))
                     FROM cuotas cu
                    WHERE cu.cliente_id = c.id
                      AND cu.estado IN ('pendiente','parcial')), 0) AS saldo
@@ -1129,7 +1129,7 @@ class _DescargarPdfMenu extends ConsumerWidget {
                  (SELECT COUNT(*) FROM cuotas cu
                    WHERE cu.cliente_id = c.id
                      AND cu.estado IN ('pendiente','parcial')) AS pendientes,
-                 COALESCE((SELECT SUM(cu.monto + COALESCE(cu.cargos_neto, 0) - cu.monto_pagado)
+                 COALESCE((SELECT SUM(max(cu.monto + COALESCE(cu.cargos_neto, 0) - cu.monto_pagado, 0))
                     FROM cuotas cu
                    WHERE cu.cliente_id = c.id
                      AND cu.estado IN ('pendiente','parcial')), 0) AS saldo,
@@ -1554,7 +1554,7 @@ class _MoraPorComunidadCardState extends State<_MoraPorComunidadCard> {
       '''
       SELECT co.nombre AS comunidad, m.nombre AS municipio,
              COUNT(cu.id) AS vencidas,
-             COALESCE(SUM(cu.monto + COALESCE(cu.cargos_neto, 0) - cu.monto_pagado), 0) AS adeudo
+             COALESCE(SUM(max(cu.monto + COALESCE(cu.cargos_neto, 0) - cu.monto_pagado, 0)), 0) AS adeudo
         FROM cuotas cu
         JOIN clientes c ON c.id = cu.cliente_id
         JOIN comunidades co ON co.id = c.comunidad_id

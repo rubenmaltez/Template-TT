@@ -332,10 +332,10 @@ class _ClientesAdminScreenState extends ConsumerState<ClientesAdminScreen> {
                  WHERE ct.cliente_id = c.id) AS planes,
                (SELECT GROUP_CONCAT(DISTINCT ct.dia_pago)
                   FROM contratos ct WHERE ct.cliente_id = c.id) AS dias_pago,
-               COALESCE((SELECT SUM(cu.monto + COALESCE(cu.cargos_neto, 0) - cu.monto_pagado)
-                  FROM cuotas cu
-                 WHERE cu.cliente_id = c.id
-                   AND cu.estado IN ('pendiente','parcial')), 0) AS saldo
+                COALESCE((SELECT SUM(max(cu.monto + COALESCE(cu.cargos_neto, 0) - cu.monto_pagado, 0))
+                   FROM cuotas cu
+                  WHERE cu.cliente_id = c.id
+                    AND cu.estado IN ('pendiente','parcial')), 0) AS saldo
           FROM clientes c
      LEFT JOIN comunidades co ON co.id = c.comunidad_id
      LEFT JOIN cobradores cb ON cb.id = c.cobrador_id
@@ -846,7 +846,7 @@ class _ListaState extends State<_Lista> {
                                 AND date(cu.fecha_vencimiento, '+' || ? || ' days') >= date('now', '-6 hours')
                                THEN 1 ELSE 0 END), 0) AS en_gracia,
              COALESCE(SUM(CASE WHEN cu.estado IN ('pendiente','parcial')
-                                THEN cu.monto + COALESCE(cu.cargos_neto, 0) - cu.monto_pagado
+                                THEN max(cu.monto + COALESCE(cu.cargos_neto, 0) - cu.monto_pagado, 0)
                                 ELSE 0 END), 0) AS saldo,
              (SELECT COUNT(*) FROM contratos ct
                WHERE ct.cliente_id = c.id

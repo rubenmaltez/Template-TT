@@ -235,6 +235,17 @@ AGENTS.md):
   6. Tocá el botón de descarga y elegí la opción **"Todos los clientes"**.
   7. *Ver:* Se genera y guarda el Excel de todos los clientes sin importar el filtro activo (`todos_los_clientes_AAAA_MM_DD.xlsx`).
   *Si falla:* Verificar que la base de datos local contenga información válida y que el formato de fecha se renderice con `Fmt.fechaNi` (sin warnings de parsed Null).
+- **Opción A & Opción B / Sprint 4 (2026-06-12, 0118):**
+  1. *Motivo de Cancelación Obligatorio (Contratos):* Andá al detalle de un contrato y cambiale el estado a **Cancelado**.
+     *Ver:* Se abre el diálogo `_CancelarContratoDialog` solicitando un motivo de anulación. El botón "Confirmar" está deshabilitado hasta que escribas algo. Ingresá un motivo (ej: "Se muda de zona") y confirmá. En la lista de cuotas, tocá una cuota pendiente anulada y ve su historial. *Ver:* Muestra el motivo ingresado. Ejecutá la query de cargos extra. *Ver:* El cargo de liquidación generado tiene como descripción "Se muda de zona".
+  2. *Baja de Equipo Terminal (Inventario):* Como admin, intentá cambiar el estado de un equipo que ya esté en estado **'baja'**.
+     *Ver:* La base de datos (Postgres/Supabase) lanza un error a través del trigger guard impidiendo cualquier cambio (es un estado terminal).
+  3. *Bloqueo de Transferencias Tardías (Inventario):* Como admin, intentá cambiar el `ubicacion_id` (transferir) de un equipo que esté en estado **'instalado'** sin pasar su estado a **'en_stock'**.
+     *Ver:* La base de datos lanza un error a través del trigger guard impidiendo la transferencia directa, exigiendo desinstalarlo primero a stock.
+  4. *Clampero de Saldos a >= 0 (Matemática):* Forzá una cuota para que su saldo deudor teórico sea negativo (ej: `monto_pagado > monto + cargos_neto`).
+     *Ver:* En el dashboard (saldo general, saldo vencido), en la lista de clientes (admin/cobrador), en la exportación de clientes a Excel y en los 6 reportes de PDF y Excel, el saldo de dicho cliente/cuota se computa y muestra como `0.0`, nunca negativo.
+  5. *Auto-eventos de Ticket (Tickets):* Creá un ticket, asignalo a un técnico, cambiale el estado y comentá.
+     *Ver:* En la bitácora/historial del ticket se ven reflejados todos los eventos correspondientes (creado, asignado, cambios de estado) generados automáticamente en el servidor por el trigger `trg_tickets_eventos_auto` (y no por el cliente).
 - ⟨agregar acá los features nuevos a medida que se entregan⟩
 
 ---

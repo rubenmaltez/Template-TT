@@ -343,7 +343,7 @@ class _ClientesListState extends State<_ClientesList> {
             AND date(cu.fecha_vencimiento, '+' || ? || ' days') < date('now', '-6 hours')
           THEN 1 ELSE 0 END), 0) AS cuotas_vencidas,
         COALESCE(SUM(CASE WHEN cu.estado IN ('pendiente','parcial')
-                          THEN cu.monto + COALESCE(cu.cargos_neto, 0) - cu.monto_pagado
+                          THEN max(cu.monto + COALESCE(cu.cargos_neto, 0) - cu.monto_pagado, 0)
                           ELSE 0 END), 0) AS saldo,
         (SELECT COUNT(*) FROM contratos ct
           WHERE ct.cliente_id = c.id

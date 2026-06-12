@@ -529,23 +529,13 @@ class _TicketDetailScreenState extends ConsumerState<TicketDetailScreen> {
 
   // ── Acciones ────────────────────────────────────────────────────────────
   Future<void> _cambiarEstado(Map<String, dynamic> t, String nuevo) async {
-    final tenantId = ref.read(tenantIdProvider);
-    if (tenantId == null) return;
-    final hechoPor = ref.read(cobradorActualProvider).valueOrNull?.id;
     final anterior = t['estado'] as String? ?? 'abierto';
-    final now = DateTime.now().toIso8601String();
     final ocurrido = DateTime.now().toUtc().toIso8601String();
     // Sello de tiempo según el estado destino.
     final extraSet = switch (nuevo) {
       'resuelto' => ', resuelto_en = ?',
       'cerrado' => ', cerrado_en = ?',
       _ => '',
-    };
-    final tipoEvento = switch (nuevo) {
-      'cancelado' => 'cancelado',
-      'cerrado' => 'cerrado',
-      'reabierto' => 'reabierto',
-      _ => 'cambio_estado',
     };
     try {
       await ps.db.writeTransaction((tx) async {
@@ -562,8 +552,6 @@ class _TicketDetailScreenState extends ConsumerState<TicketDetailScreen> {
               ? [nuevo, ocurrido, t['id']]
               : [nuevo, ocurrido, ocurrido, t['id']],
         );
-        await _evento(tx, t['id'] as String, tenantId, tipoEvento, anterior,
-            nuevo, hechoPor, ocurrido, now);
       });
     } on _TkError catch (e) {
       _snack(e.message);
@@ -626,9 +614,6 @@ class _TicketDetailScreenState extends ConsumerState<TicketDetailScreen> {
   }
 
   Future<void> _reasignar(Map<String, dynamic> t) async {
-    final tenantId = ref.read(tenantIdProvider);
-    if (tenantId == null) return;
-    final hechoPor = ref.read(cobradorActualProvider).valueOrNull?.id;
     final tecnicos = await ps.db.getAll(
         "SELECT id, nombre FROM cobradores WHERE activo = 1 AND rol IN ('tecnico','admin_tickets','admin') ORDER BY nombre");
     if (!mounted) return;
@@ -655,7 +640,6 @@ class _TicketDetailScreenState extends ConsumerState<TicketDetailScreen> {
       ),
     );
     if (elegido == null || !mounted) return;
-    final now = DateTime.now().toIso8601String();
     final ocurrido = DateTime.now().toUtc().toIso8601String();
     try {
       await ps.db.writeTransaction((tx) async {
@@ -673,9 +657,6 @@ class _TicketDetailScreenState extends ConsumerState<TicketDetailScreen> {
           'UPDATE tickets SET asignado_a = ?, estado = ?, ocurrido_en = ? WHERE id = ?',
           [elegido.id, nuevoEstado, ocurrido, t['id']],
         );
-        await _evento(tx, t['id'] as String, tenantId, 'asignado', estadoActual,
-            nuevoEstado, hechoPor, ocurrido, now,
-            comentario: elegido.id == null ? 'Sin asignar' : 'Asignado a ${elegido.nombre}');
       });
     } catch (e) {
       _snack(mensajeErrorHumano(e));

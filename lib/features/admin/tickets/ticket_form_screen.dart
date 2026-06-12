@@ -274,12 +274,7 @@ class _TicketFormScreenState extends ConsumerState<TicketFormScreen> {
             estado, _prioridad, _asignadoA, hechoPor, now, ocurrido, checklistJson,
           ],
         );
-        await _evento(tx, id, tenantId, 'creado', null, estado, hechoPor,
-            ocurrido, now);
-        if (_asignadoA != null) {
-          await _evento(tx, id, tenantId, 'asignado', 'abierto', 'asignado',
-              hechoPor, ocurrido, now);
-        }
+
       });
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -304,23 +299,6 @@ class _TicketFormScreenState extends ConsumerState<TicketFormScreen> {
           .showSnackBar(SnackBar(content: Text(msg)));
     }
   }
-}
-
-/// Inserta una fila de bitácora (`ticket_eventos`).
-Future<void> _evento(dynamic tx, String ticketId, String tenantId,
-    String tipoEvento, String? estadoAnt, String? estadoNue, String? hechoPor,
-    String ocurrido, String now,
-    {String? comentario}) async {
-  await tx.execute(
-    '''INSERT INTO ticket_eventos
-       (id, tenant_id, ticket_id, tipo_evento, estado_anterior, estado_nuevo,
-        comentario, hecho_por, ocurrido_en, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
-    [
-      const Uuid().v4(), tenantId, ticketId, tipoEvento, estadoAnt, estadoNue,
-      comentario, hechoPor, ocurrido, now,
-    ],
-  );
 }
 
 /// Búsqueda de cliente (opcional) para asociar al ticket.

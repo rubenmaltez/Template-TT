@@ -19,40 +19,30 @@
 ## ⭐ ESTADO ACTUAL (refrescar al cerrar cada sesión)
 
 - **Branch viva: `main`** (todas las ramas efímeras fusionadas y borradas).
-  **Único tag/release en GitHub: `v0.11.3`** (compresión de media + branding
-  de reportes). Limpieza 2026-06-12 por decisión de Rubén: releases/tags
-  viejos (v0.9.0→v0.11.2) y checkpoints `pre-mvp-v1/v2` BORRADOS — de acá en
-  más solo se conserva la versión vigente.
-- **Modelo de branching:** cada sesión de trabajo crea su rama efímera
-  (`claude/*` o feature) DESDE `main` → al terminar se mergea a `main` y la
-  rama se BORRA. Hitos importantes se marcan con tag, no con rama.
-- **App:** v0.11.3 · schema PowerSync **v27** · migraciones **0001→0117
-  TODAS corridas** (0117 corrida y VERIFICADA 2026-06-12) · **sync rules v8 "Active"**.
+  **Único tag/release en GitHub: `v0.11.3`**. Limpieza 2026-06-12 por decisión de Rubén: releases/tags
+  viejos (v0.9.0→v0.11.2) y checkpoints `pre-mvp-v1/v2` BORRADOS.
+- **Modelo de branching:** cada sesión de trabajo desarrolla en rama efímera, al terminar se mergea a `main` y se borra.
+- **App:** v0.11.3 · schema PowerSync **v27** · migraciones **0001→0117 TODAS corridas** (migración **0118 CREADA**, pendiente de correr en el Dashboard de Supabase) · **sync rules v8 "Active"**.
 - **Edge Functions:** las 6 deployadas al día (redeployadas 2026-06-09).
-- **Audit integral 2026-06-11** (8 agentes; reporte + plan de 4 sprints en
-  `docs/archive/AUDIT-INTEGRAL-2026-06-11.md`). **Sprint 1 mergeado a main.
-  Sprint 2 IMPLEMENTADO**.
+- **Audit integral 2026-06-11**: Sprint 1 mergeado a main. Sprint 2 implementado. **Sprint 4 (Opción A + Opción B) IMPLEMENTADOS**.
 - **Qué falta:**
-  1. Testing manual de v0.11.3 instalada: los 9 pasos de compresión/branding
-     (entrada 2026-06-12 (e)) + pasada del §0.3 de TESTING.md.
-  2. Quedan los HIGH restantes del audit integral según el reporte (Sprints 3-4).
-- **Hecho recién (2026-06-12):** mergeada `compress-media-and-report-ui` a
-  `main` (fast-forward, rama borrada), bump a `0.11.3+113` y release
-  `v0.11.3` publicado con `build-release.ps1` (instaladores en el Escritorio).
-  Después: limpieza total de GitHub — borrados los releases v0.9.0→v0.11.2
-  (con sus tags) y los tags `pre-mvp-v1/v2`; queda solo `v0.11.3`.
-- **Salud (verificado contra el CÓDIGO 2026-06-12):** del audit 2026-06-09 no
-  queda nada abierto. Del audit 2026-06-11, los **10 CRITICAL/HIGH están TODOS
-  resueltos y deployados**: Sprint 1 → #1/#2/#5 · Sprint 2 → #3 · mega-sprint
-  **0116 "guards_server_sprint3"** + fixes client → #4/#6/#7/#8/#9/#10 (deploy
-  0116 verificado 2026-06-11; PopScope/doble-submit/confirmación en el código
-  con comentarios "FIX AUDIT"). Las líneas anteriores "quedan 7/6 HIGH" eran
-  arrastre documental — NO reflejaban el código. Pendiente REAL del audit:
-  solo el **Sprint 4 (MEDIUMs/LOWs de pulido)** + 3 flecos menores en backlog:
-  motivo en cancelación de contrato (#8) · 'baja' de serial no-terminal
-  server-side y transferencia tardía sobre instalado (#10) · historial de
-  `cobradores` con hora server por falta de ocurrido_en (#9, ACEPTADO: lo
-  edita el admin online).
+  1. Correr la migración `0118_serial_baja_transferencias_tardias.sql` en el SQL Editor de Supabase.
+  2. Testing manual de Rubén para los cambios de la 0118 (baja terminal, transferencias tardías, auto-eventos de ticket) y motivo de cancelación obligatorio en contratos.
+  3. Testing manual de la v0.11.3 instalada (compresión/branding, entrada (e)).
+- **Hecho recién (2026-06-12):** Implementados y validados los cambios de la Opción A y Opción B (Sprint 4). Pruebas estáticas (`flutter analyze` limpia con 4 deprecaciones conocidas) y unitarias (`flutter test` 275/275 exitosas).
+
+---
+
+## 2026-06-12 (g) — Opción A & Opción B / Sprint 4 (baja terminal, motivo obligatorio, saldo >= 0, auto-eventos)
+
+**Qué se pidió:** Implementar la Opción A (seriales: baja es estado terminal, bloquear transferencias de instalado sin volver a stock; contratos: motivo de cancelación obligatorio) y Opción B / Sprint 4 (saldo clampeado a >= 0 para evitar saldos negativos por sobre-pagos; auto-eventos de ticket en el servidor).
+
+**Qué se hizo:**
+- **Base de Datos**: Creada migración `0118_serial_baja_transferencias_tardias.sql` que actualiza el trigger guard de transiciones de seriales y crea el trigger `trg_tickets_eventos_auto` para centralizar la inserción de eventos de ticket en el servidor.
+- **Contratos**: Añadido diálogo stateful obligatorio `_CancelarContratoDialog` en `contrato_detail_screen.dart` para capturar el motivo de cancelación, y propagación del mismo a cuotas y cargos de liquidación. Clampero de saldos en cuotas parciales.
+- **Clampero de Saldos**: Modificados `clientes_list_screen.dart`, `clientes_admin_screen.dart` (lista y Excel), `dashboard_providers.dart` (KPIs), y `reportes_admin_screen.dart` (las 6 consultas PDF/Excel) para clampear el saldo de cada cuota a `>= 0` vía `max(..., 0)`.
+- **Tickets**: Eliminadas inserciones manuales de eventos de ticket (`creado`, `asignado`, `cambio_estado`, `reasignado`) en `ticket_form_screen.dart` y `ticket_detail_screen.dart` (los comentarios, materiales y adjuntos siguen haciéndose desde el cliente).
+- **Verificación**: `flutter analyze` exitoso (0 errores, 4 deprecaciones pre-existentes) y `flutter test` (275 exitosos).
 
 ---
 

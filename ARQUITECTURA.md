@@ -236,7 +236,8 @@ inv_seriales; NO cuotas/pagos — regla de profundidad).
 **[H]** El vínculo cliente↔plan que GENERA las cuotas (las crea un trigger
 server, nunca el cliente). El detalle es el centro de control: cuotas,
 pagos, estado, documento. **Cancelar un contrato liquida sus cuotas** dejando
-saldo 0 sin borrar plata cobrada (terminal, no se reactiva).
+saldo 0 sin borrar plata cobrada (terminal, no se reactiva y exige obligatoriamente ingresar un motivo
+que se guarda en el changelog/cuotas/cargos).
 **[AI]** `contrato_detail_screen.dart` + `_header/_cuotas/_pagos/_documento`
 · form create-only `contrato_form_screen.dart` (la edición se eliminó) ·
 providers en `data/providers/contrato_providers.dart`. Total fijo =
@@ -345,9 +346,11 @@ puerto del cliente). Consumidor principal: **incidentes** (derivación de
 afectados) y tickets (`puerto_id`).
 
 ### Inventario (módulo opcional) — `lib/features/admin/inventario/`
-> 0116 (#10): `trg_inv_seriales_guard_transicion` — instalar exige venir de
-> `en_stock` y un instalado no cambia de cliente sin pasar por stock (cierra
-> la doble asignación offline). `inv_movimientos.ocurrido_en` ahora en UTC.
+> 0118 (Opción A): `trg_inv_seriales_guard_transicion` — 'baja' es terminal (no se puede
+> cambiar de estado una vez dado de baja), instalar exige venir de `en_stock`, un
+> instalado no cambia de cliente sin pasar por stock, y se bloquean transferencias tardías
+> (no se puede cambiar `ubicacion_id` de un `'instalado'` sin pasarlo antes a `'en_stock'`).
+> `inv_movimientos.ocurrido_en` en UTC.
 **[H]** Stock del ISP: catálogo, ubicaciones (bodega/custodia del técnico),
 seriales cuna-a-tumba y ledger de movimientos. El stock NO es un contador:
 se DERIVA (serializado = COUNT de seriales `en_stock`; granel = Σdestino−Σorigen).
@@ -359,9 +362,11 @@ Gate: módulo `inventario` (menú+router+**RLS 0114**). Historial:
 `HistorialSerialWidget` (serial + movimientos + ticket_materiales).
 
 ### Tickets + Técnico + Incidentes (módulo opcional) — `lib/features/admin/tickets/`, `lib/features/tecnico/`, `lib/features/admin/incidentes/`
+> 0118 (M19): la generación de eventos del ticket se realiza automáticamente en el
+> servidor (`trg_tickets_eventos_auto`), eliminando inserciones client-side de
+> creación, asignación y cambios de estado.
 > 0116 (M18): el correlativo local del ticket es PROVISORIO — en conflicto el
-> server lo re-asigna (`trg_tickets_correlativo`); el ticket ya no se descarta.
-> M16: las transiciones terminales por rol confirman antes de ejecutar.
+> server lo re-asigna (`trg_tickets_correlativo`). Transiciones terminales por rol confirman.
 **[H]** El ciclo de trabajo de campo: admin crea/asigna → técnico resuelve
 offline (avanzar/pausar/resolver, checklist, fotos, comentarios) y consume
 materiales de su custodia (descuenta inventario e instala el equipo en el

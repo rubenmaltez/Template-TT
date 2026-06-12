@@ -107,39 +107,21 @@ class _ContratoDetailScreenState extends ConsumerState<ContratoDetailScreen> {
     // (anula pendientes + inserta descuentos liquidadores). Un tap
     // equivocado en el PopupMenu no puede ejecutarlo directo — anular UN
     // pago exige motivo; cancelar el contrato entero no pedía nada.
+    String? motivoCancelacion;
     if (nuevoEstado == 'cancelado') {
-      final ok = await showDialog<bool>(
+      final motivo = await showDialog<String>(
         context: context,
-        builder: (ctx) => AlertDialog(
-          title: const Text('¿Cancelar este contrato?'),
-          content: const Text(
-              'Es una acción TERMINAL: las cuotas pendientes se anulan y '
-              'las parciales se liquidan con descuento (lo ya cobrado se '
-              'preserva). El contrato no se puede reactivar.'),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('Volver'),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.pop(ctx, true),
-              style: FilledButton.styleFrom(
-                backgroundColor: Theme.of(ctx).colorScheme.error,
-                foregroundColor: Theme.of(ctx).colorScheme.onError,
-              ),
-              child: const Text('Cancelar contrato'),
-            ),
-          ],
-        ),
+        builder: (ctx) => const _CancelarContratoDialog(),
       );
-      if (ok != true || !mounted) return;
+      if (motivo == null || motivo.isEmpty || !mounted) return;
+      motivoCancelacion = motivo;
     }
     _procesandoEstado = true;
     // Hora REAL del dispositivo (UTC) para el change log — offline-first.
     final ocurridoEn = DateTime.now().toUtc().toIso8601String();
     try {
       if (nuevoEstado == 'cancelado') {
-        await _cancelarYLiquidarCuotas(ocurridoEn);
+        await _cancelarYLiquidarCuotas(ocurridoEn, motivoCancelacion!);
       } else {
         await ps.db.execute(
           'UPDATE contratos SET estado = ?, ocurrido_en = ? WHERE id = ?',
@@ -185,7 +167,7 @@ class _ContratoDetailScreenState extends ConsumerState<ContratoDetailScreen> {
   /// Precondición: NO se llama mientras se impersona (lo bloquea `_cambiarEstado`
   /// arriba — A3), así que la atribución del descuento es siempre del tenant
   /// real, no de la fila System del super_admin.
-  Future<void> _cancelarYLiquidarCuotas(String ocurridoEn) async {
+  Future<void> _cancelarYLiquidarCuotas(String ocurridoEn, String motivo) async {
     final me = ref.read(cobradorActualProvider).valueOrNull;
     final tenantId = ref.read(tenantIdProvider);
     if (me == null || tenantId == null) {
@@ -199,7 +181,7 @@ class _ContratoDetailScreenState extends ConsumerState<ContratoDetailScreen> {
       '''
       SELECT id, cobrador_id, monto, monto_pagado,
              COALESCE(cargos_neto, 0) AS cargos_neto,
-             (monto + COALESCE(cargos_neto, 0) - monto_pagado) AS saldo
+             max(monto + COALESCE(cargos_neto, 0) - monto_pagado, 0) AS saldo
         FROM cuotas
        WHERE contrato_id = ? AND estado = 'parcial'
       ''',
@@ -220,11 +202,11 @@ class _ContratoDetailScreenState extends ConsumerState<ContratoDetailScreen> {
            SET estado = 'anulada',
                anulada_en = ?,
                anulada_por = ?,
-               motivo_anulacion = 'Contrato cancelado',
+               motivo_anulacion = ?,
                ocurrido_en = ?
          WHERE contrato_id = ? AND estado = 'pendiente'
         ''',
-        [ocurridoEn, me.id, ocurridoEn, widget.contratoId],
+        [ocurridoEn, me.id, motivo, ocurridoEn, widget.contratoId],
       );
       // 3. Parciales → descuento de cancelación por el saldo restante.
       for (final p in parciales) {
@@ -244,7 +226,7 @@ class _ContratoDetailScreenState extends ConsumerState<ContratoDetailScreen> {
           ''',
           [
             localId, tenantId, p['id'], cobradorCuota, saldo,
-            'Saldo cancelado por baja del contrato',
+            motivo,
             me.id, ocurridoEn, localId, ocurridoEn,
           ],
         );
@@ -549,6 +531,81 @@ class _EquiposContratoSectionState extends State<_EquiposContratoSection> {
           );
         },
       ),
+    );
+  }
+}
+
+class _CancelarContratoDialog extends StatefulWidget {
+  const _CancelarContratoDialog();
+
+  @override
+  State<_CancelarContratoDialog> createState() => _CancelarContratoDialogState();
+}
+
+class _CancelarContratoDialogState extends State<_CancelarContratoDialog> {
+  final _controller = TextEditingController();
+  bool _valido = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller.addListener(_actualizarValido);
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _actualizarValido() {
+    final v = _controller.text.trim().isNotEmpty;
+    if (v != _valido) {
+      setState(() => _valido = v);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('¿Cancelar este contrato?'),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const Text(
+            'Es una acción TERMINAL: las cuotas pendientes se anulan y '
+            'las parciales se liquidan con descuento (lo ya cobrado se '
+            'preserva). El contrato no se puede reactivar.',
+          ),
+          const SizedBox(height: 16),
+          TextField(
+            controller: _controller,
+            textCapitalization: TextCapitalization.sentences,
+            decoration: const InputDecoration(
+              labelText: 'Motivo de la cancelación (obligatorio)',
+              hintText: 'Ej. Mudanza, insatisfacción del servicio',
+              border: OutlineInputBorder(),
+            ),
+          ),
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Volver'),
+        ),
+        FilledButton(
+          onPressed: _valido
+              ? () => Navigator.pop(context, _controller.text.trim())
+              : null,
+          style: FilledButton.styleFrom(
+            backgroundColor: _valido ? Theme.of(context).colorScheme.error : null,
+            foregroundColor: _valido ? Theme.of(context).colorScheme.onError : null,
+          ),
+          child: const Text('Cancelar contrato'),
+        ),
+      ],
     );
   }
 }
