@@ -41,12 +41,18 @@
   `v0.11.3` publicado con `build-release.ps1` (instaladores en el Escritorio).
   Después: limpieza total de GitHub — borrados los releases v0.9.0→v0.11.2
   (con sus tags) y los tags `pre-mvp-v1/v2`; queda solo `v0.11.3`.
-- **Salud:** del audit 2026-06-09 no queda nada abierto; del audit 2026-06-11
-  quedan **6 HIGH sin atacar** (= Sprint 3 del reporte: #4 RLS de pagos
-  burlable por REST · #6 PopScope del cobro · #7 doble-submit en forms ·
-  #8 cancelar contrato sin confirmación · #9 changelog de `cobradores` ·
-  #10 guard server de seriales). El "7" anterior era pre-Sprint 2 (#3 cargos
-  auto ya quedó resuelto por el rediseño de descuentos).
+- **Salud (verificado contra el CÓDIGO 2026-06-12):** del audit 2026-06-09 no
+  queda nada abierto. Del audit 2026-06-11, los **10 CRITICAL/HIGH están TODOS
+  resueltos y deployados**: Sprint 1 → #1/#2/#5 · Sprint 2 → #3 · mega-sprint
+  **0116 "guards_server_sprint3"** + fixes client → #4/#6/#7/#8/#9/#10 (deploy
+  0116 verificado 2026-06-11; PopScope/doble-submit/confirmación en el código
+  con comentarios "FIX AUDIT"). Las líneas anteriores "quedan 7/6 HIGH" eran
+  arrastre documental — NO reflejaban el código. Pendiente REAL del audit:
+  solo el **Sprint 4 (MEDIUMs/LOWs de pulido)** + 3 flecos menores en backlog:
+  motivo en cancelación de contrato (#8) · 'baja' de serial no-terminal
+  server-side y transferencia tardía sobre instalado (#10) · historial de
+  `cobradores` con hora server por falta de ocurrido_en (#9, ACEPTADO: lo
+  edita el admin online).
 
 ---
 
