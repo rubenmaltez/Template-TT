@@ -91,17 +91,6 @@ class _UpdateBannerState extends ConsumerState<UpdateBanner> {
                               ),
                               maxLines: 2,
                               overflow: TextOverflow.ellipsis,
-                            )
-                          else if (update.releaseNotes != null && !_ocupado)
-                            Text(
-                              update.releaseNotes!,
-                              style: TextStyle(
-                                color:
-                                    scheme.onPrimary.withValues(alpha: 0.8),
-                                fontSize: 11,
-                              ),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
                             ),
                         ],
                       ),

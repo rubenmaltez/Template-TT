@@ -19,16 +19,26 @@
 ## ⭐ ESTADO ACTUAL (refrescar al cerrar cada sesión)
 
 - **Branch viva: `main`** (todas las ramas efímeras fusionadas y borradas).
-  **Único tag/release en GitHub: `v0.11.5`**. Limpieza 2026-06-12 por decisión de Rubén: releases/tags
+  **Único tag/release en GitHub: `v0.11.6`**. Limpieza 2026-06-12 por decisión de Rubén: releases/tags
   viejos (v0.9.0→v0.11.2) y checkpoints `pre-mvp-v1/v2` BORRADOS.
 - **Modelo de branching:** cada sesión de trabajo desarrolla en rama efímera, al terminar se mergea a `main` y se borra.
-- **App:** v0.11.5 · schema PowerSync **v27** · migraciones **0001→0118 TODAS corridas** · **sync rules v8 "Active"**.
+- **App:** v0.11.6 · schema PowerSync **v27** · migraciones **0001→0118 TODAS corridas** · **sync rules v8 "Active"**.
 - **Edge Functions:** las 6 deployadas al día (redeployadas 2026-06-09).
 - **Audit integral 2026-06-11**: Sprint 1 mergeado a main. Sprint 2 implementado. **Sprint 4 (Opción A + Opción B) IMPLEMENTADOS**.
 - **Qué falta:**
   1. Testing manual de Rubén para los cambios de la 0118 (baja terminal, transferencias tardías, auto-eventos de ticket) y motivo de cancelación obligatorio en contratos.
-  2. Testing manual de la v0.11.5 instalada (compresión/branding + fix de filtros congelados).
-- **Hecho recién (2026-06-12):** Corregido bug de filtros congelados mediante cambio de tipo en `DropdownFiltro` para evitar la interpretación errónea de `null` en Flutter. Pruebas estáticas (`flutter analyze`) y unitarias (`flutter test` 275/275 exitosas). Mapeada la versión a v0.11.5.
+  2. Testing manual de la v0.11.6 instalada (compresión/branding + fix de filtros congelados + banner limpio).
+- **Hecho recién (2026-06-12):** Simplificado el banner de actualización quitando las notas de versión descriptivas para evitar caracteres extraños de codificación y limpiar la interfaz de usuario. Pruebas estáticas (`flutter analyze`) y unitarias (`flutter test` 275/275 exitosas). Mapeada la versión a v0.11.6.
+
+---
+
+## 2026-06-12 (i) — Simplificación del banner de actualización + Release v0.11.6
+
+**Qué se pidió:** Quitar el detalle de las notas de versión (release notes) en el banner superior de actualización para evitar problemas de codificación (tildes raras) y tener una interfaz más limpia, mostrando únicamente el aviso de actualización y el botón.
+
+**Qué se hizo:**
+- **UI**: Modificado `update_banner.dart` para remover el renderizado de `update.releaseNotes` en la columna del banner.
+- **Verificación**: `flutter analyze` exitoso (0 errores, 4 deprecaciones conocidas) y `flutter test` (275 exitosos). Bump a `v0.11.6+116`.
 
 ---
 

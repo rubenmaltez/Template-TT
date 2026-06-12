@@ -1,6 +1,6 @@
 {
-  "version": "0.11.5",
-  "release_notes": "Corrección de filtros de cobrador, zona y nodo que se quedaban congelados al intentar limpiar la selección ('Todas' / 'Todos').",
+  "version": "0.11.6",
+  "release_notes": "Mejora del banner de actualización para mostrar un diseño más limpio sin notas descriptivas redundantes.",
   "download_url_windows": "https://github.com/rubenmaltez/Template-TT/releases/latest/download/SITECSA-CRM.msix",
   "download_url_android": "https://github.com/rubenmaltez/Template-TT/releases/latest/download/SITECSA-CRM.apk",
   "download_url": "https://github.com/rubenmaltez/Template-TT/releases/latest/download/SITECSA-CRM.msix"
