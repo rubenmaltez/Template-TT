@@ -289,7 +289,12 @@ cada cobro), cada uno en PDF y Excel con diálogo nativo de guardado.
 `descarga_archivo.dart` (`file_picker.saveFile`, Windows/Android; web avisa)
 · `arqueo_calculo.dart`. Headers Excel↔PDF alineados. Cortes por
 `date(fecha_pago)` vs boundary Nicaragua (¡`fecha_pago` es local-naive a
-propósito — NO normalizarla a UTC!). → **Receta R8.**
+propósito — NO normalizarla a UTC!). **Branding** (2026-06-12): los 9 PDF
+llevan el LOGO del tenant en `buildHeaderEstandar` (`pdf/pdf_utils.dart`,
+bytes de `logoEmpresaBytesProvider` — cache offline del recibo, helper
+`_logoParaReportes`); el Excel lleva header tipográfico (empresa/título/
+período via `construirExcelBytes`) porque la lib `excel` no embebe imágenes.
+→ **Receta R8.**
 
 ### Historial / Home / Perfil (cobrador) — `lib/features/historial/`, `settings/perfil_screen.dart`
 **[AI]** `historial_screen.dart` (sus cobros; anular si
@@ -565,8 +570,11 @@ cambiás el criterio en Dart, migración para el server también. TZ: siempre
 ### R8 — Agregar un reporte
 1. Tarjeta + query en `reportes_admin_screen.dart` (filtrar `anulado=0`,
    cortes con boundary Nicaragua).
-2. PDF en `reportes/pdf/reporte_<nombre>_pdf.dart` (patrón de los existentes).
-3. Excel en `reportes/excel/reporte_excel.dart` (headers IDÉNTICOS al PDF).
+2. PDF en `reportes/pdf/reporte_<nombre>_pdf.dart` (patrón de los existentes:
+   aceptar `Uint8List? logoBytes`, crear `pw.MemoryImage` UNA vez y pasarlo a
+   `buildHeaderEstandar(logo:)`; el caller le pasa `_logoParaReportes(ref)`).
+3. Excel en `reportes/excel/reporte_excel.dart` (headers IDÉNTICOS al PDF) +
+   registrar el tipo en `_tituloReporte`/`_periodoExcel`/`_hojaNombre`.
 4. Descarga vía `descarga_archivo.dart`. Recaudado = `SUM(monto_cordobas)` no
    anulados — jamás sumar entregado/vuelto.
 
@@ -652,6 +660,7 @@ ambos — el menú oculta, el router rebota).
 | `lib/data/utils/cuota_estado_visual.dart` | estados visuales + colores |
 | `lib/data/utils/ticket_sla.dart` | SLA, transiciones, `parseTicketWallClock` |
 | `lib/data/utils/audit_changelog.dart` | registro de entidades del change log |
+| `lib/data/services/imagen_compresion.dart` | compresión client-side ANTES de todo upload a Storage (isolate; Windows ignora `imageQuality` del picker) |
 | `lib/features/admin/shell/admin_shell.dart` | menú admin + gates |
 | `lib/features/shared/widgets/historial_cambios_widget.dart` | los 5 widgets de historial |
 | `supabase/functions/_shared/*.ts` | helpers de las 6 Edge Functions |

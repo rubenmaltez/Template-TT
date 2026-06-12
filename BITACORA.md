@@ -30,12 +30,48 @@
 - **Audit integral 2026-06-11** (8 agentes; reporte + plan de 4 sprints en
   `docs/archive/AUDIT-INTEGRAL-2026-06-11.md`). **Sprint 1 mergeado a main.
   Sprint 2 IMPLEMENTADO**.
+- **Rama efímera ABIERTA: `compress-media-and-report-ui`** (6 commits desde
+  `7899a29`, pusheada a GitHub) — compresión de imágenes al subir + logo del
+  tenant en reportes PDF + header corporativo en Excel. Implementada y
+  AUDITADA (3 agentes, fixes aplicados); **pendiente del testing manual de
+  Rubén** → al aprobar: merge a `main` y borrar la rama.
 - **Qué falta:**
-  1. Pasada de testing manual del §0.3 de TESTING.md con la nueva versión v0.11.2.
-  2. Quedan los HIGH restantes del audit integral según el reporte (Sprints 3-4).
+  1. Testing manual de la rama `compress-media-and-report-ui` (pasos en la
+     entrada 2026-06-12 (e) de abajo).
+  2. Pasada de testing manual del §0.3 de TESTING.md con la nueva versión v0.11.2.
+  3. Quedan los HIGH restantes del audit integral según el reporte (Sprints 3-4).
 - **Hecho recién (2026-06-12):** Fusionada la rama `mapa-lista-clientes` a `main`, bumped version a `0.11.2+112`, y ejecutado `build-release.ps1` publicando el tag `v0.11.2` en GitHub con instaladores en el Escritorio.
 - **Salud:** del audit 2026-06-09 no queda nada abierto; del audit 2026-06-11
   quedan **7 HIGH sin atacar** (priorizados en el reporte, Sprints 2-3).
+
+---
+
+## 2026-06-12 (e) — Compresión de media + branding de reportes (rama compress-media-and-report-ui, SIN mergear)
+
+**Qué se pidió:** 1) comprimir fotos/documentos al subir a Storage sin
+degradar calidad visible (el storage se llenaba rápido); 2) reportes PDF y
+Excel con header estilo la referencia de Telecable Mairena (logo del tenant,
+el mismo del recibo).
+
+**Qué se hizo** (6 commits `2ead790`→`e9aa01f`):
+- `imagen_compresion.dart` NUEVO: pipeline en isolate (resize 1920px/JPEG 85,
+  EXIF horneado, alpha→blanco, escalera de calidad hasta cumplir el bucket,
+  passthrough anti doble-compresión). Razón: en WINDOWS `image_picker` ignora
+  `imageQuality/maxWidth` → el admin subía fotos crudas. Aplicado en los 6
+  puntos de subida (fotos cliente/ticket/comprobante/logo/documento-foto).
+  PDF/Word NO se recomprimen: peso visible + confirmación si >5 MB.
+- Logo del tenant en los 9 PDF (`buildHeaderEstandar(logo:)`, bytes offline
+  de `logoEmpresaBytesProvider`); Excel con header tipográfico (la lib
+  `excel` no embebe imágenes — decisión de Rubén: NO migrar a syncfusion).
+- Audit Fase 4 (Code+QA+UX): 0 ALTO, 6 MEDIO + 6 BAJO, TODOS fixeados
+  (`e9aa01f`): spinners durante compresión, logo fresco tras reemplazo
+  (invalidación + cache disco), PNG real en logo, guard 10 MB post-compresión
+  para fotos, timeout 8s del download. Decisión aceptada: período PDF
+  mora/clientes queda "Junio 2026" (Excel dice "Al dd/mm"). Tests 275 ✓.
+
+**Pendiente:** testing manual (pasos abajo) → merge a `main` + borrar rama.
+Backlog nuevo: "1024 KB" en el borde de `Fmt.pesoArchivo` · string "3 meses"
+duplicado en inactivos · mapear 413 de Storage a mensaje humano.
 
 ---
 
