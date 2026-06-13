@@ -19,17 +19,30 @@
 ## ⭐ ESTADO ACTUAL (refrescar al cerrar cada sesión)
 
 - **Branch viva: `main`** (todas las ramas efímeras fusionadas y borradas).
-  **Único tag/release en GitHub: `v0.11.7`**. Limpieza 2026-06-12 por decisión de Rubén: releases/tags
-  viejos (v0.9.0→v0.11.2) y checkpoints `pre-mvp-v1/v2` BORRADOS.
+  **Único tag/release en GitHub: `v0.11.8`**. Limpieza 2026-06-12 por decisión de Rubén: releases/tags
+  viejos (v0.9.0→v0.11.7) y checkpoints `pre-mvp-v1/v2` BORRADOS.
 - **Modelo de branching:** cada sesión de trabajo desarrolla en rama efímera, al terminar se mergea a `main` y se borra.
-- **App:** v0.11.7 · schema PowerSync **v27** · migraciones **0001→0118 TODAS corridas** · **sync rules v8 "Active"**.
+- **App:** v0.11.8 · schema PowerSync **v27** · migraciones **0001→0118 TODAS corridas** · **sync rules v8 "Active"**.
 - **Edge Functions:** las 6 deployadas al día (redeployadas 2026-06-09).
 - **Audit integral 2026-06-11**: Sprint 1 mergeado a main. Sprint 2 implementado. **Sprint 4 (Opción A + Opción B) IMPLEMENTADOS**.
 - **Qué falta:**
-  1. Testing de Rubén de la rotación táctil del mapa y botón de brújula en PC y móvil.
-  2. Testing de trazado de ruta 100% offline (modo avión) y panel de información inferior.
+  1. Testing de Rubén de la rotación táctil del mapa y botón de brújula en PC y móvil (v0.11.8).
+  2. Testing de trazado de ruta 100% offline (modo avión) y panel de información inferior (v0.11.8).
   3. Testing manual de Rubén para los cambios de la 0118 y v0.11.6.
-- **Hecho recién (2026-06-12):** Implementada la rotación interactiva de mapas con brújula de reseteo, y un motor de ruteo 100% offline basado en A* y una base de datos SQLite local (`rutas_nicaragua.db`, 11MB) compilada desde OpenStreetMap de Nicaragua. Pruebas estáticas (`flutter analyze`) limpias. Mapeada la versión a v0.11.7.
+- **Hecho recién (2026-06-12):** Corregida la pantalla negra (loading stuck) al presionar "Ruta" en el mapa, reemplazando `showDialog` por un overlay Reactivo en Stack. Agregadas reglas de audit 7, 8 y 9 en `AGENTS.md` para impedir blockers por diálogos async. Publicada versión `v0.11.8+118`.
+
+---
+
+## 2026-06-12 (k) — Fix de pantalla negra en Ruta + Reglas Audit 7-9 + Release v0.11.8
+
+**Qué se pidió:** Corregir el bug donde la pantalla quedaba negra y bloqueada al presionar el botón "Ruta" tanto en Android como en Windows.
+
+**Qué se hizo:**
+- **UI/UX**: Modificado `mapa_screen.dart` para eliminar el uso de `showDialog` como indicador de carga para el cálculo de rutas (anti-patrón de Flutter). Implementado un indicador de carga reactivo basado en un flag de estado interno (`_isCalculatingRoute`) y un overlay condicional en el `Stack` principal.
+- **Robustez**: Se envolvió el flujo asíncrono de cálculo en un bloque `try/catch/finally` para asegurar que `_isCalculatingRoute = false` se ejecute siempre, previniendo pantallas bloqueadas en caso de excepciones.
+- **AGENTS.md**: Agregadas las Reglas de Audit 7, 8 y 9 para prohibir `showDialog` para loadings, alertar sobre desajustes de contexto con GoRouter al usar `Navigator.pop()`, y obligar a verificar los caminos de error asíncronos.
+- **Release**: Incrementada versión a `0.11.8+118`, ejecutado script de build, y publicado release en GitHub con APK y MSIX, limpiando releases viejos hasta `v0.11.7`.
+
 
 ---
 
