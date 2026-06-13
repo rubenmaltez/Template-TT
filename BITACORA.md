@@ -19,17 +19,29 @@
 ## ⭐ ESTADO ACTUAL (refrescar al cerrar cada sesión)
 
 - **Branch viva: `main`** (todas las ramas efímeras fusionadas y borradas).
-  **Único tag/release en GitHub: `v0.11.8`**. Limpieza 2026-06-12 por decisión de Rubén: releases/tags
-  viejos (v0.9.0→v0.11.7) y checkpoints `pre-mvp-v1/v2` BORRADOS.
+  **Único tag/release en GitHub: `v0.11.9`**. Limpieza 2026-06-12 por decisión de Rubén: releases/tags
+  viejos (v0.9.0→v0.11.8) y checkpoints `pre-mvp-v1/v2` BORRADOS.
 - **Modelo de branching:** cada sesión de trabajo desarrolla en rama efímera, al terminar se mergea a `main` y se borra.
-- **App:** v0.11.8 · schema PowerSync **v27** · migraciones **0001→0118 TODAS corridas** · **sync rules v8 "Active"**.
+- **App:** v0.11.9 · schema PowerSync **v27** · migraciones **0001→0118 TODAS corridas** · **sync rules v8 "Active"**.
 - **Edge Functions:** las 6 deployadas al día (redeployadas 2026-06-09).
 - **Audit integral 2026-06-11**: Sprint 1 mergeado a main. Sprint 2 implementado. **Sprint 4 (Opción A + Opción B) IMPLEMENTADOS**.
 - **Qué falta:**
-  1. Testing de Rubén de la rotación táctil del mapa y botón de brújula en PC y móvil (v0.11.8).
-  2. Testing de trazado de ruta 100% offline (modo avión) y panel de información inferior (v0.11.8).
-  3. Testing manual de Rubén para los cambios de la 0118 y v0.11.6.
-- **Hecho recién (2026-06-12):** Corregida la pantalla negra (loading stuck) al presionar "Ruta" en el mapa, reemplazando `showDialog` por un overlay Reactivo en Stack. Agregadas reglas de audit 7, 8 y 9 en `AGENTS.md` para impedir blockers por diálogos async. Publicada versión `v0.11.8+118`.
+  1. Testing de Rubén de la rotación táctil del mapa y botón de brújula en PC y móvil (v0.11.9).
+  2. Testing de trazado de ruta 100% offline (modo avión) y panel de información inferior (v0.11.9).
+  3. Testing manual de Rubén para el onboarding con contraseña por defecto (v0.11.9).
+  4. Testing manual de Rubén para los cambios de la 0118 y v0.11.6.
+- **Hecho recién (2026-06-12):** Implementada la generación de contraseñas locales por defecto y ocultados visualmente los interruptores (`SwitchListTile`) de envío de correos electrónicos en todos los formularios de invitación de la app (cobradores, tenants, administradores y reenvío de invitaciones), manteniendo la consistencia del backend sin emails. Publicada versión `v0.11.9+119`.
+
+---
+
+## 2026-06-12 (l) — Onboarding con Contraseña por Defecto + Ocultación de Toggles de Email + Release v0.11.9
+
+**Qué se pidió:** Cambiar el flujo para que por defecto siempre se generen contraseñas en lugar de invitaciones por correo electrónico al crear usuarios, y ocultar visualmente el interruptor de invitaciones por email en todas las pantallas donde se invite a nuevos usuarios (cobradores, tenants, administradores y reenvíos).
+
+**Qué se hizo:**
+- **UI/UX**: Modificados 4 diálogos (`_InvitarDialog` en `cobradores_admin_screen.dart`, `_CrearTenantDialog` en `tenants_list_screen.dart`, `InvitarAdminDialog` en `tenant_dialogs_invitar.dart`, y `ReenviarInvitacionDialog` en `tenant_dialogs_miembro.dart`) para cambiar el valor inicial a `_enviarEmail = false` y comentar los widgets `SwitchListTile` correspondientes.
+- **Validación**: Análisis estático `flutter analyze` libre de advertencias `dead_code`, y suite completa de tests de la app (`flutter test` con 275 aprobados).
+- **Release**: Incrementada la versión a `0.11.9+119`, ejecutado script de build, y publicado release en GitHub, barriendo el tag/release obsoleto `v0.11.8`.
 
 ---
 
