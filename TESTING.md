@@ -116,8 +116,18 @@ AGENTS.md):
   columnas Moneda/Entregado/Tasa/Vuelto correctas; PDFs en landscape; Fiscal partido por moneda.
 - **Recibo / impresión:** Android → botón Bluetooth; Windows → "Imprimir en impresora
   del sistema" (diálogo nativo) + "Descargar PDF" si aplica.
-- **Mapa:** buscar por nombre, cédula, teléfono (con/sin guiones), código de cliente
-  y de contrato → centra el pin correcto. Probar offline (tiles cacheados).
+- **Mapa (Rotación y Navegación Offline — 2026-06-12):**
+  1. *Rotación táctil y brújula:* Rotá el mapa con dos dedos sobre la pantalla (en Windows podés mantener presionada la tecla Shift y arrastrar con el botón izquierdo del mouse para simular el gesto de dos dedos).
+     *Ver:* El mapa rota libremente y aparece el botón flotante de la brújula en la esquina superior derecha (debajo de las capas). La brújula apunta siempre al norte geográfico independientemente de la orientación de la pantalla. Presioná el botón de la brújula: el mapa debe reorientarse suavemente de vuelta al norte (rotación 0.0) y la brújula debe desaparecer.
+  2. *Trazado de Ruta Offline:* Tocá el pin de un cliente para abrir su bottom sheet y presioná el botón **"Ruta"**.
+     *Ver:* El bottom sheet se cierra al instante y se dibuja una línea azul con curvas sobre las carreteras reales de Nicaragua que conecta tu ubicación GPS actual (o la posición simulada en caso de no tener GPS) con el pin del cliente.
+  3. *Panel de Información de Ruta:* Al trazarse la ruta, aparece un panel de información en la parte inferior izquierda del mapa.
+     *Ver:* Muestra el nombre del cliente destino, la distancia real en kilómetros/metros siguiendo las calles y el tiempo de viaje estimado (a 40 km/h promedio). El botón "Cerrar" (X) del panel borra la ruta del mapa.
+  4. *Fallback Externo:* Presioná el botón **"Abrir en Google Maps"** en el panel inferior.
+     *Ver:* Lanza de forma externa la aplicación de Google Maps con la ruta pre-configurada hacia el cliente (útil si se requiere navegación por voz).
+  5. *Prueba 100% Offline:* Activá el modo avión en tu dispositivo móvil o desconectá la red en la PC. Tocá un cliente y presioná "Ruta".
+     *Ver:* La ruta azul debe trazarse al instante en el mapa localmente gracias al motor A* ejecutado sobre la base de datos de carreteras local (`rutas_nicaragua.db`), sin dar ningún error por falta de internet.
+- **Búsqueda en Mapa:** buscar por nombre, cédula, teléfono (con/sin guiones), código de cliente y de contrato → centra el pin correcto. Probar offline (tiles cacheados).
 - **Transición:** navegar entre items del sidebar/nav → fade secuencial (sale una,
   entra la otra), nunca las dos encimadas.
 - **Tickets — admin (`/admin/tickets`, Fase 3A):** requiere el módulo `tickets`

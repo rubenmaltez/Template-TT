@@ -1,7 +1,7 @@
 name: isp_billing
 description: App de gestión de clientes y cobros para ISP (Nicaragua) — offline-first con PowerSync.
 publish_to: 'none'
-version: 0.11.6+116
+version: 0.11.7+117
 
 environment:
   sdk: '>=3.4.0 <4.0.0'
@@ -44,6 +44,8 @@ dependencies:
   geolocator: ^13.0.2
   flutter_map: ^7.0.2
   latlong2: ^0.9.1
+  sqlite3: ^2.4.0
+  sqlite3_flutter_libs: ^0.5.24
 
   # Caché en disco de los tiles del mapa (offline mientras navegás) en
   # Android + Windows. flutter_map_cache envuelve el tileProvider; el store
@@ -111,7 +113,6 @@ dev_dependencies:
   # `path` arma paths temporales únicos; `sqlite3` carga la extensión nativa en
   # el VM de `flutter test`. Ver test/data/repositories/pagos_repo_test.dart.
   path: ^1.9.0
-  sqlite3: ^2.4.0
 
   # Empaquetado MSIX para distribución Windows
   msix: ^3.16.8
@@ -129,6 +130,7 @@ flutter:
   assets:
     - assets/fonts/NotoSans-Regular.ttf
     - assets/fonts/NotoSans-Bold.ttf
+    - assets/rutas_nicaragua.db
 
 # Configuración MSIX para distribución Windows.
 # Build: flutter build windows --release && dart run msix:create

@@ -18,6 +18,7 @@ import '../../powersync/db.dart' as ps;
 import '../shared/widgets/dropdown_filtro.dart';
 import '../shared/widgets/empty_state.dart';
 import '../../data/utils/errores.dart';
+import 'servicios/offline_routing_service.dart';
 
 /// Mapa de clientes con flutter_map + OpenStreetMap (sin API key).
 /// Marcador coloreado según estado de cobranza.
@@ -76,10 +77,18 @@ class _MapaScreenState extends ConsumerState<MapaScreen> {
   Position? _currentPosition;
   StreamSubscription<Position>? _positionSubscription;
 
+  // Rotación del mapa y ruta activa offline
+  double _rotationAngle = 0.0;
+  List<LatLng>? _rutaActivaPoints;
+  double? _rutaActivaDistancia;
+  String? _rutaDestinoNombre;
+  Map<String, dynamic>? _rutaDestinoCliente;
+
   @override
   void dispose() {
     _positionSubscription?.cancel();
     _mapController.dispose();
+    OfflineRoutingService.instance.dispose();
     super.dispose();
   }
 
@@ -171,6 +180,117 @@ class _MapaScreenState extends ConsumerState<MapaScreen> {
           SnackBar(content: Text('No se pudo obtener la ubicación: ${mensajeErrorHumano(e)}')),
         );
       }
+    }
+  }
+
+  Future<void> _trazarRuta(Map<String, dynamic> cliente) async {
+    final latCliente = (cliente['latitud'] as num).toDouble();
+    final lngCliente = (cliente['longitud'] as num).toDouble();
+
+    if (_currentPosition == null) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('No se puede calcular la ruta sin tu ubicación GPS actual.'),
+          ),
+        );
+      }
+      return;
+    }
+
+    final start = LatLng(_currentPosition!.latitude, _currentPosition!.longitude);
+    final end = LatLng(latCliente, lngCliente);
+
+    // Mostrar un indicador de carga en la pantalla
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => const Center(
+        child: CircularProgressIndicator(),
+      ),
+    );
+
+    try {
+      final routeData = await OfflineRoutingService.instance.findRoute(start, end);
+      if (mounted) {
+        Navigator.pop(context); // Cerrar indicador de carga
+      }
+
+      if (routeData != null) {
+        setState(() {
+          _rutaActivaPoints = routeData.path;
+          _rutaActivaDistancia = routeData.distanceMetres;
+          _rutaDestinoNombre = cliente['nombre'] as String;
+          _rutaDestinoCliente = cliente;
+        });
+
+        // Mover la cámara del mapa para encuadrar la ruta completa
+        _encuadrarRuta(routeData.path);
+      } else {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('No se pudo encontrar una ruta offline.')),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        Navigator.pop(context); // Cerrar indicador de carga si falló
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error al calcular la ruta: ${mensajeErrorHumano(e)}')),
+        );
+      }
+    }
+  }
+
+  void _encuadrarRuta(List<LatLng> points) {
+    if (points.isEmpty) return;
+    
+    double minLat = points.first.latitude;
+    double maxLat = points.first.latitude;
+    double minLng = points.first.longitude;
+    double maxLng = points.first.longitude;
+
+    for (final p in points) {
+      if (p.latitude < minLat) minLat = p.latitude;
+      if (p.latitude > maxLat) maxLat = p.latitude;
+      if (p.longitude < minLng) minLng = p.longitude;
+      if (p.longitude > maxLng) maxLng = p.longitude;
+    }
+
+    final bounds = LatLngBounds(LatLng(minLat, minLng), LatLng(maxLat, maxLng));
+    _mapController.fitCamera(
+      CameraFit.bounds(
+        bounds: bounds,
+        padding: const EdgeInsets.symmetric(horizontal: 40.0, vertical: 60.0),
+      ),
+    );
+  }
+
+  String _formatearDistanciaRuta(double? metros) {
+    if (metros == null) return '';
+    if (metros < 1000) {
+      return '${metros.toStringAsFixed(0)} m';
+    }
+    return '${(metros / 1000).toStringAsFixed(1)} km';
+  }
+
+  String _estimarTiempoRuta(double? metros) {
+    if (metros == null) return '';
+    // Estimar velocidad promedio de 40 km/h en calles/carreteras
+    final min = (metros / 1000.0) / 40.0 * 60.0;
+    if (min < 1.0) return '1 min';
+    return '${min.toStringAsFixed(0)} min';
+  }
+
+  Future<void> _abrirGoogleMapsExterno() async {
+    if (_rutaDestinoCliente == null) return;
+    final lat = (_rutaDestinoCliente!['latitud'] as num).toDouble();
+    final lng = (_rutaDestinoCliente!['longitud'] as num).toDouble();
+    final uri = Uri.parse(
+        'https://www.google.com/maps/dir/?api=1&destination=$lat,$lng');
+    if (await canLaunchUrl(uri)) {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
     }
   }
 
@@ -381,8 +501,15 @@ class _MapaScreenState extends ConsumerState<MapaScreen> {
                 initialCenter: center,
                 initialZoom: 12.0,
                 interactionOptions: const InteractionOptions(
-                  flags: InteractiveFlag.all & ~InteractiveFlag.rotate,
+                  flags: InteractiveFlag.all,
                 ),
+                onMapEvent: (event) {
+                  if (event.camera.rotation != _rotationAngle) {
+                    setState(() {
+                      _rotationAngle = event.camera.rotation;
+                    });
+                  }
+                },
               ),
               children: [
                 TileLayer(
@@ -390,11 +517,20 @@ class _MapaScreenState extends ConsumerState<MapaScreen> {
                       ? 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'
                       : 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
                   userAgentPackageName: 'com.ispbilling.app',
-                  // Caché en disco (Android/Windows): los tiles que el usuario
-                  // navega CON señal quedan offline. Ambas capas comparten el
-                  // store (las URLs distintas no se pisan). En web cae a red.
                   tileProvider: MapTileCache.instance.tileProvider(),
                 ),
+                if (_rutaActivaPoints != null)
+                  PolylineLayer(
+                    polylines: [
+                      Polyline(
+                        points: _rutaActivaPoints!,
+                        color: Colors.blueAccent.withOpacity(0.85),
+                        strokeWidth: 6.0,
+                        borderColor: Colors.blue.shade900,
+                        borderStrokeWidth: 1.5,
+                      ),
+                    ],
+                  ),
                 MarkerLayer(
                   markers: [
                     ...visibles.map((r) => _markerFor(context, r, colores)),
@@ -497,6 +633,114 @@ class _MapaScreenState extends ConsumerState<MapaScreen> {
                 ),
               ),
             ),
+            // Botón de brújula (solo si está rotado)
+            if (_rotationAngle != 0.0)
+              Positioned(
+                top: 56,
+                right: 8,
+                child: SafeArea(
+                  bottom: false,
+                  child: FloatingActionButton.small(
+                    heroTag: 'mapa_compass',
+                    tooltip: 'Restablecer orientación al norte',
+                    onPressed: () {
+                      _mapController.rotate(0.0);
+                      setState(() => _rotationAngle = 0.0);
+                    },
+                    child: Transform.rotate(
+                      angle: -_rotationAngle * (pi / 180.0),
+                      child: const Icon(Icons.explore),
+                    ),
+                  ),
+                ),
+              ),
+            // Panel de ruta activa offline
+            if (_rutaActivaPoints != null)
+              Positioned(
+                left: 16,
+                right: 80, // deja espacio para el botón de ubicación
+                bottom: 16,
+                child: SafeArea(
+                  child: Card(
+                    elevation: 6,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Padding(
+                      padding: const EdgeInsets.all(12.0),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  'Ruta a: ${_rutaDestinoNombre ?? "Cliente"}',
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 14,
+                                  ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                              IconButton(
+                                constraints: const BoxConstraints(),
+                                padding: EdgeInsets.zero,
+                                icon: const Icon(Icons.close, size: 20),
+                                onPressed: () {
+                                  setState(() {
+                                    _rutaActivaPoints = null;
+                                    _rutaActivaDistancia = null;
+                                    _rutaDestinoNombre = null;
+                                    _rutaDestinoCliente = null;
+                                  });
+                                },
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 4),
+                          Row(
+                            children: [
+                              const Icon(Icons.directions_car, size: 16, color: Colors.blueAccent),
+                              const SizedBox(width: 6),
+                              Text(
+                                _formatearDistanciaRuta(_rutaActivaDistancia),
+                                style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
+                              ),
+                              const SizedBox(width: 12),
+                              const Icon(Icons.access_time, size: 16, color: Colors.grey),
+                              const SizedBox(width: 6),
+                              Text(
+                                _estimarTiempoRuta(_rutaActivaDistancia),
+                                style: const TextStyle(fontSize: 13, color: Colors.grey),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 8),
+                          SizedBox(
+                            width: double.infinity,
+                            height: 32,
+                            child: OutlinedButton.icon(
+                              style: OutlinedButton.styleFrom(
+                                padding: EdgeInsets.zero,
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                              ),
+                              icon: const Icon(Icons.open_in_new, size: 14),
+                              label: const Text('Abrir en Google Maps', style: TextStyle(fontSize: 12)),
+                              onPressed: _abrirGoogleMapsExterno,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
           ],
         );
       },
@@ -585,7 +829,11 @@ class _MapaScreenState extends ConsumerState<MapaScreen> {
       context: context,
       showDragHandle: true,
       isScrollControlled: true,
-      builder: (_) => _ClientePinSheet(row: r, esTecnico: esTecnico),
+      builder: (_) => _ClientePinSheet(
+        row: r,
+        esTecnico: esTecnico,
+        onTrazarRuta: () => _trazarRuta(r),
+      ),
     );
   }
 }
@@ -603,9 +851,14 @@ typedef _ContratoCuota = ({
 /// Popup del pin de cliente en el mapa: foto de la casa + contacto + acciones
 /// (llamar, ruta, ver cliente, pagar la cuota más vieja). Acceso rápido de campo.
 class _ClientePinSheet extends ConsumerStatefulWidget {
-  const _ClientePinSheet({required this.row, required this.esTecnico});
+  const _ClientePinSheet({
+    required this.row,
+    required this.esTecnico,
+    required this.onTrazarRuta,
+  });
   final Map<String, dynamic> row;
   final bool esTecnico;
+  final VoidCallback onTrazarRuta;
 
   @override
   ConsumerState<_ClientePinSheet> createState() => _ClientePinSheetState();
@@ -683,14 +936,9 @@ class _ClientePinSheetState extends ConsumerState<_ClientePinSheet> {
     if (await canLaunchUrl(uri)) await launchUrl(uri);
   }
 
-  Future<void> _ruta() async {
-    final lat = (widget.row['latitud'] as num).toDouble();
-    final lng = (widget.row['longitud'] as num).toDouble();
-    final uri = Uri.parse(
-        'https://www.google.com/maps/dir/?api=1&destination=$lat,$lng');
-    if (await canLaunchUrl(uri)) {
-      await launchUrl(uri, mode: LaunchMode.externalApplication);
-    }
+  void _ruta() {
+    Navigator.pop(context); // cierra el sheet
+    widget.onTrazarRuta();  // traza la ruta interna en el mapa
   }
 
   void _irACobro(String cuotaId) {

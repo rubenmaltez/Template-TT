@@ -26,6 +26,7 @@ supabase/.temp/
 
 # PowerSync SQLite local cache
 *.db
+!assets/rutas_nicaragua.db
 *.db-journal
 *.db-shm
 *.db-wal

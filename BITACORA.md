@@ -19,16 +19,29 @@
 ## ⭐ ESTADO ACTUAL (refrescar al cerrar cada sesión)
 
 - **Branch viva: `main`** (todas las ramas efímeras fusionadas y borradas).
-  **Único tag/release en GitHub: `v0.11.6`**. Limpieza 2026-06-12 por decisión de Rubén: releases/tags
+  **Único tag/release en GitHub: `v0.11.7`**. Limpieza 2026-06-12 por decisión de Rubén: releases/tags
   viejos (v0.9.0→v0.11.2) y checkpoints `pre-mvp-v1/v2` BORRADOS.
 - **Modelo de branching:** cada sesión de trabajo desarrolla en rama efímera, al terminar se mergea a `main` y se borra.
-- **App:** v0.11.6 · schema PowerSync **v27** · migraciones **0001→0118 TODAS corridas** · **sync rules v8 "Active"**.
+- **App:** v0.11.7 · schema PowerSync **v27** · migraciones **0001→0118 TODAS corridas** · **sync rules v8 "Active"**.
 - **Edge Functions:** las 6 deployadas al día (redeployadas 2026-06-09).
 - **Audit integral 2026-06-11**: Sprint 1 mergeado a main. Sprint 2 implementado. **Sprint 4 (Opción A + Opción B) IMPLEMENTADOS**.
 - **Qué falta:**
-  1. Testing manual de Rubén para los cambios de la 0118 (baja terminal, transferencias tardías, auto-eventos de ticket) y motivo de cancelación obligatorio en contratos.
-  2. Testing manual de la v0.11.6 instalada (compresión/branding + fix de filtros congelados + banner limpio).
-- **Hecho recién (2026-06-12):** Simplificado el banner de actualización quitando las notas de versión descriptivas para evitar caracteres extraños de codificación y limpiar la interfaz de usuario. Pruebas estáticas (`flutter analyze`) y unitarias (`flutter test` 275/275 exitosas). Mapeada la versión a v0.11.6.
+  1. Testing de Rubén de la rotación táctil del mapa y botón de brújula en PC y móvil.
+  2. Testing de trazado de ruta 100% offline (modo avión) y panel de información inferior.
+  3. Testing manual de Rubén para los cambios de la 0118 y v0.11.6.
+- **Hecho recién (2026-06-12):** Implementada la rotación interactiva de mapas con brújula de reseteo, y un motor de ruteo 100% offline basado en A* y una base de datos SQLite local (`rutas_nicaragua.db`, 11MB) compilada desde OpenStreetMap de Nicaragua. Pruebas estáticas (`flutter analyze`) limpias. Mapeada la versión a v0.11.7.
+
+---
+
+## 2026-06-12 (j) — Rotación de Mapa y Motor de Ruteo 100% Offline (SQLite + A*)
+
+**Qué se pidió:** 1) Rotar la orientación del mapa con dos dedos y reorientar al norte con brújula; 2) Ruteo y trazado de caminos reales de Nicaragua de forma interna, 100% local y offline, sin abrir Google Maps externo (salvo como fallback).
+
+**Qué se hizo:**
+- **Mapa**: Habilitada la rotación en `MapOptions`. Creado el botón flotante de Brújula que se orienta de manera inversa a la cámara y resetea a 0 grados.
+- **Ruteo Offline**: Compilada una base de datos local SQLite (`rutas_nicaragua.db`, 11.08MB) filtrando la red vial principal de Nicaragua desde OpenStreetMap (Overpass API) y formateando coordenadas a 5 decimales.
+- **Dart**: Creado `OfflineRoutingService` ejecutando el algoritmo A* en memoria con cola de prioridad y decodificación geométrica de tramos. Dibujo de la ruta mediante `PolylineLayer` y panel inferior de control.
+- **Verificación**: `flutter analyze` exitoso (0 errores). Bump a `v0.11.7+117`.
 
 ---
 
