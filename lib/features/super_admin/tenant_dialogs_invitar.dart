@@ -32,7 +32,7 @@ class _InvitarAdminDialogState extends ConsumerState<InvitarAdminDialog> {
   final _nombre = TextEditingController();
   final _telefono = TextEditingController();
   bool _enviando = false;
-  bool _enviarEmail = true;
+  bool _enviarEmail = false;
   String? _error;
 
   @override
@@ -170,24 +170,24 @@ class _InvitarAdminDialogState extends ConsumerState<InvitarAdminDialog> {
             // el user leía la explicación antes de saber qué modo
             // estaba eligiendo. Mismo patrón que _CrearTenantDialog y
             // _ReenviarInvitacionDialog.
-            SwitchListTile(
-              value: _enviarEmail,
-              onChanged: _enviando
-                  ? null
-                  : (v) => setState(() => _enviarEmail = v),
-              title: const Text('Enviar email de invitación'),
-              subtitle: Text(
-                _enviarEmail
-                    ? 'El usuario recibe el link en su correo.'
-                    : 'No se envía email. Te generamos una contraseña '
-                        'para compartir manualmente.',
-                style: const TextStyle(fontSize: 11),
-              ),
-              contentPadding: EdgeInsets.zero,
-              dense: true,
-              visualDensity: VisualDensity.compact,
-            ),
-            const SizedBox(height: 8),
+            // SwitchListTile(
+            //   value: _enviarEmail,
+            //   onChanged: _enviando
+            //       ? null
+            //       : (v) => setState(() => _enviarEmail = v),
+            //   title: const Text('Enviar email de invitación'),
+            //   subtitle: Text(
+            //     _enviarEmail
+            //         ? 'El usuario recibe el link en su correo.'
+            //         : 'No se envía email. Te generamos una contraseña '
+            //             'para compartir manualmente.',
+            //     style: const TextStyle(fontSize: 11),
+            //   ),
+            //   contentPadding: EdgeInsets.zero,
+            //   dense: true,
+            //   visualDensity: VisualDensity.compact,
+            // ),
+            // const SizedBox(height: 8),
             Text(
               _enviarEmail
                   ? 'El invitado recibirá un email para crear su contraseña. '

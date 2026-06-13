@@ -93,7 +93,7 @@ class ReenviarInvitacionDialog extends ConsumerStatefulWidget {
 
 class _ReenviarInvitacionDialogState
     extends ConsumerState<ReenviarInvitacionDialog> {
-  bool _enviarEmail = true;
+  bool _enviarEmail = false;
   bool _busy = false;
   String? _error;
 
@@ -138,24 +138,24 @@ class _ReenviarInvitacionDialogState
               // lo de abajo (body, warning, botones) depende de él.
               // Sin esto el user leía la explicación antes de saber
               // qué modo estaba eligiendo.
-              SwitchListTile(
-                value: _enviarEmail,
-                onChanged: _busy
-                    ? null
-                    : (v) => setState(() => _enviarEmail = v),
-                title: const Text('Enviar email de invitación'),
-                subtitle: Text(
-                  _enviarEmail
-                      ? 'El usuario recibe el link en su correo.'
-                      : 'No se envía email. Te generamos una contraseña '
-                          'para compartir manualmente.',
-                  style: const TextStyle(fontSize: 11),
-                ),
-                contentPadding: EdgeInsets.zero,
-                dense: true,
-                visualDensity: VisualDensity.compact,
-              ),
-              const SizedBox(height: 8),
+              // SwitchListTile(
+              //   value: _enviarEmail,
+              //   onChanged: _busy
+              //       ? null
+              //       : (v) => setState(() => _enviarEmail = v),
+              //   title: const Text('Enviar email de invitación'),
+              //   subtitle: Text(
+              //     _enviarEmail
+              //         ? 'El usuario recibe el link en su correo.'
+              //         : 'No se envía email. Te generamos una contraseña '
+              //             'para compartir manualmente.',
+              //     style: const TextStyle(fontSize: 11),
+              //   ),
+              //   contentPadding: EdgeInsets.zero,
+              //   dense: true,
+              //   visualDensity: VisualDensity.compact,
+              // ),
+              // const SizedBox(height: 8),
               Text(
                 _enviarEmail
                     ? 'Se le enviará un nuevo email de invitación a $email.'

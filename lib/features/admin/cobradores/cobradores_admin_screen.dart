@@ -150,11 +150,9 @@ class _InvitarDialogState extends ConsumerState<_InvitarDialog> {
   final _prefijo = TextEditingController();
   String _rol = 'cobrador';
   bool _enviando = false;
-  // Mismo patrón que _CrearTenantDialog e InvitarAdminDialog: default ON
-  // pero el admin puede elegir generar password sin mandar email.
-  // Workaround principal cuando el SMTP está en sandbox o el destinatario
-  // no tiene email funcional.
-  bool _enviarEmail = true;
+  // Mismo patrón que _CrearTenantDialog e InvitarAdminDialog: default OFF
+  // por decisión de producto (onboarding sin email).
+  bool _enviarEmail = false;
   String? _error;
 
   @override
@@ -301,28 +299,24 @@ class _InvitarDialogState extends ConsumerState<_InvitarDialog> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            // Switch arriba — el modo afecta UX, copy y botones. Mismo
-            // patrón que _CrearTenantDialog, InvitarAdminDialog y
-            // _ReenviarInvitacionDialog para mantener consistencia
-            // en los 4 flows de invitación del producto.
-            SwitchListTile(
-              value: _enviarEmail,
-              onChanged: _enviando
-                  ? null
-                  : (v) => setState(() => _enviarEmail = v),
-              title: const Text('Enviar email de invitación'),
-              subtitle: Text(
-                _enviarEmail
-                    ? 'El usuario recibe el link en su correo.'
-                    : 'No se envía email. Te generamos una contraseña '
-                        'para compartir manualmente.',
-                style: const TextStyle(fontSize: 11),
-              ),
-              contentPadding: EdgeInsets.zero,
-              dense: true,
-              visualDensity: VisualDensity.compact,
-            ),
-            const SizedBox(height: 8),
+            // SwitchListTile(
+            //   value: _enviarEmail,
+            //   onChanged: _enviando
+            //       ? null
+            //       : (v) => setState(() => _enviarEmail = v),
+            //   title: const Text('Enviar email de invitación'),
+            //   subtitle: Text(
+            //     _enviarEmail
+            //         ? 'El usuario recibe el link en su correo.'
+            //         : 'No se envía email. Te generamos una contraseña '
+            //             'para compartir manualmente.',
+            //     style: const TextStyle(fontSize: 11),
+            //   ),
+            //   contentPadding: EdgeInsets.zero,
+            //   dense: true,
+            //   visualDensity: VisualDensity.compact,
+            // ),
+            // const SizedBox(height: 8),
             Text(
               _enviarEmail
                   ? 'Recibirá un email con link para definir su '

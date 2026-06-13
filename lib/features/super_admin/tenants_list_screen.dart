@@ -419,12 +419,8 @@ class _CrearTenantDialogState extends ConsumerState<_CrearTenantDialog> {
   // Set de códigos de módulos extras seleccionados (los base ya van
   // automáticos vía trigger, no se muestran como opciones).
   final Set<String> _modulosExtras = {};
-  // Default true: queremos que el flow normal mande el email. El
-  // switch permite saltar el envío — el server crea al admin con una
-  // password aleatoria y la devuelve para que el super_admin la
-  // comparta a mano (workaround para SMTP en sandbox o destinatarios
-  // sin email automatizado).
-  bool _enviarEmail = true;
+  // Default false: por decisión de producto (onboarding sin email).
+  bool _enviarEmail = false;
   bool _busy = false;
   String? _error;
 
@@ -600,29 +596,24 @@ class _CrearTenantDialogState extends ConsumerState<_CrearTenantDialog> {
                           },
                   ),
                 ),
-                const SizedBox(height: 8),
-                // Switch para saltar el envío de email — útil con SMTP
-                // en sandbox. Default ON (manda email) — el flow
-                // normal con dominio Resend verificado. Cuando OFF,
-                // el server crea al admin con password aleatoria y la
-                // devuelve para que el super_admin la comparta a mano.
-                SwitchListTile(
-                  value: _enviarEmail,
-                  onChanged: _busy
-                      ? null
-                      : (v) => setState(() => _enviarEmail = v),
-                  title: const Text('Enviar email de invitación'),
-                  subtitle: Text(
-                    _enviarEmail
-                        ? 'El admin recibe el link en su correo.'
-                        : 'No se envía email. Te generamos una '
-                            'contraseña para compartir manualmente.',
-                    style: const TextStyle(fontSize: 11),
-                  ),
-                  contentPadding: EdgeInsets.zero,
-                  dense: true,
-                  visualDensity: VisualDensity.compact,
-                ),
+                // SwitchListTile(
+                //   value: _enviarEmail,
+                //   onChanged: _busy
+                //       ? null
+                //       : (v) => setState(() => _enviarEmail = v),
+                //   title: const Text('Enviar email de invitación'),
+                //   subtitle: Text(
+                //     _enviarEmail
+                //         ? 'El admin recibe el link en su correo.'
+                //         : 'No se envía email. Te generamos una '
+                //             'contraseña para compartir manualmente.',
+                //     style: const TextStyle(fontSize: 11),
+                //   ),
+                //   contentPadding: EdgeInsets.zero,
+                //   dense: true,
+                //   visualDensity: VisualDensity.compact,
+                // ),
+                // const SizedBox(height: 8),
                 if (_error != null) ...[
                   const SizedBox(height: 16),
                   Semantics(
