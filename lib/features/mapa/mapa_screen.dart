@@ -83,6 +83,7 @@ class _MapaScreenState extends ConsumerState<MapaScreen> {
   double? _rutaActivaDistancia;
   String? _rutaDestinoNombre;
   Map<String, dynamic>? _rutaDestinoCliente;
+  bool _isCalculatingRoute = false;
 
   @override
   void dispose() {
@@ -201,23 +202,17 @@ class _MapaScreenState extends ConsumerState<MapaScreen> {
     final start = LatLng(_currentPosition!.latitude, _currentPosition!.longitude);
     final end = LatLng(latCliente, lngCliente);
 
-    // Mostrar un indicador de carga en la pantalla
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) => const Center(
-        child: CircularProgressIndicator(),
-      ),
-    );
+    // Indicador de carga seguro via estado interno (no showDialog, para evitar
+    // pantalla negra si el Navigator.pop falla con GoRouter).
+    setState(() => _isCalculatingRoute = true);
 
     try {
       final routeData = await OfflineRoutingService.instance.findRoute(start, end);
-      if (mounted) {
-        Navigator.pop(context); // Cerrar indicador de carga
-      }
+      if (!mounted) return;
 
       if (routeData != null) {
         setState(() {
+          _isCalculatingRoute = false;
           _rutaActivaPoints = routeData.path;
           _rutaActivaDistancia = routeData.distanceMetres;
           _rutaDestinoNombre = cliente['nombre'] as String;
@@ -227,6 +222,7 @@ class _MapaScreenState extends ConsumerState<MapaScreen> {
         // Mover la cámara del mapa para encuadrar la ruta completa
         _encuadrarRuta(routeData.path);
       } else {
+        setState(() => _isCalculatingRoute = false);
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text('No se pudo encontrar una ruta offline.')),
@@ -235,7 +231,7 @@ class _MapaScreenState extends ConsumerState<MapaScreen> {
       }
     } catch (e) {
       if (mounted) {
-        Navigator.pop(context); // Cerrar indicador de carga si falló
+        setState(() => _isCalculatingRoute = false);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Error al calcular la ruta: ${mensajeErrorHumano(e)}')),
         );
@@ -524,7 +520,7 @@ class _MapaScreenState extends ConsumerState<MapaScreen> {
                     polylines: [
                       Polyline(
                         points: _rutaActivaPoints!,
-                        color: Colors.blueAccent.withOpacity(0.85),
+                        color: Colors.blueAccent.withValues(alpha: 0.85),
                         strokeWidth: 6.0,
                         borderColor: Colors.blue.shade900,
                         borderStrokeWidth: 1.5,
@@ -736,6 +732,29 @@ class _MapaScreenState extends ConsumerState<MapaScreen> {
                             ),
                           ),
                         ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            // Overlay de carga al calcular ruta (dentro del Stack, no showDialog,
+            // para evitar la pantalla negra por context mismatch con GoRouter).
+            if (_isCalculatingRoute)
+              const Positioned.fill(
+                child: ColoredBox(
+                  color: Color(0x44000000),
+                  child: Center(
+                    child: Card(
+                      child: Padding(
+                        padding: EdgeInsets.all(24.0),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            CircularProgressIndicator(),
+                            SizedBox(height: 12),
+                            Text('Calculando ruta...'),
+                          ],
+                        ),
                       ),
                     ),
                   ),

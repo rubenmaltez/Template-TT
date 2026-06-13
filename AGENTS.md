@@ -184,6 +184,36 @@ comandos exactos de migraciones, y si hay redeploy de sync rules.
 **6. Denormalización en INSERTs:** columnas denormalizadas (`cobrador_id`)
    SIEMPRE en el INSERT desde Dart (los triggers no corren en SQLite).
 
+**7. Prohibido `showDialog` como indicador de carga (CRÍTICO):**
+   - NUNCA usar `showDialog` para mostrar un loading/spinner efímero. Si la
+     operación async falla y `Navigator.pop(context)` no se ejecuta (o el
+     `context` apunta al navigator equivocado con GoRouter), la barrera del
+     diálogo queda permanente → **pantalla negra sin salida** para el usuario.
+   - **Patrón correcto**: flag de estado interno (`_isLoading`) + overlay
+     condicional en el `Stack` del widget (`if (_isLoading) Positioned.fill(…)`).
+     Se limpia con `setState` en el `finally`/`catch`, sin depender de
+     navigators. Ejemplo canónico: `mapa_screen.dart` → `_isCalculatingRoute`.
+   - Excepciones válidas: diálogos de CONFIRMACIÓN del usuario (aceptar/cancelar)
+     donde `showDialog` es el patrón correcto (el usuario los cierra).
+
+**8. `Navigator.pop(context)` + GoRouter (CRÍTICO):**
+   - `Navigator.pop(context)` busca el navigator más cercano al `context`
+     pasado. Con GoRouter (navigators anidados), el `context` del State puede
+     NO corresponder al navigator que contiene el diálogo/sheet — el pop
+     cierra la pantalla equivocada o falla silenciosamente.
+   - Toda llamada a `Navigator.pop(context)` que cierre algo abierto con
+     `showDialog`/`showModalBottomSheet` debe usar el `context` del `builder`
+     del diálogo, NO el del State externo. O mejor: evitar el patrón por
+     completo (ver punto 7).
+
+**9. Manejo de errores en flujos async (UI stuck):**
+   - Todo nuevo flujo async que modifique la UI (loading, overlay, diálogo)
+     debe verificar: **¿qué pasa si lanza excepción?** ¿Queda un loading
+     infinito? ¿Queda un diálogo abierto? ¿Queda la pantalla inutilizable?
+   - Usar `try/catch/finally` con cleanup garantizado en `finally` (o en el
+     `catch` + después del `if` de éxito).
+   - Verificar `mounted` antes de cada `setState`/`Navigator.pop` post-await.
+
 ### Formato obligatorio del reporte de audit
 ```
 ## REPORTE DE AUDIT — [nombre]
