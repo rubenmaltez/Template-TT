@@ -860,7 +860,7 @@ class _MiembroCardState extends ConsumerState<MiembroCard> {
                     child: Row(
                       children: [
                         Icon(Icons.swap_horiz,
-                            color: scheme.secondary, size: 20),
+                            color: scheme.primary, size: 20),
                         const SizedBox(width: 12),
                         const Text('Cambiar rol'),
                       ],
@@ -872,7 +872,7 @@ class _MiembroCardState extends ConsumerState<MiembroCard> {
                       child: Row(
                         children: [
                           Icon(Icons.alternate_email,
-                              color: scheme.secondary, size: 20),
+                              color: scheme.primary, size: 20),
                           const SizedBox(width: 12),
                           const Text('Cambiar email'),
                         ],
