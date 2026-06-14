@@ -180,7 +180,8 @@ class _Header extends StatelessWidget {
   static Color _rolColor(ColorScheme s, String rol) => switch (rol) {
         'super_admin' => s.tertiary,
         'admin' => s.primary,
-        'admin_cobranza' => s.secondary,
+        // s.secondary es primary al 10% → iniciales del avatar ilegibles.
+        'admin_cobranza' => Colors.teal.shade700,
         _ => s.onSurfaceVariant,
       };
 }

@@ -175,7 +175,9 @@ String estadoTicketLabel(String e) => switch (e) {
 
 Color estadoTicketColor(String e, ColorScheme c) => switch (e) {
       'abierto' => c.primary,
-      'asignado' => c.secondary,
+      // c.secondary es primary al 10% (relleno) → ilegible como texto. Indigo
+      // legible y distinto de 'abierto'(primary) y 'en_progreso'(blue).
+      'asignado' => Colors.indigo,
       'en_progreso' => Colors.blue,
       'en_espera' => c.tertiary,
       'resuelto' => Colors.green,

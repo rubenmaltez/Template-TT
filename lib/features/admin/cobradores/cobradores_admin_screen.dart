@@ -600,7 +600,8 @@ class _CobradorCard extends ConsumerWidget {
   Color _colorRol(String rol, ColorScheme s) => switch (rol) {
         'admin' => s.primary,
         'admin_cobranza' => s.tertiary,
-        _ => s.secondary,
+        // Default legible (s.secondary es primary al 10% → iniciales invisibles).
+        _ => s.onSurfaceVariant,
       };
 }
 
