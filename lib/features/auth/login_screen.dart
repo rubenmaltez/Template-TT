@@ -286,12 +286,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                     ),
                   ),
                 ),
-                const SizedBox(height: 8),
-                Text(
-                  'SITECSA CRM',
-                  style: Theme.of(context).textTheme.headlineMedium,
-                ),
-                const SizedBox(height: 4),
+                const SizedBox(height: 16),
                 Text(
                   switch (_modo) {
                     _Modo.login => 'Iniciar sesión',

@@ -152,13 +152,7 @@ class _SetPasswordScreenState extends ConsumerState<SetPasswordScreen> {
                       ),
                     ),
                   ),
-                  const SizedBox(height: 8),
-                  Text(
-                    'SITECSA CRM',
-                    textAlign: TextAlign.center,
-                    style: Theme.of(context).textTheme.headlineMedium,
-                  ),
-                  const SizedBox(height: 4),
+                  const SizedBox(height: 16),
                   Text(
                     titulo,
                     textAlign: TextAlign.center,
