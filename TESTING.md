@@ -200,7 +200,7 @@ AGENTS.md):
   clientes sin deuda ni los de cuota fuera de rango. *Ver (admin):* aparece además el chip
   **"Ver todo"** → trae los de fuera de rango (morado atenuado) y sin deuda. *Si falla:* si ves
   pines verdes o TODOS los clientes por defecto, no recompiló (q + flutter run desde cero).
-- **Lista de cobros — "Próximas" + "Ver todo" (admin):** en "Por cobrar", *ver:* chip
+- **Lista de cobros — "Próximas" + "Ver todo" (admin):** en la lista de cobros (vista única "Por cobrar"), *ver:* chip
   **"Próximas"** (vencen después de hoy, dentro del rango) y badges "por vencer" en **morado**.
   Como admin en **`/admin/cobros`** aparece además **"Ver todo"** → TODO lo pendiente sin el
   límite de rango (las cuotas lejanas que el cobrador no ve). *Si falla:* el cobrador NO debe ver

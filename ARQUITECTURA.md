@@ -186,8 +186,15 @@ primero, gate de rango para las futuras). Alimenta a **cobro** (multi-select
 Rubén): "anular cuota" salió del producto (terminal-peligroso; la única
 anulación masiva es Cancelar contrato) y las cuotas manuales también
 (`cuotas.manuales` → `_hidden`; un cobro puntual = "+ Cargo" en el cobro).
-**[AI]** `cuotas_list_screen.dart` (tabs por cobrar/por cliente, filtros,
-multi-select → `/cobro/...`). Estados PERSISTIDOS:
+**[AI]** `cuotas_list_screen.dart` (vista ÚNICA "Por cobrar", 2026-06-14:
+sin tabs ni multi-select. UNA fila por contrato = su cuota MÁS ANTIGUA
+pendiente — `_saldoCanonico`/`_cmpAntiguedad` agrupan client-side, desempate
+por `periodo` igual que el mapa. Buscador de cliente client-side
+(nombre/cédula/teléfono/código, no recrea el stream) + chips de estado +
+filtros Cobrador/Zona en adminMode. Botón "Pagar" por fila → `/cobro/:id`
+**para admin Y cobrador**; tap en la fila → detalle del cliente
+(`/clientes/:id` o `/admin/clientes/:id`). Si el contrato tiene >1 cuota
+pendiente, la fila muestra "N cuotas · debe C$total"). Estados PERSISTIDOS:
 `pendiente/parcial/pagada/anulada` (CHECK en DB); `en_gracia/vencida/hoy/
 proxima` son DERIVADOS en Dart (`data/utils/cuota_estado_visual.dart`
 `estadoVisualCuota()`: >gracia→mora · 1..gracia→gracia · 0→hoy ·
@@ -270,8 +277,12 @@ tiempo real (online/offline) con marcador pulsante y botón de centrado rápido.
 flutter_map_cache, web cae a red). Colores: `cobranza.colores_estados` vía
 `estadoVisualCuota()`. Rutas: `/mapa`, `/admin/mapa`, `/tecnico/mapa`.
 Búsqueda multi-campo. Ubicación actual vía `geolocator` con marcador
-custom (`_UbicacionActualMarker`) y centrado en cámara. La geo del cobro
-NO existe (lat/lng null by-design).
+custom (`UbicacionActualMarker`, en `shared/widgets/mapa_widgets_compartidos.dart`
+— público, compartido con el picker de ubicación) y centrado en cámara. La geo
+del cobro NO existe (lat/lng null by-design). El **selector de ubicación**
+(`shared/widgets/mapa_picker_screen.dart`, lo usan el form de cliente y el de
+nodo de red) replica la misma UX: rotación + brújula, pin de ubicación actual,
+toggle calle/satélite y atribución (2026-06-14).
 
 ### Dashboard admin — `lib/features/admin/dashboard/`
 **[H]** El "cómo viene el negocio" del admin: cobros hoy/semana/mes, mora,
@@ -285,6 +296,12 @@ Nicaragua (UTC-6). KPIs derivan de `pagos` no anulados (`monto_cordobas`).
 ### Reportes — `lib/features/admin/reportes/`
 **[H]** 8 reportes + arqueo de caja (con detalle USD valuado a la tasa de
 cada cobro), cada uno en PDF y Excel con diálogo nativo de guardado.
+El **reporte por cobrador** (2026-06-14) es MULTI-select: el selector
+incluye cobrador/admin/admin_cobranza activos + cualquier ejecutor con pagos
+en el rango (incl. inactivos), default "Todos". PDF agrupado por cobrador
+(por `cobrador_id`, a prueba de homónimos) con subtotal + total general;
+Excel en una hoja con columna Cobrador. PDF y Excel salen de la MISMA query
+`_rowsPorCobrador` → totales idénticos (invariante #10).
 **[AI]** `reportes_admin_screen.dart` (queries + tarjetas) ·
 `pdf/reporte_*_pdf.dart` · `excel/reporte_excel.dart` ·
 `descarga_archivo.dart` (`file_picker.saveFile`, Windows/Android; web avisa)
