@@ -69,10 +69,14 @@ class _ContratoFormScreenState extends ConsumerState<ContratoFormScreen> {
   // Procesando el documento elegido (compresión de fotos, 0.5-3 s): muestra
   // spinner en el botón y bloquea un segundo picker.
   bool _eligiendoDoc = false;
+  // Notifier capturado en initState para resetear el form-dirty en dispose
+  // SIN usar `ref` (no es válido en dispose: "Cannot use ref after disposed").
+  late final StateController<bool> _formDirtyCtrl;
 
   @override
   void initState() {
     super.initState();
+    _formDirtyCtrl = ref.read(formDirtyProvider.notifier);
     _clienteId = widget.clienteId;
   }
 
@@ -84,8 +88,8 @@ class _ContratoFormScreenState extends ConsumerState<ContratoFormScreen> {
     _codigoCtrl.dispose();
     // Reset defensivo del form_dirty_provider: el shell que watchea
     // este provider no debe ver dirty=true tras desmontar el form.
-    // Sync (no post-frame) porque dispose corre fuera del build cycle.
-    ref.read(formDirtyProvider.notifier).state = false;
+    // Notifier CAPTURADO en initState (ref no es válido en dispose).
+    _formDirtyCtrl.state = false;
     super.dispose();
   }
 

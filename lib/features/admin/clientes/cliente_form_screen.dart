@@ -59,10 +59,16 @@ class _ClienteFormScreenState extends ConsumerState<ClienteFormScreen> {
   String? _codigoDupNombre; // nombre del cliente que ya usa ese código (o null)
   bool _codigoYaAsignado = false; // true = el cliente ya tiene código guardado
   Timer? _dupDebounce; // debounce del chequeo de duplicado en vivo
+  // Notifier capturado en initState para resetear el form-dirty en dispose
+  // SIN usar `ref` (ref NO es válido en dispose → "Cannot use ref after the
+  // widget was disposed"). El StateController vive en el container, sobrevive
+  // al widget, así que escribirlo en dispose es seguro.
+  late final StateController<bool> _formDirtyCtrl;
 
   @override
   void initState() {
     super.initState();
+    _formDirtyCtrl = ref.read(formDirtyProvider.notifier);
     _cargar();
   }
 
@@ -108,8 +114,9 @@ class _ClienteFormScreenState extends ConsumerState<ClienteFormScreen> {
     // Reset defensivo del form_dirty_provider: el shell que watchea
     // este provider no debe ver dirty=true tras desmontar el form,
     // sino el próximo sidebar tap mostraría un dialog huérfano.
-    // Sync (antes de super.dispose) porque ref sigue válido acá.
-    ref.read(formDirtyProvider.notifier).state = false;
+    // Usamos el notifier CAPTURADO en initState, NO `ref` (ref no es válido
+    // en dispose: lanza "Cannot use ref after the widget was disposed").
+    _formDirtyCtrl.state = false;
     _dupDebounce?.cancel();
     _codigo.dispose();
     _nombre.dispose();
