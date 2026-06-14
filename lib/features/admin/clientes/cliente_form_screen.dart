@@ -291,9 +291,16 @@ class _ClienteFormScreenState extends ConsumerState<ClienteFormScreen> {
         _dirty = false;
         // Si se DESACTIVÓ el cliente (transición activo→inactivo), ofrecer
         // gestionar sus equipos instalados antes de salir (audit de lifecycle).
+        // El cliente YA se guardó: si el sheet falla (context desactivable tras
+        // el rebuild de PowerSync — pasa context crudo, riesgo residual de
+        // "ancestor unsafe"), NO bloqueamos la navegación; los equipos se
+        // gestionan luego desde el detalle. Fix completo (context estable) en
+        // backlog.
         if (widget.clienteId != null && _activoOriginal && !_activo) {
-          await ofrecerGestionEquiposEnBaja(context, ref,
-              clienteId: widget.clienteId!, entidad: 'cliente');
+          try {
+            await ofrecerGestionEquiposEnBaja(context, ref,
+                clienteId: widget.clienteId!, entidad: 'cliente');
+          } catch (_) {/* no bloquea el cierre del form */}
         }
         if (!mounted) return;
         // Navegamos con el router CAPTURADO (no por context, ya desactivable
