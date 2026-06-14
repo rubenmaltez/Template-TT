@@ -205,16 +205,17 @@ class _CuotasListScreenState extends ConsumerState<CuotasListScreen> {
     final diasVisibles = settings.diasCuotasVisibles;
 
     // El filtro "Parciales" se muestra si el tenant permite pago parcial O si ya
-    // hay cuotas parciales (históricas). Si queda oculto y estaba activo, se
-    // vuelve a 'todas'.
+    // hay cuotas parciales (históricas). Si el filtro activo dejó de estar
+    // disponible, usamos 'todas' como EFECTIVO sin mutar el estado en build
+    // (anti-patrón); el chip elegido por el usuario se conserva en _filtro.
     final mostrarParcial = settings.pagoParcialPermitido ||
         (ref.watch(hayCuotasParcialesProvider).valueOrNull ?? false);
-    if (!mostrarParcial && _filtro == _Filtro.parciales) {
-      _filtro = _Filtro.todas;
+    var filtroEfectivo = _filtro;
+    if (!mostrarParcial && filtroEfectivo == _Filtro.parciales) {
+      filtroEfectivo = _Filtro.todas;
     }
-    // "Ver todo" (sin límite de rango) es exclusivo del admin.
-    if (!widget.adminMode && _filtro == _Filtro.verTodo) {
-      _filtro = _Filtro.todas;
+    if (!widget.adminMode && filtroEfectivo == _Filtro.verTodo) {
+      filtroEfectivo = _Filtro.todas;
     }
 
     return Column(
@@ -233,7 +234,7 @@ class _CuotasListScreenState extends ConsumerState<CuotasListScreen> {
                     (widget.adminMode || f != _Filtro.verTodo)) ...[
                   FilterChip(
                     label: Text(_label(f)),
-                    selected: _filtro == f,
+                    selected: filtroEfectivo == f,
                     onSelected: (_) {
                       setState(() => _filtro = f);
                       // M12 (audit): en adminMode NO se marcan como vistas —
@@ -251,7 +252,7 @@ class _CuotasListScreenState extends ConsumerState<CuotasListScreen> {
         Expanded(
           child: _CobrosList(
             adminMode: widget.adminMode,
-            filtro: _filtro,
+            filtro: filtroEfectivo,
             diasGracia: diasGracia,
             diasVisibles: diasVisibles,
             cobradorId: widget.adminMode ? _cobradorId : null,
@@ -443,23 +444,27 @@ class _CobrosListState extends State<_CobrosList> {
 
         // 1 fila por contrato = su cuota MÁS ANTIGUA pendiente. Las cuotas sin
         // contrato (cargos manuales sueltos) son cada una su propia fila.
+        // Además guardamos, por contrato, cuántas cuotas pendientes tiene y su
+        // saldo total (para mostrar el contexto de deuda en la fila).
         final masVieja = <String, Map<String, dynamic>>{};
+        final conteo = <String, int>{};
+        final totalSaldo = <String, double>{};
         for (final r in rows) {
           if (!_matchBusqueda(r, widget.busqueda)) continue;
           final ctId = r['contrato_id'] as String?;
           final key = ctId ?? 'manual:${r['id']}';
+          conteo[key] = (conteo[key] ?? 0) + 1;
+          totalSaldo[key] = (totalSaldo[key] ?? 0) + _saldoCanonico(r);
           final actual = masVieja[key];
-          if (actual == null ||
-              (r['fecha_vencimiento'] as String)
-                      .compareTo(actual['fecha_vencimiento'] as String) <
-                  0) {
+          // Empate de fecha_vencimiento → desempata por periodo ASC (paridad
+          // exacta con el pin del mapa).
+          if (actual == null || _cmpAntiguedad(r, actual) < 0) {
             masVieja[key] = r;
           }
         }
         final filas = masVieja.values.toList()
           ..sort((a, b) {
-            final c = (a['fecha_vencimiento'] as String)
-                .compareTo(b['fecha_vencimiento'] as String);
+            final c = _cmpAntiguedad(a, b);
             if (c != 0) return c;
             return (a['cliente_nombre'] as String)
                 .toLowerCase()
@@ -486,9 +491,12 @@ class _CobrosListState extends State<_CobrosList> {
             final row = filas[i];
             final cuotaId = row['id'] as String;
             final clienteId = row['cliente_id'] as String;
+            final key = (row['contrato_id'] as String?) ?? 'manual:$cuotaId';
             return _CobroRow(
               row: row,
               diasGracia: widget.diasGracia,
+              cuotasPendientes: conteo[key] ?? 1,
+              saldoTotalContrato: totalSaldo[key] ?? 0,
               onTapCliente: () => context.push(widget.adminMode
                   ? '/admin/clientes/$clienteId'
                   : '/clientes/$clienteId'),
@@ -501,6 +509,24 @@ class _CobrosListState extends State<_CobrosList> {
   }
 }
 
+/// Saldo canónico de una cuota (regla #10): monto + cargos_neto - pagado,
+/// clampeado a >= 0. Idéntico a cobro/recibo/mapa.
+double _saldoCanonico(Map<String, dynamic> r) {
+  final s = (r['monto'] as num).toDouble() +
+      (r['cargos_neto'] as num? ?? 0).toDouble() -
+      (r['monto_pagado'] as num? ?? 0).toDouble();
+  return s < 0 ? 0.0 : s;
+}
+
+/// Compara dos cuotas por antigüedad: fecha_vencimiento ASC y, en empate,
+/// periodo ASC (mismo desempate que el pin del mapa).
+int _cmpAntiguedad(Map<String, dynamic> a, Map<String, dynamic> b) {
+  final c = (a['fecha_vencimiento'] as String)
+      .compareTo(b['fecha_vencimiento'] as String);
+  if (c != 0) return c;
+  return (a['periodo'] as String).compareTo(b['periodo'] as String);
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Fila de cobro: cliente + cuota más antigua + botón Pagar
 // ─────────────────────────────────────────────────────────────────────────────
@@ -509,11 +535,17 @@ class _CobroRow extends ConsumerWidget {
   const _CobroRow({
     required this.row,
     required this.diasGracia,
+    required this.cuotasPendientes,
+    required this.saldoTotalContrato,
     required this.onTapCliente,
     required this.onPagar,
   });
   final Map<String, dynamic> row;
   final int diasGracia;
+  // Cuántas cuotas pendientes tiene el contrato (para indicar que hay más
+  // detrás de la cuota más antigua) y su saldo total adeudado.
+  final int cuotasPendientes;
+  final double saldoTotalContrato;
   final VoidCallback onTapCliente;
   final VoidCallback onPagar;
 
@@ -534,12 +566,8 @@ class _CobroRow extends ConsumerWidget {
     final diasVisibles = settings.diasCuotasVisibles;
     final vence = DateTime.parse(row['fecha_vencimiento'] as String);
     final periodo = DateTime.parse(row['periodo'] as String);
-    // Saldo canónico (regla #10): incluye cargos_neto (reconexión suma,
-    // descuento resta), clampeado a >= 0. Idéntico a cobro, recibo y mapa.
-    final saldoRaw = (row['monto'] as num).toDouble() +
-        (row['cargos_neto'] as num? ?? 0).toDouble() -
-        (row['monto_pagado'] as num? ?? 0).toDouble();
-    final saldo = saldoRaw < 0 ? 0.0 : saldoRaw;
+    // Saldo canónico (regla #10) de la cuota más antigua (la que cobra Pagar).
+    final saldo = _saldoCanonico(row);
     final diasFromVence = Fmt.hoyNicaragua()
         .difference(DateTime(vence.year, vence.month, vence.day))
         .inDays;
@@ -660,6 +688,20 @@ class _CobroRow extends ConsumerWidget {
                           ),
                       ],
                     ),
+                    // Contexto de deuda: si el contrato tiene más de una cuota
+                    // pendiente, mostramos cuántas y el saldo total adeudado (la
+                    // fila solo cobra la más antigua).
+                    if (cuotasPendientes > 1)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 3),
+                        child: Text(
+                          '$cuotasPendientes cuotas · debe ${Fmt.cordobas(saldoTotalContrato)}',
+                          style: TextStyle(
+                              fontSize: 11,
+                              color: scheme.error,
+                              fontWeight: FontWeight.w500),
+                        ),
+                      ),
                   ],
                 ),
               ),
@@ -677,9 +719,8 @@ class _CobroRow extends ConsumerWidget {
                     onPressed: onPagar,
                     style: FilledButton.styleFrom(
                       visualDensity: VisualDensity.compact,
-                      padding: const EdgeInsets.symmetric(horizontal: 14),
-                      minimumSize: const Size(0, 32),
-                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      padding: const EdgeInsets.symmetric(horizontal: 18),
+                      minimumSize: const Size(76, 36),
                     ),
                     child: const Text('Pagar'),
                   ),

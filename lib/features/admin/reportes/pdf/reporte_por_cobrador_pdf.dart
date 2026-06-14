@@ -24,11 +24,13 @@ Future<pw.Document> buildReportePorCobrador({
   final theme = await pdfTheme();
   final logo = logoBytes == null ? null : pw.MemoryImage(logoBytes);
 
-  // Agrupar por cobrador preservando el orden (rows ya viene ordenado por
-  // nombre de cobrador).
+  // Agrupar por cobrador_id (estable ante homónimos), preservando el orden
+  // (rows ya viene ordenado por nombre de cobrador). El nombre es solo label.
   final grupos = <String, List<Map<String, dynamic>>>{};
   for (final r in rows) {
-    final key = (r['cobrador_nombre'] as String?) ?? '—';
+    final key = (r['cobrador_id'] as String?) ??
+        (r['cobrador_nombre'] as String?) ??
+        '—';
     grupos.putIfAbsent(key, () => []).add(r);
   }
 
@@ -51,9 +53,10 @@ Future<pw.Document> buildReportePorCobrador({
         final widgets = <pw.Widget>[];
         for (final entry in grupos.entries) {
           final gr = entry.value;
+          final nombre = (gr.first['cobrador_nombre'] as String?) ?? '—';
           final rol = gr.first['cobrador_rol'] as String?;
           final encabezado =
-              rol == null ? entry.key : '${entry.key} — ${rolLabel(rol)}';
+              rol == null ? nombre : '$nombre — ${rolLabel(rol)}';
           widgets.add(pw.Padding(
             padding: const pw.EdgeInsets.only(top: 8, bottom: 4),
             child: pw.Text(encabezado,

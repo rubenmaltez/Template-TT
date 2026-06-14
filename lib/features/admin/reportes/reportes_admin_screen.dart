@@ -797,6 +797,7 @@ class _DescargarPdfMenu extends ConsumerWidget {
       SELECT p.fecha_pago, c.nombre AS cliente_nombre,
              p.monto_cordobas AS monto, p.metodo,
              p.moneda, p.monto_original, p.tasa_conversion, p.vuelto_cordobas,
+             p.cobrador_id AS cobrador_id,
              cb.nombre AS cobrador_nombre, cb.rol AS cobrador_rol,
              r.numero_completo AS numero_recibo
         FROM pagos p

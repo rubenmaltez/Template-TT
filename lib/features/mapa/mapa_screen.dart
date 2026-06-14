@@ -924,7 +924,7 @@ class _ClientePinSheetState extends ConsumerState<_ClientePinSheet> {
       '''
       SELECT ct.id AS contrato_id, p.nombre AS plan_nombre, ct.dia_pago,
              cu.id AS cuota_id, cu.periodo,
-             (cu.monto + COALESCE(cu.cargos_neto, 0) - cu.monto_pagado) AS saldo
+             max(cu.monto + COALESCE(cu.cargos_neto, 0) - cu.monto_pagado, 0) AS saldo
         FROM contratos ct
         LEFT JOIN planes p ON p.id = ct.plan_id
         JOIN cuotas cu ON cu.id = (
