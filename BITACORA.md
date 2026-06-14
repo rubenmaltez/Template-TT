@@ -18,15 +18,74 @@
 
 ## ⭐ ESTADO ACTUAL (refrescar al cerrar cada sesión)
 
-- **Branch viva: `main`** (Sprint A+B mergeado 2026-06-14; rama efímera borrada).
-  **Único tag/release en GitHub: `v0.11.9`** (se reemplaza al publicar v0.11.10).
-- **Modelo de branching:** cada sesión de trabajo desarrolla en rama efímera, al terminar se mergea a `main` y se borra.
-- **App:** v0.11.10 (en `pubspec`, **sin buildear/publicar aún**) · schema PowerSync **v27** · migraciones **0001→0118 TODAS corridas** · **sync rules v8 "Active"**. Sprint A+B NO tocan DB/schema/sync (100% cliente).
-- **Edge Functions:** las 6 deployadas al día (redeployadas 2026-06-09).
-- **Testeado por Rubén (2026-06-14, build debug Windows):** Sprint A (mapa/ruteo/onboarding/0118) ✓ · bug Hub/Puerto **resuelto** ✓ · guardado de cliente (con red) ✓ · vista Por Cobrar ✓ · legibilidad de notas de visita ✓.
-- **Qué falta:**
-  1. **Build + publicar release v0.11.10** (bump ya hecho) → `Install Steps/build-release.ps1` (lo arma Rubén; borrar v0.11.9 al publicar).
-- **Hecho recién (2026-06-14):** Sprint A+B (6 features) + ronda de fixes del testing manual, todo auditado (Fase 4: 8 agentes en 3 tandas) y mergeado a `main`. `flutter analyze` limpio · `flutter test` 275 verdes.
+- **Branch viva de trabajo: `claude/awesome-joliot-a2bd43`** (Feature C EN PROGRESO; pusheada a
+  origin para backup). `main` está estable en `df80c05` (= **GitHub y local idénticos**) con todo el
+  Sprint A+B + fixes + bump a v0.11.10. **Único tag/release en GitHub: `v0.11.9`**.
+- **⚠ Lo de Feature C (4 commits sobre main) está en la rama, NO en `main`.** Al reanudar: `git checkout
+  claude/awesome-joliot-a2bd43` (o `git pull` la rama). NO mergear C a main hasta terminarla + auditarla.
+- **App:** v0.11.10 (sin buildear/publicar) · schema PowerSync **v27 en main / v28 en la rama C** ·
+  migraciones **0001→0118 corridas; la 0119 (Feature C) está ESCRITA pero NO DEPLOYADA**.
+- **Edge Functions:** las 6 al día (2026-06-09).
+- **Sprint A+B:** testeado por Rubén (debug Windows) ✓ y mergeado a main. Pendiente: build+publicar release v0.11.10.
+- **Hecho recién (2026-06-14):** arrancó **Feature C — cambio de fecha de pago por días** (ver entrada
+  abajo): base matemática + DB 0119 + plumbing + gating UI. Falta la transacción/diálogo/botón/recibo
+  /reportería y toda **Feature A (suspensión)**. `flutter analyze` limpio · `flutter test` 293 verdes.
+
+---
+
+## 2026-06-14 (cont.) — Contratos: Feature C (cambio de fecha de pago por días) EN PROGRESO
+
+**Contexto:** Rubén pidió 3 features de flexibilidad de contrato. Tras consolidar: quedaron **2**
+(la "restructura B" se fundió en C). Esta sesión arrancó **Feature C**; **Feature A (suspensión)**
+NO empezó. Trabajo en rama `claude/awesome-joliot-a2bd43` (4 commits sobre main, NO mergeados).
+
+**Feature C — cambio de fecha de pago por días. DISEÑO CERRADO (decisiones de Rubén):**
+- El cliente AL DÍA mueve su día de pago. Paga los **días puente** entre lo pagado y el día nuevo,
+  prorrateados a **precio_mensual ÷ días reales del mes** (cada día con los días de su propio mes).
+- **Regla del ancla:** primera ocurrencia del día nuevo DESPUÉS de "pagado hasta". La cuota que cae en
+  la ventana del puente se **absorbe (anula)**; la 1ª cuota completa cae en el día nuevo. Ejemplos
+  validados: 15→30 = puente 15d (C$450 con plan 900) · 15→10 = puente 25d, 1er pago 10-ago · 15→14 =
+  puente 29d, 1er pago 14-ago. Helper `lib/data/utils/prorrateo.dart` (18 tests).
+- **Puente = `cargos_extra` (origen 'puente', "Puente de pago")** sobre la cuota que el cliente paga en
+  ese momento ("se aprovecha"); aparece en EL RECIBO de ese cobro. NO es una cuota suelta (chocaría con
+  el unique (contrato_id, periodo)). Entra a recaudado; NO infla el total fijo (es extra, como reconexión).
+- **Re-anclaje:** anular la cuota absorbida + el trigger `0018` mueve el día de las futuras pendientes
+  (espejar local offline) + en contratos FIJOS agregar 1 cuota de cierre al final (conserva el conteo →
+  el contrato termina unos días después, los del puente). Indefinidos: solo se re-ancla el cushion.
+- **Gating 2 niveles:** super_admin activa la feature por tenant (setting super-only
+  `cobranza.cambio_fecha_habilitado`); el admin habilita por usuario (`cobradores.puede_cambiar_fecha`)
+  a cobradores/admin_cobranza (el rol admin siempre). Botón "Cambiar fecha" al lado de "Pagar" en la
+  vista Por Cobrar Y en el mapa. Sin flujo de aprobación extra. RLS server `puede_cambiar_fecha_pago()`.
+- **Offline-first:** el cobrador escribe local (writeTransaction + espejo de triggers) y sincroniza; por
+  eso la `0119` EXTIENDE la RLS de contratos/cuotas para el personal habilitado, solo sobre SUS contratos.
+
+**Hecho y commiteado (rama, 4 commits):**
+- `42b8baf` `prorrateo.dart` + tests. · `6e72143` migración **0119** (permiso col, setting super-only,
+  helper `puede_cambiar_fecha_pago()`, RLS contratos/cuotas) + schema.dart (cobradores.puede_cambiar_fecha,
+  v27→**v28**) + sync rules (columna agregada a los SELECT de cobradores). · `9c1c0d8` modelo
+  `Cobrador.puedeCambiarFecha` + `puedeCambiarFechaPagoProvider` + getter `cambioFechaHabilitado`. ·
+  `0bcfe1f` gating UI (grupo en tab Avanzado + `_superAdminOnly` + toggle por usuario en _EditarCobradorDialog).
+
+**PENDIENTE Feature C (orden sugerido):**
+1. Transacción offline (repo): calcular "pagado hasta" (max venc de cuotas 'pagada') + guard al-día,
+   cargo puente sobre la cuota cobrada, cobro+recibo, anular absorbida, mover futuras (espejo), fijos:
+   cuota de cierre, UPDATE dia_pago (+ fecha_fin fijos). Tests + invariantes_dinero.
+2. Diálogo "Cambiar fecha" con preview (usar `calcularPuenteCambioFecha`).
+3. Botón en `cuotas_list_screen.dart` (al lado de Pagar) y en el pin del mapa.
+4. Recibo: línea "Puente de pago" (mapear origen='puente'); verificar CHECK de cargos_extra.origen
+   (¿hay que extenderlo? revisar 0007/0115) y el tipo (usar 'otro' que SUMA).
+5. Reportería/dashboard: el puente entra a recaudado; verificar invariante #10 (totales idénticos).
+6. Audit Fase 4 (Code+QA dinero+Security por la RLS) + testing manual.
+
+**PENDIENTE Feature A — suspensión temporal (NO empezada):** estado contrato 'suspendido' + motivo
+(tabla `contrato_suspensiones`, Receta R10), pausa de generación (cron ya saltea no-activo), anti-backfill
+al reactivar, prorrateo de días consumidos, **PDF de deuda pendiente**. Decisiones cerradas: no se cobra el
+período suspendido, contrato termina igual; solo admin/admin_cobranza suspenden; indefinidos solo pausan,
+fijos anulan cuotas del período.
+
+**DEPLOY de Feature C (cuando esté completa, JUNTO con el build):** correr `0119` en Dashboard (verificar)
+→ redeploy sync rules a "Active" → build con el schema v28. NO deployar suelto (el bump de schema fuerza
+DB local fresca; hacerlo una sola vez).
 
 ---
 
