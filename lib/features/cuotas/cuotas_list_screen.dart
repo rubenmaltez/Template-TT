@@ -388,11 +388,12 @@ class _CobrosListState extends State<_CobrosList> {
              c.id AS cliente_id, c.nombre AS cliente_nombre,
              c.cedula AS cliente_cedula, c.telefono AS cliente_telefono,
              c.codigo AS cliente_codigo,
-             co.nombre AS comunidad,
+             co.nombre AS comunidad, mu.nombre AS municipio,
              p.nombre AS plan_nombre, ct.dia_pago
         FROM cuotas cu
         JOIN clientes c ON c.id = cu.cliente_id
    LEFT JOIN comunidades co ON co.id = c.comunidad_id
+   LEFT JOIN municipios mu ON mu.id = co.municipio_id
    LEFT JOIN contratos ct ON ct.id = cu.contrato_id
    LEFT JOIN planes p ON p.id = ct.plan_id
        WHERE c.activo = 1
@@ -596,7 +597,13 @@ class _CobroRow extends ConsumerWidget {
     );
 
     final clienteNombre = row['cliente_nombre'] as String;
-    final comunidad = row['comunidad'] as String?;
+    final codigo = row['cliente_codigo'] as String?;
+    final municipio = row['municipio'] as String?;
+    // Subtítulo: ID (código) del cliente + municipio.
+    final subtitulo = [
+      if (codigo != null && codigo.isNotEmpty) 'Cód. $codigo',
+      if (municipio != null) municipio,
+    ].join(' · ');
 
     return Card(
       margin: EdgeInsets.zero,
@@ -629,9 +636,9 @@ class _CobroRow extends ConsumerWidget {
                       style: const TextStyle(
                           fontWeight: FontWeight.w600, fontSize: 14),
                     ),
-                    if (comunidad != null)
+                    if (subtitulo.isNotEmpty)
                       Text(
-                        comunidad,
+                        subtitulo,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(color: scheme.outline, fontSize: 11),
