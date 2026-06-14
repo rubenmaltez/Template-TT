@@ -7,6 +7,7 @@ import '../../../config/router.dart';
 import '../../../data/models/pago.dart';
 import '../../../data/providers/logo_empresa_provider.dart';
 import '../../../data/repositories/settings_repo.dart';
+import '../../../data/utils/cobrador_helpers.dart';
 import '../../../data/utils/errores.dart';
 import '../../../data/utils/formatters.dart';
 import '../../../features/shared/widgets/rango_fechas_dialog.dart';
@@ -609,47 +610,19 @@ class _DescargarPdfMenu extends ConsumerWidget {
           bytes: await doc.save(),
         );
       } else if (tipo == 'por_cobrador') {
-        // Selector de cobrador antes de generar.
-        final cobradores = await ps.db.getAll('''
-          SELECT id, nombre FROM cobradores
-          WHERE activo = 1 AND rol = 'cobrador'
-          ORDER BY nombre
-        ''');
+        // Selector multi-cobrador (incluye admins que cobraron) antes de generar.
+        final sel = await _elegirCobradores(context, rango);
+        if (sel == null || sel.isEmpty) return;
+        final ids = sel.map((u) => u['id'] as String).toList();
+        final rows = await _rowsPorCobrador(ids, rango);
         if (!context.mounted) return;
-        final seleccionado = await showDialog<Map<String, dynamic>>(
-          context: context,
-          builder: (ctx) => SimpleDialog(
-            title: const Text('Seleccioná un cobrador'),
-            children: cobradores.map((c) => SimpleDialogOption(
-              onPressed: () => Navigator.pop(ctx, c),
-              child: Text(c['nombre'] as String),
-            )).toList(),
-          ),
-        );
-        if (seleccionado == null) return;
-
-        final rows = await ps.db.getAll('''
-          SELECT p.fecha_pago, c.nombre AS cliente_nombre,
-                 p.monto_cordobas AS monto, p.metodo,
-                 p.moneda, p.monto_original, p.tasa_conversion,
-                 p.vuelto_cordobas,
-                 r.numero_completo AS numero_recibo
-            FROM pagos p
-            JOIN cuotas cu ON cu.id = p.cuota_id
-            JOIN clientes c ON c.id = cu.cliente_id
-       LEFT JOIN recibos r ON r.pago_id = p.id
-           WHERE p.anulado = 0
-             AND p.cobrador_id = ?
-             AND date(p.fecha_pago) BETWEEN ? AND ?
-           ORDER BY p.fecha_pago DESC
-        ''', [seleccionado['id'], rango.desdeSql, rango.hastaSql]);
 
         final now = DateTime.now();
         final doc = await buildReportePorCobrador(
           titulo: 'Reporte por cobrador',
           empresaNombre: empresaNombre,
           periodo: rango.periodoLabel,
-          cobradorNombre: seleccionado['nombre'] as String,
+          subtitulo: _subtituloCobradores(sel),
           rows: rows,
           logoBytes: logoBytes,
         );
@@ -709,6 +682,161 @@ class _DescargarPdfMenu extends ConsumerWidget {
         );
       }
     }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Reporte por cobrador: selector multi + query compartida (PDF y Excel)
+  // ---------------------------------------------------------------------------
+
+  /// Diálogo multi-select de cobradores a incluir. Lista: cobradores/admins/
+  /// admin_cobranza activos + CUALQUIER usuario (aunque esté inactivo) que haya
+  /// ejecutado pagos en el rango (así no se pierde histórico ni los admins que
+  /// cobraron). Default: todos marcados. Devuelve los usuarios elegidos o null
+  /// si se cancela.
+  Future<List<Map<String, dynamic>>?> _elegirCobradores(
+      BuildContext context, RangoReporte rango) async {
+    final usuarios = await ps.db.getAll('''
+      SELECT cb.id, cb.nombre, cb.rol, cb.activo
+        FROM cobradores cb
+       WHERE (cb.activo = 1 AND cb.rol IN ('cobrador','admin','admin_cobranza'))
+          OR EXISTS (SELECT 1 FROM pagos p
+                      WHERE p.cobrador_id = cb.id AND p.anulado = 0
+                        AND date(p.fecha_pago) BETWEEN ? AND ?)
+       ORDER BY cb.nombre
+    ''', [rango.desdeSql, rango.hastaSql]);
+    if (!context.mounted) return null;
+    if (usuarios.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('No hay cobradores ni cobros en el período.')));
+      return null;
+    }
+
+    final seleccionados = {for (final u in usuarios) u['id'] as String};
+    return showDialog<List<Map<String, dynamic>>>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setLocal) {
+          final todos = seleccionados.length == usuarios.length;
+          return AlertDialog(
+            title: const Text('Cobradores a incluir'),
+            content: SizedBox(
+              width: double.maxFinite,
+              child: ListView(
+                shrinkWrap: true,
+                children: [
+                  CheckboxListTile(
+                    value: todos,
+                    title: const Text('Todos'),
+                    controlAffinity: ListTileControlAffinity.leading,
+                    onChanged: (v) => setLocal(() {
+                      seleccionados.clear();
+                      if (v == true) {
+                        seleccionados
+                            .addAll(usuarios.map((u) => u['id'] as String));
+                      }
+                    }),
+                  ),
+                  const Divider(height: 1),
+                  ...usuarios.map((u) {
+                    final id = u['id'] as String;
+                    final inactivo = (u['activo'] as num?) != 1;
+                    return CheckboxListTile(
+                      value: seleccionados.contains(id),
+                      controlAffinity: ListTileControlAffinity.leading,
+                      title: Text(u['nombre'] as String),
+                      subtitle: Text(rolLabel(u['rol'] as String) +
+                          (inactivo ? ' · inactivo' : '')),
+                      onChanged: (v) => setLocal(() {
+                        if (v == true) {
+                          seleccionados.add(id);
+                        } else {
+                          seleccionados.remove(id);
+                        }
+                      }),
+                    );
+                  }),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('Cancelar'),
+              ),
+              FilledButton(
+                onPressed: seleccionados.isEmpty
+                    ? null
+                    : () => Navigator.pop(
+                          ctx,
+                          usuarios
+                              .where((u) => seleccionados.contains(u['id']))
+                              .toList(),
+                        ),
+                child: const Text('Generar'),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  /// Subtítulo del reporte según la selección (1 nombre · N cobradores).
+  String _subtituloCobradores(List<Map<String, dynamic>> sel) =>
+      sel.length == 1
+          ? sel.first['nombre'] as String
+          : '${sel.length} cobradores';
+
+  /// Filas de pagos de los cobradores elegidos, ordenadas por cobrador y fecha.
+  /// `IN (?,?,...)` con placeholders dinámicos (NUNCA ANY()/ARRAY[], que son
+  /// Postgres-only). Total = SUM(monto_cordobas) no anulados (invariantes #4/#10).
+  Future<List<Map<String, dynamic>>> _rowsPorCobrador(
+      List<String> ids, RangoReporte rango) async {
+    final placeholders = List.filled(ids.length, '?').join(',');
+    return ps.db.getAll('''
+      SELECT p.fecha_pago, c.nombre AS cliente_nombre,
+             p.monto_cordobas AS monto, p.metodo,
+             p.moneda, p.monto_original, p.tasa_conversion, p.vuelto_cordobas,
+             cb.nombre AS cobrador_nombre, cb.rol AS cobrador_rol,
+             r.numero_completo AS numero_recibo
+        FROM pagos p
+        JOIN cuotas cu ON cu.id = p.cuota_id
+        JOIN clientes c ON c.id = cu.cliente_id
+   LEFT JOIN cobradores cb ON cb.id = p.cobrador_id
+   LEFT JOIN recibos r ON r.pago_id = p.id
+       WHERE p.anulado = 0
+         AND p.cobrador_id IN ($placeholders)
+         AND date(p.fecha_pago) BETWEEN ? AND ?
+       ORDER BY cb.nombre, p.fecha_pago DESC
+    ''', [...ids, rango.desdeSql, rango.hastaSql]);
+  }
+
+  /// Datos Excel del reporte por cobrador: una hoja con columna Cobrador (las
+  /// filas vienen ordenadas por cobrador). Montos como num (sumables en Excel).
+  ({List<String> headers, List<List<Object?>> filas}) _datosExcelPorCobrador(
+      List<Map<String, dynamic>> rows) {
+    return (
+      headers: ['Cobrador', 'Rol', 'Fecha de cobro', 'Cliente',
+                'Monto cobrado (C\$)', 'Moneda', 'Entregado (orig.)', 'Tasa',
+                'Vuelto (C\$)', 'Método de pago', 'Nro. de recibo'],
+      filas: rows.map((r) {
+        final esUsd = (r['moneda']?.toString() ?? 'NIO') == 'USD';
+        final vuelto = ((r['vuelto_cordobas'] as num?) ?? 0).toDouble();
+        return <Object?>[
+          r['cobrador_nombre']?.toString() ?? '',
+          rolLabel((r['cobrador_rol'] as String?) ?? ''),
+          Fmt.fechaHoraNi(r['fecha_pago'] as String?),
+          r['cliente_nombre']?.toString() ?? '',
+          (r['monto'] as num?) ?? 0,
+          esUsd ? 'US\$' : 'C\$',
+          (r['monto_original'] as num?) ?? 0,
+          esUsd ? (r['tasa_conversion'] as num?) ?? '' : '',
+          vuelto > 0 ? vuelto : '',
+          MetodoPago.fromString(r['metodo']?.toString() ?? '').label,
+          r['numero_recibo']?.toString() ?? '',
+        ];
+      }).toList(),
+    );
   }
 
   // ---------------------------------------------------------------------------
@@ -880,6 +1008,8 @@ class _DescargarPdfMenu extends ConsumerWidget {
         title: const Text('Exportar a Excel'),
         children: [
           _excelOpcion(ctx, 'cobros', Icons.receipt_long, 'Cobros del mes'),
+          _excelOpcion(
+              ctx, 'por_cobrador', Icons.person_search, 'Cobros por cobrador'),
           _excelOpcion(ctx, 'mora', Icons.warning_amber, 'Mora'),
           _excelOpcion(ctx, 'clientes', Icons.people, 'Estado de clientes'),
           _excelOpcion(ctx, 'padron', Icons.list_alt, 'Listado de clientes'),
@@ -898,6 +1028,38 @@ class _DescargarPdfMenu extends ConsumerWidget {
       final rango = tipo == 'arqueo'
           ? ref.read(reporteArqueoRangoProvider)
           : ref.read(reporteRangoProvider);
+
+      // "Por cobrador" abre el selector multi (mismo que el PDF) y arma su
+      // propia hoja con columna Cobrador, desde la MISMA query (totales
+      // idénticos al PDF — invariante de consistencia).
+      if (tipo == 'por_cobrador') {
+        final sel = await _elegirCobradores(context, rango);
+        if (sel == null || sel.isEmpty || !context.mounted) return;
+        final ids = sel.map((u) => u['id'] as String).toList();
+        final rows = await _rowsPorCobrador(ids, rango);
+        final datosPC = _datosExcelPorCobrador(rows);
+        final empresaNombre =
+            ref.read(empresaNombreProvider).valueOrNull ?? 'ISP';
+        final now = DateTime.now();
+        final mm = now.month.toString().padLeft(2, '0');
+        final dd = now.day.toString().padLeft(2, '0');
+        final ruta = await descargarExcel(
+          fileName: 'por_cobrador_${now.year}_${mm}_$dd.xlsx',
+          hojaNombre: 'Por cobrador',
+          headers: datosPC.headers,
+          filas: datosPC.filas,
+          empresaNombre: empresaNombre,
+          titulo: 'Reporte por cobrador',
+          periodo: rango.periodoLabel,
+        );
+        if (context.mounted && ruta != null) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Reporte Excel guardado')),
+          );
+        }
+        return;
+      }
+
       final datos = await _extraerDatos(tipo, rango);
       final empresaNombre =
           ref.read(empresaNombreProvider).valueOrNull ?? 'ISP';

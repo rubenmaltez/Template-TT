@@ -4,22 +4,33 @@ import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 
 import '../../../../data/models/pago.dart';
+import '../../../../data/utils/cobrador_helpers.dart';
 import '../../../shared/pdf/pdf_theme.dart';
 import 'pdf_utils.dart';
 
-/// Reporte de cobros filtrado por cobrador.
-/// Columnas: Fecha, Cliente, Monto (C$), Método, Recibo.
+/// Reporte de cobros por cobrador. Acepta UNO o VARIOS cobradores (incluidos
+/// admins que hayan ejecutado pagos): agrupa las filas por cobrador, con un
+/// subtotal por cada uno y, si hay más de uno, un total general al final.
+/// `rows` debe traer `cobrador_nombre` y `cobrador_rol`, ordenado por cobrador.
 Future<pw.Document> buildReportePorCobrador({
   required String titulo,
   required String empresaNombre,
   required String periodo,
-  required String cobradorNombre,
+  required String subtitulo,
   required List<Map<String, dynamic>> rows,
   Uint8List? logoBytes,
 }) async {
   final pdf = pw.Document();
   final theme = await pdfTheme();
   final logo = logoBytes == null ? null : pw.MemoryImage(logoBytes);
+
+  // Agrupar por cobrador preservando el orden (rows ya viene ordenado por
+  // nombre de cobrador).
+  final grupos = <String, List<Map<String, dynamic>>>{};
+  for (final r in rows) {
+    final key = (r['cobrador_nombre'] as String?) ?? '—';
+    grupos.putIfAbsent(key, () => []).add(r);
+  }
 
   pdf.addPage(
     pw.MultiPage(
@@ -28,16 +39,38 @@ Future<pw.Document> buildReportePorCobrador({
       pageFormat: PdfPageFormat.letter.landscape,
       header: (context) => buildHeaderEstandar(
         empresaNombre: empresaNombre,
-        titulo: '$titulo — $cobradorNombre',
+        titulo: '$titulo — $subtitulo',
         periodo: periodo,
         logo: logo,
       ),
       footer: (context) => buildFooterEstandar(context),
-      build: (context) => [
-        _buildTable(rows),
-        pw.SizedBox(height: 20),
-        _buildTotals(rows),
-      ],
+      build: (context) {
+        if (rows.isEmpty) return [_buildTable(const [])];
+
+        final unSoloGrupo = grupos.length == 1;
+        final widgets = <pw.Widget>[];
+        for (final entry in grupos.entries) {
+          final gr = entry.value;
+          final rol = gr.first['cobrador_rol'] as String?;
+          final encabezado =
+              rol == null ? entry.key : '${entry.key} — ${rolLabel(rol)}';
+          widgets.add(pw.Padding(
+            padding: const pw.EdgeInsets.only(top: 8, bottom: 4),
+            child: pw.Text(encabezado,
+                style: pw.TextStyle(
+                    fontSize: 11, fontWeight: pw.FontWeight.bold)),
+          ));
+          widgets.add(_buildTable(gr));
+          widgets.add(pw.SizedBox(height: 6));
+          // Con un solo cobrador el subtotal ES el total.
+          widgets.add(_buildTotalBox(gr, unSoloGrupo ? 'Total' : 'Subtotal'));
+          widgets.add(pw.SizedBox(height: 14));
+        }
+        if (!unSoloGrupo) {
+          widgets.add(_buildTotalBox(rows, 'TOTAL GENERAL'));
+        }
+        return widgets;
+      },
     ),
   );
 
@@ -93,7 +126,7 @@ pw.Widget _buildTable(List<Map<String, dynamic>> rows) {
   );
 }
 
-pw.Widget _buildTotals(List<Map<String, dynamic>> rows) {
+pw.Widget _buildTotalBox(List<Map<String, dynamic>> rows, String etiqueta) {
   final total = rows.fold<double>(
       0.0, (sum, r) => sum + ((r['monto'] as num?) ?? 0).toDouble());
   return pw.Container(
@@ -105,7 +138,7 @@ pw.Widget _buildTotals(List<Map<String, dynamic>> rows) {
     child: pw.Row(
       mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
       children: [
-        pw.Text('Total: ${rows.length} cobro(s)', style: estiloTotal),
+        pw.Text('$etiqueta: ${rows.length} cobro(s)', style: estiloTotal),
         pw.Text(fmtCordobas(total), style: estiloTotal),
       ],
     ),
