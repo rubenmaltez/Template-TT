@@ -208,6 +208,9 @@ const _superAdminOnly = {
   'cobranza.ajuste_max_porcentaje',
   'cobranza.ajuste_max_monto',
   'cobranza.monto_reconexion',
+  // Cambio de fecha de pago por días (feature C, 0119): switch maestro por
+  // tenant. El gate duro lo aplica la RLS server (puede_cambiar_fecha_pago()).
+  'cobranza.cambio_fecha_habilitado',
 };
 
 class _CategoriaTab extends ConsumerWidget {

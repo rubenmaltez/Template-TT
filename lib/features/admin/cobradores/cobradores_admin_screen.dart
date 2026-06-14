@@ -7,6 +7,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../data/providers/cobrador_provider.dart';
 import '../../../data/providers/impersonation_provider.dart';
 import '../../../data/providers/modulos_provider.dart';
+import '../../../data/repositories/settings_repo.dart';
 import '../../../data/repositories/super_admin_repo.dart';
 import '../../../data/utils/edge_functions.dart';
 import '../../../data/utils/formatters.dart';
@@ -72,7 +73,7 @@ class _CobradoresAdminScreenState
     _cobradoresStream = ps.db.watch(
       '''
       SELECT co.id, co.nombre, co.telefono, co.rol,
-             co.prefijo_recibo, co.activo,
+             co.prefijo_recibo, co.activo, co.puede_cambiar_fecha,
              (SELECT COUNT(*) FROM clientes
                WHERE cobrador_id = co.id AND activo = 1
              ) AS clientes_asignados,
@@ -663,6 +664,8 @@ class _EditarCobradorDialogState extends ConsumerState<_EditarCobradorDialog> {
   late TextEditingController _prefijoCtrl;
   late String _rol;
   late bool _activo;
+  // Permiso de cambio de fecha de pago por días (feature C, 0119).
+  late bool _puedeCambiarFecha;
   String? _error;
   bool _guardando = false;
 
@@ -747,6 +750,7 @@ class _EditarCobradorDialogState extends ConsumerState<_EditarCobradorDialog> {
         TextEditingController(text: widget.row['prefijo_recibo'] as String? ?? '');
     _rol = widget.row['rol'] as String;
     _activo = (widget.row['activo'] as int? ?? 1) == 1;
+    _puedeCambiarFecha = (widget.row['puede_cambiar_fecha'] as int? ?? 0) == 1;
   }
 
   @override
@@ -817,7 +821,8 @@ class _EditarCobradorDialogState extends ConsumerState<_EditarCobradorDialog> {
       await ps.db.execute(
         '''
         UPDATE cobradores
-           SET nombre = ?, telefono = ?, prefijo_recibo = ?, activo = ?
+           SET nombre = ?, telefono = ?, prefijo_recibo = ?, activo = ?,
+               puede_cambiar_fecha = ?
          WHERE id = ?
         ''',
         [
@@ -825,6 +830,7 @@ class _EditarCobradorDialogState extends ConsumerState<_EditarCobradorDialog> {
           PhoneTextField.sanitized(_telCtrl),
           prefijoFinal,
           _activo ? 1 : 0,
+          _puedeCambiarFecha ? 1 : 0,
           widget.row['id'],
         ],
       );
@@ -926,6 +932,19 @@ class _EditarCobradorDialogState extends ConsumerState<_EditarCobradorDialog> {
                 title: Text(_activo ? 'Activo' : 'Inactivo'),
                 contentPadding: EdgeInsets.zero,
               ),
+              // Permiso de cambio de fecha de pago por días (feature C, 0119):
+              // solo si el super_admin habilitó la feature para el tenant, y solo
+              // para cobrador/admin_cobranza (el admin siempre puede).
+              if (ref.watch(appSettingsProvider).cambioFechaHabilitado &&
+                  (_rol == 'cobrador' || _rol == 'admin_cobranza'))
+                SwitchListTile(
+                  value: _puedeCambiarFecha,
+                  onChanged: (v) => setState(() => _puedeCambiarFecha = v),
+                  title: const Text('Puede cambiar fecha de pago'),
+                  subtitle: const Text(
+                      'Cobra los días puente y mueve la fecha de pago del cliente'),
+                  contentPadding: EdgeInsets.zero,
+                ),
               if (_error != null)
                 Padding(
                   padding: const EdgeInsets.only(top: 8),

@@ -191,6 +191,19 @@ const kGruposAvanzado = <SettingGroup>[
       ),
     ],
   ),
+  // Cambio de fecha de pago por días (feature C, 0119): switch maestro por
+  // tenant. Aún en ON, cada usuario necesita el permiso por persona (se habilita
+  // en Personal → editar cobrador/admin de cobranza).
+  SettingGroup(
+    titulo: 'Cambio de fecha de pago',
+    icono: Icons.event_repeat,
+    subtitulo: 'Permite a personal habilitado cambiar la fecha de pago de un '
+        'cliente AL DÍA, cobrando los días puente. Habilitá quién puede usarlo '
+        'en cada cobrador / admin de cobranza desde Personal.',
+    entradas: [
+      SettingEntry('cobranza.cambio_fecha_habilitado'),
+    ],
+  ),
 ];
 
 /// Devuelve los grupos definidos para una categoría/tab.
