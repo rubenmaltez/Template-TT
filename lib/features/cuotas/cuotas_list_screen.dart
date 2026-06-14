@@ -448,14 +448,10 @@ class _CobrosListState extends State<_CobrosList> {
         // Además guardamos, por contrato, cuántas cuotas pendientes tiene y su
         // saldo total (para mostrar el contexto de deuda en la fila).
         final masVieja = <String, Map<String, dynamic>>{};
-        final conteo = <String, int>{};
-        final totalSaldo = <String, double>{};
         for (final r in rows) {
           if (!_matchBusqueda(r, widget.busqueda)) continue;
           final ctId = r['contrato_id'] as String?;
           final key = ctId ?? 'manual:${r['id']}';
-          conteo[key] = (conteo[key] ?? 0) + 1;
-          totalSaldo[key] = (totalSaldo[key] ?? 0) + _saldoCanonico(r);
           final actual = masVieja[key];
           // Empate de fecha_vencimiento → desempata por periodo ASC (paridad
           // exacta con el pin del mapa).
@@ -492,12 +488,9 @@ class _CobrosListState extends State<_CobrosList> {
             final row = filas[i];
             final cuotaId = row['id'] as String;
             final clienteId = row['cliente_id'] as String;
-            final key = (row['contrato_id'] as String?) ?? 'manual:$cuotaId';
             return _CobroRow(
               row: row,
               diasGracia: widget.diasGracia,
-              cuotasPendientes: conteo[key] ?? 1,
-              saldoTotalContrato: totalSaldo[key] ?? 0,
               onTapCliente: () => context.push(widget.adminMode
                   ? '/admin/clientes/$clienteId'
                   : '/clientes/$clienteId'),
@@ -536,17 +529,11 @@ class _CobroRow extends ConsumerWidget {
   const _CobroRow({
     required this.row,
     required this.diasGracia,
-    required this.cuotasPendientes,
-    required this.saldoTotalContrato,
     required this.onTapCliente,
     required this.onPagar,
   });
   final Map<String, dynamic> row;
   final int diasGracia;
-  // Cuántas cuotas pendientes tiene el contrato (para indicar que hay más
-  // detrás de la cuota más antigua) y su saldo total adeudado.
-  final int cuotasPendientes;
-  final double saldoTotalContrato;
   final VoidCallback onTapCliente;
   final VoidCallback onPagar;
 
@@ -599,11 +586,10 @@ class _CobroRow extends ConsumerWidget {
     final clienteNombre = row['cliente_nombre'] as String;
     final codigo = row['cliente_codigo'] as String?;
     final municipio = row['municipio'] as String?;
-    // Subtítulo: ID (código) del cliente + municipio.
-    final subtitulo = [
-      if (codigo != null && codigo.isNotEmpty) 'Cód. $codigo',
-      if (municipio != null) municipio,
-    ].join(' · ');
+    // Línea nombre + municipio.
+    final nombreMunicipio = (municipio == null || municipio.isEmpty)
+        ? clienteNombre
+        : '$clienteNombre · $municipio';
 
     return Card(
       margin: EdgeInsets.zero,
@@ -629,86 +615,83 @@ class _CobroRow extends ConsumerWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
+                    // 1) Código del cliente (arriba).
+                    if (codigo != null && codigo.isNotEmpty)
+                      Text(
+                        codigo,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                            fontWeight: FontWeight.w700, fontSize: 14),
+                      ),
+                    // 2) Nombre + municipio.
                     Text(
-                      clienteNombre,
+                      nombreMunicipio,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
-                          fontWeight: FontWeight.w600, fontSize: 14),
+                          fontWeight: FontWeight.w600, fontSize: 13),
                     ),
-                    if (subtitulo.isNotEmpty)
-                      Text(
-                        subtitulo,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(color: scheme.outline, fontSize: 11),
-                      ),
-                    const SizedBox(height: 4),
-                    Wrap(
-                      spacing: 6,
-                      runSpacing: 2,
-                      crossAxisAlignment: WrapCrossAlignment.center,
-                      children: [
-                        Text('$mesLabel · ${Fmt.fechaCorta(vence)}',
-                            style: TextStyle(
-                                fontSize: 11, color: scheme.onSurface)),
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 6, vertical: 1),
-                          decoration: BoxDecoration(
-                            color: color.withValues(alpha: 0.15),
-                            borderRadius: BorderRadius.circular(4),
-                          ),
-                          child: Text(label,
+                    const SizedBox(height: 3),
+                    // 3) Mes de cobro.
+                    Text(mesLabel,
+                        style:
+                            TextStyle(fontSize: 12, color: scheme.onSurface)),
+                    // 4) Fecha de la cuota + estado + badges manuales.
+                    Padding(
+                      padding: const EdgeInsets.only(top: 2),
+                      child: Wrap(
+                        spacing: 6,
+                        runSpacing: 2,
+                        crossAxisAlignment: WrapCrossAlignment.center,
+                        children: [
+                          Text(Fmt.fechaCorta(vence),
                               style: TextStyle(
-                                  color: color,
-                                  fontSize: 10,
-                                  fontWeight: FontWeight.w600)),
-                        ),
-                        if (esManual)
+                                  fontSize: 11, color: scheme.outline)),
                           Container(
                             padding: const EdgeInsets.symmetric(
-                                horizontal: 4, vertical: 1),
+                                horizontal: 6, vertical: 1),
                             decoration: BoxDecoration(
-                              color: scheme.tertiaryContainer,
+                              color: color.withValues(alpha: 0.15),
                               borderRadius: BorderRadius.circular(4),
                             ),
-                            child: Text('Manual',
+                            child: Text(label,
+                                style: TextStyle(
+                                    color: color,
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.w600)),
+                          ),
+                          if (esManual)
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 4, vertical: 1),
+                              decoration: BoxDecoration(
+                                color: scheme.tertiaryContainer,
+                                borderRadius: BorderRadius.circular(4),
+                              ),
+                              child: Text('Manual',
+                                  style: TextStyle(
+                                      fontSize: 9,
+                                      color: scheme.onTertiaryContainer)),
+                            ),
+                          if (esManual && row['tipo_cargo_manual'] != null)
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 4, vertical: 1),
+                              decoration: BoxDecoration(
+                                color: scheme.primaryContainer,
+                                borderRadius: BorderRadius.circular(4),
+                              ),
+                              child: Text(
+                                _tipoLabel(row['tipo_cargo_manual'] as String),
                                 style: TextStyle(
                                     fontSize: 9,
-                                    color: scheme.onTertiaryContainer)),
-                          ),
-                        if (esManual && row['tipo_cargo_manual'] != null)
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 4, vertical: 1),
-                            decoration: BoxDecoration(
-                              color: scheme.primaryContainer,
-                              borderRadius: BorderRadius.circular(4),
+                                    color: scheme.onPrimaryContainer),
+                              ),
                             ),
-                            child: Text(
-                              _tipoLabel(row['tipo_cargo_manual'] as String),
-                              style: TextStyle(
-                                  fontSize: 9,
-                                  color: scheme.onPrimaryContainer),
-                            ),
-                          ),
-                      ],
-                    ),
-                    // Contexto de deuda: si el contrato tiene más de una cuota
-                    // pendiente, mostramos cuántas y el saldo total adeudado (la
-                    // fila solo cobra la más antigua).
-                    if (cuotasPendientes > 1)
-                      Padding(
-                        padding: const EdgeInsets.only(top: 3),
-                        child: Text(
-                          '$cuotasPendientes cuotas · debe ${Fmt.cordobas(saldoTotalContrato)}',
-                          style: TextStyle(
-                              fontSize: 11,
-                              color: scheme.error,
-                              fontWeight: FontWeight.w500),
-                        ),
+                        ],
                       ),
+                    ),
                   ],
                 ),
               ),
