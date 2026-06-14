@@ -152,6 +152,13 @@ class _ClienteFormScreenState extends ConsumerState<ClienteFormScreen> {
 
   Future<void> _guardar() async {
     if (!_formKey.currentState!.validate()) return;
+    // Capturamos los ancestros ANTES de los await. Tras el INSERT/UPDATE,
+    // PowerSync notifica a los watchers y el árbol se reconstruye: el elemento
+    // del form puede quedar desactivado (mounted sigue true pero el lookup de
+    // ancestro ya NO es seguro) → buscar ScaffoldMessenger/GoRouter por context
+    // ahí lanza "Looking up a deactivated widget's ancestor is unsafe".
+    final messenger = ScaffoldMessenger.of(context);
+    final router = GoRouter.of(context);
     final tenantId = ref.read(tenantIdProvider);
     if (tenantId == null) {
       setState(() => _error = 'No se pudo determinar el tenant');
@@ -265,7 +272,7 @@ class _ClienteFormScreenState extends ConsumerState<ClienteFormScreen> {
         );
       }
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
+        messenger.showSnackBar(
           SnackBar(content: Text(widget.clienteId == null
               ? 'Cliente creado'
               : 'Cambios guardados')),
@@ -281,13 +288,14 @@ class _ClienteFormScreenState extends ConsumerState<ClienteFormScreen> {
           await ofrecerGestionEquiposEnBaja(context, ref,
               clienteId: widget.clienteId!, entidad: 'cliente');
         }
-        if (!context.mounted) return;
-        // pop si vinimos vía push (caso normal); fallback go al listado
-        // si fue deep-link directo a la edición.
-        if (context.canPop()) {
-          context.pop();
+        if (!mounted) return;
+        // Navegamos con el router CAPTURADO (no por context, ya desactivable
+        // tras el await). pop si vinimos vía push (caso normal); fallback go al
+        // listado si fue deep-link directo a la edición.
+        if (router.canPop()) {
+          router.pop();
         } else {
-          context.go('/admin/clientes');
+          router.go('/admin/clientes');
         }
       }
     } catch (e) {
