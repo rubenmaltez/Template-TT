@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../config/theme.dart';
 import '../../data/providers/cobrador_provider.dart';
 import '../../data/providers/impersonation_provider.dart';
 import '../../data/providers/modulos_provider.dart';
@@ -1122,7 +1123,9 @@ class _VisitaTile extends StatelessWidget {
         VisitaResultado.cobrado => scheme.tertiary,
         VisitaResultado.noEstaba => scheme.outline,
         VisitaResultado.sinPago => scheme.error,
-        VisitaResultado.promesaPago => scheme.secondary,
+        // scheme.secondary es el primary al 10% (relleno) → ilegible como texto.
+        // Ámbar de la paleta (4.5:1), semánticamente "pendiente/promesa".
+        VisitaResultado.promesaPago => AppColors.warning,
         VisitaResultado.otro => scheme.outline,
       };
 

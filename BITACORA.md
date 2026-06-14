@@ -18,19 +18,72 @@
 
 ## ⭐ ESTADO ACTUAL (refrescar al cerrar cada sesión)
 
-- **Branch viva: `main`** (todas las ramas efímeras fusionadas y borradas).
-  **Único tag/release en GitHub: `v0.11.9`**. Limpieza 2026-06-12 por decisión de Rubén: releases/tags
-  viejos (v0.9.0→v0.11.8) y checkpoints `pre-mvp-v1/v2` BORRADOS.
+- **Branch viva: `main`** (Sprint A+B mergeado 2026-06-14; rama efímera borrada).
+  **Único tag/release en GitHub: `v0.11.9`** (se reemplaza al publicar v0.11.10).
 - **Modelo de branching:** cada sesión de trabajo desarrolla en rama efímera, al terminar se mergea a `main` y se borra.
-- **App:** v0.11.9 · schema PowerSync **v27** · migraciones **0001→0118 TODAS corridas** · **sync rules v8 "Active"**.
+- **App:** v0.11.10 (en `pubspec`, **sin buildear/publicar aún**) · schema PowerSync **v27** · migraciones **0001→0118 TODAS corridas** · **sync rules v8 "Active"**. Sprint A+B NO tocan DB/schema/sync (100% cliente).
 - **Edge Functions:** las 6 deployadas al día (redeployadas 2026-06-09).
-- **Audit integral 2026-06-11**: Sprint 1 mergeado a main. Sprint 2 implementado. **Sprint 4 (Opción A + Opción B) IMPLEMENTADOS**.
+- **Testeado por Rubén (2026-06-14, build debug Windows):** Sprint A (mapa/ruteo/onboarding/0118) ✓ · bug Hub/Puerto **resuelto** ✓ · guardado de cliente (con red) ✓ · vista Por Cobrar ✓ · legibilidad de notas de visita ✓.
 - **Qué falta:**
-  1. Testing de Rubén de la rotación táctil del mapa y botón de brújula en PC y móvil (v0.11.9).
-  2. Testing de trazado de ruta 100% offline (modo avión) y panel de información inferior (v0.11.9).
-  3. Testing manual de Rubén para el onboarding con contraseña por defecto (v0.11.9).
-  4. Testing manual de Rubén para los cambios de la 0118 y v0.11.6.
-- **Hecho recién (2026-06-12):** Implementada la generación de contraseñas locales por defecto y ocultados visualmente los interruptores (`SwitchListTile`) de envío de correos electrónicos en todos los formularios de invitación de la app (cobradores, tenants, administradores y reenvío de invitaciones), manteniendo la consistencia del backend sin emails. Publicada versión `v0.11.9+119`.
+  1. **Build + publicar release v0.11.10** (bump ya hecho) → `Install Steps/build-release.ps1` (lo arma Rubén; borrar v0.11.9 al publicar).
+- **Hecho recién (2026-06-14):** Sprint A+B (6 features) + ronda de fixes del testing manual, todo auditado (Fase 4: 8 agentes en 3 tandas) y mergeado a `main`. `flutter analyze` limpio · `flutter test` 275 verdes.
+
+---
+
+## 2026-06-14 — Sprint A+B: mapa picker, bug red, logo, vista Por Cobrar, reporte por cobrador
+
+**Qué se pidió (6 features):** 1) mapa de geolocalización del cliente consistente
+con el mapa principal; 2) bug: al asignar nodo a cliente no aparecían Hub/Puerto;
+3) vista de cobros sin tab "Por cliente", "Por cobrar" única con buscador + 1 cuota
+(la más antigua) + botón Pagar + tap→detalle; 4) reporte por cobrador que incluya
+admins + multi-select; 5) export Excel de ese reporte; 6) logo de la app en el login.
+
+**Decisiones de Rubén (AskUserQuestion):** #2 es bug real (creó hub+puerto y no salían) ·
+#3 una fila POR CONTRATO (no por cliente) y **el admin también paga** desde la lista ·
+#6 usar el ícono actual `app_icon.png`, **sin** el texto "SITECSA CRM" · defaults #4/#5
+confirmados (incluir cobrador+admin+admin_cobranza + inactivos con pagos; "Todos" default;
+PDF agrupado con subtotal + total general).
+
+**Qué se hizo** (rama `claude/awesome-joliot-a2bd43`, 9 commits `bb700a7`→`7883318`):
+- **#1** `mapa_picker_screen.dart` enriquecido (brújula, pin GPS, toggle satélite, atribución);
+  `UbicacionActualMarker`/`MapAttributionBanner` extraídos a `shared/widgets/mapa_widgets_compartidos.dart`
+  (DRY con `mapa_screen`). Beneficia también al picker de nodos de red.
+- **#2** `red_picker.dart`: `emptyHint` en Hub/Puerto (autoexplica el vacío y sirve de diagnóstico) +
+  `key` por nivel de cascada (anti estado viejo de `initialValue`). **Causa raíz no reproducible
+  estáticamente** — toda la cadena (schema/sync/RLS/INSERT/cascada) está correcta; el `emptyHint`
+  dirá en el dispositivo si la query devuelve 0 filas (dato) o si es otro mecanismo.
+- **#6** logo `app_icon.png` en recuadro negro redondeado en login + set-password (sin el texto, decisión de Rubén).
+- **#3** `cuotas_list_screen.dart` REESCRITO: vista única, 1 fila por contrato (cuota más antigua,
+  desempate por periodo = paridad con el mapa), buscador client-side, botón Pagar (admin+cobrador)
+  → `/cobro/:id`, tap→detalle; indicador "N cuotas · debe C$total" por contrato; sin tabs ni multi-select.
+- **#4+#5** `reportes_admin_screen.dart` + `pdf/reporte_por_cobrador_pdf.dart`: selector multi-cobrador
+  (incluye admins + inactivos con pagos vía EXISTS), PDF agrupado por `cobrador_id` con subtotal/total,
+  export Excel desde la misma query `_rowsPorCobrador` (totales idénticos PDF↔Excel).
+- **Audit Fase 4 (6 agentes, 2 tandas):** Sprint A → 1 MEDIO (logo se estiraba a barra negra por
+  `stretch`) + BAJOs, todos fixeados (`5df418f`). Sprint B → 1 MEDIO (se perdía el contexto de deuda
+  por cliente) + BAJOs, fixeados (`7883318`: indicador de deuda, desempate por periodo, clamp del saldo
+  del mapa, PDF por id anti-homónimos, botón Pagar más tocable, fin de mutación de estado en build).
+
+**Testing manual de Rubén (2026-06-14, debug Windows) + fixes** (commits `062665c`→`00f8425`):
+corrido desde una **worktree de ruta corta** (`C:\Users\ruben\sc`) porque el build Windows desde
+la worktree bajo OneDrive excedía MAX_PATH (MSB3491 en los `.tlog`). Fixes que salieron del testing:
+- **Bug guardado de cliente (causa raíz real):** `ref` NO es usable en `dispose()` (Riverpod 2.6.1
+  lanza "Cannot use ref after the widget was disposed") → se captura el `StateController` de
+  `formDirtyProvider` en `initState` (`_formDirtyCtrl`) y se usa en dispose. Mismo fix en
+  `contrato_form_screen`. Además en `_guardar` se capturan `ScaffoldMessenger`/`GoRouter` ANTES del
+  await (el árbol se reconstruye por PowerSync y desactiva el context → "ancestor unsafe").
+- **Vista cobros (pedido de Rubén):** fila con **código arriba** → nombre+municipio → mes → fecha
+  (se agregó join a `municipios`); **se quitó** la línea "N cuotas · debe total" (Rubén la pidió out).
+- **Cédula** alfanumérica libre (se quitó el validator de formato 000-000000-0000A).
+- **Legibilidad:** `scheme.secondary` (= primary al 10%, color de relleno) se usaba como color de
+  TEXTO/ÍCONO → ilegible. Arreglado en: notas de visita (Promesa de pago), dashboard (Pago parcial),
+  estado de ticket "Asignado", avatares de rol `admin_cobranza`, íconos del log de auditoría.
+- **Robustez:** el sheet de equipos en baja no bloquea el cierre del form de cliente (try/catch).
+
+**Backlog/aceptado:** `pi` sin import explícito (vía latlong2, pre-existente) · chips "Próximas/Vencen
+hoy" muestran la cuota futura aunque haya mora (semántica de filtro, aceptada) · **fix completo del
+context estable para `ofrecerGestionEquiposEnBaja`** en el path de baja (cliente y contrato_detail) —
+hoy mitigado con try/catch; pendiente capturar un Navigator estable (chip `task_5c833dc7`).
 
 ---
 

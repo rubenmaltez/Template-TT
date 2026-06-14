@@ -59,10 +59,16 @@ class _ClienteFormScreenState extends ConsumerState<ClienteFormScreen> {
   String? _codigoDupNombre; // nombre del cliente que ya usa ese código (o null)
   bool _codigoYaAsignado = false; // true = el cliente ya tiene código guardado
   Timer? _dupDebounce; // debounce del chequeo de duplicado en vivo
+  // Notifier capturado en initState para resetear el form-dirty en dispose
+  // SIN usar `ref` (ref NO es válido en dispose → "Cannot use ref after the
+  // widget was disposed"). El StateController vive en el container, sobrevive
+  // al widget, así que escribirlo en dispose es seguro.
+  late final StateController<bool> _formDirtyCtrl;
 
   @override
   void initState() {
     super.initState();
+    _formDirtyCtrl = ref.read(formDirtyProvider.notifier);
     _cargar();
   }
 
@@ -108,8 +114,9 @@ class _ClienteFormScreenState extends ConsumerState<ClienteFormScreen> {
     // Reset defensivo del form_dirty_provider: el shell que watchea
     // este provider no debe ver dirty=true tras desmontar el form,
     // sino el próximo sidebar tap mostraría un dialog huérfano.
-    // Sync (antes de super.dispose) porque ref sigue válido acá.
-    ref.read(formDirtyProvider.notifier).state = false;
+    // Usamos el notifier CAPTURADO en initState, NO `ref` (ref no es válido
+    // en dispose: lanza "Cannot use ref after the widget was disposed").
+    _formDirtyCtrl.state = false;
     _dupDebounce?.cancel();
     _codigo.dispose();
     _nombre.dispose();
@@ -152,6 +159,13 @@ class _ClienteFormScreenState extends ConsumerState<ClienteFormScreen> {
 
   Future<void> _guardar() async {
     if (!_formKey.currentState!.validate()) return;
+    // Capturamos los ancestros ANTES de los await. Tras el INSERT/UPDATE,
+    // PowerSync notifica a los watchers y el árbol se reconstruye: el elemento
+    // del form puede quedar desactivado (mounted sigue true pero el lookup de
+    // ancestro ya NO es seguro) → buscar ScaffoldMessenger/GoRouter por context
+    // ahí lanza "Looking up a deactivated widget's ancestor is unsafe".
+    final messenger = ScaffoldMessenger.of(context);
+    final router = GoRouter.of(context);
     final tenantId = ref.read(tenantIdProvider);
     if (tenantId == null) {
       setState(() => _error = 'No se pudo determinar el tenant');
@@ -265,7 +279,7 @@ class _ClienteFormScreenState extends ConsumerState<ClienteFormScreen> {
         );
       }
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
+        messenger.showSnackBar(
           SnackBar(content: Text(widget.clienteId == null
               ? 'Cliente creado'
               : 'Cambios guardados')),
@@ -277,17 +291,25 @@ class _ClienteFormScreenState extends ConsumerState<ClienteFormScreen> {
         _dirty = false;
         // Si se DESACTIVÓ el cliente (transición activo→inactivo), ofrecer
         // gestionar sus equipos instalados antes de salir (audit de lifecycle).
+        // El cliente YA se guardó: si el sheet falla (context desactivable tras
+        // el rebuild de PowerSync — pasa context crudo, riesgo residual de
+        // "ancestor unsafe"), NO bloqueamos la navegación; los equipos se
+        // gestionan luego desde el detalle. Fix completo (context estable) en
+        // backlog.
         if (widget.clienteId != null && _activoOriginal && !_activo) {
-          await ofrecerGestionEquiposEnBaja(context, ref,
-              clienteId: widget.clienteId!, entidad: 'cliente');
+          try {
+            await ofrecerGestionEquiposEnBaja(context, ref,
+                clienteId: widget.clienteId!, entidad: 'cliente');
+          } catch (_) {/* no bloquea el cierre del form */}
         }
-        if (!context.mounted) return;
-        // pop si vinimos vía push (caso normal); fallback go al listado
-        // si fue deep-link directo a la edición.
-        if (context.canPop()) {
-          context.pop();
+        if (!mounted) return;
+        // Navegamos con el router CAPTURADO (no por context, ya desactivable
+        // tras el await). pop si vinimos vía push (caso normal); fallback go al
+        // listado si fue deep-link directo a la edición.
+        if (router.canPop()) {
+          router.pop();
         } else {
-          context.go('/admin/clientes');
+          router.go('/admin/clientes');
         }
       }
     } catch (e) {
@@ -305,7 +327,7 @@ class _ClienteFormScreenState extends ConsumerState<ClienteFormScreen> {
     final picked = await Navigator.of(context).push<LatLng>(
       MaterialPageRoute(builder: (_) => MapaPickerScreen(inicial: inicial)),
     );
-    if (picked != null) {
+    if (picked != null && mounted) {
       setState(() {
         _lat.text = picked.latitude.toStringAsFixed(6);
         _lng.text = picked.longitude.toStringAsFixed(6);
@@ -428,17 +450,9 @@ class _ClienteFormScreenState extends ConsumerState<ClienteFormScreen> {
                   Expanded(
                     child: TextFormField(
                       controller: _cedula,
-                      decoration: const InputDecoration(
-                          labelText: 'Cédula', hintText: '000-000000-0000A'),
-                      validator: (v) {
-                        final t = (v ?? '').trim();
-                        if (t.isEmpty) return null; // Opcional
-                        if (!RegExp(r'^\d{3}-\d{6}-\d{4}[A-Za-z]$')
-                            .hasMatch(t)) {
-                          return 'Formato: 000-000000-0000A';
-                        }
-                        return null;
-                      },
+                      // Cédula libre (alfanumérica, sin formato estricto): el
+                      // negocio no requiere validarla con precisión. Opcional.
+                      decoration: const InputDecoration(labelText: 'Cédula'),
                     ),
                   ),
                   const SizedBox(width: 12),

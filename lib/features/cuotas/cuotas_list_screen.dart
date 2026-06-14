@@ -14,15 +14,13 @@ import '../shared/widgets/empty_state.dart';
 
 enum _Filtro { todas, mora, gracia, parciales, hoy, proxima, verTodo }
 
-/// Pantalla de Cobros. La usa el cobrador (móvil-first, su vista de trabajo)
-/// y el admin en modo monitoreo (`adminMode: true`).
+/// Pantalla de Cobros ("Por cobrar"). La usa el cobrador (móvil-first, su vista
+/// de trabajo) y el admin/admin_cobranza (`adminMode: true`).
 ///
-/// En `adminMode` el admin SE QUEDA en esta pantalla (no se aplica el
-/// safety-net que reencamina admins a /admin) y aparecen dos filtros
-/// chip-dropdown ("Cobrador" / "Zona") para acotar por el cobrador y la
-/// comunidad de los clientes — mismo patrón visual que el mapa. El cobrador
-/// (adminMode false) ve la pantalla intacta: sin dropdowns, con su
-/// safety-net activo.
+/// Muestra UNA fila por contrato = su cuota MÁS ANTIGUA pendiente (igual que el
+/// pin del mapa), con botón "Pagar" que va directo al cobro de esa cuota. Tocar
+/// la fila abre el detalle del cliente. Tiene buscador de clientes + (en
+/// adminMode) filtros chip-dropdown Cobrador/Zona + los chips de estado.
 class CuotasListScreen extends ConsumerStatefulWidget {
   const CuotasListScreen({super.key, this.adminMode = false});
 
@@ -34,17 +32,17 @@ class CuotasListScreen extends ConsumerStatefulWidget {
   ConsumerState<CuotasListScreen> createState() => _CuotasListScreenState();
 }
 
-class _CuotasListScreenState extends ConsumerState<CuotasListScreen>
-    with SingleTickerProviderStateMixin {
-  late TabController _tabCtrl;
+class _CuotasListScreenState extends ConsumerState<CuotasListScreen> {
   _Filtro _filtro = _Filtro.todas;
-
-  final Set<String> _selected = {};
-  String? _selectedContratoId;
 
   // Filtros admin (null = todos/todas). Sólo se usan/mostran en adminMode.
   String? _cobradorId;
   String? _comunidadId;
+
+  // Búsqueda de cliente (client-side sobre lo ya cargado, sin recrear el
+  // stream en cada tecla). Normalizada a minúsculas.
+  final _busquedaCtrl = TextEditingController();
+  String _busqueda = '';
 
   // Streams de opciones de los dropdowns (sólo adminMode). Cacheados en
   // initState para no recrear suscripciones en cada build (anti-patrón
@@ -56,10 +54,6 @@ class _CuotasListScreenState extends ConsumerState<CuotasListScreen>
   @override
   void initState() {
     super.initState();
-    _tabCtrl = TabController(length: 2, vsync: this);
-    _tabCtrl.addListener(() {
-      if (!_tabCtrl.indexIsChanging) _clearSelection();
-    });
     if (widget.adminMode) {
       // Cobradores activos del tenant (rol cobrador). RLS scopa por tenant.
       _cobradorOpcionesStream = ps.db.watch('''
@@ -81,7 +75,7 @@ class _CuotasListScreenState extends ConsumerState<CuotasListScreen>
 
   @override
   void dispose() {
-    _tabCtrl.dispose();
+    _busquedaCtrl.dispose();
     super.dispose();
   }
 
@@ -99,51 +93,6 @@ class _CuotasListScreenState extends ConsumerState<CuotasListScreen>
       WHERE resuelta_en IS NULL
         AND (vista_en IS NULL OR vista_por = 'cobrador')
     ''', [now, cobradorId]);
-  }
-
-  void _toggleSelect(String cuotaId, String? contratoId, [List<String>? orderedIds]) {
-    if (contratoId == null) return;
-    setState(() {
-      if (_selected.contains(cuotaId)) {
-        if (orderedIds != null) {
-          final idx = orderedIds.indexOf(cuotaId);
-          for (var i = idx; i < orderedIds.length; i++) {
-            _selected.remove(orderedIds[i]);
-          }
-        } else {
-          _selected.remove(cuotaId);
-        }
-        if (_selected.isEmpty) _selectedContratoId = null;
-      } else {
-        if (_selected.isEmpty) {
-          _selectedContratoId = contratoId;
-          _selected.add(cuotaId);
-        } else if (contratoId == _selectedContratoId) {
-          if (orderedIds != null) {
-            final idx = orderedIds.indexOf(cuotaId);
-            if (idx == 0 || (idx > 0 && _selected.contains(orderedIds[idx - 1]))) {
-              _selected.add(cuotaId);
-            } else {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('Debés cobrar las cuotas anteriores primero'),
-                  duration: Duration(seconds: 2),
-                ),
-              );
-            }
-          } else {
-            _selected.add(cuotaId);
-          }
-        }
-      }
-    });
-  }
-
-  void _clearSelection() {
-    setState(() {
-      _selected.clear();
-      _selectedContratoId = null;
-    });
   }
 
   /// Convierte las filas de un stream de opciones (id/nombre) al formato de
@@ -179,10 +128,7 @@ class _CuotasListScreenState extends ConsumerState<CuotasListScreen>
               todosLabel: 'Todos',
               value: _cobradorId,
               opciones: _opciones(snap.data ?? const []),
-              onChanged: (v) {
-                setState(() => _cobradorId = v);
-                _clearSelection();
-              },
+              onChanged: (v) => setState(() => _cobradorId = v),
             ),
           ),
           const SizedBox(width: 8),
@@ -195,13 +141,41 @@ class _CuotasListScreenState extends ConsumerState<CuotasListScreen>
               todosLabel: 'Todas',
               value: _comunidadId,
               opciones: _opciones(snap.data ?? const []),
-              onChanged: (v) {
-                setState(() => _comunidadId = v);
-                _clearSelection();
-              },
+              onChanged: (v) => setState(() => _comunidadId = v),
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  /// Buscador de cliente. Filtra client-side la lista ya cargada (no recrea el
+  /// stream). Mismos criterios que el buscador del mapa: nombre/cédula/teléfono/
+  /// código.
+  Widget _buildBuscador() {
+    final scheme = Theme.of(context).colorScheme;
+    return Container(
+      color: scheme.surface,
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+      child: TextField(
+        controller: _busquedaCtrl,
+        decoration: InputDecoration(
+          isDense: true,
+          prefixIcon: const Icon(Icons.search),
+          hintText: 'Buscar cliente (nombre, cédula, teléfono o código)',
+          suffixIcon: _busqueda.isEmpty
+              ? null
+              : IconButton(
+                  icon: const Icon(Icons.close),
+                  tooltip: 'Limpiar',
+                  onPressed: () {
+                    _busquedaCtrl.clear();
+                    setState(() => _busqueda = '');
+                  },
+                ),
+          border: const OutlineInputBorder(),
+        ),
+        onChanged: (v) => setState(() => _busqueda = v.trim().toLowerCase()),
       ),
     );
   }
@@ -213,11 +187,10 @@ class _CuotasListScreenState extends ConsumerState<CuotasListScreen>
     // Safety-net del cold-start: '/' (= Cobros) es la landing del cobrador.
     // Si el router aún no resolvió el rol y un admin/admin_cobranza/super_admin
     // cayó acá, lo reencaminamos a /admin cuando llega su rol. Redundante con el
-    // redirect del router, pero evita el flash de la pantalla del cobrador
-    // (paridad con el viejo HomeScreen eliminado).
+    // redirect del router, pero evita el flash de la pantalla del cobrador.
     //
     // En adminMode NO aplica: el admin entra a propósito a /admin/cobros y
-    // debe quedarse acá (esta MISMA pantalla es su vista de monitoreo).
+    // debe quedarse acá (esta MISMA pantalla es su vista de monitoreo/cobro).
     if (!widget.adminMode) {
       final cobrador = ref.watch(cobradorActualProvider).valueOrNull;
       if ((cobrador != null && cobrador.tieneAccesoAdmin) ||
@@ -230,151 +203,27 @@ class _CuotasListScreenState extends ConsumerState<CuotasListScreen>
 
     final diasGracia = settings.diasGracia;
     final diasVisibles = settings.diasCuotasVisibles;
-    final multiCuotaEnabled = settings.pagoAdelantadoPermitido;
-    final scheme = Theme.of(context).colorScheme;
 
     // El filtro "Parciales" se muestra si el tenant permite pago parcial O si ya
-    // hay cuotas parciales (históricas). Si queda oculto y estaba activo, se
-    // vuelve a 'todas'.
+    // hay cuotas parciales (históricas). Si el filtro activo dejó de estar
+    // disponible, usamos 'todas' como EFECTIVO sin mutar el estado en build
+    // (anti-patrón); el chip elegido por el usuario se conserva en _filtro.
     final mostrarParcial = settings.pagoParcialPermitido ||
         (ref.watch(hayCuotasParcialesProvider).valueOrNull ?? false);
-    if (!mostrarParcial && _filtro == _Filtro.parciales) {
-      _filtro = _Filtro.todas;
+    var filtroEfectivo = _filtro;
+    if (!mostrarParcial && filtroEfectivo == _Filtro.parciales) {
+      filtroEfectivo = _Filtro.todas;
     }
-    // "Ver todo" (sin límite de rango) es exclusivo del admin. Si el cobrador
-    // quedara con ese filtro (no debería: el chip no se le muestra), vuelve a
-    // 'todas'.
-    if (!widget.adminMode && _filtro == _Filtro.verTodo) {
-      _filtro = _Filtro.todas;
+    if (!widget.adminMode && filtroEfectivo == _Filtro.verTodo) {
+      filtroEfectivo = _Filtro.todas;
     }
 
-    return Stack(
-      children: [
-        Column(
-          children: [
-            // Filtros admin (cobrador / zona) — sólo en adminMode. Mismo
-            // look chip-dropdown del mapa (DropdownFiltro compartido).
-            if (widget.adminMode) _buildFiltrosAdmin(),
-            Material(
-              color: scheme.surface,
-              child: TabBar(
-                controller: _tabCtrl,
-                labelColor: scheme.primary,
-                unselectedLabelColor: scheme.outline,
-                indicatorColor: scheme.primary,
-                tabs: const [
-                  Tab(icon: Icon(Icons.people, size: 18), text: 'Por cliente'),
-                  Tab(icon: Icon(Icons.receipt_long, size: 18), text: 'Por cobrar'),
-                ],
-              ),
-            ),
-            Expanded(
-              child: TabBarView(
-                controller: _tabCtrl,
-                children: [
-                  // Tab A: Por cliente (default — la vista de trabajo del cobrador)
-                  _TabPorCliente(
-                    adminMode: widget.adminMode,
-                    cobradorId: widget.adminMode ? _cobradorId : null,
-                    comunidadId: widget.adminMode ? _comunidadId : null,
-                  ),
-                  // Tab B: Por cobrar (con filtros + multi-select)
-                  _TabPorCobrar(
-                    filtro: _filtro,
-                    mostrarParcial: mostrarParcial,
-                    adminMode: widget.adminMode,
-                    diasGracia: diasGracia,
-                    diasVisibles: diasVisibles,
-                    multiSelect: multiCuotaEnabled,
-                    selected: _selected,
-                    selectedContratoId: _selectedContratoId,
-                    onToggle: _toggleSelect,
-                    cobradorId: widget.adminMode ? _cobradorId : null,
-                    comunidadId: widget.adminMode ? _comunidadId : null,
-                    onFiltroChanged: (f) {
-                      setState(() => _filtro = f);
-                      _clearSelection();
-                      // M12 (audit): en adminMode NO se marcan como vistas —
-                      // el admin monitoreando borraba el badge del COBRADOR.
-                      if (f == _Filtro.mora && !widget.adminMode) {
-                        _marcarMoraComoVista();
-                      }
-                    },
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-        if (_selected.isNotEmpty)
-          Positioned(
-            left: 16, right: 16, bottom: 16,
-            child: Row(
-              children: [
-                IconButton.filledTonal(
-                  icon: const Icon(Icons.close),
-                  onPressed: _clearSelection,
-                  tooltip: 'Cancelar selección',
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: FilledButton.icon(
-                    icon: const Icon(Icons.payment),
-                    label: Text(_selected.length == 1
-                        ? 'Cobrar cuota'
-                        : 'Cobrar ${_selected.length} cuotas'),
-                    onPressed: () {
-                      final ids = _selected.join(',');
-                      _clearSelection();
-                      context.push('/cobro/$ids');
-                    },
-                  ),
-                ),
-              ],
-            ),
-          ),
-      ],
-    );
-  }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Tab A: Por cobrar
-// ─────────────────────────────────────────────────────────────────────────────
-
-class _TabPorCobrar extends StatelessWidget {
-  const _TabPorCobrar({
-    required this.filtro,
-    required this.mostrarParcial,
-    required this.adminMode,
-    required this.diasGracia,
-    required this.diasVisibles,
-    required this.multiSelect,
-    required this.selected,
-    required this.selectedContratoId,
-    required this.onToggle,
-    required this.onFiltroChanged,
-    this.cobradorId,
-    this.comunidadId,
-  });
-  final _Filtro filtro;
-  final bool mostrarParcial;
-  final bool adminMode;
-  final int diasGracia;
-  final int diasVisibles;
-  final bool multiSelect;
-  final Set<String> selected;
-  final String? selectedContratoId;
-  final void Function(String cuotaId, String? contratoId, [List<String>? orderedIds]) onToggle;
-  final ValueChanged<_Filtro> onFiltroChanged;
-  // Filtros admin (null = sin filtrar). En la vista del cobrador siempre null.
-  final String? cobradorId;
-  final String? comunidadId;
-
-  @override
-  Widget build(BuildContext context) {
     return Column(
       children: [
+        // Filtros admin (cobrador / zona) — sólo en adminMode.
+        if (widget.adminMode) _buildFiltrosAdmin(),
+        _buildBuscador(),
+        // Chips de estado.
         SingleChildScrollView(
           scrollDirection: Axis.horizontal,
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
@@ -382,11 +231,18 @@ class _TabPorCobrar extends StatelessWidget {
             children: [
               for (final f in _Filtro.values)
                 if ((mostrarParcial || f != _Filtro.parciales) &&
-                    (adminMode || f != _Filtro.verTodo)) ...[
+                    (widget.adminMode || f != _Filtro.verTodo)) ...[
                   FilterChip(
                     label: Text(_label(f)),
-                    selected: filtro == f,
-                    onSelected: (_) => onFiltroChanged(f),
+                    selected: filtroEfectivo == f,
+                    onSelected: (_) {
+                      setState(() => _filtro = f);
+                      // M12 (audit): en adminMode NO se marcan como vistas —
+                      // el admin monitoreando borraba el badge del COBRADOR.
+                      if (f == _Filtro.mora && !widget.adminMode) {
+                        _marcarMoraComoVista();
+                      }
+                    },
                   ),
                   const SizedBox(width: 8),
                 ],
@@ -394,17 +250,14 @@ class _TabPorCobrar extends StatelessWidget {
           ),
         ),
         Expanded(
-          child: _CuotasList(
-            adminMode: adminMode,
-            filtro: filtro,
+          child: _CobrosList(
+            adminMode: widget.adminMode,
+            filtro: filtroEfectivo,
             diasGracia: diasGracia,
             diasVisibles: diasVisibles,
-            multiSelect: multiSelect,
-            selected: selected,
-            selectedContratoId: selectedContratoId,
-            onToggle: onToggle,
-            cobradorId: cobradorId,
-            comunidadId: comunidadId,
+            cobradorId: widget.adminMode ? _cobradorId : null,
+            comunidadId: widget.adminMode ? _comunidadId : null,
+            busqueda: _busqueda,
           ),
         ),
       ],
@@ -422,16 +275,17 @@ class _TabPorCobrar extends StatelessWidget {
       };
 }
 
-class _CuotasList extends StatefulWidget {
-  const _CuotasList({
-    this.adminMode = false,
+// ─────────────────────────────────────────────────────────────────────────────
+// Lista: una fila por contrato (cuota más antigua) + búsqueda client-side
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _CobrosList extends StatefulWidget {
+  const _CobrosList({
+    required this.adminMode,
     required this.filtro,
     required this.diasGracia,
     required this.diasVisibles,
-    required this.multiSelect,
-    required this.selected,
-    required this.selectedContratoId,
-    required this.onToggle,
+    required this.busqueda,
     this.cobradorId,
     this.comunidadId,
   });
@@ -439,19 +293,16 @@ class _CuotasList extends StatefulWidget {
   final _Filtro filtro;
   final int diasGracia;
   final int diasVisibles;
-  final bool multiSelect;
-  final Set<String> selected;
-  final String? selectedContratoId;
-  final void Function(String cuotaId, String? contratoId, [List<String>? orderedIds]) onToggle;
+  final String busqueda;
   // Filtros admin (null = sin filtrar). En la vista del cobrador siempre null.
   final String? cobradorId;
   final String? comunidadId;
 
   @override
-  State<_CuotasList> createState() => _CuotasListState();
+  State<_CobrosList> createState() => _CobrosListState();
 }
 
-class _CuotasListState extends State<_CuotasList> {
+class _CobrosListState extends State<_CobrosList> {
   late Stream<List<Map<String, dynamic>>> _cuotasStream;
 
   @override
@@ -461,8 +312,10 @@ class _CuotasListState extends State<_CuotasList> {
   }
 
   @override
-  void didUpdateWidget(_CuotasList old) {
+  void didUpdateWidget(_CobrosList old) {
     super.didUpdateWidget(old);
+    // OJO: la búsqueda NO recrea el stream (se filtra client-side); sólo los
+    // filtros que cambian la query SQL.
     if (old.filtro != widget.filtro ||
         old.diasGracia != widget.diasGracia ||
         old.diasVisibles != widget.diasVisibles ||
@@ -473,11 +326,6 @@ class _CuotasListState extends State<_CuotasList> {
   }
 
   Stream<List<Map<String, dynamic>>> _buildStream() {
-    // "Hoy" en hora LOCAL del dispositivo, idéntico al que usan los badges de
-    // la fila (DateTime.now() local). SQLite date('now') es UTC: en zonas como
-    // Nicaragua (UTC-6) de noche difiere un día → "Vencen hoy" no matcheaba y
-    // los rangos quedaban corridos. Pasamos el día local como parámetro para
-    // que TODOS los filtros coincidan con lo que ve el cobrador.
     // Día de HOY en hora de Nicaragua (UTC-6, sin DST): date('now','-6 hours').
     // NUNCA date('now') pelado (es UTC → corre 1 día de noche). Norma general
     // de la app para lógica de límite de día — ver CLAUDE.md.
@@ -505,26 +353,19 @@ class _CuotasListState extends State<_CuotasList> {
               "AND date(cu.fecha_vencimiento) = date('now', '-6 hours')",
           <Object?>[],
         ),
-      // Próximas: vencen DESPUÉS de hoy pero dentro del rango visible. "Hoy" es
-      // su propio filtro (exclusivo de la fecha de hoy), así que acá es > hoy.
+      // Próximas: vencen DESPUÉS de hoy pero dentro del rango visible.
       _Filtro.proxima => (
           "AND cu.estado IN ('pendiente','parcial') "
               "AND date(cu.fecha_vencimiento) > date('now', '-6 hours') "
               "AND date(cu.fecha_vencimiento) <= date('now', '-6 hours', '+${widget.diasVisibles} days')",
           <Object?>[],
         ),
-      // Ver todo (solo admin): TODO lo pendiente, SIN el límite de rango — la
-      // forma del admin de ver las cuotas fuera de rango que el cobrador no ve.
+      // Ver todo (solo admin): TODO lo pendiente, SIN el límite de rango.
       _Filtro.verTodo => ("AND cu.estado IN ('pendiente','parcial')", <Object?>[]),
     };
 
-    final orderBy = widget.filtro == _Filtro.mora
-        ? 'ORDER BY co.nombre, c.nombre'
-        : 'ORDER BY cu.fecha_vencimiento ASC, c.nombre';
-
     // Filtros admin (cobrador / zona). Se acumulan después de los params del
-    // filtro de estado para preservar el orden posicional de los `?`. En la
-    // vista del cobrador ambos son null y no agregan condiciones.
+    // filtro de estado para preservar el orden posicional de los `?`.
     final allParams = <Object?>[...params];
     var adminFilter = '';
     if (widget.cobradorId != null) {
@@ -536,26 +377,52 @@ class _CuotasListState extends State<_CuotasList> {
       allParams.add(widget.comunidadId);
     }
 
+    // Trae TODAS las cuotas que matchean; el agrupado por contrato (1 fila =
+    // cuota más antigua) se hace client-side. Se seleccionan cédula/teléfono/
+    // código para el buscador client-side.
     final sql = '''
       SELECT cu.id, cu.monto, cu.monto_pagado, cu.fecha_vencimiento,
              cu.periodo, cu.estado, cu.contrato_id,
              cu.descripcion, cu.tipo_cargo_manual,
              COALESCE(cu.cargos_neto, 0) AS cargos_neto,
              c.id AS cliente_id, c.nombre AS cliente_nombre,
-             co.nombre AS comunidad,
+             c.cedula AS cliente_cedula, c.telefono AS cliente_telefono,
+             c.codigo AS cliente_codigo,
+             co.nombre AS comunidad, mu.nombre AS municipio,
              p.nombre AS plan_nombre, ct.dia_pago
         FROM cuotas cu
         JOIN clientes c ON c.id = cu.cliente_id
    LEFT JOIN comunidades co ON co.id = c.comunidad_id
+   LEFT JOIN municipios mu ON mu.id = co.municipio_id
    LEFT JOIN contratos ct ON ct.id = cu.contrato_id
    LEFT JOIN planes p ON p.id = ct.plan_id
        WHERE c.activo = 1
          $extra
          $adminFilter
-       $orderBy
+       ORDER BY cu.fecha_vencimiento ASC, c.nombre
     ''';
 
     return ps.db.watch(sql, parameters: allParams);
+  }
+
+  /// Matchea por nombre/cédula/teléfono/código (mismos criterios que el
+  /// buscador del mapa). Para teléfono compara solo dígitos.
+  bool _matchBusqueda(Map<String, dynamic> r, String q) {
+    if (q.isEmpty) return true;
+    final hay = [
+      r['cliente_nombre'],
+      r['cliente_cedula'],
+      r['cliente_telefono'],
+      r['cliente_codigo'],
+    ].whereType<String>().join(' ').toLowerCase();
+    if (hay.contains(q)) return true;
+    final qDigits = q.replaceAll(RegExp(r'\D'), '');
+    if (qDigits.isNotEmpty) {
+      final telDigits =
+          (r['cliente_telefono'] as String?)?.replaceAll(RegExp(r'\D'), '') ?? '';
+      if (telDigits.contains(qDigits)) return true;
+    }
+    return false;
   }
 
   @override
@@ -575,293 +442,59 @@ class _CuotasListState extends State<_CuotasList> {
           );
         }
         final rows = snap.data ?? const [];
-        if (rows.isEmpty) {
-          return const EmptyState(
-            icon: Icons.check_circle_outline,
-            titulo: 'Nada por cobrar',
-            descripcion: 'No hay cuotas que coincidan con el filtro.',
-          );
-        }
 
-        // Agrupar por cliente_id para card-per-client.
-        final byClient = <String, List<Map<String, dynamic>>>{};
-        final clientOrder = <String>[];
+        // 1 fila por contrato = su cuota MÁS ANTIGUA pendiente. Las cuotas sin
+        // contrato (cargos manuales sueltos) son cada una su propia fila.
+        // Además guardamos, por contrato, cuántas cuotas pendientes tiene y su
+        // saldo total (para mostrar el contexto de deuda en la fila).
+        final masVieja = <String, Map<String, dynamic>>{};
         for (final r in rows) {
-          final cid = r['cliente_id'] as String;
-          if (!byClient.containsKey(cid)) {
-            byClient[cid] = [];
-            clientOrder.add(cid);
+          if (!_matchBusqueda(r, widget.busqueda)) continue;
+          final ctId = r['contrato_id'] as String?;
+          final key = ctId ?? 'manual:${r['id']}';
+          final actual = masVieja[key];
+          // Empate de fecha_vencimiento → desempata por periodo ASC (paridad
+          // exacta con el pin del mapa).
+          if (actual == null || _cmpAntiguedad(r, actual) < 0) {
+            masVieja[key] = r;
           }
-          byClient[cid]!.add(r);
         }
+        final filas = masVieja.values.toList()
+          ..sort((a, b) {
+            final c = _cmpAntiguedad(a, b);
+            if (c != 0) return c;
+            return (a['cliente_nombre'] as String)
+                .toLowerCase()
+                .compareTo((b['cliente_nombre'] as String).toLowerCase());
+          });
 
-        return ListView.builder(
-          padding: EdgeInsets.only(
-            left: 8, right: 8, top: 8,
-            bottom: widget.selected.isNotEmpty ? 80 : 16,
-          ),
-          itemCount: clientOrder.length,
-          itemBuilder: (context, i) {
-            final cid = clientOrder[i];
-            final cuotas = byClient[cid]!;
-            final first = cuotas.first;
-            final clienteNombre = first['cliente_nombre'] as String;
-            final comunidad = first['comunidad'] as String?;
-
-            return Card(
-              margin: const EdgeInsets.only(bottom: 8),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // Header del cliente
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
-                    child: Row(
-                      children: [
-                        Icon(Icons.person, size: 18,
-                            color: Theme.of(context).colorScheme.primary),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(clienteNombre,
-                                  style: const TextStyle(
-                                    fontWeight: FontWeight.w600,
-                                    fontSize: 14,
-                                  )),
-                              if (comunidad != null)
-                                Text(comunidad,
-                                    style: TextStyle(
-                                      color: Theme.of(context).colorScheme.outline,
-                                      fontSize: 11,
-                                    )),
-                            ],
-                          ),
-                        ),
-                        Text('${cuotas.length} cuota(s)',
-                            style: TextStyle(
-                              color: Theme.of(context).colorScheme.outline,
-                              fontSize: 11,
-                            )),
-                      ],
-                    ),
-                  ),
-                  const Divider(height: 1),
-                  // Cuotas compactas — computar IDs pendientes ordenados
-                  // para validar orden de pago por contrato.
-                  ...() {
-                    // Agrupar cuotas pendientes por contrato para orden.
-                    final pendingByContrato = <String?, List<String>>{};
-                    for (final c in cuotas) {
-                      final e = c['estado'] as String;
-                      if (e == 'pendiente' || e == 'parcial') {
-                        final ctId = c['contrato_id'] as String?;
-                        pendingByContrato.putIfAbsent(ctId, () => []);
-                        pendingByContrato[ctId]!.add(c['id'] as String);
-                      }
-                    }
-
-                    return cuotas.map((row) {
-                      final cuotaId = row['id'] as String;
-                      final contratoId = row['contrato_id'] as String?;
-                      final isSelected = widget.selected.contains(cuotaId);
-                      final pendingIds = pendingByContrato[contratoId] ?? [];
-                      final canSelect = widget.multiSelect &&
-                          (widget.selected.isEmpty ||
-                              contratoId == widget.selectedContratoId);
-
-                      return _CuotaCompactRow(
-                        row: row,
-                        diasGracia: widget.diasGracia,
-                        isSelected: isSelected,
-                        showCheckbox: widget.selected.isNotEmpty,
-                        onTap: () {
-                          if (widget.selected.isNotEmpty) {
-                            widget.onToggle(cuotaId, contratoId, pendingIds);
-                          } else if (widget.adminMode) {
-                            // Monitoreo: el admin abre el CONTRATO (con su
-                            // shell), no la pantalla de cobro del cobrador.
-                            if (contratoId != null) {
-                              context.push('/admin/contratos/$contratoId');
-                            }
-                          } else {
-                            context.push('/cobro/$cuotaId');
-                          }
-                        },
-                        onLongPress: widget.multiSelect && canSelect
-                            ? () => widget.onToggle(cuotaId, contratoId, pendingIds)
-                            : null,
-                      );
-                    });
-                  }(),
-                ],
-              ),
-            );
-          },
-        );
-      },
-    );
-  }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Tab B: Por cliente
-// ─────────────────────────────────────────────────────────────────────────────
-
-class _TabPorCliente extends StatefulWidget {
-  const _TabPorCliente({
-    this.adminMode = false,
-    this.cobradorId,
-    this.comunidadId,
-  });
-
-  // En adminMode la navegacion usa las rutas /admin/* (sin esto el admin
-  // caia a las pantallas full-screen del cobrador y perdia el shell).
-  final bool adminMode;
-  // Filtros admin (null = sin filtrar). En la vista del cobrador siempre null.
-  final String? cobradorId;
-  final String? comunidadId;
-
-  @override
-  State<_TabPorCliente> createState() => _TabPorClienteState();
-}
-
-class _TabPorClienteState extends State<_TabPorCliente> {
-  late Stream<List<Map<String, dynamic>>> _stream;
-
-  @override
-  void initState() {
-    super.initState();
-    _stream = _buildStream();
-  }
-
-  @override
-  void didUpdateWidget(_TabPorCliente old) {
-    super.didUpdateWidget(old);
-    if (old.cobradorId != widget.cobradorId ||
-        old.comunidadId != widget.comunidadId) {
-      setState(() => _stream = _buildStream());
-    }
-  }
-
-  Stream<List<Map<String, dynamic>>> _buildStream() {
-    // Filtros admin (cobrador / zona). Acumulan condiciones + params; en la
-    // vista del cobrador ambos son null y la query queda como estaba.
-    final params = <Object?>[];
-    var adminFilter = '';
-    if (widget.cobradorId != null) {
-      adminFilter += 'AND c.cobrador_id = ? ';
-      params.add(widget.cobradorId);
-    }
-    if (widget.comunidadId != null) {
-      adminFilter += 'AND c.comunidad_id = ? ';
-      params.add(widget.comunidadId);
-    }
-
-    return ps.db.watch('''
-      SELECT c.id, c.nombre,
-             co.nombre AS comunidad,
-             COUNT(cu.id) AS cuotas_pend,
-             SUM(CASE WHEN date(cu.fecha_vencimiento) < date('now', '-6 hours')
-                      THEN 1 ELSE 0 END) AS cuotas_vencidas,
-             COALESCE(SUM(max(cu.monto + COALESCE(cu.cargos_neto, 0) - cu.monto_pagado, 0)), 0) AS saldo_pendiente,
-             MIN(cu.fecha_vencimiento) AS vence_mas_vieja
-        FROM cuotas cu
-        JOIN clientes c ON c.id = cu.cliente_id
-   LEFT JOIN comunidades co ON co.id = c.comunidad_id
-       WHERE cu.estado IN ('pendiente','parcial')
-         AND c.activo = 1
-         $adminFilter
-       GROUP BY c.id
-       ORDER BY MIN(cu.fecha_vencimiento) ASC, c.nombre
-    ''', parameters: params);
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    return StreamBuilder<List<Map<String, dynamic>>>(
-      stream: _stream,
-      builder: (context, snap) {
-        if (snap.hasError) {
-          return Center(child: Text(mensajeErrorHumano(snap.error!)));
-        }
-        // M11: sin initialData, el primer frame muestra carga en vez de
-        // flashear el estado vacío antes de que llegue la data real.
-        if (snap.connectionState == ConnectionState.waiting && !snap.hasData) {
-          return const Padding(
-            padding: EdgeInsets.all(32),
-            child: Center(child: CircularProgressIndicator()),
-          );
-        }
-        final rows = snap.data ?? const [];
-        if (rows.isEmpty) {
-          return const EmptyState(
+        if (filas.isEmpty) {
+          return EmptyState(
             icon: Icons.check_circle_outline,
-            titulo: 'Sin clientes con deuda',
-            descripcion: 'Todos los clientes están al día.',
+            titulo: widget.busqueda.isEmpty
+                ? 'Nada por cobrar'
+                : 'Sin resultados',
+            descripcion: widget.busqueda.isEmpty
+                ? 'No hay cuotas que coincidan con el filtro.'
+                : 'Ningún cliente coincide con la búsqueda.',
           );
         }
 
         return ListView.separated(
           padding: const EdgeInsets.all(8),
-          itemCount: rows.length,
-          separatorBuilder: (_, __) => const SizedBox(height: 4),
+          itemCount: filas.length,
+          separatorBuilder: (_, __) => const SizedBox(height: 6),
           itemBuilder: (context, i) {
-            final r = rows[i];
-            final cuotasPend = (r['cuotas_pend'] as num).toInt();
-            final cuotasVencidas = (r['cuotas_vencidas'] as num).toInt();
-            final saldo = (r['saldo_pendiente'] as num).toDouble();
-            final vence = DateTime.parse(r['vence_mas_vieja'] as String);
-            // Día Nicaragua (B11) truncado, para coincidir con el corte SQL.
-            final diasMora = Fmt.hoyNicaragua()
-                .difference(DateTime(vence.year, vence.month, vence.day))
-                .inDays;
-            final enMora = diasMora > 0;
-
-            return Card(
-              child: ListTile(
-                leading: CircleAvatar(
-                  backgroundColor: enMora
-                      ? scheme.errorContainer
-                      : scheme.primaryContainer,
-                  child: Icon(
-                    Icons.person,
-                    color: enMora ? scheme.error : scheme.primary,
-                  ),
-                ),
-                title: Text(r['nombre'] as String),
-                subtitle: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      r['comunidad'] as String? ?? 'Sin comunidad',
-                      style: TextStyle(color: scheme.outline, fontSize: 12),
-                    ),
-                    Text(
-                      enMora
-                          ? '$cuotasVencidas vencida(s) · $diasMora día(s) en mora'
-                          : '$cuotasPend cuota(s) pendiente(s)',
-                      style: TextStyle(
-                        color: enMora ? scheme.error : scheme.outline,
-                        fontWeight: enMora ? FontWeight.w500 : null,
-                        fontSize: 12,
-                      ),
-                    ),
-                  ],
-                ),
-                trailing: Text(
-                  Fmt.cordobas(saldo),
-                  style: TextStyle(
-                    fontWeight: FontWeight.bold,
-                    color: enMora ? scheme.error : null,
-                  ),
-                ),
-                onTap: () => context.push(widget.adminMode
-                    ? '/admin/clientes/${r['id']}'
-                    : '/clientes/${r['id']}'),
-              ),
+            final row = filas[i];
+            final cuotaId = row['id'] as String;
+            final clienteId = row['cliente_id'] as String;
+            return _CobroRow(
+              row: row,
+              diasGracia: widget.diasGracia,
+              onTapCliente: () => context.push(widget.adminMode
+                  ? '/admin/clientes/$clienteId'
+                  : '/clientes/$clienteId'),
+              onPagar: () => context.push('/cobro/$cuotaId'),
             );
           },
         );
@@ -870,25 +503,39 @@ class _TabPorClienteState extends State<_TabPorCliente> {
   }
 }
 
+/// Saldo canónico de una cuota (regla #10): monto + cargos_neto - pagado,
+/// clampeado a >= 0. Idéntico a cobro/recibo/mapa.
+double _saldoCanonico(Map<String, dynamic> r) {
+  final s = (r['monto'] as num).toDouble() +
+      (r['cargos_neto'] as num? ?? 0).toDouble() -
+      (r['monto_pagado'] as num? ?? 0).toDouble();
+  return s < 0 ? 0.0 : s;
+}
+
+/// Compara dos cuotas por antigüedad: fecha_vencimiento ASC y, en empate,
+/// periodo ASC (mismo desempate que el pin del mapa).
+int _cmpAntiguedad(Map<String, dynamic> a, Map<String, dynamic> b) {
+  final c = (a['fecha_vencimiento'] as String)
+      .compareTo(b['fecha_vencimiento'] as String);
+  if (c != 0) return c;
+  return (a['periodo'] as String).compareTo(b['periodo'] as String);
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
-// Shared widgets
+// Fila de cobro: cliente + cuota más antigua + botón Pagar
 // ─────────────────────────────────────────────────────────────────────────────
 
-class _CuotaCompactRow extends ConsumerWidget {
-  const _CuotaCompactRow({
+class _CobroRow extends ConsumerWidget {
+  const _CobroRow({
     required this.row,
     required this.diasGracia,
-    required this.isSelected,
-    required this.showCheckbox,
-    required this.onTap,
-    this.onLongPress,
+    required this.onTapCliente,
+    required this.onPagar,
   });
   final Map<String, dynamic> row;
   final int diasGracia;
-  final bool isSelected;
-  final bool showCheckbox;
-  final VoidCallback onTap;
-  final VoidCallback? onLongPress;
+  final VoidCallback onTapCliente;
+  final VoidCallback onPagar;
 
   static String _tipoLabel(String tipo) => switch (tipo) {
         'reconexion' => 'Reconexión',
@@ -907,13 +554,8 @@ class _CuotaCompactRow extends ConsumerWidget {
     final diasVisibles = settings.diasCuotasVisibles;
     final vence = DateTime.parse(row['fecha_vencimiento'] as String);
     final periodo = DateTime.parse(row['periodo'] as String);
-    // Saldo canónico (regla #10): incluye cargos_neto (reconexión suma, descuento
-    // resta). Sin esto, la lista "Por cobrar" mostraba un saldo distinto al de la
-    // pantalla de cobro, el recibo y la tab "Por cliente".
-    final saldoRaw = (row['monto'] as num).toDouble() +
-        (row['cargos_neto'] as num? ?? 0).toDouble() -
-        (row['monto_pagado'] as num? ?? 0).toDouble();
-    final saldo = saldoRaw < 0 ? 0.0 : saldoRaw;
+    // Saldo canónico (regla #10) de la cuota más antigua (la que cobra Pagar).
+    final saldo = _saldoCanonico(row);
     final diasFromVence = Fmt.hoyNicaragua()
         .difference(DateTime(vence.year, vence.month, vence.day))
         .inDays;
@@ -929,7 +571,6 @@ class _CuotaCompactRow extends ConsumerWidget {
       CuotaEstadoVisual.mora => 'Vencida ${diasFromVence - diasGracia}d',
       CuotaEstadoVisual.gracia => 'Gracia',
       CuotaEstadoVisual.hoy => 'Hoy',
-      // proxima / fueraDeRango (esta gris): días hasta el vencimiento.
       _ => '${-diasFromVence}d',
     };
 
@@ -942,93 +583,143 @@ class _CuotaCompactRow extends ConsumerWidget {
           : (row['dia_pago'] as num?)?.toInt(),
     );
 
-    return InkWell(
-      onTap: onTap,
-      onLongPress: onLongPress,
-      child: Container(
-        color: isSelected ? scheme.primaryContainer.withValues(alpha: 0.3) : null,
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        child: Row(
-          children: [
-            if (showCheckbox)
-              Checkbox(
-                value: isSelected,
-                onChanged: (_) => onTap(),
-                visualDensity: VisualDensity.compact,
-              )
-            else
-              SizedBox(
-                width: 8,
-                child: Container(
-                  width: 4,
-                  height: 24,
-                  decoration: BoxDecoration(
-                    color: color,
-                    borderRadius: BorderRadius.circular(2),
-                  ),
+    final clienteNombre = row['cliente_nombre'] as String;
+    final codigo = row['cliente_codigo'] as String?;
+    final municipio = row['municipio'] as String?;
+    // Línea nombre + municipio.
+    final nombreMunicipio = (municipio == null || municipio.isEmpty)
+        ? clienteNombre
+        : '$clienteNombre · $municipio';
+
+    return Card(
+      margin: EdgeInsets.zero,
+      child: InkWell(
+        onTap: onTapCliente,
+        borderRadius: BorderRadius.circular(12),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(12, 10, 8, 10),
+          child: Row(
+            children: [
+              // Barra de color del estado.
+              Container(
+                width: 4,
+                height: 40,
+                decoration: BoxDecoration(
+                  color: color,
+                  borderRadius: BorderRadius.circular(2),
                 ),
               ),
-            const SizedBox(width: 8),
-            // Mes + fecha
-            SizedBox(
-              width: 90,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+              const SizedBox(width: 10),
+              // Cliente + cuota.
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // 1) Código del cliente (arriba).
+                    if (codigo != null && codigo.isNotEmpty)
+                      Text(
+                        codigo,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                            fontWeight: FontWeight.w700, fontSize: 14),
+                      ),
+                    // 2) Nombre + municipio.
+                    Text(
+                      nombreMunicipio,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                          fontWeight: FontWeight.w600, fontSize: 13),
+                    ),
+                    const SizedBox(height: 3),
+                    // 3) Mes de cobro.
+                    Text(mesLabel,
+                        style:
+                            TextStyle(fontSize: 12, color: scheme.onSurface)),
+                    // 4) Fecha de la cuota + estado + badges manuales.
+                    Padding(
+                      padding: const EdgeInsets.only(top: 2),
+                      child: Wrap(
+                        spacing: 6,
+                        runSpacing: 2,
+                        crossAxisAlignment: WrapCrossAlignment.center,
+                        children: [
+                          Text(Fmt.fechaCorta(vence),
+                              style: TextStyle(
+                                  fontSize: 11, color: scheme.outline)),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 6, vertical: 1),
+                            decoration: BoxDecoration(
+                              color: color.withValues(alpha: 0.15),
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: Text(label,
+                                style: TextStyle(
+                                    color: color,
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.w600)),
+                          ),
+                          if (esManual)
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 4, vertical: 1),
+                              decoration: BoxDecoration(
+                                color: scheme.tertiaryContainer,
+                                borderRadius: BorderRadius.circular(4),
+                              ),
+                              child: Text('Manual',
+                                  style: TextStyle(
+                                      fontSize: 9,
+                                      color: scheme.onTertiaryContainer)),
+                            ),
+                          if (esManual && row['tipo_cargo_manual'] != null)
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 4, vertical: 1),
+                              decoration: BoxDecoration(
+                                color: scheme.primaryContainer,
+                                borderRadius: BorderRadius.circular(4),
+                              ),
+                              child: Text(
+                                _tipoLabel(row['tipo_cargo_manual'] as String),
+                                style: TextStyle(
+                                    fontSize: 9,
+                                    color: scheme.onPrimaryContainer),
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              // Saldo + botón Pagar.
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                mainAxisSize: MainAxisSize.min,
                 children: [
-                  Text(mesLabel,
-                      style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500)),
-                  Text(Fmt.fechaCorta(vence),
-                      style: TextStyle(fontSize: 10, color: scheme.outline)),
+                  Text(Fmt.cordobas(saldo),
+                      style: const TextStyle(
+                          fontWeight: FontWeight.bold, fontSize: 14)),
+                  const SizedBox(height: 4),
+                  FilledButton(
+                    onPressed: onPagar,
+                    style: FilledButton.styleFrom(
+                      visualDensity: VisualDensity.compact,
+                      padding: const EdgeInsets.symmetric(horizontal: 18),
+                      minimumSize: const Size(76, 36),
+                    ),
+                    child: const Text('Pagar'),
+                  ),
                 ],
               ),
-            ),
-            // Estado
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
-              decoration: BoxDecoration(
-                color: color.withValues(alpha: 0.15),
-                borderRadius: BorderRadius.circular(4),
-              ),
-              child: Text(label,
-                  style: TextStyle(color: color, fontSize: 10, fontWeight: FontWeight.w600)),
-            ),
-            // Badges manuales
-            if (esManual) ...[
-              const SizedBox(width: 4),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
-                decoration: BoxDecoration(
-                  color: scheme.tertiaryContainer,
-                  borderRadius: BorderRadius.circular(4),
-                ),
-                child: Text('Manual',
-                    style: TextStyle(fontSize: 9, color: scheme.onTertiaryContainer)),
-              ),
-              if (row['tipo_cargo_manual'] != null) ...[
-                const SizedBox(width: 3),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
-                  decoration: BoxDecoration(
-                    color: scheme.primaryContainer,
-                    borderRadius: BorderRadius.circular(4),
-                  ),
-                  child: Text(
-                    _tipoLabel(row['tipo_cargo_manual'] as String),
-                    style: TextStyle(fontSize: 9, color: scheme.onPrimaryContainer),
-                  ),
-                ),
-              ],
             ],
-            const Spacer(),
-            // Monto
-            Text(Fmt.cordobas(saldo),
-                style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
-          ],
+          ),
         ),
       ),
     );
   }
 }
-
-// Dead code removed: _ContratoHeader + _CuotaListTile (~150 lines)
-// Reemplazados por _CuotaCompactRow + card-per-client inline header.

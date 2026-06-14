@@ -1,7 +1,7 @@
 name: isp_billing
 description: App de gestión de clientes y cobros para ISP (Nicaragua) — offline-first con PowerSync.
 publish_to: 'none'
-version: 0.11.9+119
+version: 0.11.10+120
 
 environment:
   sdk: '>=3.4.0 <4.0.0'
@@ -131,6 +131,9 @@ flutter:
     - assets/fonts/NotoSans-Regular.ttf
     - assets/fonts/NotoSans-Bold.ttf
     - assets/rutas_nicaragua.db
+    # Logo de la app (mismo PNG del ícono/MSIX) para mostrarlo en login y
+    # en la pantalla de crear/restablecer contraseña.
+    - assets/icon/app_icon.png
 
 # Configuración MSIX para distribución Windows.
 # Build: flutter build windows --release && dart run msix:create

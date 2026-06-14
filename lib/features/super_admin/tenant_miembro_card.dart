@@ -860,7 +860,7 @@ class _MiembroCardState extends ConsumerState<MiembroCard> {
                     child: Row(
                       children: [
                         Icon(Icons.swap_horiz,
-                            color: scheme.secondary, size: 20),
+                            color: scheme.primary, size: 20),
                         const SizedBox(width: 12),
                         const Text('Cambiar rol'),
                       ],
@@ -872,7 +872,7 @@ class _MiembroCardState extends ConsumerState<MiembroCard> {
                       child: Row(
                         children: [
                           Icon(Icons.alternate_email,
-                              color: scheme.secondary, size: 20),
+                              color: scheme.primary, size: 20),
                           const SizedBox(width: 12),
                           const Text('Cambiar email'),
                         ],
@@ -921,7 +921,8 @@ class _MiembroCardState extends ConsumerState<MiembroCard> {
   static Color _rolColor(ColorScheme s, String rol) => switch (rol) {
         'super_admin' => s.tertiary,
         'admin' => s.primary,
-        'admin_cobranza' => s.secondary,
+        // s.secondary es primary al 10% → iniciales del avatar ilegibles.
+        'admin_cobranza' => Colors.teal.shade700,
         _ => s.onSurfaceVariant,
       };
 

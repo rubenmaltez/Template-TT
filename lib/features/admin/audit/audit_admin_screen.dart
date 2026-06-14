@@ -282,7 +282,8 @@ class _AuditTile extends StatelessWidget {
         'pagos' => s.error,
         'recibos' => s.error,
         'cuotas' => s.error,
-        _ => s.secondary,
+        // Default legible (s.secondary es primary al 10% → ícono casi invisible).
+        _ => s.onSurfaceVariant,
       };
 }
 

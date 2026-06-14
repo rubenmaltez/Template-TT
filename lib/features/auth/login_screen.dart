@@ -271,14 +271,22 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   ),
                   const SizedBox(height: 24),
                 ],
-                Icon(Icons.wifi_tethering,
-                    size: 64, color: scheme.primary),
-                const SizedBox(height: 8),
-                Text(
-                  'SITECSA CRM',
-                  style: Theme.of(context).textTheme.headlineMedium,
+                Center(
+                  child: Container(
+                    width: 112,
+                    height: 112,
+                    clipBehavior: Clip.antiAlias,
+                    decoration: BoxDecoration(
+                      color: Colors.black,
+                      borderRadius: BorderRadius.circular(24),
+                    ),
+                    child: Image.asset(
+                      'assets/icon/app_icon.png',
+                      fit: BoxFit.contain,
+                    ),
+                  ),
                 ),
-                const SizedBox(height: 4),
+                const SizedBox(height: 16),
                 Text(
                   switch (_modo) {
                     _Modo.login => 'Iniciar sesión',
