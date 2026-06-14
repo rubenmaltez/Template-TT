@@ -9,6 +9,7 @@ class Cobrador {
     required this.rol,
     this.prefijoRecibo,
     required this.activo,
+    this.puedeCambiarFecha = false,
   });
 
   final String id;
@@ -18,6 +19,10 @@ class Cobrador {
   final String rol;
   final String? prefijoRecibo;
   final bool activo;
+  // Permiso (lo habilita el admin) para el cambio de fecha de pago por días.
+  // El rol 'admin' siempre puede (con la feature ON); este flag es para
+  // cobradores/admin_cobranza. Ver puede_cambiar_fecha (0119).
+  final bool puedeCambiarFecha;
 
   bool get esSuperAdmin => rol == 'super_admin';
   bool get esAdmin => rol == 'admin';
@@ -43,7 +48,8 @@ class Cobrador {
           other.telefono == telefono &&
           other.rol == rol &&
           other.prefijoRecibo == prefijoRecibo &&
-          other.activo == activo;
+          other.activo == activo &&
+          other.puedeCambiarFecha == puedeCambiarFecha;
 
   @override
   int get hashCode => Object.hash(
@@ -54,6 +60,7 @@ class Cobrador {
         rol,
         prefijoRecibo,
         activo,
+        puedeCambiarFecha,
       );
 
   factory Cobrador.fromRow(Map<String, dynamic> row) => Cobrador(
@@ -64,5 +71,6 @@ class Cobrador {
         rol: row['rol'] as String,
         prefijoRecibo: row['prefijo_recibo'] as String?,
         activo: (row['activo'] as int? ?? 1) == 1,
+        puedeCambiarFecha: (row['puede_cambiar_fecha'] as int? ?? 0) == 1,
       );
 }

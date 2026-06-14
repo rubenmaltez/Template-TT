@@ -196,6 +196,14 @@ class AppSettings {
   bool get comprobanteHabilitado =>
       settingValue<bool>(_map, 'cobranza.comprobante_habilitado', false);
 
+  /// Cambio de fecha de pago por días (feature C, 0119): switch maestro por
+  /// tenant que SOLO habilita el super_admin (toggle super_admin-only). Default
+  /// FALSE. Aun con esto en ON, cada cobrador/admin_cobranza necesita además el
+  /// permiso por usuario (`cobradores.puede_cambiar_fecha`); el rol admin puede
+  /// siempre. El gate duro lo aplica la RLS server-side (`puede_cambiar_fecha_pago()`).
+  bool get cambioFechaHabilitado =>
+      settingValue<bool>(_map, 'cobranza.cambio_fecha_habilitado', false);
+
   /// Pantalla admin opcional `/admin/pagos` (historial de pagos + anular),
   /// habilitada por el super_admin por tenant (toggle super_admin-only en
   /// settings). Default FALSE → el item del menú no aparece.
@@ -366,4 +374,15 @@ class AppSettings {
 final appSettingsProvider = Provider<AppSettings>((ref) {
   final map = ref.watch(settingsMapProvider).valueOrNull;
   return AppSettings(map);
+});
+
+/// ¿El usuario actual puede usar el cambio de fecha de pago por días? Espeja la
+/// RLS server `puede_cambiar_fecha_pago()`: feature ON para el tenant + (rol
+/// admin O permiso por usuario). Para mostrar/ocultar el botón "Cambiar fecha".
+/// (El bloqueo por impersonación se evalúa aparte en la acción, como el cobro.)
+final puedeCambiarFechaPagoProvider = Provider<bool>((ref) {
+  if (!ref.watch(appSettingsProvider).cambioFechaHabilitado) return false;
+  final c = ref.watch(cobradorActualProvider).valueOrNull;
+  if (c == null) return false;
+  return c.esAdmin || c.puedeCambiarFecha;
 });
