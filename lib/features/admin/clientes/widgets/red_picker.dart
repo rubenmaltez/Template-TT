@@ -132,10 +132,15 @@ class _RedPickerState extends State<RedPicker> {
         ),
         const SizedBox(height: 12),
         _RedSelector(
+          // Key por nodo: al cambiar de nodo recreamos el dropdown para que el
+          // FormField tome el valueId fresco (evita estado viejo con initialValue).
+          key: ValueKey('hub-$_nodoId'),
           label: 'Hub',
           valueId: _hubId,
           enabled: _nodoId != null,
           stream: _hubsStream,
+          emptyHint: 'Este nodo aún no tiene hubs. '
+              'Agregalos en Administración → Red.',
           onChanged: (id) {
             setState(() {
               _hubId = id;
@@ -148,10 +153,13 @@ class _RedPickerState extends State<RedPicker> {
         ),
         const SizedBox(height: 12),
         _RedSelector(
+          key: ValueKey('puerto-$_hubId'),
           label: 'Puerto',
           valueId: _puertoId,
           enabled: _hubId != null,
           stream: _puertosStream,
+          emptyHint: 'Este hub aún no tiene puertos. '
+              'Agregalos en Administración → Red.',
           onChanged: (id) {
             setState(() => _puertoId = id);
             widget.onChanged(id);
@@ -164,6 +172,7 @@ class _RedPickerState extends State<RedPicker> {
 
 class _RedSelector extends StatelessWidget {
   const _RedSelector({
+    super.key,
     required this.label,
     required this.valueId,
     required this.stream,
@@ -209,7 +218,7 @@ class _RedSelector extends StatelessWidget {
                     )),
               ],
             ),
-            if (rows.isEmpty && emptyHint != null)
+            if (enabled && rows.isEmpty && emptyHint != null)
               Padding(
                 padding: const EdgeInsets.only(top: 4, left: 4),
                 child: Text(
