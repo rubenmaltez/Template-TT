@@ -436,17 +436,9 @@ class _ClienteFormScreenState extends ConsumerState<ClienteFormScreen> {
                   Expanded(
                     child: TextFormField(
                       controller: _cedula,
-                      decoration: const InputDecoration(
-                          labelText: 'Cédula', hintText: '000-000000-0000A'),
-                      validator: (v) {
-                        final t = (v ?? '').trim();
-                        if (t.isEmpty) return null; // Opcional
-                        if (!RegExp(r'^\d{3}-\d{6}-\d{4}[A-Za-z]$')
-                            .hasMatch(t)) {
-                          return 'Formato: 000-000000-0000A';
-                        }
-                        return null;
-                      },
+                      // Cédula libre (alfanumérica, sin formato estricto): el
+                      // negocio no requiere validarla con precisión. Opcional.
+                      decoration: const InputDecoration(labelText: 'Cédula'),
                     ),
                   ),
                   const SizedBox(width: 12),
