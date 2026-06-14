@@ -305,7 +305,7 @@ class _ClienteFormScreenState extends ConsumerState<ClienteFormScreen> {
     final picked = await Navigator.of(context).push<LatLng>(
       MaterialPageRoute(builder: (_) => MapaPickerScreen(inicial: inicial)),
     );
-    if (picked != null) {
+    if (picked != null && mounted) {
       setState(() {
         _lat.text = picked.latitude.toStringAsFixed(6);
         _lng.text = picked.longitude.toStringAsFixed(6);

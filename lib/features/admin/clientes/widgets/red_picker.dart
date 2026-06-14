@@ -218,7 +218,12 @@ class _RedSelector extends StatelessWidget {
                     )),
               ],
             ),
-            if (enabled && rows.isEmpty && emptyHint != null)
+            // Solo tras la primera emisión del stream (no durante la carga),
+            // para no parpadear "no tiene hubs" cuando el nodo SÍ tiene.
+            if (enabled &&
+                snap.connectionState != ConnectionState.waiting &&
+                rows.isEmpty &&
+                emptyHint != null)
               Padding(
                 padding: const EdgeInsets.only(top: 4, left: 4),
                 child: Text(

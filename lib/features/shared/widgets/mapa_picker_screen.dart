@@ -37,6 +37,9 @@ class _MapaPickerScreenState extends State<MapaPickerScreen> {
 
   Position? _currentPosition;
   StreamSubscription<Position>? _positionSubscription;
+  // Evita orfanar suscripciones si _initLocation se dispara concurrente (taps
+  // rápidos en "centrar" antes de que el primer init asigne _positionSubscription).
+  bool _initLocationEnCurso = false;
 
   @override
   void initState() {
@@ -56,6 +59,8 @@ class _MapaPickerScreenState extends State<MapaPickerScreen> {
   /// Defensivo en Windows/sin GPS: si algo falla, simplemente no se muestra el
   /// pin (el picker sigue funcionando para tocar y elegir un punto).
   Future<void> _initLocation() async {
+    if (_initLocationEnCurso || _positionSubscription != null) return;
+    _initLocationEnCurso = true;
     try {
       final serviceEnabled = await Geolocator.isLocationServiceEnabled();
       if (!serviceEnabled) return;
@@ -87,6 +92,8 @@ class _MapaPickerScreenState extends State<MapaPickerScreen> {
       }
     } catch (e) {
       if (kDebugMode) debugPrint('Error _initLocation: $e');
+    } finally {
+      _initLocationEnCurso = false;
     }
   }
 
