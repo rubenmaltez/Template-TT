@@ -18,17 +18,15 @@
 
 ## ⭐ ESTADO ACTUAL (refrescar al cerrar cada sesión)
 
-- **Branch viva de trabajo: `claude/awesome-joliot-a2bd43`** (Sprint A+B, sin mergear a `main` aún — espera testing de Rubén).
+- **Branch viva: `main`** (Sprint A+B mergeado 2026-06-14; rama efímera borrada).
   **Único tag/release en GitHub: `v0.11.9`** (se reemplaza al publicar v0.11.10).
 - **Modelo de branching:** cada sesión de trabajo desarrolla en rama efímera, al terminar se mergea a `main` y se borra.
-- **App:** v0.11.10 (sin buildear aún) · schema PowerSync **v27** · migraciones **0001→0118 TODAS corridas** · **sync rules v8 "Active"**. Sprint A+B NO tocan DB/schema/sync (100% cliente).
+- **App:** v0.11.10 (en `pubspec`, **sin buildear/publicar aún**) · schema PowerSync **v27** · migraciones **0001→0118 TODAS corridas** · **sync rules v8 "Active"**. Sprint A+B NO tocan DB/schema/sync (100% cliente).
 - **Edge Functions:** las 6 deployadas al día (redeployadas 2026-06-09).
-- **Confirmado por Rubén (2026-06-14):** rotación/brújula del mapa ✓, ruteo 100% offline ✓, onboarding con contraseña ✓, migración 0118 ✓ — todo funcionando.
+- **Testeado por Rubén (2026-06-14, build debug Windows):** Sprint A (mapa/ruteo/onboarding/0118) ✓ · bug Hub/Puerto **resuelto** ✓ · guardado de cliente (con red) ✓ · vista Por Cobrar ✓ · legibilidad de notas de visita ✓.
 - **Qué falta:**
-  1. Build de release v0.11.10 (bump ya hecho en pubspec) → `Install Steps/build-release.ps1`.
-  2. Testing manual de Rubén del Sprint A+B (ver entrada 2026-06-14) en dispositivo instalado.
-  3. Tras testing OK: merge de la rama a `main` + borrar rama + publicar release v0.11.10 (borrar v0.11.9).
-- **Hecho recién (2026-06-14):** Sprint A+B (6 features) implementado, auditado (Fase 4: 6 agentes en 2 tandas) y con fixes aplicados. Detalle en la entrada de abajo. `flutter analyze` limpio · `flutter test` 275 verdes.
+  1. **Build + publicar release v0.11.10** (bump ya hecho) → `Install Steps/build-release.ps1` (lo arma Rubén; borrar v0.11.9 al publicar).
+- **Hecho recién (2026-06-14):** Sprint A+B (6 features) + ronda de fixes del testing manual, todo auditado (Fase 4: 8 agentes en 3 tandas) y mergeado a `main`. `flutter analyze` limpio · `flutter test` 275 verdes.
 
 ---
 
@@ -66,9 +64,26 @@ PDF agrupado con subtotal + total general).
   por cliente) + BAJOs, fixeados (`7883318`: indicador de deuda, desempate por periodo, clamp del saldo
   del mapa, PDF por id anti-homónimos, botón Pagar más tocable, fin de mutación de estado en build).
 
-**Pendiente:** build v0.11.10 → testing manual de Rubén → merge a `main` + release.
+**Testing manual de Rubén (2026-06-14, debug Windows) + fixes** (commits `062665c`→`00f8425`):
+corrido desde una **worktree de ruta corta** (`C:\Users\ruben\sc`) porque el build Windows desde
+la worktree bajo OneDrive excedía MAX_PATH (MSB3491 en los `.tlog`). Fixes que salieron del testing:
+- **Bug guardado de cliente (causa raíz real):** `ref` NO es usable en `dispose()` (Riverpod 2.6.1
+  lanza "Cannot use ref after the widget was disposed") → se captura el `StateController` de
+  `formDirtyProvider` en `initState` (`_formDirtyCtrl`) y se usa en dispose. Mismo fix en
+  `contrato_form_screen`. Además en `_guardar` se capturan `ScaffoldMessenger`/`GoRouter` ANTES del
+  await (el árbol se reconstruye por PowerSync y desactiva el context → "ancestor unsafe").
+- **Vista cobros (pedido de Rubén):** fila con **código arriba** → nombre+municipio → mes → fecha
+  (se agregó join a `municipios`); **se quitó** la línea "N cuotas · debe total" (Rubén la pidió out).
+- **Cédula** alfanumérica libre (se quitó el validator de formato 000-000000-0000A).
+- **Legibilidad:** `scheme.secondary` (= primary al 10%, color de relleno) se usaba como color de
+  TEXTO/ÍCONO → ilegible. Arreglado en: notas de visita (Promesa de pago), dashboard (Pago parcial),
+  estado de ticket "Asignado", avatares de rol `admin_cobranza`, íconos del log de auditoría.
+- **Robustez:** el sheet de equipos en baja no bloquea el cierre del form de cliente (try/catch).
+
 **Backlog/aceptado:** `pi` sin import explícito (vía latlong2, pre-existente) · chips "Próximas/Vencen
-hoy" muestran la cuota futura aunque haya mora (semántica de filtro, aceptada).
+hoy" muestran la cuota futura aunque haya mora (semántica de filtro, aceptada) · **fix completo del
+context estable para `ofrecerGestionEquiposEnBaja`** en el path de baja (cliente y contrato_detail) —
+hoy mitigado con try/catch; pendiente capturar un Navigator estable (chip `task_5c833dc7`).
 
 ---
 
