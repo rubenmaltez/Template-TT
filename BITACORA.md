@@ -34,6 +34,17 @@
 
 ---
 
+## 2026-06-13 (a) — Diagnóstico y Backfill de Setting Faltante (Días Cuotas Próximas)
+
+**Qué se pidió:** Resolver por qué la opción "Días de cuotas próximas" no aparecía en algunos tenants y aclarar si se debe hacer un proceso manual para cada nuevo tenant.
+
+**Qué se hizo:**
+- **Base de Datos**: Se diagnosticó que el setting `cobranza.dias_cuotas_visibles` estaba ausente en la tabla `settings` para el tenant "System Admin" (por haber sido creado antes de la migración `0113`).
+- **Solución**: Se ejecutó una consulta SQL de backfill para poblar la clave faltante con valor por defecto `5` en los tenants existentes.
+- **Clarificación**: Se verificó en `0113` y `0115` que el trigger `tenants_seed_settings_trg` de Supabase se ejecuta `AFTER INSERT ON public.tenants` y automáticamente inicializa este y otros valores por defecto, eliminando la necesidad de realizar este paso de forma manual en futuros tenants.
+
+---
+
 ## 2026-06-12 (l) — Onboarding con Contraseña por Defecto + Ocultación de Toggles de Email + Release v0.11.9
 
 **Qué se pidió:** Cambiar el flujo para que por defecto siempre se generen contraseñas en lugar de invitaciones por correo electrónico al crear usuarios, y ocultar visualmente el interruptor de invitaciones por email en todas las pantallas donde se invite a nuevos usuarios (cobradores, tenants, administradores y reenvíos).
