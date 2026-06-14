@@ -46,7 +46,7 @@ bucket_definitions:
       FROM cobradores
       WHERE id = request.user_id() AND rol = 'cobrador'
     data:
-      - SELECT id, tenant_id, nombre, telefono, rol, prefijo_recibo, activo
+      - SELECT id, tenant_id, nombre, telefono, rol, prefijo_recibo, activo, puede_cambiar_fecha
         FROM cobradores
         WHERE tenant_id = bucket.tenant_id AND id = bucket.cobrador_id
 
@@ -98,7 +98,7 @@ bucket_definitions:
       WHERE id = request.user_id() AND rol = 'tecnico'
     data:
       - SELECT * FROM ticket_tipos WHERE tenant_id = bucket.tenant_id
-      - SELECT id, tenant_id, nombre, telefono, rol, prefijo_recibo, activo
+      - SELECT id, tenant_id, nombre, telefono, rol, prefijo_recibo, activo, puede_cambiar_fecha
         FROM cobradores
         WHERE tenant_id = bucket.tenant_id
       # Catálogo de inventario (Fase 3C) — para nombrar/elegir el material que
@@ -172,7 +172,7 @@ bucket_definitions:
       - SELECT * FROM notificaciones_mora  WHERE tenant_id = bucket.tenant_id
       - SELECT * FROM fotos_cliente        WHERE tenant_id = bucket.tenant_id
       - SELECT * FROM visitas              WHERE tenant_id = bucket.tenant_id
-      - SELECT id, tenant_id, nombre, telefono, rol, prefijo_recibo, activo
+      - SELECT id, tenant_id, nombre, telefono, rol, prefijo_recibo, activo, puede_cambiar_fecha
         FROM cobradores
         WHERE tenant_id = bucket.tenant_id
 
@@ -211,7 +211,7 @@ bucket_definitions:
       - SELECT * FROM notificaciones_mora  WHERE tenant_id = bucket.tenant_id
       - SELECT * FROM fotos_cliente        WHERE tenant_id = bucket.tenant_id
       - SELECT * FROM visitas              WHERE tenant_id = bucket.tenant_id
-      - SELECT id, tenant_id, nombre, telefono, rol, prefijo_recibo, activo
+      - SELECT id, tenant_id, nombre, telefono, rol, prefijo_recibo, activo, puede_cambiar_fecha
         FROM cobradores
         WHERE tenant_id = bucket.tenant_id
 
@@ -242,7 +242,7 @@ bucket_definitions:
       FROM cobradores
       WHERE id = request.user_id() AND rol = 'super_admin'
     data:
-      - SELECT id, tenant_id, nombre, telefono, rol, prefijo_recibo, activo
+      - SELECT id, tenant_id, nombre, telefono, rol, prefijo_recibo, activo, puede_cambiar_fecha
         FROM cobradores
         WHERE id = bucket.user_id
 
@@ -287,7 +287,7 @@ bucket_definitions:
       - SELECT * FROM notificaciones_mora WHERE tenant_id = bucket.tenant_id
       - SELECT * FROM fotos_cliente      WHERE tenant_id = bucket.tenant_id
       - SELECT * FROM visitas            WHERE tenant_id = bucket.tenant_id
-      - SELECT id, tenant_id, nombre, telefono, rol, prefijo_recibo, activo
+      - SELECT id, tenant_id, nombre, telefono, rol, prefijo_recibo, activo, puede_cambiar_fecha
         FROM cobradores
         WHERE tenant_id = bucket.tenant_id
       - SELECT * FROM audit_log          WHERE tenant_id = bucket.tenant_id

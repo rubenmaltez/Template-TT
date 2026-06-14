@@ -523,6 +523,8 @@ const schema = Schema([
     Column.text('rol'),
     Column.text('prefijo_recibo'),
     Column.integer('activo'),
+    // Permiso por usuario para el cambio de fecha de pago por días (0119).
+    Column.integer('puede_cambiar_fecha'),
   ]),
 
   // ── Fotos del cliente (max 10 por cliente) ──────────────────────────
