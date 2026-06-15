@@ -170,6 +170,19 @@ class _CambioFechaDialogState extends ConsumerState<CambioFechaDialog> {
           'Tu usuario no tiene prefijo de recibo asignado. Pedíselo al admin.');
       return;
     }
+    // Defensa: si el día de pago cambió en el server desde que se abrió el
+    // diálogo (otro device / admin lo editó y bajó por sync), el preview quedó
+    // viejo. El repo re-lee el día FRESCO y cobraría un puente distinto al que
+    // se vio → abortar y pedir reabrir, para no cobrar algo no previsualizado.
+    final diaRows = await ps.db.getAll(
+      'SELECT dia_pago FROM contratos WHERE id = ?', [widget.contratoId]);
+    final diaActual =
+        diaRows.isEmpty ? null : (diaRows.first['dia_pago'] as num?)?.toInt();
+    if (diaActual != widget.diaPagoActual) {
+      setState(() => _error =
+          'La fecha de pago de este contrato cambió. Cerrá y volvé a abrir.');
+      return;
+    }
 
     setState(() {
       _enviando = true;
