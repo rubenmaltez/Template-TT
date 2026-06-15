@@ -30,6 +30,9 @@ String cargoEtiquetaRecibo(Map<String, dynamic> c, {required bool conMotivo}) {
   final tipo = c['tipo'] as String? ?? '';
   final origen = c['origen'] as String? ?? 'cobro';
   final motivo = (c['descripcion'] as String?)?.trim() ?? '';
+  // Puente del cambio de fecha de pago (feature C): etiqueta fija y
+  // autoexplicada (el motivo guardado es verboso → sería redundante repetirlo).
+  if (origen == 'puente') return 'Puente de pago';
   final esDescuento = tipo.startsWith('descuento');
   final etiqueta = !esDescuento
       ? (tipo == 'reconexion' ? 'Reconexión' : 'Cargo')

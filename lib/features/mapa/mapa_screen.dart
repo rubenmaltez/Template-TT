@@ -15,6 +15,7 @@ import '../../data/services/map_tile_cache.dart';
 import '../../data/utils/cuota_estado_visual.dart';
 import '../../data/utils/formatters.dart';
 import '../../powersync/db.dart' as ps;
+import '../cobro/cambio_fecha_dialog.dart';
 import '../shared/widgets/dropdown_filtro.dart';
 import '../shared/widgets/empty_state.dart';
 import '../shared/widgets/mapa_widgets_compartidos.dart';
@@ -863,6 +864,7 @@ typedef _ContratoCuota = ({
   String contratoId,
   String? planNombre,
   int? diaPago,
+  double? precioMensual,
   String cuotaId,
   String periodo,
   double saldo,
@@ -922,8 +924,8 @@ class _ClientePinSheetState extends ConsumerState<_ClientePinSheet> {
   Future<List<_ContratoCuota>> _cargarContratosConCuota() async {
     final rows = await ps.db.getAll(
       '''
-      SELECT ct.id AS contrato_id, p.nombre AS plan_nombre, ct.dia_pago,
-             cu.id AS cuota_id, cu.periodo,
+      SELECT ct.id AS contrato_id, p.nombre AS plan_nombre, p.precio_mensual,
+             ct.dia_pago, cu.id AS cuota_id, cu.periodo,
              max(cu.monto + COALESCE(cu.cargos_neto, 0) - cu.monto_pagado, 0) AS saldo
         FROM contratos ct
         LEFT JOIN planes p ON p.id = ct.plan_id
@@ -944,6 +946,7 @@ class _ClientePinSheetState extends ConsumerState<_ClientePinSheet> {
               contratoId: r['contrato_id'] as String,
               planNombre: r['plan_nombre'] as String?,
               diaPago: (r['dia_pago'] as num?)?.toInt(),
+              precioMensual: (r['precio_mensual'] as num?)?.toDouble(),
               cuotaId: r['cuota_id'] as String,
               periodo: r['periodo'] as String,
               saldo: ((r['saldo'] as num?) ?? 0).toDouble(),
@@ -1002,6 +1005,59 @@ class _ClientePinSheetState extends ConsumerState<_ClientePinSheet> {
     if (elegido != null && mounted) _irACobro(elegido.cuotaId);
   }
 
+  /// Botón "Cambiar fecha de pago" (feature C): 1 contrato elegible → diálogo
+  /// directo; 2+ → selector. Al cobrar el puente, cierra el sheet y va al recibo.
+  Future<void> _cambiarFecha(List<_ContratoCuota> contratos) async {
+    final elegibles = contratos
+        .where((c) => c.diaPago != null && c.precioMensual != null)
+        .toList();
+    if (elegibles.isEmpty) return;
+    _ContratoCuota? elegido = elegibles.length == 1 ? elegibles.first : null;
+    if (elegido == null) {
+      elegido = await showModalBottomSheet<_ContratoCuota>(
+        context: context,
+        showDragHandle: true,
+        builder: (_) => SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Padding(
+                padding: EdgeInsets.fromLTRB(16, 4, 16, 8),
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text('¿A qué servicio le cambiás la fecha?',
+                      style: TextStyle(fontWeight: FontWeight.w600)),
+                ),
+              ),
+              for (final c in elegibles)
+                ListTile(
+                  leading: const Icon(Icons.wifi),
+                  title: Text(c.planNombre ?? 'Servicio'),
+                  subtitle: Text('Día de pago actual: ${c.diaPago}'),
+                  onTap: () => Navigator.pop(context, c),
+                ),
+            ],
+          ),
+        ),
+      );
+    }
+    if (elegido == null || !mounted) return;
+    final sel = elegido;
+    final reciboId = await showDialog<String>(
+      context: context,
+      builder: (_) => CambioFechaDialog(
+        contratoId: sel.contratoId,
+        diaPagoActual: sel.diaPago!,
+        precioMensual: sel.precioMensual!,
+        clienteNombre: widget.row['nombre'] as String?,
+      ),
+    );
+    if (reciboId != null && mounted) {
+      Navigator.pop(context); // cierra el sheet del pin
+      context.push('/recibo/$reciboId');
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
@@ -1010,6 +1066,7 @@ class _ClientePinSheetState extends ConsumerState<_ClientePinSheet> {
     final tel = (r['telefono'] as String?)?.trim();
     final direccion = (r['direccion'] as String?)?.trim();
     final referencia = (r['direccion_referencia'] as String?)?.trim();
+    final puedeCambiarFecha = ref.watch(puedeCambiarFechaPagoProvider);
 
     return SafeArea(
       child: Padding(
@@ -1151,10 +1208,27 @@ class _ClientePinSheetState extends ConsumerState<_ClientePinSheet> {
                     final label = unica
                         ? 'Pagar ${Fmt.mesServicioLabel(DateTime.parse(cuotas.first.periodo), cuotas.first.diaPago)} · ${Fmt.cordobas(cuotas.first.saldo)}'
                         : 'Pagar cuota (${cuotas.length} servicios)';
-                    return FilledButton.icon(
-                      icon: const Icon(Icons.payments),
-                      label: Text(label),
-                      onPressed: () => _pagar(cuotas),
+                    final puedeCambiar = puedeCambiarFecha &&
+                        cuotas.any((c) =>
+                            c.diaPago != null && c.precioMensual != null);
+                    return Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        FilledButton.icon(
+                          icon: const Icon(Icons.payments),
+                          label: Text(label),
+                          onPressed: () => _pagar(cuotas),
+                        ),
+                        if (puedeCambiar) ...[
+                          const SizedBox(height: 6),
+                          OutlinedButton.icon(
+                            icon: const Icon(Icons.edit_calendar_outlined,
+                                size: 18),
+                            label: const Text('Cambiar fecha de pago'),
+                            onPressed: () => _cambiarFecha(cuotas),
+                          ),
+                        ],
+                      ],
                     );
                   },
                 ),

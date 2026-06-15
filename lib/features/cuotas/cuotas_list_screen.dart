@@ -9,6 +9,7 @@ import '../../data/utils/cuota_estado_visual.dart';
 import '../../data/utils/errores.dart';
 import '../../data/utils/formatters.dart';
 import '../../powersync/db.dart' as ps;
+import '../cobro/cambio_fecha_dialog.dart';
 import '../shared/widgets/dropdown_filtro.dart';
 import '../shared/widgets/empty_state.dart';
 
@@ -389,7 +390,7 @@ class _CobrosListState extends State<_CobrosList> {
              c.cedula AS cliente_cedula, c.telefono AS cliente_telefono,
              c.codigo AS cliente_codigo,
              co.nombre AS comunidad, mu.nombre AS municipio,
-             p.nombre AS plan_nombre, ct.dia_pago
+             p.nombre AS plan_nombre, p.precio_mensual, ct.dia_pago
         FROM cuotas cu
         JOIN clientes c ON c.id = cu.cliente_id
    LEFT JOIN comunidades co ON co.id = c.comunidad_id
@@ -546,6 +547,23 @@ class _CobroRow extends ConsumerWidget {
         _ => tipo,
       };
 
+  /// Abre el diálogo de cambio de fecha y, si se cobró el puente, va al recibo.
+  Future<void> _abrirCambioFecha(BuildContext context, String contratoId,
+      int diaPago, double precioMensual, String clienteNombre) async {
+    final reciboId = await showDialog<String>(
+      context: context,
+      builder: (_) => CambioFechaDialog(
+        contratoId: contratoId,
+        diaPagoActual: diaPago,
+        precioMensual: precioMensual,
+        clienteNombre: clienteNombre,
+      ),
+    );
+    if (reciboId != null && context.mounted) {
+      context.push('/recibo/$reciboId');
+    }
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final scheme = Theme.of(context).colorScheme;
@@ -560,6 +578,17 @@ class _CobroRow extends ConsumerWidget {
         .difference(DateTime(vence.year, vence.month, vence.day))
         .inDays;
     final esManual = row['contrato_id'] == null;
+
+    // Botón "Cambiar fecha" (feature C): solo personal habilitado, sobre cuotas
+    // de un contrato (no manuales) con día de pago y precio conocidos.
+    final contratoId = row['contrato_id'] as String?;
+    final diaPago = (row['dia_pago'] as num?)?.toInt();
+    final precioMensual = (row['precio_mensual'] as num?)?.toDouble();
+    final mostrarCambioFecha = ref.watch(puedeCambiarFechaPagoProvider) &&
+        !esManual &&
+        contratoId != null &&
+        diaPago != null &&
+        precioMensual != null;
 
     final ev = estadoVisualCuota(
       diasFromVence: diasFromVence,
@@ -714,6 +743,20 @@ class _CobroRow extends ConsumerWidget {
                     ),
                     child: const Text('Pagar'),
                   ),
+                  if (mostrarCambioFecha) ...[
+                    const SizedBox(height: 4),
+                    OutlinedButton(
+                      onPressed: () => _abrirCambioFecha(
+                          context, contratoId, diaPago, precioMensual, clienteNombre),
+                      style: OutlinedButton.styleFrom(
+                        visualDensity: VisualDensity.compact,
+                        padding: const EdgeInsets.symmetric(horizontal: 6),
+                        minimumSize: const Size(76, 30),
+                      ),
+                      child: const Text('Cambiar fecha',
+                          style: TextStyle(fontSize: 10.5)),
+                    ),
+                  ],
                 ],
               ),
             ],
