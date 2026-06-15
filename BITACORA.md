@@ -18,18 +18,43 @@
 
 ## ⭐ ESTADO ACTUAL (refrescar al cerrar cada sesión)
 
-- **Branch viva de trabajo: `claude/awesome-joliot-a2bd43`** (Feature C EN PROGRESO; pusheada a
-  origin para backup). `main` está estable en `df80c05` (= **GitHub y local idénticos**) con todo el
-  Sprint A+B + fixes + bump a v0.11.10. **Único tag/release en GitHub: `v0.11.9`**.
-- **⚠ Lo de Feature C (4 commits sobre main) está en la rama, NO en `main`.** Al reanudar: `git checkout
-  claude/awesome-joliot-a2bd43` (o `git pull` la rama). NO mergear C a main hasta terminarla + auditarla.
+- **Branch viva de trabajo: `claude/awesome-joliot-a2bd43`** (Feature C **COMPLETA en código + auditada**;
+  4 commits nuevos `c923318 896e959 fe032d7 a64d1bf` sobre los 4 originales). `main` estable en `df80c05`
+  (= **GitHub y local idénticos**) con Sprint A+B + fixes + bump v0.11.10. **Único tag/release: `v0.11.9`**.
+- **⚠ Feature C está en la rama, NO en `main`.** Al reanudar: `git checkout claude/awesome-joliot-a2bd43`.
+  Pendiente antes de mergear: **testing manual de Rubén** (escenarios abajo) → deploy 0119 + sync rules
+  + build (schema v28), todo JUNTO una sola vez. NO mergear C a main hasta que el testing manual pase.
 - **App:** v0.11.10 (sin buildear/publicar) · schema PowerSync **v27 en main / v28 en la rama C** ·
-  migraciones **0001→0118 corridas; la 0119 (Feature C) está ESCRITA pero NO DEPLOYADA**.
+  migraciones **0001→0118 corridas; la 0119 (Feature C) ESCRITA + AMPLIADA por el audit, NO DEPLOYADA**.
 - **Edge Functions:** las 6 al día (2026-06-09).
 - **Sprint A+B:** testeado por Rubén (debug Windows) ✓ y mergeado a main. Pendiente: build+publicar release v0.11.10.
-- **Hecho recién (2026-06-14):** arrancó **Feature C — cambio de fecha de pago por días** (ver entrada
-  abajo): base matemática + DB 0119 + plumbing + gating UI. Falta la transacción/diálogo/botón/recibo
-  /reportería y toda **Feature A (suspensión)**. `flutter analyze` limpio · `flutter test` 293 verdes.
+- **Hecho recién (2026-06-14 cont.):** **Feature C completada** (transacción + diálogo + botones lista/mapa
+  + recibo + 2 rondas de audit con fixes; ver entrada abajo). `flutter analyze` limpio · `flutter test`
+  **304 verdes**. Falta SOLO testing manual + deploy. **Feature A (suspensión) NO empezada.**
+
+---
+
+## 2026-06-14 (cont.) — Feature C COMPLETA (código) + 2 rondas de audit
+
+**Continuación del diseño cerrado de la entrada de abajo: se completaron los 5 items.**
+- **Transacción** `PagosRepo.registrarCambioFecha` (Diseño A — puente = `cargos_extra` origen='puente'
+  tipo='otro' sobre la ÚLTIMA cuota pagada): cobra el puente + recibo, absorbe (anula) las cuotas que caen
+  en la ventana, re-fecha futuras (port Dart `calcularFechaPago`, espejo de 0014), en fijos agrega cuota de
+  cierre por absorbida. Guards: al-día, sin parciales, día-nuevo ≠ actual. `pagadoHasta` = día NOMINAL.
+- **0119 ampliada:** CHECK `origen` admite 'puente'; **relaja `cuotas_check_cobrador_update`** + agrega
+  **`contratos_check_cobrador_update`** (BEFORE UPDATE) acotando al cobrador habilitado a SOLO sus cuotas y
+  solo `dia_pago`/`fecha_fin` (forward) en contratos. **INV11** (invariantes_dinero.sql) cuenta solo activas.
+- **UI:** `cambio_fecha_dialog.dart` (mini-cobro con preview, reusa CobroCalculo) + botón "Cambiar fecha" en
+  `cuotas_list_screen` y pin del mapa + línea "Puente de pago" en el recibo (`recibo_cargos.dart`). Gateado
+  por `puedeCambiarFechaPagoProvider` + guard de impersonación. `precio_mensual` agregado a ambas queries.
+- **Audits Fase 4 (2 rondas, 18 agentes):** tx → 6 hallazgos, 5 fixes (incl. 2 de SEGURIDAD: el guard
+  relajado sin scope de dueño dejaba anular deuda ajena por API, y `contratos` sin guard dejaba borrar
+  cuotas vía `fecha_fin`→limpiar_excedentes). UI → 1 fix (re-chequeo de `dia_pago` antes de cobrar).
+  Diferido (cosmético, item futuro): `pendiente` subreportado cerca del fin en fijos (trade-off de #9).
+- **Commits:** `c923318` (tx) · `896e959` (fixes tx) · `fe032d7` (UI) · `a64d1bf` (fix UI). **304 tests** verdes.
+
+**PENDIENTE:** testing manual de Rubén → deploy 0119 + sync rules "Active" → build schema v28 → merge a main,
+todo junto una sola vez. **Feature A (suspensión temporal) NO empezada** (sigue en la entrada de abajo).
 
 ---
 
