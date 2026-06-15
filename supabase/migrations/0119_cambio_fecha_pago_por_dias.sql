@@ -146,13 +146,21 @@ create policy "contratos_cambiar_fecha" on public.contratos
     and public.puede_cambiar_fecha_pago()
   );
 
--- cuotas: INSERT (cargo puente + cuota de cierre en fijos).
+-- cuotas: INSERT (cuota de cierre en fijos). Exige que el contrato sea del
+-- propio cobrador (patrón endurecido de 0022: el cobrador setea cobrador_id en
+-- su propia fila, así que sin el EXISTS podría insertar contra contratos ajenos).
 create policy "cuotas_cambiar_fecha_insert" on public.cuotas
   for insert
   with check (
     tenant_id = public.current_tenant_id()
     and cobrador_id = auth.uid()
     and public.puede_cambiar_fecha_pago()
+    and exists (
+      select 1 from public.contratos c
+       where c.id = cuotas.contrato_id
+         and c.cobrador_id = auth.uid()
+         and c.tenant_id = public.current_tenant_id()
+    )
   );
 
 -- cuotas: UPDATE (anular la cuota absorbida; el día de las futuras lo mueve el
@@ -222,7 +230,17 @@ begin
   v_rol := public.current_user_rol();
   if v_rol = 'cobrador' then
     if public.puede_cambiar_fecha_pago() then
-      -- Personal habilitado (feature C): puede re-fechar y absorber (anular).
+      -- Personal habilitado (feature C): puede re-fechar (fecha_vencimiento) y
+      -- ABSORBER (anular) SOLO SUS PROPIAS cuotas, y la anulación SOLO con el
+      -- marcador del flujo legítimo. Necesario porque la policy permissive
+      -- cuotas_update_cobrador_propio (0025) NO scopea por dueño (confía en este
+      -- guard) y las permissive se unen con OR → sin esto un cobrador habilitado
+      -- podría anular por API cuotas pendientes de otros clientes del tenant.
+      if new.cobrador_id is distinct from auth.uid()
+         or old.cobrador_id is distinct from auth.uid()
+      then
+        raise exception 'cobrador solo puede cambiar la fecha de SUS propias cuotas';
+      end if;
       -- Sigue bloqueado: cambios estructurales y des-anular.
       if new.monto         is distinct from old.monto         or
          new.contrato_id   is distinct from old.contrato_id   or
@@ -233,6 +251,13 @@ begin
          (new.estado <> old.estado and old.estado = 'anulada')
       then
         raise exception 'cobrador no puede cambiar monto/contrato/periodo ni reactivar cuotas anuladas';
+      end if;
+      -- Anular SOLO por el flujo de cambio de fecha (marcador del motivo): una
+      -- anulación arbitraria por el cobrador (borrar deuda) sigue prohibida.
+      if new.estado <> old.estado and new.estado = 'anulada'
+         and coalesce(new.motivo_anulacion, '') <> 'Absorbida por cambio de fecha de pago'
+      then
+        raise exception 'cobrador solo puede anular cuotas por cambio de fecha de pago';
       end if;
     else
       -- Guard original (sin la feature de cambio de fecha habilitada).
@@ -258,3 +283,52 @@ begin
   return new;
 end;
 $$;
+
+-- =========================================================================
+-- 7. Guard BEFORE UPDATE en contratos: el rol cobrador (que ahora tiene UPDATE
+--    vía contratos_cambiar_fecha, bloque 4) SOLO puede tocar dia_pago y fecha_fin
+--    del re-anclaje; todo lo demás, congelado. Sin esto la policy daría UPDATE de
+--    TODAS las columnas: un PATCH directo de fecha_fin hacia ATRÁS dispara
+--    limpiar_cuotas_excedentes (0023, SECURITY DEFINER) que BORRA cuotas
+--    pendientes (deuda); cambiar plan_id/duracion_meses rompería el total fijo
+--    (#5); estado='cancelado' cancelaría el contrato. admins/admin_cobranza no
+--    pasan por este if (su rol no es 'cobrador'). ⚠ Acceso sensible — Fase 4.
+-- =========================================================================
+create or replace function public.contratos_check_cobrador_update()
+returns trigger
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+begin
+  if public.current_user_rol() = 'cobrador' then
+    if new.cliente_id     is distinct from old.cliente_id     or
+       new.cobrador_id    is distinct from old.cobrador_id    or
+       new.tenant_id      is distinct from old.tenant_id      or
+       new.plan_id        is distinct from old.plan_id        or
+       new.duracion_meses is distinct from old.duracion_meses or
+       new.fecha_inicio   is distinct from old.fecha_inicio   or
+       new.estado         is distinct from old.estado         or
+       new.codigo         is distinct from old.codigo         or
+       new.fecha_primer_cobro is distinct from old.fecha_primer_cobro or
+       new.costo_instalacion  is distinct from old.costo_instalacion
+    then
+      raise exception 'cobrador solo puede cambiar dia_pago/fecha_fin (cambio de fecha de pago)';
+    end if;
+    -- fecha_fin SOLO hacia adelante: acortarla dispara el DELETE de
+    -- limpiar_cuotas_excedentes (0023) = borrado de deuda.
+    if new.fecha_fin is distinct from old.fecha_fin
+       and old.fecha_fin is not null
+       and new.fecha_fin < old.fecha_fin
+    then
+      raise exception 'cobrador no puede acortar fecha_fin';
+    end if;
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists trg_contratos_check_cobrador_update on public.contratos;
+create trigger trg_contratos_check_cobrador_update
+  before update on public.contratos
+  for each row execute function public.contratos_check_cobrador_update();

@@ -740,12 +740,37 @@ class PagosRepo {
     final hwmLocal = await CorrelativoStore.leer(cobradorId, prefijoRecibo);
 
     await _dbOrGlobal.writeTransaction((tx) async {
-      // 1. pagado hasta = MAX(venc) de cuotas pagadas; esa cuota es el HOST.
+      // 0. Contrato: día de pago viejo + cliente + duración (se usan desde acá).
+      final contratoRows = await tx.getAll(
+        'SELECT cliente_id, dia_pago, duracion_meses FROM contratos WHERE id = ?',
+        [contratoId],
+      );
+      if (contratoRows.isEmpty) {
+        throw StateError('Contrato no encontrado.');
+      }
+      final clienteId = contratoRows.first['cliente_id'] as String;
+      final diaPagoViejo = (contratoRows.first['dia_pago'] as num).toInt();
+      final duracionMeses =
+          (contratoRows.first['duracion_meses'] as num?)?.toInt();
+      final esFijo = duracionMeses != null && duracionMeses > 0;
+
+      // Guard no-op: cambiar al MISMO día rodaría un mes entero (anclaServicio
+      // siempre busca la PRIMERA ocurrencia estrictamente posterior) → cobraría
+      // ~1 mes de puente y absorbería una cuota, para un cambio que no cambia nada.
+      if (diaNuevo == diaPagoViejo) {
+        throw StateError('El día nuevo es igual al día de pago actual.');
+      }
+
+      // 1. pagado hasta = día de servicio NOMINAL de la última cuota pagada: su
+      //    período + el día viejo (clampeado), SIN el ajuste domingo→lunes que
+      //    trae fecha_vencimiento (esa es la fecha de COBRO, no la de servicio).
+      //    Usar fecha_vencimiento contaminaría el puente y la absorción cuando el
+      //    día viejo cayó en domingo.
       final pagadasRows = await tx.getAll(
         '''
-        SELECT id, fecha_vencimiento FROM cuotas
+        SELECT id, periodo FROM cuotas
          WHERE contrato_id = ? AND estado = 'pagada'
-         ORDER BY date(fecha_vencimiento) DESC, fecha_vencimiento DESC
+         ORDER BY date(periodo) DESC
          LIMIT 1
         ''',
         [contratoId],
@@ -755,8 +780,12 @@ class PagosRepo {
             'El contrato no tiene cuotas pagadas: no se puede calcular el puente.');
       }
       final hostCuotaId = pagadasRows.first['id'] as String;
-      final pagadoHasta =
-          DateTime.parse(pagadasRows.first['fecha_vencimiento'] as String);
+      final periodoHost = _parsePeriodo(pagadasRows.first['periodo'] as String);
+      final pagadoHasta = DateTime(
+        periodoHost.year,
+        periodoHost.month,
+        diaClampMes(periodoHost.year, periodoHost.month, diaPagoViejo),
+      );
 
       // Guard "al día": ninguna cuota pendiente vencida (deuda) y ningún pago
       // parcial en curso (el re-fechado/absorción del trigger 0018 sólo toca
@@ -938,15 +967,7 @@ class PagosRepo {
 
       // 6. Contrato: cuota de cierre en fijos (1 por absorbida) + UPDATE dia_pago
       //    (+ fecha_fin en fijos, segura para limpiar_cuotas_excedentes).
-      final contratoRows = await tx.getAll(
-        'SELECT cliente_id, duracion_meses FROM contratos WHERE id = ?',
-        [contratoId],
-      );
-      final clienteId = contratoRows.first['cliente_id'] as String;
-      final duracionMeses =
-          (contratoRows.first['duracion_meses'] as num?)?.toInt();
-      final esFijo = duracionMeses != null && duracionMeses > 0;
-
+      //    cliente_id / duracion_meses / esFijo se leyeron en el paso 0.
       if (esFijo && absorbidas > 0) {
         final maxRows = await tx.getAll(
           'SELECT MAX(date(periodo)) AS maxp FROM cuotas WHERE contrato_id = ?',

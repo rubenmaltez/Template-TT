@@ -1279,6 +1279,57 @@ void main() {
       final host = await getCuota(hostId);
       expect(num2(host['monto_pagado']), 900);
     });
+
+    test('fix #4: pagadoHasta usa el día nominal (periodo+dia_pago), no la venc shifteada',
+        () async {
+      // Host con fecha_vencimiento DISTINTA del día nominal (simula el ajuste
+      // domingo→lunes u otra divergencia): dia_pago=20 pero la venc quedó en el
+      // día 10. pagadoHasta debe salir del nominal (20), no de la venc (10).
+      final contratoId = await seedContrato(diaPago: 20, duracionMeses: null);
+      await seedCuota(
+        contratoId: contratoId, monto: 900, estado: 'pagada', montoPagado: 900,
+        periodo: ymd(mesActual),
+        fechaVencimiento: ymd(DateTime(mesActual.year, mesActual.month, 10)),
+      );
+      for (final m in [mes1, mes2]) {
+        await seedCuota(
+          contratoId: contratoId, monto: 900,
+          periodo: ymd(m),
+          fechaVencimiento: ymd(DateTime(m.year, m.month, 20)),
+        );
+      }
+
+      // Nominal: pagadoHasta=20 del mes actual → al 25 = 5 días de puente.
+      // (Usar la venc shifteada=10 daría ~15 días → un puente ~3× mayor.)
+      final esperado = calcularPuenteCambioFecha(
+          pagadoHasta: DateTime(mesActual.year, mesActual.month, 20),
+          diaNuevo: 25, precioMensual: 900);
+      expect(esperado.diasPuente, 5);
+
+      final res = await repo.registrarCambioFecha(
+        tenantId: tenantId, cobradorId: cobradorId, prefijoRecibo: prefijo,
+        contratoId: contratoId, diaNuevo: 25, precioMensual: 900,
+        moneda: Moneda.nio, montoOriginal: esperado.montoPuente,
+        tasaConversion: 1, metodo: MetodoPago.efectivo,
+      );
+      final pago = await getPago(res.pagoId);
+      expect(num2(pago['monto_cordobas']), closeTo(esperado.montoPuente, 0.01),
+          reason: 'puente de 5 días (nominal), no ~15 días de la venc shifteada');
+    });
+
+    test('fix #5: cambiar al MISMO día de pago lanza y no escribe nada', () async {
+      final esc = await seedEscenario(duracionMeses: 12); // dia_pago = 15
+      await expectLater(
+        repo.registrarCambioFecha(
+          tenantId: tenantId, cobradorId: cobradorId, prefijoRecibo: prefijo,
+          contratoId: esc.contratoId, diaNuevo: 15, precioMensual: 900,
+          moneda: Moneda.nio, montoOriginal: 1000, tasaConversion: 1,
+          metodo: MetodoPago.efectivo,
+        ),
+        throwsA(isA<StateError>()),
+      );
+      expect(await db.getAll('SELECT id FROM pagos'), isEmpty);
+    });
   });
 }
 
