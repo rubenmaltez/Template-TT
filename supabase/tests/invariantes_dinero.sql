@@ -209,9 +209,12 @@ inv10 AS (
 -- (#6: no tienen total fijo). Las cuotas MANUALES (cargo de reconexión/instalación,
 -- `tipo_cargo_manual` NOT NULL) se auto-asocian un contrato_id pero NO son cuotas de
 -- facturación → se EXCLUYEN del conteo (si no, cualquier contrato con un cargo manual
--- daría falso positivo). Las anuladas conservan contrato_id → sí cuentan (no se borran).
+-- daría falso positivo). Las ANULADAS también se EXCLUYEN del conteo: el cambio de
+-- fecha de pago (feature C, 0119) absorbe (anula) la cuota que cae en el puente y, en
+-- fijos, agrega 1 cuota de cierre al final → el conteo que debe dar duracion_meses es
+-- el de cuotas ACTIVAS (no anuladas). Sin esto, absorbida+cierre daría duracion_meses+1.
 inv11 AS (
-  SELECT 'INV11: contrato fijo activo tiene exactamente duracion_meses cuotas (#5)' AS invariante,
+  SELECT 'INV11: contrato fijo activo tiene exactamente duracion_meses cuotas activas (#5)' AS invariante,
          COUNT(*) AS violaciones,
          COALESCE(string_agg(id::text, ', ' ORDER BY id), '') AS ejemplo_ids
   FROM (
@@ -221,7 +224,9 @@ inv11 AS (
       AND ct.duracion_meses IS NOT NULL
       AND ct.duracion_meses > 0
       AND (SELECT COUNT(*) FROM public.cuotas cu
-             WHERE cu.contrato_id = ct.id AND cu.tipo_cargo_manual IS NULL)
+             WHERE cu.contrato_id = ct.id
+               AND cu.tipo_cargo_manual IS NULL
+               AND cu.estado <> 'anulada')
           <> ct.duracion_meses
     LIMIT 10
   ) t

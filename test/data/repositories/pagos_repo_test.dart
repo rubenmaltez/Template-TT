@@ -48,6 +48,7 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:isp_billing/data/models/pago.dart';
 import 'package:isp_billing/data/repositories/pagos_repo.dart';
+import 'package:isp_billing/data/utils/prorrateo.dart';
 import 'package:isp_billing/powersync/schema.dart';
 import 'package:path/path.dart' as p;
 import 'package:powersync/powersync.dart';
@@ -132,14 +133,22 @@ void main() {
 
   // ── Helpers de seed específicos ─────────────────────────────────────────
 
-  /// Crea un contrato y devuelve su id.
-  Future<String> seedContrato({String? id}) async {
+  /// Crea un contrato y devuelve su id. [duracionMeses] null = indefinido.
+  Future<String> seedContrato({
+    String? id,
+    int diaPago = 5,
+    int? duracionMeses,
+    String? fechaFin,
+  }) async {
     final contratoId = id ?? uuid.v4();
     await db.execute(
       "INSERT INTO contratos (id, tenant_id, cliente_id, cobrador_id, plan_id, "
-      "dia_pago, estado, created_at) "
-      "VALUES (?, ?, ?, ?, ?, 5, 'activo', ?)",
-      [contratoId, tenantId, clienteId, cobradorId, planId, _now()],
+      "dia_pago, duracion_meses, fecha_fin, estado, created_at) "
+      "VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'activo', ?)",
+      [
+        contratoId, tenantId, clienteId, cobradorId, planId,
+        diaPago, duracionMeses, fechaFin, _now(),
+      ],
     );
     return contratoId;
   }
@@ -152,16 +161,18 @@ void main() {
     String estado = 'pendiente',
     double montoPagado = 0,
     double cargosNeto = 0,
+    String periodo = '2026-06',
+    String fechaVencimiento = '2026-06-05',
     String? id,
   }) async {
     final cuotaId = id ?? uuid.v4();
     await db.execute(
       "INSERT INTO cuotas (id, tenant_id, contrato_id, cliente_id, cobrador_id, "
       "periodo, fecha_vencimiento, monto, monto_pagado, cargos_neto, estado, created_at) "
-      "VALUES (?, ?, ?, ?, ?, '2026-06', '2026-06-05', ?, ?, ?, ?, ?)",
+      "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
       [
         cuotaId, tenantId, contratoId, clienteId, cobradorId,
-        monto, montoPagado, cargosNeto, estado, _now(),
+        periodo, fechaVencimiento, monto, montoPagado, cargosNeto, estado, _now(),
       ],
     );
     return cuotaId;
@@ -1061,6 +1072,212 @@ void main() {
               'SELECT id FROM cargos_extra WHERE cuota_id = ?', [cuotaId]),
           hasLength(1),
           reason: 'el cargo legacy no nació de este cobro: se preserva');
+    });
+  });
+
+  // ───────────────────────────────────────────────────────────────────────
+  // registrarCambioFecha — cambio de fecha de pago por días (feature C)
+  // ───────────────────────────────────────────────────────────────────────
+  group('registrarCambioFecha (cambio de fecha por días)', () {
+    String ymd(DateTime d) =>
+        '${d.year.toString().padLeft(4, '0')}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+    // Fechas RELATIVAS a hoy: el filtro de re-fechado es `periodo >= mes actual`,
+    // así que el escenario debe ser determinista corra cuando corra el test.
+    final hoy = DateTime.now();
+    final mesActual = DateTime(hoy.year, hoy.month, 1);
+    final mes1 = DateTime(hoy.year, hoy.month + 1, 1);
+    final mes2 = DateTime(hoy.year, hoy.month + 2, 1);
+    final mes3 = DateTime(hoy.year, hoy.month + 3, 1);
+    // "Pagado hasta" el 15 del mes actual (cuota host pagada).
+    final pagadoHasta = DateTime(mesActual.year, mesActual.month, 15);
+
+    Future<({String contratoId, String hostId})> seedEscenario(
+        {int? duracionMeses}) async {
+      final contratoId =
+          await seedContrato(diaPago: 15, duracionMeses: duracionMeses);
+      final hostId = await seedCuota(
+        contratoId: contratoId, monto: 900, estado: 'pagada', montoPagado: 900,
+        periodo: ymd(mesActual), fechaVencimiento: ymd(pagadoHasta),
+      );
+      for (final m in [mes1, mes2, mes3]) {
+        await seedCuota(
+          contratoId: contratoId, monto: 900,
+          periodo: ymd(m),
+          fechaVencimiento: ymd(DateTime(m.year, m.month, 15)),
+        );
+      }
+      return (contratoId: contratoId, hostId: hostId);
+    }
+
+    test('salto corto (15→30) fijo: NO absorbe, re-fecha futuras, cobra el puente',
+        () async {
+      final esc = await seedEscenario(duracionMeses: 12);
+      final puente = calcularPuenteCambioFecha(
+          pagadoHasta: pagadoHasta, diaNuevo: 30, precioMensual: 900);
+      expect(puente.montoPuente, greaterThan(0));
+
+      final res = await repo.registrarCambioFecha(
+        tenantId: tenantId, cobradorId: cobradorId, prefijoRecibo: prefijo,
+        contratoId: esc.contratoId, diaNuevo: 30, precioMensual: 900,
+        moneda: Moneda.nio, montoOriginal: puente.montoPuente, tasaConversion: 1,
+        metodo: MetodoPago.efectivo,
+      );
+
+      final pago = await getPago(res.pagoId);
+      expect(num2(pago['monto_cordobas']), closeTo(puente.montoPuente, 0.001));
+      expect(num2(pago['vuelto_cordobas']), 0);
+      final recibo = await getReciboDePago(res.pagoId);
+      expect(recibo['numero_completo'], 'A-00001');
+
+      final host = await getCuota(esc.hostId);
+      expect(host['estado'], 'pagada');
+      expect(num2(host['cargos_neto']), closeTo(puente.montoPuente, 0.001));
+      expect(num2(host['monto_pagado']), closeTo(900 + puente.montoPuente, 0.001));
+      expect(num2(host['monto']), 900, reason: 'monto base NUNCA muta');
+
+      final anuladas = await db.getAll(
+          "SELECT id FROM cuotas WHERE contrato_id = ? AND estado = 'anulada'",
+          [esc.contratoId]);
+      expect(anuladas, isEmpty, reason: 'salto corto no absorbe');
+
+      final futuras = await db.getAll(
+          "SELECT fecha_vencimiento FROM cuotas WHERE contrato_id = ? AND estado = 'pendiente' ORDER BY date(periodo)",
+          [esc.contratoId]);
+      expect(futuras, hasLength(3));
+      expect(futuras.first['fecha_vencimiento'], ymd(calcularFechaPago(mes1, 30)));
+
+      final total = await db.getAll(
+          'SELECT COUNT(*) AS n FROM cuotas WHERE contrato_id = ?',
+          [esc.contratoId]);
+      expect((total.first['n'] as num).toInt(), 4, reason: 'sin cuota de cierre');
+
+      final ct = await db
+          .getAll('SELECT dia_pago FROM contratos WHERE id = ?', [esc.contratoId]);
+      expect((ct.first['dia_pago'] as num).toInt(), 30);
+    });
+
+    test('salto que cruza de mes (15→10) fijo: absorbe 1 + agrega cuota de cierre',
+        () async {
+      final esc = await seedEscenario(duracionMeses: 12);
+      final puente = calcularPuenteCambioFecha(
+          pagadoHasta: pagadoHasta, diaNuevo: 10, precioMensual: 900);
+
+      final res = await repo.registrarCambioFecha(
+        tenantId: tenantId, cobradorId: cobradorId, prefijoRecibo: prefijo,
+        contratoId: esc.contratoId, diaNuevo: 10, precioMensual: 900,
+        moneda: Moneda.nio, montoOriginal: puente.montoPuente, tasaConversion: 1,
+        metodo: MetodoPago.efectivo,
+      );
+      expect(res.pagoId, isNotEmpty);
+
+      final mes1Rows = await db.getAll(
+          'SELECT estado, motivo_anulacion, anulada_por FROM cuotas WHERE contrato_id = ? AND periodo = ?',
+          [esc.contratoId, ymd(mes1)]);
+      expect(mes1Rows.first['estado'], 'anulada');
+      expect(mes1Rows.first['anulada_por'], cobradorId);
+      expect(mes1Rows.first['motivo_anulacion'], isNotNull);
+
+      final mes2Rows = await db.getAll(
+          'SELECT fecha_vencimiento FROM cuotas WHERE contrato_id = ? AND periodo = ?',
+          [esc.contratoId, ymd(mes2)]);
+      expect(mes2Rows.first['fecha_vencimiento'], ymd(calcularFechaPago(mes2, 10)));
+
+      final mes4 = DateTime(mes3.year, mes3.month + 1, 1);
+      final cierre = await db.getAll(
+          'SELECT monto, estado FROM cuotas WHERE contrato_id = ? AND periodo = ?',
+          [esc.contratoId, ymd(mes4)]);
+      expect(cierre, hasLength(1), reason: 'cuota de cierre al final');
+      expect(cierre.first['estado'], 'pendiente');
+      expect(num2(cierre.first['monto']), 900);
+
+      final activas = await db.getAll(
+          "SELECT COUNT(*) AS n FROM cuotas WHERE contrato_id = ? AND estado <> 'anulada' AND tipo_cargo_manual IS NULL",
+          [esc.contratoId]);
+      expect((activas.first['n'] as num).toInt(), 4,
+          reason: 'absorbe 1 + agrega 1 → conteo activo intacto');
+
+      final ct = await db.getAll(
+          'SELECT dia_pago, fecha_fin FROM contratos WHERE id = ?',
+          [esc.contratoId]);
+      expect((ct.first['dia_pago'] as num).toInt(), 10);
+      expect(ct.first['fecha_fin'], isNotNull);
+    });
+
+    test('indefinido: absorbe pero NO agrega cuota de cierre (fecha_fin queda null)',
+        () async {
+      final esc = await seedEscenario(duracionMeses: null);
+      final puente = calcularPuenteCambioFecha(
+          pagadoHasta: pagadoHasta, diaNuevo: 10, precioMensual: 900);
+
+      await repo.registrarCambioFecha(
+        tenantId: tenantId, cobradorId: cobradorId, prefijoRecibo: prefijo,
+        contratoId: esc.contratoId, diaNuevo: 10, precioMensual: 900,
+        moneda: Moneda.nio, montoOriginal: puente.montoPuente, tasaConversion: 1,
+        metodo: MetodoPago.efectivo,
+      );
+
+      final anuladas = await db.getAll(
+          "SELECT id FROM cuotas WHERE contrato_id = ? AND estado = 'anulada'",
+          [esc.contratoId]);
+      expect(anuladas, hasLength(1));
+      final total = await db.getAll(
+          'SELECT COUNT(*) AS n FROM cuotas WHERE contrato_id = ?',
+          [esc.contratoId]);
+      expect((total.first['n'] as num).toInt(), 4,
+          reason: 'indefinido no agrega cierre');
+      final ct = await db
+          .getAll('SELECT fecha_fin FROM contratos WHERE id = ?', [esc.contratoId]);
+      expect(ct.first['fecha_fin'], isNull);
+    });
+
+    test('vuelto: si entrega más que el puente, el resto es vuelto en C\$',
+        () async {
+      final esc = await seedEscenario(duracionMeses: 12);
+      final puente = calcularPuenteCambioFecha(
+          pagadoHasta: pagadoHasta, diaNuevo: 30, precioMensual: 900);
+
+      final res = await repo.registrarCambioFecha(
+        tenantId: tenantId, cobradorId: cobradorId, prefijoRecibo: prefijo,
+        contratoId: esc.contratoId, diaNuevo: 30, precioMensual: 900,
+        moneda: Moneda.nio, montoOriginal: puente.montoPuente + 100,
+        tasaConversion: 1, metodo: MetodoPago.efectivo,
+      );
+      final pago = await getPago(res.pagoId);
+      expect(num2(pago['monto_cordobas']), closeTo(puente.montoPuente, 0.001));
+      expect(num2(pago['vuelto_cordobas']), closeTo(100, 0.001));
+      // Invariante #3: entregado × tasa ≈ aplicado + vuelto.
+      expect(num2(pago['monto_original']) * num2(pago['tasa_conversion']),
+          closeTo(num2(pago['monto_cordobas']) + num2(pago['vuelto_cordobas']), 0.01));
+    });
+
+    test('guard: cliente NO al día (cuota vencida) lanza y no escribe nada',
+        () async {
+      final mesPrev = DateTime(hoy.year, hoy.month - 1, 1);
+      final contratoId = await seedContrato(diaPago: 15, duracionMeses: 12);
+      final hostId = await seedCuota(
+        contratoId: contratoId, monto: 900, estado: 'pagada', montoPagado: 900,
+        periodo: ymd(mesPrev),
+        fechaVencimiento: ymd(DateTime(mesPrev.year, mesPrev.month, 15)),
+      );
+      final ayer = DateTime.now().toUtc().subtract(const Duration(days: 1));
+      await seedCuota(
+        contratoId: contratoId, monto: 900,
+        periodo: ymd(mesActual), fechaVencimiento: ymd(ayer),
+      );
+
+      await expectLater(
+        repo.registrarCambioFecha(
+          tenantId: tenantId, cobradorId: cobradorId, prefijoRecibo: prefijo,
+          contratoId: contratoId, diaNuevo: 30, precioMensual: 900,
+          moneda: Moneda.nio, montoOriginal: 1000, tasaConversion: 1,
+          metodo: MetodoPago.efectivo,
+        ),
+        throwsA(isA<StateError>()),
+      );
+      expect(await db.getAll('SELECT id FROM pagos'), isEmpty);
+      expect(await db.getAll('SELECT id FROM recibos'), isEmpty);
+      final host = await getCuota(hostId);
+      expect(num2(host['monto_pagado']), 900);
     });
   });
 }

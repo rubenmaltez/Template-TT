@@ -15,30 +15,38 @@
 --       (con la feature ON). Sin flujo de aprobación extra: el personal habilitado
 --       = capacitado.
 --
--- MODELO (re-anclaje, orquestado por el CLIENTE como cambios de filas que
---   sincronizan; el server NO necesita una función de re-anclaje):
---   - Cargo PUENTE = una cuota-cargo manual (tipo_cargo_manual='puente') cobrada
---     al instante → genera pago + recibo (línea "Puente de pago"). Entra a
---     RECAUDADO; NO infla el total fijo (precio × meses) — es ingreso extra, como
---     una reconexión (invariantes #9/#10 intactos).
---   - La cuota que caía en la ventana del puente queda ABSORBIDA (anulada, sin
---     pago = sin deuda). La primera cuota completa pasa al día nuevo.
+-- MODELO (Diseño A, decisión de Rubén 2026-06-14; re-anclaje orquestado por el
+--   CLIENTE como cambios de filas que sincronizan; el server NO necesita un RPC):
+--   - Cargo PUENTE = un cargos_extra (origen='puente', tipo='otro' → SUMA) sobre
+--     la ÚLTIMA cuota pagada del contrato (host: cargos_extra.cuota_id es NOT NULL
+--     y una cuota anulada no puede alojar el pago). Se cobra al instante → genera
+--     pago + recibo con la línea "Puente de pago". Entra a RECAUDADO; NO infla el
+--     total fijo (precio × meses) — es ingreso extra, como una reconexión
+--     (invariantes #9/#10 intactos).
+--   - La/s cuota/s pendiente/s que caen DENTRO de la ventana del puente quedan
+--     ABSORBIDAS (anuladas, sin pago = sin deuda); el primer pago completo pasa al
+--     día nuevo. Salto corto que no cruza de mes → 0 absorbidas (solo se corre el
+--     vencimiento); salto que cruza de mes → se absorbe la cuota de ese mes.
 --   - Las cuotas futuras pendientes se mueven al día nuevo: lo hace AUTOMÁTICO el
 --     trigger contratos_actualizar_cuotas_futuras_trg (0018) al UPDATE de dia_pago
 --     (fecha_vencimiento = calcular_fecha_pago(periodo, dia_pago_nuevo)). El cliente
---     lo espeja local para verlo offline al instante.
---   - Contratos de plazo fijo: el cliente agrega 1 cuota al final (día nuevo) para
---     conservar el conteo (total fijo intacto) → el servicio termina unos días
---     después (los del puente, que pagó). Indefinidos: solo se re-ancla el cushion.
+--     lo espeja local (port Dart de calcular_fecha_pago) para verlo offline al instante.
+--   - Contratos de plazo fijo: el cliente agrega 1 cuota de cierre al final (período
+--     libre, día nuevo) por cada absorbida → conserva el conteo ACTIVO en
+--     duracion_meses (total fijo intacto) → el servicio termina unos días después.
+--     Indefinidos: solo se re-ancla el cushion. INV11 (invariantes_dinero.sql) cuenta
+--     solo cuotas NO anuladas para no marcar la absorbida + cierre como sobre-generación.
 --
 -- OFFLINE: como el cobrador opera sin internet, NO se puede usar un RPC server.
 --   Los writes ocurren LOCAL (PowerSync) y suben vía RLS. Por eso esta migración
 --   EXTIENDE la RLS de contratos/cuotas para permitir esos writes SOLO al personal
---   habilitado y SOLO sobre SUS PROPIOS contratos/cuotas. ⚠ Cambio de acceso
---   sensible — revisar en el audit de seguridad (Fase 4).
+--   habilitado y SOLO sobre SUS PROPIOS contratos/cuotas, y RELAJA el guard
+--   cuotas_check_cobrador_update (0111/0022) para que el personal habilitado pueda
+--   re-fechar (fecha_vencimiento) y absorber (anular) — ver bloques 5 y 6. ⚠ Cambio
+--   de acceso sensible — revisar en el audit de seguridad (Fase 4).
 --
--- tipo_cargo_manual es TEXTO LIBRE (0051, sin CHECK) → 'puente' no requiere
---   tocar constraints. El label legible se registra en el cliente.
+-- cargos_extra.origen tenía CHECK cerrado (0115) → este archivo lo EXTIENDE con
+--   'puente' (bloque 5). El label legible y la línea del recibo se mapean en el cliente.
 --
 -- POST-DEPLOY: bump schema.dart (cobradores.puede_cambiar_fecha) + _schemaVersion
 --   27→28 + redeploy sync rules (la columna se agregó a los SELECT de cobradores).
@@ -164,3 +172,89 @@ create policy "cuotas_cambiar_fecha_update" on public.cuotas
 
 -- NOTA: pagos/recibos ya permiten al cobrador insertar los suyos (0013), así que
 -- el cobro del puente + su recibo no requieren policy nueva.
+
+-- =========================================================================
+-- 5. Extender el CHECK de cargos_extra.origen para admitir 'puente' (Diseño A).
+--    El cargo puente es un cargos_extra origen='puente' tipo='otro' (SUMA) sobre
+--    la última cuota pagada. El CHECK de 0115 es inline (nombre autogenerado) →
+--    lo ubicamos por pg_constraint y lo reemplazamos por uno con nombre estable.
+-- =========================================================================
+do $$
+declare
+  v_con text;
+begin
+  select c.conname into v_con
+    from pg_constraint c
+   where c.conrelid = 'public.cargos_extra'::regclass
+     and c.contype = 'c'
+     and pg_get_constraintdef(c.oid) ilike '%origen%'
+     and pg_get_constraintdef(c.oid) ilike '%cobro%'
+   limit 1;
+  if v_con is not null then
+    execute format('alter table public.cargos_extra drop constraint %I', v_con);
+  end if;
+end $$;
+
+alter table public.cargos_extra
+  add constraint cargos_extra_origen_check
+  check (origen in ('cobro', 'ajuste', 'promo', 'liquidacion', 'puente'));
+
+-- =========================================================================
+-- 6. Relajar el guard cuotas_check_cobrador_update (0111/0022) para el personal
+--    habilitado: necesita RE-FECHAR (fecha_vencimiento) las futuras y ABSORBER
+--    (anular con metadata) la/s cuota/s del puente, OFFLINE, sobre SUS cuotas.
+--    Sigue PROHIBIDO para el cobrador: des-anular (reactivar) y los cambios
+--    estructurales (monto/contrato/cliente/cobrador/periodo/tenant).
+--    ⚠ Cambio de acceso sensible (Fase 4 seguridad): un cobrador habilitado
+--    puede anular/re-fechar SUS cuotas sin aprobación extra (modelo "habilitado
+--    = capacitado"). El gating feature+permiso (puede_cambiar_fecha_pago()) y el
+--    scope cobrador_id=auth.uid() de las policies 0119 lo acotan.
+-- =========================================================================
+create or replace function public.cuotas_check_cobrador_update()
+returns trigger
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  v_rol text;
+begin
+  v_rol := public.current_user_rol();
+  if v_rol = 'cobrador' then
+    if public.puede_cambiar_fecha_pago() then
+      -- Personal habilitado (feature C): puede re-fechar y absorber (anular).
+      -- Sigue bloqueado: cambios estructurales y des-anular.
+      if new.monto         is distinct from old.monto         or
+         new.contrato_id   is distinct from old.contrato_id   or
+         new.cliente_id    is distinct from old.cliente_id    or
+         new.cobrador_id   is distinct from old.cobrador_id   or
+         new.periodo       is distinct from old.periodo       or
+         new.tenant_id     is distinct from old.tenant_id     or
+         (new.estado <> old.estado and old.estado = 'anulada')
+      then
+        raise exception 'cobrador no puede cambiar monto/contrato/periodo ni reactivar cuotas anuladas';
+      end if;
+    else
+      -- Guard original (sin la feature de cambio de fecha habilitada).
+      if new.monto         is distinct from old.monto         or
+         new.contrato_id   is distinct from old.contrato_id   or
+         new.cliente_id    is distinct from old.cliente_id    or
+         new.cobrador_id   is distinct from old.cobrador_id   or
+         new.periodo       is distinct from old.periodo       or
+         new.fecha_vencimiento is distinct from old.fecha_vencimiento or
+         new.tenant_id     is distinct from old.tenant_id     or
+         new.anulada_en    is distinct from old.anulada_en    or
+         new.anulada_por   is distinct from old.anulada_por   or
+         new.motivo_anulacion is distinct from old.motivo_anulacion or
+         -- No puede anular...
+         (new.estado <> old.estado and new.estado = 'anulada') or
+         -- ...ni des-anular (reactivar) una cuota ya anulada.
+         (new.estado <> old.estado and old.estado = 'anulada')
+      then
+        raise exception 'cobrador no puede anular ni reactivar cuotas; sólo monto_pagado y transiciones de cobro';
+      end if;
+    end if;
+  end if;
+  return new;
+end;
+$$;

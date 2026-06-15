@@ -92,4 +92,30 @@ void main() {
       expect(p.montoPuente, closeTo(15 * (900 / 30) + 10 * (900 / 31), 0.01));
     });
   });
+
+  // Espejo offline del server `calcular_fecha_pago` (0014): clamp a fin de mes +
+  // domingo→lunes. DISTINTA de anclaServicio (que NO ajusta domingo→lunes).
+  group('calcularFechaPago (fecha de cobro de la cuota)', () {
+    test('día normal (no domingo, sin clamp)', () {
+      // 2026-01-06 es martes.
+      expect(calcularFechaPago(DateTime(2026, 1, 1), 6), DateTime(2026, 1, 6));
+    });
+    test('clamp al último día del mes (31 en feb → 28)', () {
+      // 2026-02-28 es sábado (no domingo) → sin ajuste extra.
+      expect(calcularFechaPago(DateTime(2026, 2, 1), 31), DateTime(2026, 2, 28));
+    });
+    test('domingo se corre a lunes', () {
+      // 2026-01-04 es domingo → 05 (lunes).
+      expect(calcularFechaPago(DateTime(2026, 1, 1), 4), DateTime(2026, 1, 5));
+    });
+    test('nunca devuelve un domingo', () {
+      for (var mes = 1; mes <= 12; mes++) {
+        for (var dia = 1; dia <= 31; dia++) {
+          final f = calcularFechaPago(DateTime(2026, mes, 1), dia);
+          expect(f.weekday, isNot(DateTime.sunday),
+              reason: 'mes $mes día $dia → $f cae domingo');
+        }
+      }
+    });
+  });
 }

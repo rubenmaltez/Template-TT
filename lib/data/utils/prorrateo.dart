@@ -72,6 +72,22 @@ DateTime anclaServicio(DateTime pagadoHasta, int diaNuevo) {
   return cand;
 }
 
+/// **Fecha de COBRO de una cuota** para el mes [periodo] con el día [diaPago]:
+/// espeja EXACTAMENTE el server `calcular_fecha_pago` (migración 0014) — clamp del
+/// día al último del mes + ajuste domingo→lunes (no se cobra domingo). Es DISTINTA
+/// de [anclaServicio] (servicio puro, sin ajuste domingo→lunes): esta es la fecha
+/// con la que el cliente espeja OFFLINE el re-fechado de las cuotas futuras que el
+/// trigger `contratos_actualizar_cuotas_futuras_trg` (0018) hace en el server al
+/// cambiar `dia_pago`.
+DateTime calcularFechaPago(DateTime periodo, int diaPago) {
+  final y = periodo.year;
+  final m = periodo.month;
+  var f = DateTime(y, m, diaClampMes(y, m, diaPago));
+  // DateTime.weekday: lunes=1 … domingo=7. (dow Postgres: domingo=0.)
+  if (f.weekday == DateTime.sunday) f = f.add(const Duration(days: 1));
+  return f;
+}
+
 /// Resultado de simular un cambio de fecha de pago.
 class PuenteCambioFecha {
   const PuenteCambioFecha({

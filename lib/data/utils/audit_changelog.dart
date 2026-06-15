@@ -604,6 +604,7 @@ String _origenCargoExtraLabel(String o) => switch (o) {
       'promo' => 'Promo',
       'cobro' => 'Cobro',
       'liquidacion' => 'Cancelación de contrato',
+      'puente' => 'Puente de pago',
       _ => o,
     };
 

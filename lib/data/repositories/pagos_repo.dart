@@ -7,6 +7,7 @@ import '../../powersync/db.dart' as ps;
 import '../models/pago.dart';
 import '../services/correlativo_store.dart';
 import '../utils/cuota_estado.dart';
+import '../utils/prorrateo.dart';
 
 /// Resultado de un cobro exitoso. La UI navega a /recibo/[reciboId].
 class CobroResultado {
@@ -675,6 +676,345 @@ class PagosRepo {
       }
     });
   }
+
+  /// **Cambio de fecha de pago por días (feature C, Diseño A).**
+  /// El cliente AL DÍA mueve su día de pago al [diaNuevo] y paga el "puente"
+  /// (días prorrateados entre lo que pagó y el ancla del nuevo día). Todo OFFLINE
+  /// en UNA writeTransaction:
+  ///  1. `pagado hasta` = MAX(venc) de cuotas pagadas → host del cargo puente.
+  ///  2. cobro del puente: cargos_extra origen='puente' tipo='otro' (SUMA) sobre
+  ///     la última cuota pagada + pago + recibo + mirror (la cuota host sigue pagada).
+  ///  3. absorbe (anula) las cuotas pendientes que caen DENTRO del puente.
+  ///  4. re-fecha las futuras pendientes al día nuevo (espejo del trigger 0018).
+  ///  5. UPDATE contratos.dia_pago (+ fecha_fin en fijos); en fijos agrega 1 cuota
+  ///     de cierre al final por cada absorbida (conserva el conteo activo).
+  ///
+  /// El monto aplicado del puente lo determina el helper [calcularPuenteCambioFecha]
+  /// (NO el caller): el caller pasa lo ENTREGADO ([montoOriginal] en [moneda] a
+  /// [tasaConversion]); el vuelto se calcula. Requiere RLS+guard de 0119.
+  Future<CobroResultado> registrarCambioFecha({
+    required String tenantId,
+    required String cobradorId,
+    required String prefijoRecibo,
+    required String contratoId,
+    required int diaNuevo,
+    required double precioMensual,
+    required Moneda moneda,
+    required double montoOriginal,
+    required double tasaConversion,
+    required MetodoPago metodo,
+    String? referencia,
+    String? fotoComprobantePath,
+    double? lat,
+    double? lng,
+    String? notas,
+    DateTime? fechaPago,
+  }) async {
+    final pagoId = _uuid.v4();
+    final reciboId = _uuid.v4();
+    final clientLocalIdPago = _uuid.v4();
+    final clientLocalIdRecibo = _uuid.v4();
+    final now = (fechaPago ?? DateTime.now()).toIso8601String();
+    final ocurridoEn = DateTime.now().toUtc().toIso8601String();
+    final correlativoEmitido = <int>[];
+
+    // Guard de correlativo: mismo patrón que registrarCobro (server MAX con
+    // timeout corto → hwm local de fallback).
+    int? pisoCorrelativo;
+    try {
+      final serverRows = await Supabase.instance.client
+          .from('recibos')
+          .select('correlativo')
+          .eq('cobrador_id', cobradorId)
+          .eq('prefijo', prefijoRecibo)
+          .order('correlativo', ascending: false)
+          .limit(1)
+          .timeout(const Duration(seconds: 5));
+      if (serverRows.isNotEmpty) {
+        pisoCorrelativo = (serverRows.first['correlativo'] as num).toInt();
+      }
+    } catch (_) {}
+    if (pisoCorrelativo != null) {
+      await CorrelativoStore.subirA(cobradorId, prefijoRecibo, pisoCorrelativo);
+    }
+    final hwmLocal = await CorrelativoStore.leer(cobradorId, prefijoRecibo);
+
+    await _dbOrGlobal.writeTransaction((tx) async {
+      // 1. pagado hasta = MAX(venc) de cuotas pagadas; esa cuota es el HOST.
+      final pagadasRows = await tx.getAll(
+        '''
+        SELECT id, fecha_vencimiento FROM cuotas
+         WHERE contrato_id = ? AND estado = 'pagada'
+         ORDER BY date(fecha_vencimiento) DESC, fecha_vencimiento DESC
+         LIMIT 1
+        ''',
+        [contratoId],
+      );
+      if (pagadasRows.isEmpty) {
+        throw StateError(
+            'El contrato no tiene cuotas pagadas: no se puede calcular el puente.');
+      }
+      final hostCuotaId = pagadasRows.first['id'] as String;
+      final pagadoHasta =
+          DateTime.parse(pagadasRows.first['fecha_vencimiento'] as String);
+
+      // Guard "al día": ninguna cuota pendiente vencida (deuda) y ningún pago
+      // parcial en curso (el re-fechado/absorción del trigger 0018 sólo toca
+      // 'pendiente'; un 'parcial' quedaría inconsistente).
+      final deudaRows = await tx.getAll(
+        '''
+        SELECT COUNT(*) AS n FROM cuotas
+         WHERE contrato_id = ?
+           AND estado IN ('pendiente','parcial')
+           AND date(fecha_vencimiento) <= date('now','-6 hours')
+        ''',
+        [contratoId],
+      );
+      if ((deudaRows.first['n'] as num).toInt() > 0) {
+        throw StateError('El cliente no está al día (cuotas vencidas o parciales).');
+      }
+      final parcialRows = await tx.getAll(
+        "SELECT COUNT(*) AS n FROM cuotas WHERE contrato_id = ? AND estado = 'parcial'",
+        [contratoId],
+      );
+      if ((parcialRows.first['n'] as num).toInt() > 0) {
+        throw StateError('Hay un pago parcial en curso: no se puede cambiar la fecha.');
+      }
+
+      // 2. Puente.
+      final puente = calcularPuenteCambioFecha(
+        pagadoHasta: pagadoHasta,
+        diaNuevo: diaNuevo,
+        precioMensual: precioMensual,
+      );
+      final aplicado = puente.montoPuente;
+      if (aplicado <= 0) {
+        throw StateError('El puente no aplica (el día nuevo no es posterior a lo pagado).');
+      }
+      final aplicadoCent = (aplicado * 100).round();
+      final entregadoCent = (montoOriginal * tasaConversion * 100).round();
+      if (entregadoCent < aplicadoCent) {
+        throw StateError('El monto entregado no alcanza para el puente.');
+      }
+      final vuelto = (entregadoCent - aplicadoCent) / 100.0;
+
+      // 3a. Cargo puente sobre la cuota host (origen='puente', tipo='otro' SUMA).
+      await tx.execute(
+        '''
+        INSERT INTO cargos_extra (
+          id, tenant_id, cuota_id, cobrador_id, tipo, monto,
+          porcentaje, descripcion, aplicado_por, aplicado_en, client_local_id,
+          ocurrido_en, origen, pago_id
+        ) VALUES (?, ?, ?, ?, 'otro', ?, NULL, ?, ?, ?, ?, ?, 'puente', ?)
+        ''',
+        [
+          _uuid.v4(), tenantId, hostCuotaId, cobradorId, aplicado,
+          'Puente de pago (cambio de fecha al día $diaNuevo)',
+          cobradorId, ocurridoEn, _uuid.v4(), ocurridoEn, pagoId,
+        ],
+      );
+
+      // 3b. Correlativo dentro de la tx (sin filtrar anulados).
+      final rows = await tx.getAll(
+        'SELECT COALESCE(MAX(correlativo), 0) AS max_local FROM recibos WHERE cobrador_id = ? AND prefijo = ?',
+        [cobradorId, prefijoRecibo],
+      );
+      final maxLocal = (rows.first['max_local'] as num).toInt();
+      final pisoServer = pisoCorrelativo ?? 0;
+      final piso = pisoServer > hwmLocal ? pisoServer : hwmLocal;
+      final correlativo = (maxLocal > piso ? maxLocal : piso) + 1;
+      correlativoEmitido.add(correlativo);
+      final numeroCompleto =
+          '$prefijoRecibo-${correlativo.toString().padLeft(5, '0')}';
+
+      // 3c. Pago del puente (monto_cordobas = aplicado; vuelto en C$).
+      await tx.execute(
+        '''
+        INSERT INTO pagos (
+          id, tenant_id, cuota_id, cobrador_id,
+          monto_cordobas, vuelto_cordobas, moneda, monto_original, tasa_conversion,
+          metodo, referencia, foto_comprobante_path,
+          lat, lng, notas, fecha_pago, anulado, client_local_id, ocurrido_en
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)
+        ''',
+        [
+          pagoId, tenantId, hostCuotaId, cobradorId,
+          aplicado, vuelto, moneda.value, montoOriginal, tasaConversion,
+          metodo.value, referencia, fotoComprobantePath,
+          lat, lng, notas, now, clientLocalIdPago, ocurridoEn,
+        ],
+      );
+
+      // 3d. Recibo del puente.
+      await tx.execute(
+        '''
+        INSERT INTO recibos (
+          id, tenant_id, pago_id, cobrador_id,
+          prefijo, correlativo, numero_completo,
+          reimpresiones, anulado, created_at, client_local_id, ocurrido_en
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, 0, 0, ?, ?, ?)
+        ''',
+        [
+          reciboId, tenantId, pagoId, cobradorId,
+          prefijoRecibo, correlativo, numeroCompleto,
+          now, clientLocalIdRecibo, ocurridoEn,
+        ],
+      );
+
+      // 3e. Mirror de la cuota host (sigue 'pagada': se le suma el puente al
+      //     monto_pagado y al cargos_neto; total = monto + cargos_neto).
+      final hostRows = await tx.getAll(
+        'SELECT monto, monto_pagado, estado FROM cuotas WHERE id = ?',
+        [hostCuotaId],
+      );
+      final montoCuota = (hostRows.first['monto'] as num).toDouble();
+      final pagadoViejo =
+          (hostRows.first['monto_pagado'] as num? ?? 0).toDouble();
+      final estadoActual = hostRows.first['estado'] as String;
+      final pagadoNuevo = pagadoViejo + aplicado;
+      final delta = await _deltaCargosExtra(tx, hostCuotaId);
+      await tx.execute(
+        'UPDATE cuotas SET cargos_neto = ?, ocurrido_en = ? WHERE id = ?',
+        [delta, ocurridoEn, hostCuotaId],
+      );
+      final nuevoEstado = calcularEstadoCuota(
+        estadoActual: estadoActual,
+        montoCuota: montoCuota,
+        pagadoNuevo: pagadoNuevo,
+        deltaCargosExtra: delta,
+      );
+      await tx.execute(
+        'UPDATE cuotas SET monto_pagado = ?, estado = ?, ocurrido_en = ? WHERE id = ?',
+        [pagadoNuevo, nuevoEstado, ocurridoEn, hostCuotaId],
+      );
+
+      // 4. Absorber: cuotas pendientes cuyo servicio (día nuevo de su mes, sin
+      //    ajuste domingo→lunes) NO es posterior al ancla → caen en el puente.
+      final pendientes = await tx.getAll(
+        "SELECT id, periodo FROM cuotas WHERE contrato_id = ? AND estado = 'pendiente'",
+        [contratoId],
+      );
+      var absorbidas = 0;
+      for (final c in pendientes) {
+        final periodo = _parsePeriodo(c['periodo'] as String);
+        final servicio = DateTime(periodo.year, periodo.month,
+            diaClampMes(periodo.year, periodo.month, diaNuevo));
+        if (!servicio.isAfter(puente.anclaServicio)) {
+          await tx.execute(
+            '''
+            UPDATE cuotas
+               SET estado = 'anulada', anulada_en = ?, anulada_por = ?,
+                   motivo_anulacion = ?, ocurrido_en = ?
+             WHERE id = ?
+            ''',
+            [
+              ocurridoEn, cobradorId,
+              'Absorbida por cambio de fecha de pago', ocurridoEn, c['id'],
+            ],
+          );
+          absorbidas++;
+        }
+      }
+
+      // 5. Re-fechar futuras pendientes al día nuevo (espejo del trigger 0018:
+      //    periodo >= mes actual, estado='pendiente'; las absorbidas ya no son
+      //    'pendiente' → no se tocan).
+      final futuras = await tx.getAll(
+        '''
+        SELECT id, periodo FROM cuotas
+         WHERE contrato_id = ? AND estado = 'pendiente'
+           AND date(periodo) >= date('now','-6 hours','start of month')
+        ''',
+        [contratoId],
+      );
+      for (final c in futuras) {
+        final periodo = _parsePeriodo(c['periodo'] as String);
+        final venc = calcularFechaPago(periodo, diaNuevo);
+        await tx.execute(
+          'UPDATE cuotas SET fecha_vencimiento = ?, ocurrido_en = ? WHERE id = ?',
+          [_fechaOnly(venc), ocurridoEn, c['id']],
+        );
+      }
+
+      // 6. Contrato: cuota de cierre en fijos (1 por absorbida) + UPDATE dia_pago
+      //    (+ fecha_fin en fijos, segura para limpiar_cuotas_excedentes).
+      final contratoRows = await tx.getAll(
+        'SELECT cliente_id, duracion_meses FROM contratos WHERE id = ?',
+        [contratoId],
+      );
+      final clienteId = contratoRows.first['cliente_id'] as String;
+      final duracionMeses =
+          (contratoRows.first['duracion_meses'] as num?)?.toInt();
+      final esFijo = duracionMeses != null && duracionMeses > 0;
+
+      if (esFijo && absorbidas > 0) {
+        final maxRows = await tx.getAll(
+          'SELECT MAX(date(periodo)) AS maxp FROM cuotas WHERE contrato_id = ?',
+          [contratoId],
+        );
+        var ultimo = _parsePeriodo(maxRows.first['maxp'] as String);
+        for (var i = 0; i < absorbidas; i++) {
+          ultimo = DateTime(ultimo.year, ultimo.month + 1, 1);
+          final venc = calcularFechaPago(ultimo, diaNuevo);
+          await tx.execute(
+            '''
+            INSERT INTO cuotas (
+              id, tenant_id, contrato_id, cliente_id, cobrador_id, periodo,
+              fecha_vencimiento, monto, monto_pagado, cargos_neto, estado, ocurrido_en
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, 0, 'pendiente', ?)
+            ''',
+            [
+              _uuid.v4(), tenantId, contratoId, clienteId, cobradorId,
+              _fechaOnly(ultimo), _fechaOnly(venc), precioMensual, ocurridoEn,
+            ],
+          );
+        }
+      }
+
+      String? fechaFinNueva;
+      if (esFijo) {
+        final vencRows = await tx.getAll(
+          "SELECT MAX(date(fecha_vencimiento)) AS maxv FROM cuotas WHERE contrato_id = ? AND estado <> 'anulada'",
+          [contratoId],
+        );
+        final maxv = vencRows.first['maxv'] as String?;
+        if (maxv != null) {
+          // +1 día: que la última cuota NO caiga en fecha_fin (limpiar_cuotas_
+          // excedentes borra pendientes con venc >= fecha_fin al acortar).
+          fechaFinNueva =
+              _fechaOnly(DateTime.parse(maxv).add(const Duration(days: 1)));
+        }
+      }
+      if (fechaFinNueva != null) {
+        await tx.execute(
+          'UPDATE contratos SET dia_pago = ?, fecha_fin = ?, ocurrido_en = ? WHERE id = ?',
+          [diaNuevo, fechaFinNueva, ocurridoEn, contratoId],
+        );
+      } else {
+        await tx.execute(
+          'UPDATE contratos SET dia_pago = ?, ocurrido_en = ? WHERE id = ?',
+          [diaNuevo, ocurridoEn, contratoId],
+        );
+      }
+    });
+
+    if (correlativoEmitido.isNotEmpty) {
+      await CorrelativoStore.subirA(
+          cobradorId, prefijoRecibo, correlativoEmitido.last);
+    }
+    return CobroResultado(pagoId: pagoId, reciboId: reciboId);
+  }
+
+  /// Parsea `periodo` (cuotas) a primer día del mes. Tolera 'YYYY-MM' y
+  /// 'YYYY-MM-DD' (el server guarda date_trunc → 'YYYY-MM-01').
+  DateTime _parsePeriodo(String s) {
+    final p = s.split('-');
+    return DateTime(int.parse(p[0]), int.parse(p[1]), 1);
+  }
+
+  /// Formatea una fecha como 'YYYY-MM-DD' (formato de las columnas date).
+  String _fechaOnly(DateTime d) =>
+      '${d.year.toString().padLeft(4, '0')}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
 
   /// Suma neta de cargos_extra de la cuota: cargos sumados (reconexion/otro)
   /// menos descuentos. Mirror del SQL `cuota_total_a_cobrar` (0018).
