@@ -113,7 +113,10 @@ set search_path = public, pg_temp
 as $$
   select
     coalesce((
-      select s.valor = 'true'::jsonb
+      -- settings.valor es TEXT (0011 lo migró de jsonb a text serializado para
+      -- el cliente SQLite); el cliente lo escribe con jsonEncode(bool) → 'true'
+      -- /'false'. Comparar como texto (no como jsonb).
+      select s.valor = 'true'
         from public.settings s
        where s.tenant_id = public.current_tenant_id()
          and s.clave = 'cobranza.cambio_fecha_habilitado'
@@ -133,6 +136,7 @@ $$;
 -- =========================================================================
 
 -- contratos: UPDATE (dia_pago / fecha_fin) del re-anclaje.
+drop policy if exists "contratos_cambiar_fecha" on public.contratos;
 create policy "contratos_cambiar_fecha" on public.contratos
   for update
   using (
@@ -149,6 +153,7 @@ create policy "contratos_cambiar_fecha" on public.contratos
 -- cuotas: INSERT (cuota de cierre en fijos). Exige que el contrato sea del
 -- propio cobrador (patrón endurecido de 0022: el cobrador setea cobrador_id en
 -- su propia fila, así que sin el EXISTS podría insertar contra contratos ajenos).
+drop policy if exists "cuotas_cambiar_fecha_insert" on public.cuotas;
 create policy "cuotas_cambiar_fecha_insert" on public.cuotas
   for insert
   with check (
@@ -165,6 +170,7 @@ create policy "cuotas_cambiar_fecha_insert" on public.cuotas
 
 -- cuotas: UPDATE (anular la cuota absorbida; el día de las futuras lo mueve el
 -- trigger 0018 como SECURITY DEFINER). NO se habilita DELETE.
+drop policy if exists "cuotas_cambiar_fecha_update" on public.cuotas;
 create policy "cuotas_cambiar_fecha_update" on public.cuotas
   for update
   using (
